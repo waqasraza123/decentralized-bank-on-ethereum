@@ -1,0 +1,78 @@
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id              Int             @id @default(autoincrement())
+  firstName       String
+  lastName        String
+  email           String          @unique
+  supabaseUserId  String
+  ethereumAddress String?         @default("")
+  createdAt       DateTime        @default(now())
+  deposits        PoolDeposit[]
+  withdrawals     PoolWithdrawal[]
+}
+
+model StakingPool {
+  id                Int             @id @default(autoincrement())
+  blockchainPoolId  Int?            @unique
+  rewardRate        Int
+  totalStakedAmount BigInt          @default(0)
+  totalRewardsPaid  BigInt          @default(0)
+  poolStatus        PoolStatus     @default(disabled)
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+  deposits          PoolDeposit[]
+  withdrawals       PoolWithdrawal[]
+}
+
+enum PoolStatus {
+  active
+  disabled
+  paused
+  closed
+  completed
+}
+
+model PoolDeposit {
+  id               Int             @id @default(autoincrement())
+  userId           Int
+  user             User            @relation(fields: [userId], references: [id])
+  stakingPoolId    Int
+  stakingPool      StakingPool     @relation(fields: [stakingPoolId], references: [id])
+  amountStaked     BigInt
+  transactionHash  String?         @unique @default("")
+  status           DepositStatus   @default(pending)
+  timestamp        DateTime        @default(now())
+}
+
+enum DepositStatus {
+  pending
+  completed
+  failed
+}
+
+model PoolWithdrawal {
+  id               Int               @id @default(autoincrement())
+  userId           Int
+  user             User              @relation(fields: [userId], references: [id])
+  stakingPoolId    Int
+  stakingPool      StakingPool       @relation(fields: [stakingPoolId], references: [id])
+  amountWithdrawn  BigInt
+  transactionHash  String?           @unique @default("")
+  status           WithdrawalStatus  @default(pending)
+  timestamp        DateTime          @default(now())
+}
+
+enum WithdrawalStatus {
+  pending
+  completed
+  failed
+}
