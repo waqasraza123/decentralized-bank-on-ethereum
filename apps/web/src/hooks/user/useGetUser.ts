@@ -1,51 +1,73 @@
-import { useQuery } from "@tanstack/react-query";
 import axios from "axios";
+import { useQuery } from "@tanstack/react-query";
+import { loadWebRuntimeConfig } from "@stealth-trails-bank/config/web";
 import { useUserStore } from "@/stores/userStore";
 
-type UserStoreState = ReturnType<typeof useUserStore.getState>;
-type SetUser = UserStoreState["setUser"];
-type StoredUser = Parameters<SetUser>[0];
+const webRuntimeConfig = loadWebRuntimeConfig(
+  import.meta.env as Record<string, string | boolean | undefined>
+);
 
-const fetchUser = async (
-  userId: string,
-  token: string,
-  setUser: SetUser
-): Promise<StoredUser> => {
-  if (!token) {
-    throw new Error("User is not authenticated.");
-  }
-
-  const serverUrl = import.meta.env.VITE_SERVER_URL;
-  const response = await axios.get(`${serverUrl}/user/${userId}`, {
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
-  });
-
-  const userData = response.data.data as StoredUser;
-  setUser(userData);
-  return userData;
+type UserRecord = {
+  id: number;
+  firstName: string;
+  lastName: string;
+  email: string;
+  supabaseUserId: string;
+  ethereumAddress?: string | null;
 };
 
-export const useGetUser = (userId: string) => {
+type UserResponse = {
+  status?: "success" | "failed";
+  message?: string;
+  data?: UserRecord;
+};
+
+function mapUserRecordToStoreUser(user: UserRecord) {
+  return {
+    id: user.id,
+    firstName: user.firstName,
+    lastName: user.lastName,
+    email: user.email,
+    privateKey: "",
+    supabaseUserId: user.supabaseUserId,
+    ethereumAddress: user.ethereumAddress ?? ""
+  };
+}
+
+export function useGetUser(userId: string | undefined) {
   const token = useUserStore((state) => state.token);
   const setUser = useUserStore((state) => state.setUser);
-  const authToken = token ?? "";
 
-  const {
-    data: user,
-    isLoading,
-    isError,
-    error,
-  } = useQuery({
+  return useQuery({
     queryKey: ["user", userId],
-    queryFn: () => fetchUser(userId, authToken, setUser),
-    enabled: Boolean(userId && authToken),
-  });
+    enabled: Boolean(userId && token),
+    queryFn: async () => {
+      if (!userId) {
+        throw new Error("User id is required.");
+      }
 
-  return {
-    user,
-    loading: isLoading,
-    error: isError ? (error as Error).message : null,
-  };
-};
+      if (!token) {
+        throw new Error("Auth token is required.");
+      }
+
+      const response = await axios.get<UserResponse>(
+        `${webRuntimeConfig.serverUrl}/user/${userId}`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`
+          }
+        }
+      );
+
+      const user = response.data.data;
+
+      if (!user) {
+        throw new Error(response.data.message || "User payload is missing.");
+      }
+
+      setUser(mapUserRecordToStoreUser(user));
+
+      return user;
+    }
+  });
+}

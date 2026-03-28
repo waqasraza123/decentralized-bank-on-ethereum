@@ -1,71 +1,207 @@
-import { useState } from "react";
 import axios from "axios";
+import { useState } from "react";
+import { loadWebRuntimeConfig } from "@stealth-trails-bank/config/web";
+import { useUserStore } from "@/stores/userStore";
 
-type SignupInput = {
+const webRuntimeConfig = loadWebRuntimeConfig(
+  import.meta.env as Record<string, string | boolean | undefined>
+);
+
+type ApiResponse<T> = {
+  status: "success" | "failed";
+  message: string;
+  error?: unknown;
+  data?: T;
+};
+
+type SignUpCredentials = {
   firstName: string;
   lastName: string;
   email: string;
   password: string;
 };
 
-type LoginInput = {
+type LoginCredentials = {
   email: string;
   password: string;
 };
 
-type AuthErrorResponse = {
-  message?: string;
+type SignUpResponseUser = {
+  id: string;
+  email: string;
+  firstName: string;
+  lastName: string;
+  address: string;
+  privateKey: string;
 };
 
-const getErrorMessage = (error: unknown) => {
-  if (axios.isAxiosError<AuthErrorResponse>(error)) {
-    return error.response?.data?.message ?? "An error occurred";
+type SignUpResponseData = {
+  user: SignUpResponseUser;
+};
+
+type LoginResponseUser = {
+  id: number;
+  supabaseUserId: string;
+  email: string;
+  ethereumAddress: string;
+  firstName: string;
+  lastName: string;
+  privateKey?: string;
+};
+
+type LoginResponseData = {
+  token?: string;
+  user: LoginResponseUser;
+};
+
+function readErrorMessage(error: unknown): string {
+  if (axios.isAxiosError(error)) {
+    const responseMessage =
+      typeof error.response?.data?.message === "string"
+        ? error.response.data.message
+        : undefined;
+
+    return responseMessage ?? error.message;
   }
 
   if (error instanceof Error) {
     return error.message;
   }
 
-  return "An error occurred";
-};
+  return "Request failed.";
+}
 
-const useAuth = () => {
+function normalizeSignUpInput(
+  firstArg: SignUpCredentials | string,
+  lastName?: string,
+  email?: string,
+  password?: string
+): SignUpCredentials {
+  if (typeof firstArg !== "string") {
+    return firstArg;
+  }
+
+  if (!lastName || !email || !password) {
+    throw new Error("Sign up requires first name, last name, email, and password.");
+  }
+
+  return {
+    firstName: firstArg,
+    lastName,
+    email,
+    password
+  };
+}
+
+function normalizeLoginInput(
+  firstArg: LoginCredentials | string,
+  password?: string
+): LoginCredentials {
+  if (typeof firstArg !== "string") {
+    return firstArg;
+  }
+
+  if (!password) {
+    throw new Error("Login requires email and password.");
+  }
+
+  return {
+    email: firstArg,
+    password
+  };
+}
+
+function mapLoginUser(user: LoginResponseUser) {
+  return {
+    id: user.id,
+    firstName: user.firstName,
+    lastName: user.lastName,
+    email: user.email,
+    privateKey: user.privateKey ?? "",
+    supabaseUserId: user.supabaseUserId,
+    ethereumAddress: user.ethereumAddress
+  };
+}
+
+export default function useAuth() {
+  const setUser = useUserStore((state) => state.setUser);
+  const setToken = useUserStore((state) => state.setToken);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const signup = async (data: SignupInput) => {
+  async function signup(
+    firstArg: SignUpCredentials | string,
+    lastName?: string,
+    email?: string,
+    password?: string
+  ) {
+    const payload = normalizeSignUpInput(firstArg, lastName, email, password);
+
     setLoading(true);
     setError(null);
 
     try {
-      const serverUrl = import.meta.env.VITE_SERVER_URL;
-      const response = await axios.post(serverUrl + "/auth/signup", data);
-      return response.data;
-    } catch (error: unknown) {
-      setError(getErrorMessage(error));
-      throw error;
+      const response = await axios.post<ApiResponse<SignUpResponseData>>(
+        `${webRuntimeConfig.serverUrl}/auth/signup`,
+        payload
+      );
+
+      const user = response.data.data?.user;
+
+      if (response.data.status !== "success" || !user) {
+        throw new Error(response.data.message || "Sign up failed.");
+      }
+
+      return user;
+    } catch (requestError) {
+      const message = readErrorMessage(requestError);
+      setError(message);
+      throw requestError instanceof Error
+        ? requestError
+        : new Error(message);
     } finally {
       setLoading(false);
     }
-  };
+  }
 
-  const login = async (data: LoginInput) => {
+  async function login(firstArg: LoginCredentials | string, password?: string) {
+    const payload = normalizeLoginInput(firstArg, password);
+
     setLoading(true);
     setError(null);
 
     try {
-      const serverUrl = import.meta.env.VITE_SERVER_URL;
-      const response = await axios.post(serverUrl + "/auth/login", data);
-      return response.data;
-    } catch (error: unknown) {
-      setError(getErrorMessage(error));
-      throw error;
+      const response = await axios.post<ApiResponse<LoginResponseData>>(
+        `${webRuntimeConfig.serverUrl}/auth/login`,
+        payload
+      );
+
+      const token = response.data.data?.token;
+      const user = response.data.data?.user;
+
+      if (response.data.status !== "success" || !token || !user) {
+        throw new Error(response.data.message || "Login failed.");
+      }
+
+      setToken(token);
+      setUser(mapLoginUser(user));
+
+      return user;
+    } catch (requestError) {
+      const message = readErrorMessage(requestError);
+      setError(message);
+      throw requestError instanceof Error
+        ? requestError
+        : new Error(message);
     } finally {
       setLoading(false);
     }
+  }
+
+  return {
+    signup,
+    login,
+    loading,
+    error
   };
-
-  return { signup, login, loading, error };
-};
-
-export default useAuth;
+}

@@ -1,69 +1,111 @@
-import { Injectable } from '@nestjs/common';
-import { ethers } from 'ethers';
-import { PrismaService } from '../prisma/prisma.service';
-import { AuthService } from '../auth/auth.service';
-import stakingAbi from '../abis/staking.abi.json';
-import { createPool } from './methods/createPool';
-import { deposit } from './methods/deposit';
-import { withdraw } from './methods/withdraw';
-import { claimReward } from './methods/claimReward';
-import { emergencyWithdraw } from './methods/emergencyWithdraw';
-import { getStakedBalance } from './methods/getStakedBalance';
-import { getPendingReward } from './methods/getPendingReward';
-import { getTotalStaked } from './methods/getTotalStaked';
+import { Injectable } from "@nestjs/common";
+import { loadBlockchainContractWriteRuntimeConfig } from "@stealth-trails-bank/config/api";
+import { ethers } from "ethers";
+import stakingAbi from "../abis/staking.abi.json";
+import { AuthService } from "../auth/auth.service";
+import { PrismaService } from "../prisma/prisma.service";
+import { claimReward } from "./methods/claimReward";
+import { createPool } from "./methods/createPool";
+import { deposit } from "./methods/deposit";
+import { emergencyWithdraw } from "./methods/emergencyWithdraw";
+import { getPendingReward } from "./methods/getPendingReward";
+import { getStakedBalance } from "./methods/getStakedBalance";
+import { getTotalStaked } from "./methods/getTotalStaked";
+import { withdraw } from "./methods/withdraw";
 
 @Injectable()
 export class StakingService {
-  private provider: ethers.providers.JsonRpcProvider;
-  private stakingContract: ethers.Contract;
+  private readonly provider: ethers.providers.JsonRpcProvider;
+  private readonly wallet: ethers.Wallet;
+  private readonly stakingContract: ethers.Contract;
 
   constructor(
     private readonly prismaService: PrismaService,
     private readonly authService: AuthService
   ) {
-    this.provider = new ethers.providers.JsonRpcProvider(process.env.RPC_URL);
+    const runtimeConfig = loadBlockchainContractWriteRuntimeConfig();
 
-    if (!process.env.STAKING_CONTRACT_ADDRESS || !process.env.ETHEREUM_PRIVATE_KEY) {
-      throw new Error('Missing STAKING_CONTRACT_ADDRESS or PRIVATE_KEY');
-    }
-
-    const wallet = new ethers.Wallet(process.env.ETHEREUM_PRIVATE_KEY, this.provider);
+    this.provider = new ethers.providers.JsonRpcProvider(runtimeConfig.rpcUrl);
+    this.wallet = new ethers.Wallet(
+      runtimeConfig.ethereumPrivateKey,
+      this.provider
+    );
     this.stakingContract = new ethers.Contract(
-      process.env.STAKING_CONTRACT_ADDRESS,
+      runtimeConfig.stakingContractAddress,
       stakingAbi,
-      wallet
+      this.wallet
     );
   }
 
-  createPool(rewardRate: number) {
-    return createPool(this.stakingContract, this.prismaService, rewardRate);
+  async createPool(rewardRate: number) {
+    return createPool(
+      this.stakingContract,
+      this.prismaService,
+      rewardRate
+    );
   }
 
-  deposit(poolId: number, amount: string, supabaseUserId: string) {
-    return deposit(this.stakingContract, this.prismaService, this.authService, poolId, amount, supabaseUserId);
+  async deposit(poolId: number, amount: string, supabaseUserId: string) {
+    return deposit(
+      this.stakingContract,
+      this.prismaService,
+      this.authService,
+      poolId,
+      amount,
+      supabaseUserId
+    );
   }
 
-  withdraw(poolId: number, amount: string, supabaseUserId: string) {
-    return withdraw(this.stakingContract, this.prismaService, this.authService, poolId, amount, supabaseUserId);
+  async withdraw(poolId: number, amount: string, supabaseUserId: string) {
+    return withdraw(
+      this.stakingContract,
+      this.prismaService,
+      this.authService,
+      poolId,
+      amount,
+      supabaseUserId
+    );
   }
 
-  claimReward(databasePoolId: number) {
-    return claimReward(this.stakingContract, this.prismaService, databasePoolId);
+  async claimReward(databasePoolId: number) {
+    return claimReward(
+      this.stakingContract,
+      this.prismaService,
+      databasePoolId
+    );
   }
 
-  emergencyWithdraw(databasePoolId: number) {
-    return emergencyWithdraw(this.stakingContract, this.prismaService, databasePoolId);
+  async emergencyWithdraw(databasePoolId: number) {
+    return emergencyWithdraw(
+      this.stakingContract,
+      this.prismaService,
+      databasePoolId
+    );
   }
 
-  getStakedBalance(address: string, databasePoolId: number) {
-    return getStakedBalance(this.stakingContract, this.prismaService, address, databasePoolId);
+  async getStakedBalance(address: string, databasePoolId: number) {
+    return getStakedBalance(
+      this.stakingContract,
+      this.prismaService,
+      address,
+      databasePoolId
+    );
   }
 
-  getPendingReward(address: string, databasePoolId: number) {
-    return getPendingReward(this.stakingContract, this.prismaService, address, databasePoolId);
+  async getPendingReward(address: string, databasePoolId: number) {
+    return getPendingReward(
+      this.stakingContract,
+      this.prismaService,
+      address,
+      databasePoolId
+    );
   }
 
-  getTotalStaked(databasePoolId: number) {
-    return getTotalStaked(this.stakingContract, this.prismaService, databasePoolId);
+  async getTotalStaked(databasePoolId: number) {
+    return getTotalStaked(
+      this.stakingContract,
+      this.prismaService,
+      databasePoolId
+    );
   }
 }

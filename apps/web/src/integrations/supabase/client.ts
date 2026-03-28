@@ -1,13 +1,12 @@
-import { createClient } from '@supabase/supabase-js';
-import type { Database } from './types';
+import { createClient } from "@supabase/supabase-js";
+import { loadWebRuntimeConfig } from "@stealth-trails-bank/config/web";
+import type { Database } from "./types";
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+const webRuntimeConfig = loadWebRuntimeConfig(
+  import.meta.env as Record<string, string | boolean | undefined>
+);
 
-if (!supabaseUrl || !supabaseAnonKey) {
-  throw new Error(
-    'Missing VITE_SUPABASE_URL or VITE_SUPABASE_ANON_KEY. Copy apps/web/.env.example to .env.local and set them.',
-  );
-}
-
-export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey);
+export const supabase = createClient<Database>(
+  webRuntimeConfig.supabaseUrl,
+  webRuntimeConfig.supabaseAnonKey
+);

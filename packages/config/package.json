@@ -6,20 +6,24 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "files": [
-    "dist"
+    "dist",
+    "src"
   ],
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
-      "default": "./dist/index.js"
+      "import": "./dist/index.js",
+      "require": "./dist/index.js"
     },
     "./api": {
       "types": "./dist/api.d.ts",
-      "default": "./dist/api.js"
+      "import": "./dist/api.js",
+      "require": "./dist/api.js"
     },
     "./web": {
-      "types": "./dist/web.d.ts",
-      "default": "./dist/web.js"
+      "types": "./src/web-runtime-config.ts",
+      "import": "./src/web-runtime-config.ts",
+      "require": "./dist/web.js"
     }
   },
   "scripts": {
