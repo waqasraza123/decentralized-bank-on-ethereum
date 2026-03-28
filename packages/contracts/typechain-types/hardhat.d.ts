@@ -14,26 +14,116 @@ import * as Contracts from ".";
 declare module "hardhat/types/runtime" {
   interface HardhatEthersHelpers extends HardhatEthersHelpersBase {
     getContractFactory(
+      name: "Ownable",
+      signerOrOptions?: ethers.Signer | FactoryOptions
+    ): Promise<Contracts.Ownable__factory>;
+    getContractFactory(
+      name: "ReentrancyGuard",
+      signerOrOptions?: ethers.Signer | FactoryOptions
+    ): Promise<Contracts.ReentrancyGuard__factory>;
+    getContractFactory(
+      name: "PoolManagement",
+      signerOrOptions?: ethers.Signer | FactoryOptions
+    ): Promise<Contracts.PoolManagement__factory>;
+    getContractFactory(
+      name: "StakingOperations",
+      signerOrOptions?: ethers.Signer | FactoryOptions
+    ): Promise<Contracts.StakingOperations__factory>;
+    getContractFactory(
       name: "StakingPool",
       signerOrOptions?: ethers.Signer | FactoryOptions
     ): Promise<Contracts.StakingPool__factory>;
+    getContractFactory(
+      name: "StakingPoolStorage",
+      signerOrOptions?: ethers.Signer | FactoryOptions
+    ): Promise<Contracts.StakingPoolStorage__factory>;
 
+    getContractAt(
+      name: "Ownable",
+      address: string | ethers.Addressable,
+      signer?: ethers.Signer
+    ): Promise<Contracts.Ownable>;
+    getContractAt(
+      name: "ReentrancyGuard",
+      address: string | ethers.Addressable,
+      signer?: ethers.Signer
+    ): Promise<Contracts.ReentrancyGuard>;
+    getContractAt(
+      name: "PoolManagement",
+      address: string | ethers.Addressable,
+      signer?: ethers.Signer
+    ): Promise<Contracts.PoolManagement>;
+    getContractAt(
+      name: "StakingOperations",
+      address: string | ethers.Addressable,
+      signer?: ethers.Signer
+    ): Promise<Contracts.StakingOperations>;
     getContractAt(
       name: "StakingPool",
       address: string | ethers.Addressable,
       signer?: ethers.Signer
     ): Promise<Contracts.StakingPool>;
+    getContractAt(
+      name: "StakingPoolStorage",
+      address: string | ethers.Addressable,
+      signer?: ethers.Signer
+    ): Promise<Contracts.StakingPoolStorage>;
 
+    deployContract(
+      name: "Ownable",
+      signerOrOptions?: ethers.Signer | DeployContractOptions
+    ): Promise<Contracts.Ownable>;
+    deployContract(
+      name: "ReentrancyGuard",
+      signerOrOptions?: ethers.Signer | DeployContractOptions
+    ): Promise<Contracts.ReentrancyGuard>;
+    deployContract(
+      name: "PoolManagement",
+      signerOrOptions?: ethers.Signer | DeployContractOptions
+    ): Promise<Contracts.PoolManagement>;
+    deployContract(
+      name: "StakingOperations",
+      signerOrOptions?: ethers.Signer | DeployContractOptions
+    ): Promise<Contracts.StakingOperations>;
     deployContract(
       name: "StakingPool",
       signerOrOptions?: ethers.Signer | DeployContractOptions
     ): Promise<Contracts.StakingPool>;
+    deployContract(
+      name: "StakingPoolStorage",
+      signerOrOptions?: ethers.Signer | DeployContractOptions
+    ): Promise<Contracts.StakingPoolStorage>;
 
+    deployContract(
+      name: "Ownable",
+      args: any[],
+      signerOrOptions?: ethers.Signer | DeployContractOptions
+    ): Promise<Contracts.Ownable>;
+    deployContract(
+      name: "ReentrancyGuard",
+      args: any[],
+      signerOrOptions?: ethers.Signer | DeployContractOptions
+    ): Promise<Contracts.ReentrancyGuard>;
+    deployContract(
+      name: "PoolManagement",
+      args: any[],
+      signerOrOptions?: ethers.Signer | DeployContractOptions
+    ): Promise<Contracts.PoolManagement>;
+    deployContract(
+      name: "StakingOperations",
+      args: any[],
+      signerOrOptions?: ethers.Signer | DeployContractOptions
+    ): Promise<Contracts.StakingOperations>;
     deployContract(
       name: "StakingPool",
       args: any[],
       signerOrOptions?: ethers.Signer | DeployContractOptions
     ): Promise<Contracts.StakingPool>;
+    deployContract(
+      name: "StakingPoolStorage",
+      args: any[],
+      signerOrOptions?: ethers.Signer | DeployContractOptions
+    ): Promise<Contracts.StakingPoolStorage>;
 
     // default types
     getContractFactory(
