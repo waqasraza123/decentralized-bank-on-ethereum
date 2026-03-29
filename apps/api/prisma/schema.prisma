@@ -42,8 +42,44 @@ model CustomerAccount {
   closedAt     DateTime?
   createdAt    DateTime               @default(now())
   updatedAt    DateTime               @updatedAt
+  wallets      Wallet[]
 
   @@index([status])
+}
+
+model Wallet {
+  id                String            @id @default(cuid())
+  customerAccountId String?
+  customerAccount   CustomerAccount?  @relation(fields: [customerAccountId], references: [id])
+  chainId           Int
+  address           String
+  kind              WalletKind
+  custodyType       WalletCustodyType
+  status            WalletStatus      @default(pending)
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+
+  @@unique([chainId, address])
+  @@index([customerAccountId])
+  @@index([kind, custodyType])
+  @@index([status])
+}
+
+model Asset {
+  id              String      @id @default(cuid())
+  chainId         Int
+  symbol          String
+  displayName     String
+  decimals        Int
+  assetType       AssetType
+  contractAddress String?
+  status          AssetStatus @default(active)
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  @@unique([chainId, symbol])
+  @@unique([chainId, contractAddress])
+  @@index([assetType, status])
 }
 
 model StakingPool {
@@ -67,6 +103,38 @@ enum AccountLifecycleStatus {
   restricted
   frozen
   closed
+}
+
+enum WalletKind {
+  embedded
+  external
+  treasury
+  operational
+  contract
+}
+
+enum WalletCustodyType {
+  platform_managed
+  customer_external
+  multisig_controlled
+  contract_controlled
+}
+
+enum WalletStatus {
+  pending
+  active
+  restricted
+  archived
+}
+
+enum AssetType {
+  native
+  erc20
+}
+
+enum AssetStatus {
+  active
+  disabled
 }
 
 enum PoolStatus {
