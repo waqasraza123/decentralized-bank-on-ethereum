@@ -1,36 +1,22 @@
 import axios from "axios";
 import { useQuery } from "@tanstack/react-query";
 import { loadWebRuntimeConfig } from "@stealth-trails-bank/config/web";
+import type { UserProfileProjection } from "@stealth-trails-bank/types";
 import { useUserStore } from "@/stores/userStore";
 
 const webRuntimeConfig = loadWebRuntimeConfig(
   import.meta.env as Record<string, string | boolean | undefined>
 );
 
-type UserRecord = {
-  id: number;
-  firstName: string;
-  lastName: string;
-  email: string;
-  supabaseUserId: string;
-  ethereumAddress?: string | null;
-};
-
-type UserResponse = {
-  status?: "success" | "failed";
-  message?: string;
-  data?: UserRecord;
-};
-
-function mapUserRecordToStoreUser(user: UserRecord) {
+function mapUserProfileToStoreUser(profile: UserProfileProjection) {
   return {
-    id: user.id,
-    firstName: user.firstName,
-    lastName: user.lastName,
-    email: user.email,
+    id: profile.id ?? 0,
+    firstName: profile.firstName,
+    lastName: profile.lastName,
+    email: profile.email,
     privateKey: "",
-    supabaseUserId: user.supabaseUserId,
-    ethereumAddress: user.ethereumAddress ?? ""
+    supabaseUserId: profile.supabaseUserId,
+    ethereumAddress: profile.ethereumAddress
   };
 }
 
@@ -50,7 +36,7 @@ export function useGetUser(userId: string | undefined) {
         throw new Error("Auth token is required.");
       }
 
-      const response = await axios.get<UserResponse>(
+      const response = await axios.get<UserProfileProjection>(
         `${webRuntimeConfig.serverUrl}/user/${userId}`,
         {
           headers: {
@@ -59,15 +45,9 @@ export function useGetUser(userId: string | undefined) {
         }
       );
 
-      const user = response.data.data;
+      setUser(mapUserProfileToStoreUser(response.data));
 
-      if (!user) {
-        throw new Error(response.data.message || "User payload is missing.");
-      }
-
-      setUser(mapUserRecordToStoreUser(user));
-
-      return user;
+      return response.data;
     }
   });
 }

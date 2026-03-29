@@ -45,6 +45,9 @@ importers:
       '@stealth-trails-bank/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@stealth-trails-bank/types':
+        specifier: workspace:*
+        version: link:../../packages/types
       '@supabase/supabase-js':
         specifier: ^2.47.13
         version: 2.100.1
@@ -205,6 +208,9 @@ importers:
       '@stealth-trails-bank/config':
         specifier: workspace:*
         version: link:../../packages/config
+      '@stealth-trails-bank/types':
+        specifier: workspace:*
+        version: link:../../packages/types
       '@supabase/supabase-js':
         specifier: ^2.49.4
         version: 2.100.1

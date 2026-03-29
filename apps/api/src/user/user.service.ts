@@ -3,7 +3,10 @@ import {
   InternalServerErrorException,
   NotFoundException
 } from "@nestjs/common";
-import { AccountLifecycleStatus } from "@prisma/client";
+import type {
+  AccountLifecycleStatusValue,
+  UserProfileProjection
+} from "@stealth-trails-bank/types";
 import { SupabaseClient } from "@supabase/supabase-js";
 import {
   AuthService,
@@ -20,20 +23,6 @@ type LegacyUserProfile = {
   ethereumAddress: string | null;
 };
 
-type CustomerAccountUserProfile = {
-  id: string;
-  firstName: string;
-  lastName: string;
-  email: string;
-  supabaseUserId: string;
-  ethereumAddress: string;
-  accountStatus: AccountLifecycleStatus;
-  activatedAt: Date | null;
-  restrictedAt: Date | null;
-  frozenAt: Date | null;
-  closedAt: Date | null;
-};
-
 @Injectable()
 export class UserService {
   private readonly supabase: SupabaseClient;
@@ -45,21 +34,53 @@ export class UserService {
     this.supabase = this.supabaseService.getClient();
   }
 
-  private mapCustomerProjectionToUserProfile(
-    projection: CustomerAccountProjection
-  ): CustomerAccountUserProfile {
+  private formatOptionalDate(value: Date | null): string | null {
+    return value ? value.toISOString() : null;
+  }
+
+  private mapLegacyUserProfile(
+    legacyUser: LegacyUserProfile
+  ): UserProfileProjection {
     return {
-      id: projection.customer.id,
+      id: legacyUser.id,
+      customerId: null,
+      supabaseUserId: legacyUser.supabaseUserId,
+      email: legacyUser.email,
+      firstName: legacyUser.firstName,
+      lastName: legacyUser.lastName,
+      ethereumAddress: legacyUser.ethereumAddress ?? "",
+      accountStatus: null,
+      activatedAt: null,
+      restrictedAt: null,
+      frozenAt: null,
+      closedAt: null
+    };
+  }
+
+  private mapCustomerProjectionWithLegacyOverlay(
+    projection: CustomerAccountProjection,
+    legacyUser: LegacyUserProfile | null
+  ): UserProfileProjection {
+    const accountStatus =
+      projection.customerAccount.status as AccountLifecycleStatusValue;
+
+    return {
+      id: legacyUser?.id ?? null,
+      customerId: projection.customer.id,
+      supabaseUserId: projection.customer.supabaseUserId,
+      email: projection.customer.email,
       firstName: projection.customer.firstName ?? "",
       lastName: projection.customer.lastName ?? "",
-      email: projection.customer.email,
-      supabaseUserId: projection.customer.supabaseUserId,
-      ethereumAddress: "",
-      accountStatus: projection.customerAccount.status,
-      activatedAt: projection.customerAccount.activatedAt,
-      restrictedAt: projection.customerAccount.restrictedAt,
-      frozenAt: projection.customerAccount.frozenAt,
-      closedAt: projection.customerAccount.closedAt
+      ethereumAddress: legacyUser?.ethereumAddress ?? "",
+      accountStatus,
+      activatedAt: this.formatOptionalDate(
+        projection.customerAccount.activatedAt
+      ),
+      restrictedAt: this.formatOptionalDate(
+        projection.customerAccount.restrictedAt
+      ),
+      frozenAt: this.formatOptionalDate(projection.customerAccount.frozenAt),
+      closedAt: this.formatOptionalDate(projection.customerAccount.closedAt)
     };
   }
 
@@ -79,20 +100,30 @@ export class UserService {
     return data as LegacyUserProfile | null;
   }
 
-  async getUserById(supabaseUserId: string) {
+  async getUserById(supabaseUserId: string): Promise<UserProfileProjection> {
+    const legacyUser =
+      await this.getLegacyUserProfileBySupabaseUserId(supabaseUserId);
+
     try {
       const customerProjection =
         await this.authService.getCustomerAccountProjectionBySupabaseUserId(
           supabaseUserId
         );
 
-      return this.mapCustomerProjectionToUserProfile(customerProjection);
+      return this.mapCustomerProjectionWithLegacyOverlay(
+        customerProjection,
+        legacyUser
+      );
     } catch (error) {
       if (!(error instanceof NotFoundException)) {
         throw error;
       }
 
-      return this.getLegacyUserProfileBySupabaseUserId(supabaseUserId);
+      if (!legacyUser) {
+        throw new NotFoundException("User profile not found.");
+      }
+
+      return this.mapLegacyUserProfile(legacyUser);
     }
   }
 }
