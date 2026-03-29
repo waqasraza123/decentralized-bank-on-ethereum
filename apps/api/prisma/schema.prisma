@@ -29,6 +29,8 @@ model Customer {
   createdAt      DateTime          @default(now())
   updatedAt      DateTime          @updatedAt
   accounts       CustomerAccount[]
+  reviewCases    ReviewCase[]
+  auditEvents    AuditEvent[]
 }
 
 model CustomerAccount {
@@ -44,6 +46,7 @@ model CustomerAccount {
   updatedAt          DateTime               @updatedAt
   wallets            Wallet[]
   transactionIntents TransactionIntent[]
+  reviewCases        ReviewCase[]
 
   @@index([status])
 }
@@ -108,6 +111,7 @@ model TransactionIntent {
   createdAt              DateTime                @default(now())
   updatedAt              DateTime                @updatedAt
   blockchainTransactions BlockchainTransaction[]
+  reviewCases            ReviewCase[]
 
   @@index([customerAccountId])
   @@index([assetId])
@@ -133,6 +137,44 @@ model BlockchainTransaction {
 
   @@index([transactionIntentId])
   @@index([chainId, status])
+}
+
+model ReviewCase {
+  id                  String             @id @default(cuid())
+  customerId          String?
+  customer            Customer?          @relation(fields: [customerId], references: [id])
+  customerAccountId   String?
+  customerAccount     CustomerAccount?   @relation(fields: [customerAccountId], references: [id])
+  transactionIntentId String?
+  transactionIntent   TransactionIntent? @relation(fields: [transactionIntentId], references: [id])
+  type                ReviewCaseType
+  status              ReviewCaseStatus   @default(open)
+  reasonCode          String?
+  notes               String?
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+
+  @@index([customerId])
+  @@index([customerAccountId])
+  @@index([transactionIntentId])
+  @@index([type, status])
+}
+
+model AuditEvent {
+  id         String    @id @default(cuid())
+  customerId String?
+  customer   Customer? @relation(fields: [customerId], references: [id])
+  actorType  String
+  actorId    String?
+  action     String
+  targetType String
+  targetId   String?
+  metadata   Json?
+  createdAt  DateTime  @default(now())
+
+  @@index([customerId])
+  @@index([actorType, actorId])
+  @@index([targetType, targetId])
 }
 
 model StakingPool {
@@ -227,6 +269,20 @@ enum BlockchainTransactionStatus {
   failed
   replaced
   dropped
+}
+
+enum ReviewCaseStatus {
+  open
+  in_progress
+  resolved
+  dismissed
+}
+
+enum ReviewCaseType {
+  account_review
+  withdrawal_review
+  reconciliation_review
+  manual_intervention
 }
 
 enum PoolStatus {
