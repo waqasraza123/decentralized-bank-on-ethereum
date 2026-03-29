@@ -1,16 +1,34 @@
-import { Controller, Post, Body } from '@nestjs/common';
-import { AuthService } from './auth.service';
-import { SignUpDto } from './dto/sign-up.dto';
-import { LoginDto } from './dto/login.dto';
-import { ValidationPipe } from '@nestjs/common';
-import { CustomJsonResponse } from '../types/CustomJsonResponse';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  Post,
+  Request,
+  UnauthorizedException,
+  UseGuards,
+  ValidationPipe
+} from "@nestjs/common";
+import { SupabaseAuthGuard } from "../supabase/supabase-auth.guard";
+import { CustomJsonResponse } from "../types/CustomJsonResponse";
+import { AuthService } from "./auth.service";
+import { LoginDto } from "./dto/login.dto";
+import { SignUpDto } from "./dto/sign-up.dto";
 
-@Controller('auth')
+type AuthenticatedRequest = {
+  user: {
+    id: string;
+  };
+};
+
+@Controller("auth")
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
-  @Post('signUp')
-  async signUp(@Body(new ValidationPipe()) signUpDto: SignUpDto): Promise<CustomJsonResponse> {
+  @Post("signUp")
+  async signUp(
+    @Body(new ValidationPipe()) signUpDto: SignUpDto
+  ): Promise<CustomJsonResponse> {
     return this.authService.signUp(
       signUpDto.firstName,
       signUpDto.lastName,
@@ -19,8 +37,34 @@ export class AuthController {
     );
   }
 
-  @Post('login')
-  async login(@Body(new ValidationPipe()) loginDto: LoginDto): Promise<CustomJsonResponse> {
+  @Post("login")
+  async login(
+    @Body(new ValidationPipe()) loginDto: LoginDto
+  ): Promise<CustomJsonResponse> {
     return this.authService.login(loginDto.email, loginDto.password);
+  }
+
+  @UseGuards(SupabaseAuthGuard)
+  @Get("internal/customer-account/:supabaseUserId")
+  async getCustomerAccountProjection(
+    @Param("supabaseUserId") supabaseUserId: string,
+    @Request() request: AuthenticatedRequest
+  ): Promise<CustomJsonResponse> {
+    if (request.user.id !== supabaseUserId) {
+      throw new UnauthorizedException(
+        "You are not authorized to access this customer account."
+      );
+    }
+
+    const projection =
+      await this.authService.getCustomerAccountProjectionBySupabaseUserId(
+        supabaseUserId
+      );
+
+    return {
+      status: "success",
+      message: "Customer account projection retrieved successfully.",
+      data: projection
+    };
   }
 }

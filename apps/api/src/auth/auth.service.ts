@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Injectable,
   InternalServerErrorException,
+  NotFoundException,
   UnauthorizedException
 } from "@nestjs/common";
 import { AccountLifecycleStatus } from "@prisma/client";
@@ -24,6 +25,28 @@ type LegacyUserRecord = {
   email: string;
   supabaseUserId: string;
   ethereumAddress: string | null;
+};
+
+export type CustomerAccountProjection = {
+  customer: {
+    id: string;
+    supabaseUserId: string;
+    email: string;
+    firstName: string | null;
+    lastName: string | null;
+    createdAt: Date;
+    updatedAt: Date;
+  };
+  customerAccount: {
+    id: string;
+    status: AccountLifecycleStatus;
+    activatedAt: Date | null;
+    restrictedAt: Date | null;
+    frozenAt: Date | null;
+    closedAt: Date | null;
+    createdAt: Date;
+    updatedAt: Date;
+  };
 };
 
 @Injectable()
@@ -157,6 +180,51 @@ export class AuthService {
     }
 
     return data as LegacyUserRecord | null;
+  }
+
+  async getCustomerAccountProjectionBySupabaseUserId(
+    supabaseUserId: string
+  ): Promise<CustomerAccountProjection> {
+    const customer = await this.prismaService.customer.findUnique({
+      where: {
+        supabaseUserId
+      },
+      include: {
+        accounts: true
+      }
+    });
+
+    if (!customer) {
+      throw new NotFoundException("Customer projection not found.");
+    }
+
+    const customerAccount = customer.accounts[0];
+
+    if (!customerAccount) {
+      throw new NotFoundException("Customer account projection not found.");
+    }
+
+    return {
+      customer: {
+        id: customer.id,
+        supabaseUserId: customer.supabaseUserId,
+        email: customer.email,
+        firstName: customer.firstName,
+        lastName: customer.lastName,
+        createdAt: customer.createdAt,
+        updatedAt: customer.updatedAt
+      },
+      customerAccount: {
+        id: customerAccount.id,
+        status: customerAccount.status,
+        activatedAt: customerAccount.activatedAt,
+        restrictedAt: customerAccount.restrictedAt,
+        frozenAt: customerAccount.frozenAt,
+        closedAt: customerAccount.closedAt,
+        createdAt: customerAccount.createdAt,
+        updatedAt: customerAccount.updatedAt
+      }
+    };
   }
 
   async validateToken(token: string): Promise<unknown> {
