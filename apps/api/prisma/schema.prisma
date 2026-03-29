@@ -32,32 +32,35 @@ model Customer {
 }
 
 model CustomerAccount {
-  id           String                 @id @default(cuid())
-  customerId   String                 @unique
-  customer     Customer               @relation(fields: [customerId], references: [id])
-  status       AccountLifecycleStatus @default(registered)
-  activatedAt  DateTime?
-  restrictedAt DateTime?
-  frozenAt     DateTime?
-  closedAt     DateTime?
-  createdAt    DateTime               @default(now())
-  updatedAt    DateTime               @updatedAt
-  wallets      Wallet[]
+  id                 String                 @id @default(cuid())
+  customerId         String                 @unique
+  customer           Customer               @relation(fields: [customerId], references: [id])
+  status             AccountLifecycleStatus @default(registered)
+  activatedAt        DateTime?
+  restrictedAt       DateTime?
+  frozenAt           DateTime?
+  closedAt           DateTime?
+  createdAt          DateTime               @default(now())
+  updatedAt          DateTime               @updatedAt
+  wallets            Wallet[]
+  transactionIntents TransactionIntent[]
 
   @@index([status])
 }
 
 model Wallet {
-  id                String            @id @default(cuid())
-  customerAccountId String?
-  customerAccount   CustomerAccount?  @relation(fields: [customerAccountId], references: [id])
-  chainId           Int
-  address           String
-  kind              WalletKind
-  custodyType       WalletCustodyType
-  status            WalletStatus      @default(pending)
-  createdAt         DateTime          @default(now())
-  updatedAt         DateTime          @updatedAt
+  id                 String              @id @default(cuid())
+  customerAccountId  String?
+  customerAccount    CustomerAccount?    @relation(fields: [customerAccountId], references: [id])
+  chainId            Int
+  address            String
+  kind               WalletKind
+  custodyType        WalletCustodyType
+  status             WalletStatus        @default(pending)
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  sourceIntents      TransactionIntent[] @relation("SourceWallet")
+  destinationIntents TransactionIntent[] @relation("DestinationWallet")
 
   @@unique([chainId, address])
   @@index([customerAccountId])
@@ -66,20 +69,70 @@ model Wallet {
 }
 
 model Asset {
-  id              String      @id @default(cuid())
-  chainId         Int
-  symbol          String
-  displayName     String
-  decimals        Int
-  assetType       AssetType
-  contractAddress String?
-  status          AssetStatus @default(active)
-  createdAt       DateTime    @default(now())
-  updatedAt       DateTime    @updatedAt
+  id                 String              @id @default(cuid())
+  chainId            Int
+  symbol             String
+  displayName        String
+  decimals           Int
+  assetType          AssetType
+  contractAddress    String?
+  status             AssetStatus         @default(active)
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  transactionIntents TransactionIntent[]
 
   @@unique([chainId, symbol])
   @@unique([chainId, contractAddress])
   @@index([assetType, status])
+}
+
+model TransactionIntent {
+  id                     String                  @id @default(cuid())
+  customerAccountId      String?
+  customerAccount        CustomerAccount?        @relation(fields: [customerAccountId], references: [id])
+  assetId                String
+  asset                  Asset                   @relation(fields: [assetId], references: [id])
+  sourceWalletId         String?
+  sourceWallet           Wallet?                 @relation("SourceWallet", fields: [sourceWalletId], references: [id])
+  destinationWalletId    String?
+  destinationWallet      Wallet?                 @relation("DestinationWallet", fields: [destinationWalletId], references: [id])
+  chainId                Int
+  intentType             TransactionIntentType
+  status                 TransactionIntentStatus
+  policyDecision         PolicyDecision          @default(pending)
+  requestedAmount        Decimal                 @db.Decimal(36, 18)
+  settledAmount          Decimal?                @db.Decimal(36, 18)
+  idempotencyKey         String                  @unique
+  failureCode            String?
+  failureReason          String?
+  createdAt              DateTime                @default(now())
+  updatedAt              DateTime                @updatedAt
+  blockchainTransactions BlockchainTransaction[]
+
+  @@index([customerAccountId])
+  @@index([assetId])
+  @@index([sourceWalletId])
+  @@index([destinationWalletId])
+  @@index([chainId, intentType])
+  @@index([status, policyDecision])
+}
+
+model BlockchainTransaction {
+  id                  String                      @id @default(cuid())
+  transactionIntentId String
+  transactionIntent   TransactionIntent           @relation(fields: [transactionIntentId], references: [id])
+  chainId             Int
+  txHash              String?                     @unique
+  nonce               Int?
+  status              BlockchainTransactionStatus
+  fromAddress         String?
+  toAddress           String?
+  createdAt           DateTime                    @default(now())
+  updatedAt           DateTime                    @updatedAt
+  confirmedAt         DateTime?
+
+  @@index([transactionIntentId])
+  @@index([chainId, status])
 }
 
 model StakingPool {
@@ -135,6 +188,45 @@ enum AssetType {
 enum AssetStatus {
   active
   disabled
+}
+
+enum TransactionIntentType {
+  deposit
+  withdrawal
+  vault_subscription
+  vault_redemption
+  treasury_transfer
+  adjustment
+}
+
+enum TransactionIntentStatus {
+  requested
+  review_required
+  approved
+  queued
+  broadcast
+  confirmed
+  settled
+  failed
+  cancelled
+  manually_resolved
+}
+
+enum PolicyDecision {
+  pending
+  approved
+  denied
+  review_required
+}
+
+enum BlockchainTransactionStatus {
+  created
+  signed
+  broadcast
+  confirmed
+  failed
+  replaced
+  dropped
 }
 
 enum PoolStatus {
