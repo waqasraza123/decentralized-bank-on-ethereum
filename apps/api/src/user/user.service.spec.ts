@@ -1,0 +1,202 @@
+import { NotFoundException } from "@nestjs/common";
+import { UserService } from "./user.service";
+
+type LegacyUserProfile = {
+  id: number;
+  firstName: string;
+  lastName: string;
+  email: string;
+  supabaseUserId: string;
+  ethereumAddress: string | null;
+};
+
+describe("UserService.getUserById", () => {
+  function createSupabaseClient(
+    legacyUser: LegacyUserProfile | null,
+    error: unknown = null
+  ) {
+    const maybeSingle = jest.fn().mockResolvedValue({
+      data: legacyUser,
+      error
+    });
+    const eq = jest.fn().mockReturnValue({
+      maybeSingle
+    });
+    const select = jest.fn().mockReturnValue({
+      eq
+    });
+    const from = jest.fn().mockReturnValue({
+      select
+    });
+
+    return {
+      from,
+      select,
+      eq,
+      maybeSingle
+    };
+  }
+
+  function createService(options: {
+    legacyUser: LegacyUserProfile | null;
+    customerProjectionResult?: unknown;
+    customerProjectionError?: Error;
+    walletProjectionResult?: unknown;
+    walletProjectionError?: Error;
+  }) {
+    const supabaseClient = createSupabaseClient(options.legacyUser);
+
+    const supabaseService = {
+      getClient: jest.fn().mockReturnValue(supabaseClient)
+    };
+
+    const authService = {
+      getCustomerAccountProjectionBySupabaseUserId: jest.fn(),
+      getCustomerWalletProjectionBySupabaseUserId: jest.fn()
+    };
+
+    if (options.customerProjectionError) {
+      authService.getCustomerAccountProjectionBySupabaseUserId.mockRejectedValue(
+        options.customerProjectionError
+      );
+    } else {
+      authService.getCustomerAccountProjectionBySupabaseUserId.mockResolvedValue(
+        options.customerProjectionResult
+      );
+    }
+
+    if (options.walletProjectionError) {
+      authService.getCustomerWalletProjectionBySupabaseUserId.mockRejectedValue(
+        options.walletProjectionError
+      );
+    } else {
+      authService.getCustomerWalletProjectionBySupabaseUserId.mockResolvedValue(
+        options.walletProjectionResult
+      );
+    }
+
+    const service = new UserService(
+      supabaseService as never,
+      authService as never
+    );
+
+    return {
+      service,
+      authService,
+      supabaseClient
+    };
+  }
+
+  const legacyUser: LegacyUserProfile = {
+    id: 7,
+    firstName: "Legacy",
+    lastName: "User",
+    email: "legacy@example.com",
+    supabaseUserId: "supabase_1",
+    ethereumAddress: "0xlegacy"
+  };
+
+  const customerProjection = {
+    customer: {
+      id: "customer_1",
+      supabaseUserId: "supabase_1",
+      email: "legacy@example.com",
+      firstName: "Legacy",
+      lastName: "User",
+      createdAt: new Date("2026-03-29T00:00:00.000Z"),
+      updatedAt: new Date("2026-03-29T00:10:00.000Z")
+    },
+    customerAccount: {
+      id: "account_1",
+      status: "registered",
+      activatedAt: null,
+      restrictedAt: null,
+      frozenAt: null,
+      closedAt: null,
+      createdAt: new Date("2026-03-29T00:00:00.000Z"),
+      updatedAt: new Date("2026-03-29T00:10:00.000Z")
+    }
+  };
+
+  const walletProjection = {
+    wallet: {
+      id: "wallet_1",
+      customerAccountId: "account_1",
+      chainId: 8453,
+      address: "0xwallet",
+      kind: "embedded",
+      custodyType: "platform_managed",
+      status: "active",
+      createdAt: new Date("2026-03-29T00:00:00.000Z"),
+      updatedAt: new Date("2026-03-29T00:10:00.000Z")
+    }
+  };
+
+  it("uses wallet projection address before legacy ethereumAddress", async () => {
+    const { service } = createService({
+      legacyUser,
+      customerProjectionResult: customerProjection,
+      walletProjectionResult: walletProjection
+    });
+
+    const result = await service.getUserById("supabase_1");
+
+    expect(result.ethereumAddress).toBe("0xwallet");
+    expect(result.customerId).toBe("customer_1");
+    expect(result.id).toBe(7);
+  });
+
+  it("falls back to legacy ethereumAddress when wallet projection is missing", async () => {
+    const { service } = createService({
+      legacyUser,
+      customerProjectionResult: customerProjection,
+      walletProjectionError: new NotFoundException(
+        "Customer wallet projection not found."
+      )
+    });
+
+    const result = await service.getUserById("supabase_1");
+
+    expect(result.ethereumAddress).toBe("0xlegacy");
+    expect(result.customerId).toBe("customer_1");
+  });
+
+  it("returns the legacy profile when the customer projection is missing", async () => {
+    const { service } = createService({
+      legacyUser,
+      customerProjectionError: new NotFoundException(
+        "Customer account not found."
+      )
+    });
+
+    const result = await service.getUserById("supabase_1");
+
+    expect(result).toEqual({
+      id: 7,
+      customerId: null,
+      supabaseUserId: "supabase_1",
+      email: "legacy@example.com",
+      firstName: "Legacy",
+      lastName: "User",
+      ethereumAddress: "0xlegacy",
+      accountStatus: null,
+      activatedAt: null,
+      restrictedAt: null,
+      frozenAt: null,
+      closedAt: null
+    });
+  });
+
+  it("throws when neither customer projection nor legacy profile exists", async () => {
+    const { service } = createService({
+      legacyUser: null,
+      customerProjectionError: new NotFoundException(
+        "Customer account not found."
+      )
+    });
+
+    await expect(service.getUserById("missing_user")).rejects.toBeInstanceOf(
+      NotFoundException
+    );
+  });
+});

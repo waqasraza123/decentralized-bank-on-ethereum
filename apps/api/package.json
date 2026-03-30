@@ -13,7 +13,9 @@
     "prisma:migrate": "prisma migrate dev",
     "prisma:studio": "prisma studio",
     "backfill:customer-accounts": "ts-node src/scripts/backfill-customer-accounts.ts",
-    "backfill:customer-wallets": "ts-node src/scripts/backfill-customer-wallets.ts"
+    "backfill:customer-wallets": "ts-node src/scripts/backfill-customer-wallets.ts",
+    "test": "jest --config ./jest.config.ts --runInBand",
+    "test:watch": "jest --config ./jest.config.ts --watch"
   },
   "dependencies": {
     "@nestjs/common": "^10.4.15",
@@ -47,6 +49,9 @@
     "prettier": "^3.4.2",
     "ts-loader": "^9.5.2",
     "ts-node": "^10.9.2",
-    "typescript": "^5.7.3"
+    "typescript": "^5.7.3",
+    "@types/jest": "^29.5.14",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.2.5"
   }
 }
