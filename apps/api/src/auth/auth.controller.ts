@@ -67,4 +67,28 @@ export class AuthController {
       data: projection
     };
   }
+
+  @UseGuards(SupabaseAuthGuard)
+  @Get("internal/customer-wallet/:supabaseUserId")
+  async getCustomerWalletProjection(
+    @Param("supabaseUserId") supabaseUserId: string,
+    @Request() request: AuthenticatedRequest
+  ): Promise<CustomJsonResponse> {
+    if (request.user.id !== supabaseUserId) {
+      throw new UnauthorizedException(
+        "You are not authorized to access this customer wallet."
+      );
+    }
+
+    const projection =
+      await this.authService.getCustomerWalletProjectionBySupabaseUserId(
+        supabaseUserId
+      );
+
+    return {
+      status: "success",
+      message: "Customer wallet projection retrieved successfully.",
+      data: projection
+    };
+  }
 }

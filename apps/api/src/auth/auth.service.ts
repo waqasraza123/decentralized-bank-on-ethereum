@@ -56,6 +56,20 @@ export type CustomerAccountProjection = {
   };
 };
 
+export type CustomerWalletProjection = {
+  wallet: {
+    id: string;
+    customerAccountId: string | null;
+    chainId: number;
+    address: string;
+    kind: WalletKind;
+    custodyType: WalletCustodyType;
+    status: WalletStatus;
+    createdAt: Date;
+    updatedAt: Date;
+  };
+};
+
 @Injectable()
 export class AuthService {
   private readonly supabase: SupabaseClient;
@@ -237,6 +251,54 @@ export class AuthService {
       );
     }
   }
+
+  async getCustomerWalletProjectionBySupabaseUserId(
+    supabaseUserId: string
+  ): Promise<CustomerWalletProjection> {
+    const customerAccount = await this.prismaService.customerAccount.findFirst({
+      where: {
+        customer: {
+          supabaseUserId
+        }
+      },
+      include: {
+        wallets: {
+          where: {
+            chainId: this.productChainId
+          },
+          orderBy: {
+            createdAt: "asc"
+          },
+          take: 1
+        }
+      }
+    });
+
+    if (!customerAccount) {
+      throw new NotFoundException("Customer account not found.");
+    }
+
+    const wallet = customerAccount.wallets[0];
+
+    if (!wallet) {
+      throw new NotFoundException("Customer wallet projection not found.");
+    }
+
+    return {
+      wallet: {
+        id: wallet.id,
+        customerAccountId: wallet.customerAccountId,
+        chainId: wallet.chainId,
+        address: wallet.address,
+        kind: wallet.kind,
+        custodyType: wallet.custodyType,
+        status: wallet.status,
+        createdAt: wallet.createdAt,
+        updatedAt: wallet.updatedAt
+      }
+    };
+  }
+
 
   async getUserFromDatabaseById(
     supabaseUserId: string

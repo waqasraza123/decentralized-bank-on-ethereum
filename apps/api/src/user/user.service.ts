@@ -10,11 +10,10 @@ import type {
 import { SupabaseClient } from "@supabase/supabase-js";
 import {
   AuthService,
-  type CustomerAccountProjection
+  type CustomerAccountProjection,
+  type CustomerWalletProjection
 } from "../auth/auth.service";
-import { PrismaService } from "../prisma/prisma.service";
 import { SupabaseService } from "../supabase/supabase.service";
-import { findCustomerWalletBySupabaseUserId } from "./customer-wallet-lookup";
 
 type LegacyUserProfile = {
   id: number;
@@ -31,37 +30,18 @@ export class UserService {
 
   constructor(
     private readonly supabaseService: SupabaseService,
-    private readonly authService: AuthService,
-    private readonly prismaService: PrismaService
+    private readonly authService: AuthService
   ) {
     this.supabase = this.supabaseService.getClient();
-  }
-
-  private async resolveEthereumAddress(
-    supabaseUserId: string,
-    legacyEthereumAddress: string | null
-  ): Promise<string | null> {
-    const walletLookup = await findCustomerWalletBySupabaseUserId(
-      this.prismaService,
-      supabaseUserId
-    );
-
-    return walletLookup.ethereumAddress ?? legacyEthereumAddress ?? null;
   }
 
   private formatOptionalDate(value: Date | null): string | null {
     return value ? value.toISOString() : null;
   }
 
-  private async mapLegacyUserProfile(
+  private mapLegacyUserProfile(
     legacyUser: LegacyUserProfile
-  ): Promise<UserProfileProjection> {
-    const ethereumAddress =
-      (await this.resolveEthereumAddress(
-        legacyUser.supabaseUserId,
-        legacyUser.ethereumAddress
-      )) ?? "";
-
+  ): UserProfileProjection {
     return {
       id: legacyUser.id,
       customerId: null,
@@ -69,7 +49,7 @@ export class UserService {
       email: legacyUser.email,
       firstName: legacyUser.firstName,
       lastName: legacyUser.lastName,
-      ethereumAddress,
+      ethereumAddress: legacyUser.ethereumAddress ?? "",
       accountStatus: null,
       activatedAt: null,
       restrictedAt: null,
@@ -78,18 +58,20 @@ export class UserService {
     };
   }
 
-  private async mapCustomerProjectionWithLegacyOverlay(
-    projection: CustomerAccountProjection,
+  private resolveProfileEthereumAddress(
+    walletProjection: CustomerWalletProjection | null,
     legacyUser: LegacyUserProfile | null
-  ): Promise<UserProfileProjection> {
+  ): string {
+    return walletProjection?.wallet.address ?? legacyUser?.ethereumAddress ?? "";
+  }
+
+  private mapCustomerProjectionWithWalletOverlay(
+    projection: CustomerAccountProjection,
+    walletProjection: CustomerWalletProjection | null,
+    legacyUser: LegacyUserProfile | null
+  ): UserProfileProjection {
     const accountStatus =
       projection.customerAccount.status as AccountLifecycleStatusValue;
-
-    const ethereumAddress =
-      (await this.resolveEthereumAddress(
-        projection.customer.supabaseUserId,
-        legacyUser?.ethereumAddress ?? null
-      )) ?? "";
 
     return {
       id: legacyUser?.id ?? null,
@@ -98,7 +80,10 @@ export class UserService {
       email: projection.customer.email,
       firstName: projection.customer.firstName ?? "",
       lastName: projection.customer.lastName ?? "",
-      ethereumAddress,
+      ethereumAddress: this.resolveProfileEthereumAddress(
+        walletProjection,
+        legacyUser
+      ),
       accountStatus,
       activatedAt: this.formatOptionalDate(
         projection.customerAccount.activatedAt
@@ -127,6 +112,22 @@ export class UserService {
     return data as LegacyUserProfile | null;
   }
 
+  private async getCustomerWalletProjectionOrNull(
+    supabaseUserId: string
+  ): Promise<CustomerWalletProjection | null> {
+    try {
+      return await this.authService.getCustomerWalletProjectionBySupabaseUserId(
+        supabaseUserId
+      );
+    } catch (error) {
+      if (error instanceof NotFoundException) {
+        return null;
+      }
+
+      throw error;
+    }
+  }
+
   async getUserById(supabaseUserId: string): Promise<UserProfileProjection> {
     const legacyUser =
       await this.getLegacyUserProfileBySupabaseUserId(supabaseUserId);
@@ -136,9 +137,12 @@ export class UserService {
         await this.authService.getCustomerAccountProjectionBySupabaseUserId(
           supabaseUserId
         );
+      const walletProjection =
+        await this.getCustomerWalletProjectionOrNull(supabaseUserId);
 
-      return await this.mapCustomerProjectionWithLegacyOverlay(
+      return this.mapCustomerProjectionWithWalletOverlay(
         customerProjection,
+        walletProjection,
         legacyUser
       );
     } catch (error) {
@@ -150,7 +154,7 @@ export class UserService {
         throw new NotFoundException("User profile not found.");
       }
 
-      return await this.mapLegacyUserProfile(legacyUser);
+      return this.mapLegacyUserProfile(legacyUser);
     }
   }
 }
