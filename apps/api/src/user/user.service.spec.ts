@@ -11,32 +11,6 @@ type LegacyUserProfile = {
 };
 
 describe("UserService.getUserById", () => {
-  function createSupabaseClient(
-    legacyUser: LegacyUserProfile | null,
-    error: unknown = null
-  ) {
-    const maybeSingle = jest.fn().mockResolvedValue({
-      data: legacyUser,
-      error
-    });
-    const eq = jest.fn().mockReturnValue({
-      maybeSingle
-    });
-    const select = jest.fn().mockReturnValue({
-      eq
-    });
-    const from = jest.fn().mockReturnValue({
-      select
-    });
-
-    return {
-      from,
-      select,
-      eq,
-      maybeSingle
-    };
-  }
-
   function createService(options: {
     legacyUser: LegacyUserProfile | null;
     customerProjectionResult?: unknown;
@@ -44,10 +18,10 @@ describe("UserService.getUserById", () => {
     walletProjectionResult?: unknown;
     walletProjectionError?: Error;
   }) {
-    const supabaseClient = createSupabaseClient(options.legacyUser);
-
-    const supabaseService = {
-      getClient: jest.fn().mockReturnValue(supabaseClient)
+    const prismaService = {
+      user: {
+        findFirst: jest.fn().mockResolvedValue(options.legacyUser)
+      }
     };
 
     const authService = {
@@ -76,14 +50,14 @@ describe("UserService.getUserById", () => {
     }
 
     const service = new UserService(
-      supabaseService as never,
-      authService as never
+      authService as never,
+      prismaService as never
     );
 
     return {
       service,
       authService,
-      supabaseClient
+      prismaService
     };
   }
 

@@ -1,6 +1,6 @@
 import { Controller, Get, Param, Query, Post, Body, UseGuards } from '@nestjs/common';
 import { PoolsService } from './pools.service';
-import { SupabaseAuthGuard } from '../supabase/supabase-auth.guard';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CustomJsonResponse } from '../types/CustomJsonResponse';
 import { PoolStatus } from '@prisma/client';
 import { ParseIntPipe } from '@nestjs/common';
@@ -9,7 +9,7 @@ import { ParseIntPipe } from '@nestjs/common';
 export class PoolsController {
     constructor(private readonly poolsService: PoolsService) { }
 
-    @UseGuards(SupabaseAuthGuard)
+    @UseGuards(JwtAuthGuard)
     @Get()
     async getPools(@Query('status') status: string | undefined): Promise<CustomJsonResponse> {
         try {
@@ -72,7 +72,7 @@ export class PoolsController {
     }
 
     @Post(':poolId/update-status')
-    @UseGuards(SupabaseAuthGuard)
+    @UseGuards(JwtAuthGuard)
     async updatePoolStatus(
         @Param('poolId', ParseIntPipe) poolId: number,
         @Body() body: { status: PoolStatus }

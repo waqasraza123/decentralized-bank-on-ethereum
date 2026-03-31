@@ -9,7 +9,7 @@ import {
   UseGuards,
   ValidationPipe
 } from "@nestjs/common";
-import { SupabaseAuthGuard } from "../supabase/supabase-auth.guard";
+import { JwtAuthGuard } from "./guards/jwt-auth.guard";
 import { CustomJsonResponse } from "../types/CustomJsonResponse";
 import { AuthService } from "./auth.service";
 import { LoginDto } from "./dto/login.dto";
@@ -44,7 +44,7 @@ export class AuthController {
     return this.authService.login(loginDto.email, loginDto.password);
   }
 
-  @UseGuards(SupabaseAuthGuard)
+  @UseGuards(JwtAuthGuard)
   @Get("internal/customer-account/:supabaseUserId")
   async getCustomerAccountProjection(
     @Param("supabaseUserId") supabaseUserId: string,
@@ -68,7 +68,7 @@ export class AuthController {
     };
   }
 
-  @UseGuards(SupabaseAuthGuard)
+  @UseGuards(JwtAuthGuard)
   @Get("internal/customer-wallet/:supabaseUserId")
   async getCustomerWalletProjection(
     @Param("supabaseUserId") supabaseUserId: string,

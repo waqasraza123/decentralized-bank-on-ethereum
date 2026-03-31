@@ -38,9 +38,9 @@ export type DatabaseRuntimeConfig = {
   readonly directUrl: string;
 };
 
-export type SupabaseRuntimeConfig = {
-  readonly supabaseUrl: string;
-  readonly supabaseAnonKey: string;
+export type JwtRuntimeConfig = {
+  readonly jwtSecret: string;
+  readonly jwtExpirySeconds: number;
 };
 
 export type BlockchainWalletRuntimeConfig = {
@@ -72,12 +72,13 @@ export function loadDatabaseRuntimeConfig(
   };
 }
 
-export function loadSupabaseRuntimeConfig(
+export function loadJwtRuntimeConfig(
   env: RuntimeEnvShape = getNodeRuntimeEnv()
-): SupabaseRuntimeConfig {
+): JwtRuntimeConfig {
+  const rawExpiry = readOptionalRuntimeEnv(env, "JWT_EXPIRY_SECONDS") ?? "86400";
   return {
-    supabaseUrl: readRequiredRuntimeEnv(env, "SUPABASE_URL"),
-    supabaseAnonKey: readRequiredRuntimeEnv(env, "SUPABASE_ANON_KEY")
+    jwtSecret: readRequiredRuntimeEnv(env, "JWT_SECRET"),
+    jwtExpirySeconds: parsePositiveInteger(rawExpiry, "JWT_EXPIRY_SECONDS")
   };
 }
 

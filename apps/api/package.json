@@ -18,7 +18,8 @@
     "test:watch": "jest --config ./jest.config.ts --watch",
     "audit:wallet-projection-coverage": "ts-node src/scripts/audit-wallet-projection-coverage.ts",
     "repair:customer-wallet-projections": "ts-node src/scripts/repair-customer-wallet-projections.ts",
-    "repair:customer-account-wallet-projections": "ts-node src/scripts/repair-customer-account-wallet-projections.ts"
+    "repair:customer-account-wallet-projections": "ts-node src/scripts/repair-customer-account-wallet-projections.ts",
+    "export:wallet-projection-manual-review-queue": "ts-node src/scripts/export-wallet-projection-manual-review-queue.ts"
   },
   "dependencies": {
     "@nestjs/common": "^10.4.15",
@@ -27,7 +28,6 @@
     "@prisma/client": "^6.2.1",
     "@stealth-trails-bank/config": "workspace:*",
     "@stealth-trails-bank/db": "workspace:*",
-    "@supabase/supabase-js": "^2.47.13",
     "axios": "^1.7.9",
     "bcryptjs": "^2.4.3",
     "class-transformer": "^0.5.1",
@@ -48,6 +48,7 @@
     "@nestjs/cli": "^10.4.9",
     "@nestjs/schematics": "^10.2.3",
     "@types/bcryptjs": "^2.4.6",
+    "@types/jsonwebtoken": "^9.0.0",
     "eslint": "^9.18.0",
     "prettier": "^3.4.2",
     "ts-loader": "^9.5.2",

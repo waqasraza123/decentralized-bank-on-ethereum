@@ -1,6 +1,10 @@
 jest.mock("@stealth-trails-bank/config/api", () => ({
   loadProductChainRuntimeConfig: () => ({
     productChainId: 8453
+  }),
+  loadJwtRuntimeConfig: () => ({
+    jwtSecret: "test-secret",
+    jwtExpirySeconds: 86400
   })
 }));
 
@@ -9,20 +13,13 @@ import { AuthService } from "./auth.service";
 
 describe("AuthService.getCustomerWalletProjectionBySupabaseUserId", () => {
   function createService() {
-    const supabaseService = {
-      getClient: jest.fn().mockReturnValue({})
-    };
-
     const prismaService = {
       customerAccount: {
         findFirst: jest.fn()
       }
     };
 
-    const service = new AuthService(
-      supabaseService as never,
-      prismaService as never
-    );
+    const service = new AuthService(prismaService as never);
 
     return {
       service,

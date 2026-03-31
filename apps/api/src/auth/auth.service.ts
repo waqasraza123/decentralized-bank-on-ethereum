@@ -12,18 +12,16 @@ import {
   WalletKind,
   WalletStatus
 } from "@prisma/client";
-import { SupabaseClient } from "@supabase/supabase-js";
-import { loadProductChainRuntimeConfig } from "@stealth-trails-bank/config/api";
+import * as bcrypt from "bcryptjs";
+import { randomUUID } from "crypto";
+import * as jwt from "jsonwebtoken";
+import {
+  loadJwtRuntimeConfig,
+  loadProductChainRuntimeConfig
+} from "@stealth-trails-bank/config/api";
 import { PrismaService } from "../prisma/prisma.service";
-import { SupabaseService } from "../supabase/supabase.service";
 import { CustomJsonResponse } from "../types/CustomJsonResponse";
 import { generateEthereumAddress } from "./auth.util";
-
-type RegisteredAuthUser = {
-  id: string;
-  email: string;
-  createdAt: string;
-};
 
 type LegacyUserRecord = {
   id: number;
@@ -72,55 +70,26 @@ export type CustomerWalletProjection = {
 
 @Injectable()
 export class AuthService {
-  private readonly supabase: SupabaseClient;
   private readonly productChainId: number;
 
-  constructor(
-    private readonly supabaseService: SupabaseService,
-    private readonly prismaService: PrismaService
-  ) {
-    this.supabase = this.supabaseService.getClient();
+  constructor(private readonly prismaService: PrismaService) {
     this.productChainId = loadProductChainRuntimeConfig().productChainId;
   }
 
-  private async checkEmailAvailability(email: string): Promise<void> {
-    const { data, error } = await this.supabase
-      .from("User")
-      .select("id")
-      .eq("email", email)
-      .maybeSingle();
-
-    if (error) {
-      throw new InternalServerErrorException(
-        "Failed to verify email availability."
-      );
-    }
-
-    if (data) {
-      throw new BadRequestException("Email already in use.");
-    }
+  private signToken(sub: string, email: string): string {
+    const { jwtSecret, jwtExpirySeconds } = loadJwtRuntimeConfig();
+    return jwt.sign({ sub, email }, jwtSecret, { expiresIn: jwtExpirySeconds });
   }
 
-  private async registerUserInSupabaseAuth(
-    email: string,
-    password: string
-  ): Promise<RegisteredAuthUser> {
-    const { data, error } = await this.supabase.auth.signUp({
-      email,
-      password
+  private async checkEmailAvailability(email: string): Promise<void> {
+    const existing = await this.prismaService.user.findUnique({
+      where: { email },
+      select: { id: true }
     });
 
-    if (error || !data.user?.id || !data.user.email || !data.user.created_at) {
-      throw new InternalServerErrorException(
-        error?.message ?? "Failed to register auth user."
-      );
+    if (existing) {
+      throw new BadRequestException("Email already in use.");
     }
-
-    return {
-      id: data.user.id,
-      email: data.user.email,
-      createdAt: data.user.created_at
-    };
   }
 
   private async saveUserToDatabase(
@@ -130,17 +99,17 @@ export class AuthService {
     userId: string,
     ethereumAccountAddress: string
   ): Promise<void> {
-    const { error } = await this.supabase.from("User").insert([
-      {
-        firstName,
-        lastName,
-        email,
-        supabaseUserId: userId,
-        ethereumAddress: ethereumAccountAddress
-      }
-    ]);
-
-    if (error) {
+    try {
+      await this.prismaService.user.create({
+        data: {
+          firstName,
+          lastName,
+          email,
+          supabaseUserId: userId,
+          ethereumAddress: ethereumAccountAddress
+        }
+      });
+    } catch {
       throw new InternalServerErrorException("Failed to save user profile.");
     }
   }
@@ -202,14 +171,13 @@ export class AuthService {
     lastName: string,
     email: string,
     supabaseUserId: string,
-    ethereumAddress: string
+    ethereumAddress: string,
+    passwordHash: string
   ): Promise<void> {
     try {
       await this.prismaService.$transaction(async (transaction) => {
         const customer = await transaction.customer.upsert({
-          where: {
-            email
-          },
+          where: { email },
           update: {
             supabaseUserId,
             email,
@@ -220,14 +188,13 @@ export class AuthService {
             supabaseUserId,
             email,
             firstName,
-            lastName
+            lastName,
+            passwordHash
           }
         });
 
         const customerAccount = await transaction.customerAccount.upsert({
-          where: {
-            customerId: customer.id
-          },
+          where: { customerId: customer.id },
           update: {},
           create: {
             customerId: customer.id,
@@ -257,18 +224,12 @@ export class AuthService {
   ): Promise<CustomerWalletProjection> {
     const customerAccount = await this.prismaService.customerAccount.findFirst({
       where: {
-        customer: {
-          supabaseUserId
-        }
+        customer: { supabaseUserId }
       },
       include: {
         wallets: {
-          where: {
-            chainId: this.productChainId
-          },
-          orderBy: {
-            createdAt: "asc"
-          },
+          where: { chainId: this.productChainId },
+          orderBy: { createdAt: "asc" },
           take: 1
         }
       }
@@ -299,33 +260,20 @@ export class AuthService {
     };
   }
 
-
   async getUserFromDatabaseById(
     supabaseUserId: string
   ): Promise<LegacyUserRecord | null> {
-    const { data, error } = await this.supabase
-      .from("User")
-      .select("*")
-      .eq("supabaseUserId", supabaseUserId)
-      .maybeSingle();
-
-    if (error) {
-      throw new InternalServerErrorException("Failed to load user profile.");
-    }
-
-    return data as LegacyUserRecord | null;
+    return this.prismaService.user.findFirst({
+      where: { supabaseUserId }
+    });
   }
 
   async getCustomerAccountProjectionBySupabaseUserId(
     supabaseUserId: string
   ): Promise<CustomerAccountProjection> {
     const customer = await this.prismaService.customer.findUnique({
-      where: {
-        supabaseUserId
-      },
-      include: {
-        accounts: true
-      }
+      where: { supabaseUserId },
+      include: { accounts: true }
     });
 
     if (!customer) {
@@ -361,14 +309,26 @@ export class AuthService {
     };
   }
 
-  async validateToken(token: string): Promise<unknown> {
-    const { data, error } = await this.supabase.auth.getUser(token);
+  async validateToken(token: string): Promise<{ id: string; email: string }> {
+    try {
+      const { jwtSecret } = loadJwtRuntimeConfig();
+      const payload = jwt.verify(token, jwtSecret);
 
-    if (error || !data.user) {
+      if (typeof payload === "string") {
+        throw new UnauthorizedException("Invalid or expired token.");
+      }
+
+      const sub = payload["sub"];
+      const email = payload["email"];
+
+      if (typeof sub !== "string" || typeof email !== "string") {
+        throw new UnauthorizedException("Invalid or expired token.");
+      }
+
+      return { id: sub, email };
+    } catch {
       throw new UnauthorizedException("Invalid or expired token.");
     }
-
-    return data.user;
   }
 
   async signUp(
@@ -379,17 +339,15 @@ export class AuthService {
   ): Promise<CustomJsonResponse> {
     await this.checkEmailAvailability(email);
 
-    const registeredAuthUser = await this.registerUserInSupabaseAuth(
-      email,
-      password
-    );
+    const authUserId = randomUUID();
+    const passwordHash = await bcrypt.hash(password, 12);
     const generatedEthereumAddress = generateEthereumAddress();
 
     await this.saveUserToDatabase(
       firstName,
       lastName,
       email,
-      registeredAuthUser.id,
+      authUserId,
       generatedEthereumAddress.address
     );
 
@@ -397,8 +355,9 @@ export class AuthService {
       firstName,
       lastName,
       email,
-      registeredAuthUser.id,
-      generatedEthereumAddress.address
+      authUserId,
+      generatedEthereumAddress.address,
+      passwordHash
     );
 
     return {
@@ -406,9 +365,9 @@ export class AuthService {
       message: "User signed up successfully.",
       data: {
         user: {
-          id: registeredAuthUser.id,
-          email: registeredAuthUser.email,
-          created_at: registeredAuthUser.createdAt,
+          id: authUserId,
+          email,
+          created_at: new Date().toISOString(),
           firstName,
           lastName,
           address: generatedEthereumAddress.address,
@@ -422,29 +381,42 @@ export class AuthService {
     email: string,
     password: string
   ): Promise<CustomJsonResponse> {
-    const { data, error } = await this.supabase.auth.signInWithPassword({
-      email,
-      password
+    const customer = await this.prismaService.customer.findUnique({
+      where: { email },
+      select: {
+        id: true,
+        supabaseUserId: true,
+        email: true,
+        passwordHash: true
+      }
     });
 
-    if (error || !data.user) {
+    if (!customer || !customer.passwordHash) {
       throw new UnauthorizedException("Invalid email or password.");
     }
 
-    const user = await this.getUserFromDatabaseById(data.user.id);
+    const passwordValid = await bcrypt.compare(password, customer.passwordHash);
+
+    if (!passwordValid) {
+      throw new UnauthorizedException("Invalid email or password.");
+    }
+
+    const user = await this.getUserFromDatabaseById(customer.supabaseUserId);
 
     if (!user) {
       throw new InternalServerErrorException("User profile not found.");
     }
 
+    const token = this.signToken(customer.supabaseUserId, customer.email);
+
     return {
       status: "success",
       message: "User logged in successfully.",
       data: {
-        token: data.session?.access_token,
+        token,
         user: {
           id: user.id,
-          supabaseUserId: data.user.id,
+          supabaseUserId: customer.supabaseUserId,
           email: user.email,
           ethereumAddress: user.ethereumAddress ?? "",
           firstName: user.firstName,

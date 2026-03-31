@@ -1,19 +1,17 @@
 import {
   Injectable,
-  InternalServerErrorException,
   NotFoundException
 } from "@nestjs/common";
 import type {
   AccountLifecycleStatusValue,
   UserProfileProjection
 } from "@stealth-trails-bank/types";
-import { SupabaseClient } from "@supabase/supabase-js";
 import {
   AuthService,
   type CustomerAccountProjection,
   type CustomerWalletProjection
 } from "../auth/auth.service";
-import { SupabaseService } from "../supabase/supabase.service";
+import { PrismaService } from "../prisma/prisma.service";
 
 type LegacyUserProfile = {
   id: number;
@@ -26,14 +24,10 @@ type LegacyUserProfile = {
 
 @Injectable()
 export class UserService {
-  private readonly supabase: SupabaseClient;
-
   constructor(
-    private readonly supabaseService: SupabaseService,
-    private readonly authService: AuthService
-  ) {
-    this.supabase = this.supabaseService.getClient();
-  }
+    private readonly authService: AuthService,
+    private readonly prismaService: PrismaService
+  ) {}
 
   private formatOptionalDate(value: Date | null): string | null {
     return value ? value.toISOString() : null;
@@ -99,17 +93,9 @@ export class UserService {
   private async getLegacyUserProfileBySupabaseUserId(
     supabaseUserId: string
   ): Promise<LegacyUserProfile | null> {
-    const { data, error } = await this.supabase
-      .from("User")
-      .select("*")
-      .eq("supabaseUserId", supabaseUserId)
-      .maybeSingle();
-
-    if (error) {
-      throw new InternalServerErrorException("Failed to load user profile.");
-    }
-
-    return data as LegacyUserProfile | null;
+    return this.prismaService.user.findFirst({
+      where: { supabaseUserId }
+    });
   }
 
   private async getCustomerWalletProjectionOrNull(

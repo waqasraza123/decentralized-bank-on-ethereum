@@ -1,13 +1,13 @@
 import { Controller, Get, Param, NotFoundException, UseGuards, Req, UnauthorizedException } from '@nestjs/common';
 import { UserService } from './user.service';
-import { SupabaseAuthGuard } from '../supabase/supabase-auth.guard';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CustomJsonResponse } from '../types/CustomJsonResponse';
 
 @Controller('user')
 export class UserController {
   constructor(private readonly userService: UserService) {}
 
-  @UseGuards(SupabaseAuthGuard)
+  @UseGuards(JwtAuthGuard)
   @Get(':id')
   async getUserById(@Param('id') id: string, @Req() req: any): Promise<CustomJsonResponse> {
     const authenticatedUser = req.user;

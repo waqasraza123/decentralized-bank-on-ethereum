@@ -1,6 +1,6 @@
 import { Controller, Post, Get, Param, Body, UseGuards, Req } from '@nestjs/common';
 import { StakingService } from './staking.service';
-import { SupabaseAuthGuard } from '../supabase/supabase-auth.guard';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CustomJsonResponse } from '../types/CustomJsonResponse';
 import * as Joi from 'joi';
 import { JoiPipe } from 'nestjs-joi';
@@ -35,33 +35,33 @@ export class StakingController {
     return this.stakingService.createPool(body.rewardRate);
   }
 
-  @UseGuards(SupabaseAuthGuard)
+  @UseGuards(JwtAuthGuard)
   @Post('deposit')
   async deposit(@Req() req: any, @Body(new JoiPipe(depositSchema)) body: { poolId: number; amount: string }): Promise<CustomJsonResponse> {
     const supabaseUserId = req.user.id;
     return this.stakingService.deposit(body.poolId, body.amount, supabaseUserId);
   }
 
-  @UseGuards(SupabaseAuthGuard)
+  @UseGuards(JwtAuthGuard)
   @Post('withdraw')
   async withdraw(@Req() req: any, @Body(new JoiPipe(withdrawSchema)) body: { poolId: number; amount: string }) {
     const supabaseUserId = req.user.id;
     return this.stakingService.withdraw(body.poolId, body.amount, supabaseUserId);
   }
 
-  @UseGuards(SupabaseAuthGuard)
+  @UseGuards(JwtAuthGuard)
   @Post('claim-reward')
   async claimReward(@Req() req: any, @Body(new JoiPipe(poolIdSchema)) body: { poolId: number }) {
     return this.stakingService.claimReward(body.poolId);
   }
 
-  @UseGuards(SupabaseAuthGuard)
+  @UseGuards(JwtAuthGuard)
   @Post('emergency-withdraw')
   async emergencyWithdraw(@Req() req: any, @Body(new JoiPipe(poolIdSchema)) body: { poolId: number }) {
     return this.stakingService.emergencyWithdraw(body.poolId);
   }
 
-  @UseGuards(SupabaseAuthGuard)
+  @UseGuards(JwtAuthGuard)
   @Get('staked-balance/:address/:poolId')
   async getStakedBalance(
     @Req() req: any,
@@ -71,7 +71,7 @@ export class StakingController {
     return this.stakingService.getStakedBalance(address, poolId);
   }
 
-  @UseGuards(SupabaseAuthGuard)
+  @UseGuards(JwtAuthGuard)
   @Get('pending-reward/:address/:poolId')
   async getPendingReward(
     @Req() req: any,
@@ -81,7 +81,7 @@ export class StakingController {
     return this.stakingService.getPendingReward(address, poolId);
   }
 
-  @UseGuards(SupabaseAuthGuard)
+  @UseGuards(JwtAuthGuard)
   @Get('total-staked/:poolId')
   async getTotalStaked(@Req() req: any, @Param('poolId', ParseIntPipe) poolId: number) {
     return this.stakingService.getTotalStaked(poolId);
