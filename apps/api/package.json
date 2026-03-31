@@ -17,7 +17,8 @@
     "test": "jest --config ./jest.config.ts --runInBand",
     "test:watch": "jest --config ./jest.config.ts --watch",
     "audit:wallet-projection-coverage": "ts-node src/scripts/audit-wallet-projection-coverage.ts",
-    "repair:customer-wallet-projections": "ts-node src/scripts/repair-customer-wallet-projections.ts"
+    "repair:customer-wallet-projections": "ts-node src/scripts/repair-customer-wallet-projections.ts",
+    "repair:customer-account-wallet-projections": "ts-node src/scripts/repair-customer-account-wallet-projections.ts"
   },
   "dependencies": {
     "@nestjs/common": "^10.4.15",
