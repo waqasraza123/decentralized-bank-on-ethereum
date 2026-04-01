@@ -6,6 +6,7 @@ import {
 } from "@stealth-trails-bank/config/api";
 import { createStealthTrailsPrismaClient } from "@stealth-trails-bank/db";
 import type { Customer } from "@prisma/client";
+import { ethers } from "ethers";
 
 type OutputFormat = "json" | "csv";
 
@@ -29,6 +30,7 @@ type ManualReviewCase =
   | "missing_customer_projection"
   | "conflicting_customer_records"
   | "missing_wallet_address"
+  | "invalid_wallet_address"
   | "wallet_legacy_mismatch"
   | "wallet_linked_to_other_account"
   | "multiple_product_chain_wallets";
@@ -63,6 +65,7 @@ type ManualReviewSummary = {
   missingCustomerProjection: number;
   conflictingCustomerRecords: number;
   missingWalletAddress: number;
+  invalidWalletAddress: number;
   walletLegacyMismatch: number;
   walletLinkedToOtherAccount: number;
   multipleProductChainWallets: number;
@@ -136,9 +139,28 @@ function parseOptions(argv: string[]): ScriptOptions {
   };
 }
 
-function normalizeWalletAddress(address: string | null): string | null {
-  const normalizedAddress = address?.trim().toLowerCase() ?? "";
-  return normalizedAddress || null;
+function normalizeWalletAddress(address: string | null): {
+  normalizedAddress: string | null;
+  reason?: string;
+} {
+  const rawAddress = address?.trim() ?? "";
+
+  if (!rawAddress) {
+    return {
+      normalizedAddress: null
+    };
+  }
+
+  if (!ethers.utils.isAddress(rawAddress)) {
+    return {
+      normalizedAddress: null,
+      reason: "Legacy ethereumAddress is not a valid EVM address."
+    };
+  }
+
+  return {
+    normalizedAddress: ethers.utils.getAddress(rawAddress).toLowerCase()
+  };
 }
 
 function resolveExistingCustomer(
@@ -198,6 +220,7 @@ function createSummary(productChainId: number): ManualReviewSummary {
     missingCustomerProjection: 0,
     conflictingCustomerRecords: 0,
     missingWalletAddress: 0,
+    invalidWalletAddress: 0,
     walletLegacyMismatch: 0,
     walletLinkedToOtherAccount: 0,
     multipleProductChainWallets: 0
@@ -226,6 +249,10 @@ function accumulateSummary(
 
   if (item.reviewCase === "missing_wallet_address") {
     summary.missingWalletAddress += 1;
+  }
+
+  if (item.reviewCase === "invalid_wallet_address") {
+    summary.invalidWalletAddress += 1;
   }
 
   if (item.reviewCase === "wallet_legacy_mismatch") {
@@ -304,7 +331,7 @@ async function buildManualReviewQueueItem(
   legacyUser: LegacyUserRecord,
   productChainId: number
 ): Promise<ManualReviewQueueItem | null> {
-  const normalizedLegacyAddress = normalizeWalletAddress(
+  const normalizedLegacyWallet = normalizeWalletAddress(
     legacyUser.ethereumAddress
   );
 
@@ -334,7 +361,7 @@ async function buildManualReviewQueueItem(
       productChainId,
       reviewCase: "conflicting_customer_records",
       suggestedAction: "resolve_customer_identity_conflict",
-      legacyEthereumAddress: normalizedLegacyAddress,
+      legacyEthereumAddress: normalizedLegacyWallet.normalizedAddress,
       walletAddresses: [],
       customerId: null,
       customerAccountId: null,
@@ -344,22 +371,54 @@ async function buildManualReviewQueueItem(
   }
 
   if (!resolvedCustomer.customer) {
-    return {
-      legacyUserId: legacyUser.id,
-      email: legacyUser.email,
-      supabaseUserId: legacyUser.supabaseUserId,
-      productChainId,
-      reviewCase: "missing_customer_projection",
-      suggestedAction: "create_customer_manually",
-      legacyEthereumAddress: normalizedLegacyAddress,
-      walletAddresses: [],
-      customerId: null,
-      customerAccountId: null,
-      linkedCustomerAccountId: null,
-      reason: normalizedLegacyAddress
-        ? "Customer projection does not exist."
-        : "Customer projection does not exist and legacy ethereumAddress is blank."
-    };
+    if (!normalizedLegacyWallet.normalizedAddress) {
+      return {
+        legacyUserId: legacyUser.id,
+        email: legacyUser.email,
+        supabaseUserId: legacyUser.supabaseUserId,
+        productChainId,
+        reviewCase: normalizedLegacyWallet.reason
+          ? "invalid_wallet_address"
+          : "missing_wallet_address",
+        suggestedAction: "repair_legacy_wallet_address",
+        legacyEthereumAddress: null,
+        walletAddresses: [],
+        customerId: null,
+        customerAccountId: null,
+        linkedCustomerAccountId: null,
+        reason:
+          normalizedLegacyWallet.reason ??
+          "Customer projection does not exist and legacy ethereumAddress is blank."
+      };
+    }
+
+    const existingWallet = await prisma.wallet.findUnique({
+      where: {
+        chainId_address: {
+          chainId: productChainId,
+          address: normalizedLegacyWallet.normalizedAddress
+        }
+      }
+    });
+
+    if (existingWallet?.customerAccountId) {
+      return {
+        legacyUserId: legacyUser.id,
+        email: legacyUser.email,
+        supabaseUserId: legacyUser.supabaseUserId,
+        productChainId,
+        reviewCase: "wallet_linked_to_other_account",
+        suggestedAction: "review_wallet_link_conflict",
+        legacyEthereumAddress: normalizedLegacyWallet.normalizedAddress,
+        walletAddresses: [normalizedLegacyWallet.normalizedAddress],
+        customerId: null,
+        customerAccountId: null,
+        linkedCustomerAccountId: existingWallet.customerAccountId,
+        reason: "Wallet address is already linked to another customer account."
+      };
+    }
+
+    return null;
   }
 
   const customerAccount = await prisma.customerAccount.findUnique({
@@ -379,13 +438,15 @@ async function buildManualReviewQueueItem(
   });
 
   if (!customerAccount) {
-    if (!normalizedLegacyAddress) {
+    if (!normalizedLegacyWallet.normalizedAddress) {
       return {
         legacyUserId: legacyUser.id,
         email: legacyUser.email,
         supabaseUserId: legacyUser.supabaseUserId,
         productChainId,
-        reviewCase: "missing_wallet_address",
+        reviewCase: normalizedLegacyWallet.reason
+          ? "invalid_wallet_address"
+          : "missing_wallet_address",
         suggestedAction: "repair_legacy_wallet_address",
         legacyEthereumAddress: null,
         walletAddresses: [],
@@ -393,6 +454,7 @@ async function buildManualReviewQueueItem(
         customerAccountId: null,
         linkedCustomerAccountId: null,
         reason:
+          normalizedLegacyWallet.reason ??
           "Customer exists but legacy ethereumAddress is missing, so account-and-wallet repair cannot proceed."
       };
     }
@@ -401,7 +463,7 @@ async function buildManualReviewQueueItem(
       where: {
         chainId_address: {
           chainId: productChainId,
-          address: normalizedLegacyAddress
+          address: normalizedLegacyWallet.normalizedAddress
         }
       }
     });
@@ -414,8 +476,8 @@ async function buildManualReviewQueueItem(
         productChainId,
         reviewCase: "wallet_linked_to_other_account",
         suggestedAction: "review_wallet_link_conflict",
-        legacyEthereumAddress: normalizedLegacyAddress,
-        walletAddresses: [normalizedLegacyAddress],
+        legacyEthereumAddress: normalizedLegacyWallet.normalizedAddress,
+        walletAddresses: [normalizedLegacyWallet.normalizedAddress],
         customerId: resolvedCustomer.customer.id,
         customerAccountId: null,
         linkedCustomerAccountId: existingWallet.customerAccountId,
@@ -434,10 +496,10 @@ async function buildManualReviewQueueItem(
       productChainId,
       reviewCase: "multiple_product_chain_wallets",
       suggestedAction: "resolve_duplicate_wallets",
-      legacyEthereumAddress: normalizedLegacyAddress,
+      legacyEthereumAddress: normalizedLegacyWallet.normalizedAddress,
       walletAddresses: customerAccount.wallets
-        .map((wallet) => normalizeWalletAddress(wallet.address))
-        .filter((walletAddress): walletAddress is string => Boolean(walletAddress)),
+        .map((wallet) => wallet.address.trim().toLowerCase())
+        .filter(Boolean),
       customerId: resolvedCustomer.customer.id,
       customerAccountId: customerAccount.id,
       linkedCustomerAccountId: null,
@@ -448,13 +510,15 @@ async function buildManualReviewQueueItem(
   const wallet = customerAccount.wallets[0] ?? null;
 
   if (!wallet) {
-    if (!normalizedLegacyAddress) {
+    if (!normalizedLegacyWallet.normalizedAddress) {
       return {
         legacyUserId: legacyUser.id,
         email: legacyUser.email,
         supabaseUserId: legacyUser.supabaseUserId,
         productChainId,
-        reviewCase: "missing_wallet_address",
+        reviewCase: normalizedLegacyWallet.reason
+          ? "invalid_wallet_address"
+          : "missing_wallet_address",
         suggestedAction: "repair_legacy_wallet_address",
         legacyEthereumAddress: null,
         walletAddresses: [],
@@ -462,6 +526,7 @@ async function buildManualReviewQueueItem(
         customerAccountId: customerAccount.id,
         linkedCustomerAccountId: null,
         reason:
+          normalizedLegacyWallet.reason ??
           "Customer account exists but both wallet projection and legacy ethereumAddress are missing."
       };
     }
@@ -470,7 +535,7 @@ async function buildManualReviewQueueItem(
       where: {
         chainId_address: {
           chainId: productChainId,
-          address: normalizedLegacyAddress
+          address: normalizedLegacyWallet.normalizedAddress
         }
       }
     });
@@ -486,8 +551,8 @@ async function buildManualReviewQueueItem(
         productChainId,
         reviewCase: "wallet_linked_to_other_account",
         suggestedAction: "review_wallet_link_conflict",
-        legacyEthereumAddress: normalizedLegacyAddress,
-        walletAddresses: [normalizedLegacyAddress],
+        legacyEthereumAddress: normalizedLegacyWallet.normalizedAddress,
+        walletAddresses: [normalizedLegacyWallet.normalizedAddress],
         customerId: resolvedCustomer.customer.id,
         customerAccountId: customerAccount.id,
         linkedCustomerAccountId: existingWallet.customerAccountId,
@@ -498,12 +563,11 @@ async function buildManualReviewQueueItem(
     return null;
   }
 
-  const normalizedWalletAddress = normalizeWalletAddress(wallet.address);
+  const normalizedWalletAddress = wallet.address.trim().toLowerCase();
 
   if (
-    normalizedLegacyAddress &&
-    normalizedWalletAddress &&
-    normalizedLegacyAddress !== normalizedWalletAddress
+    normalizedLegacyWallet.normalizedAddress &&
+    normalizedLegacyWallet.normalizedAddress !== normalizedWalletAddress
   ) {
     return {
       legacyUserId: legacyUser.id,
@@ -512,7 +576,7 @@ async function buildManualReviewQueueItem(
       productChainId,
       reviewCase: "wallet_legacy_mismatch",
       suggestedAction: "reconcile_wallet_mismatch",
-      legacyEthereumAddress: normalizedLegacyAddress,
+      legacyEthereumAddress: normalizedLegacyWallet.normalizedAddress,
       walletAddresses: [normalizedWalletAddress],
       customerId: resolvedCustomer.customer.id,
       customerAccountId: customerAccount.id,
@@ -622,5 +686,4 @@ main().catch((error: unknown) => {
   }
 
   console.error("Wallet projection manual review export failed.");
-  process.exit(1);
 });

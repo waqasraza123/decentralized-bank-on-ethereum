@@ -8,12 +8,14 @@ The export is read-only.
 
 ## Included review cases
 
-- missing customer projection
 - conflicting customer identity records
 - missing wallet address where automatic repair cannot proceed
+- invalid wallet address where automatic repair cannot proceed
 - wallet and legacy address mismatch
 - wallet already linked to another customer account
 - multiple product-chain wallets on one customer account
+
+Missing-customer rows that are now safely repairable are intentionally excluded from this queue.
 
 ## Script
 

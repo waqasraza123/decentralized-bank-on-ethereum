@@ -19,7 +19,8 @@
     "audit:wallet-projection-coverage": "ts-node src/scripts/audit-wallet-projection-coverage.ts",
     "repair:customer-wallet-projections": "ts-node src/scripts/repair-customer-wallet-projections.ts",
     "repair:customer-account-wallet-projections": "ts-node src/scripts/repair-customer-account-wallet-projections.ts",
-    "export:wallet-projection-manual-review-queue": "ts-node src/scripts/export-wallet-projection-manual-review-queue.ts"
+    "export:wallet-projection-manual-review-queue": "ts-node src/scripts/export-wallet-projection-manual-review-queue.ts",
+    "repair:missing-customer-projections": "ts-node src/scripts/repair-missing-customer-projections.ts"
   },
   "dependencies": {
     "@nestjs/common": "^10.4.15",
