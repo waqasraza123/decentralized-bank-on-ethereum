@@ -220,6 +220,13 @@ type SettleConfirmedDepositIntentResult = {
   settlementReused: boolean;
 };
 
+type DepositTransitionActor = {
+  actorType: "worker" | "operator";
+  actorId: string;
+  reconciliationReplay: boolean;
+  replayReason: string | null;
+};
+
 @Injectable()
 export class TransactionIntentsService {
   private readonly productChainId: number;
@@ -589,6 +596,41 @@ export class TransactionIntentsService {
         "Deposit transaction intent is not confirmed and ready for settlement."
       );
     }
+  }
+
+  async replayConfirmDepositIntent(
+    intentId: string,
+    operatorId: string,
+    note: string | null
+  ): Promise<ConfirmDepositIntentResult> {
+    return this.confirmDepositIntentWithActor(
+      intentId,
+      null,
+      note,
+      {
+        actorType: "operator",
+        actorId: operatorId,
+        reconciliationReplay: true,
+        replayReason: "deposit_settlement_reconciliation"
+      }
+    );
+  }
+
+  async replaySettleConfirmedDepositIntent(
+    intentId: string,
+    operatorId: string,
+    note: string | null
+  ): Promise<SettleConfirmedDepositIntentResult> {
+    return this.settleConfirmedDepositIntentWithActor(
+      intentId,
+      note,
+      {
+        actorType: "operator",
+        actorId: operatorId,
+        reconciliationReplay: true,
+        replayReason: "deposit_settlement_reconciliation"
+      }
+    );
   }
 
   async createDepositIntent(
@@ -1841,6 +1883,25 @@ export class TransactionIntentsService {
     workerId: string,
     dto: ConfirmDepositIntentDto
   ): Promise<ConfirmDepositIntentResult> {
+    return this.confirmDepositIntentWithActor(
+      intentId,
+      dto.txHash?.trim() ?? null,
+      null,
+      {
+        actorType: "worker",
+        actorId: workerId,
+        reconciliationReplay: false,
+        replayReason: null
+      }
+    );
+  }
+
+  private async confirmDepositIntentWithActor(
+    intentId: string,
+    txHash: string | null,
+    note: string | null,
+    actor: DepositTransitionActor
+  ): Promise<ConfirmDepositIntentResult> {
     const existingIntent = await this.findDepositIntentForReview(intentId);
 
     if (!existingIntent) {
@@ -1856,7 +1917,7 @@ export class TransactionIntentsService {
       );
     }
 
-    if (dto.txHash && latestBlockchainTransaction.txHash !== dto.txHash) {
+    if (txHash && latestBlockchainTransaction.txHash !== txHash) {
       throw new ConflictException(
         "Provided txHash does not match the latest blockchain transaction."
       );
@@ -1943,10 +2004,7 @@ export class TransactionIntentsService {
           );
         }
 
-        if (
-          dto.txHash &&
-          currentLatestBlockchainTransaction.txHash !== dto.txHash
-        ) {
+        if (txHash && currentLatestBlockchainTransaction.txHash !== txHash) {
           throw new ConflictException(
             "Provided txHash does not match the latest blockchain transaction."
           );
@@ -1984,8 +2042,8 @@ export class TransactionIntentsService {
         await transaction.auditEvent.create({
           data: {
             customerId: currentIntent.customerAccount.customer.id,
-            actorType: "worker",
-            actorId: workerId,
+            actorType: actor.actorType,
+            actorId: actor.actorId,
             action: "transaction_intent.deposit.confirmed",
             targetType: "TransactionIntent",
             targetId: currentIntent.id,
@@ -2001,7 +2059,10 @@ export class TransactionIntentsService {
               chainId: currentIntent.chainId,
               txHash: currentLatestBlockchainTransaction.txHash,
               previousStatus: currentIntent.status,
-              newStatus: TransactionIntentStatus.confirmed
+              newStatus: TransactionIntentStatus.confirmed,
+              note,
+              reconciliationReplay: actor.reconciliationReplay,
+              replayReason: actor.replayReason
             }
           }
         });
@@ -2078,6 +2139,23 @@ export class TransactionIntentsService {
     intentId: string,
     workerId: string,
     dto: SettleConfirmedDepositIntentDto
+  ): Promise<SettleConfirmedDepositIntentResult> {
+    return this.settleConfirmedDepositIntentWithActor(
+      intentId,
+      dto.note?.trim() ?? null,
+      {
+        actorType: "worker",
+        actorId: workerId,
+        reconciliationReplay: false,
+        replayReason: null
+      }
+    );
+  }
+
+  private async settleConfirmedDepositIntentWithActor(
+    intentId: string,
+    note: string | null,
+    actor: DepositTransitionActor
   ): Promise<SettleConfirmedDepositIntentResult> {
     const existingIntent = await this.findDepositIntentForReview(intentId);
 
@@ -2233,8 +2311,8 @@ export class TransactionIntentsService {
         await transaction.auditEvent.create({
           data: {
             customerId: currentIntent.customerAccount.customer.id,
-            actorType: "worker",
-            actorId: workerId,
+            actorType: actor.actorType,
+            actorId: actor.actorId,
             action: "transaction_intent.deposit.settled",
             targetType: "TransactionIntent",
             targetId: currentIntent.id,
@@ -2256,7 +2334,9 @@ export class TransactionIntentsService {
               debitLedgerAccountId: ledgerResult.debitLedgerAccountId,
               creditLedgerAccountId: ledgerResult.creditLedgerAccountId,
               availableBalance: ledgerResult.availableBalance,
-              note: dto.note?.trim() ?? null
+              note,
+              reconciliationReplay: actor.reconciliationReplay,
+              replayReason: actor.replayReason
             }
           }
         });
