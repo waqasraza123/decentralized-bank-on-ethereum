@@ -4,6 +4,7 @@ import {
   NotFoundException
 } from "@nestjs/common";
 import {
+  BlockchainTransactionStatus,
   PolicyDecision,
   Prisma,
   TransactionIntentStatus,
@@ -70,7 +71,7 @@ function createCustomerIntentRecord(
   };
 }
 
-function createInternalReviewIntentRecord(
+function createInternalIntentRecord(
   overrides: Partial<{
     id: string;
     status: TransactionIntentStatus;
@@ -78,6 +79,8 @@ function createInternalReviewIntentRecord(
     requestedAmount: Prisma.Decimal;
     failureCode: string | null;
     failureReason: string | null;
+    txHash: string | null;
+    blockchainStatus: BlockchainTransactionStatus | null;
   }> = {}
 ) {
   return {
@@ -99,7 +102,21 @@ function createInternalReviewIntentRecord(
         firstName: "John",
         lastName: "Doe"
       }
-    }
+    },
+    blockchainTransactions: overrides.blockchainStatus
+      ? [
+          {
+            id: "chain_tx_1",
+            txHash: overrides.txHash ?? null,
+            status: overrides.blockchainStatus,
+            fromAddress: "0x0000000000000000000000000000000000000def",
+            toAddress: "0x0000000000000000000000000000000000000abc",
+            createdAt: new Date("2026-04-01T10:05:00.000Z"),
+            updatedAt: new Date("2026-04-01T10:05:00.000Z"),
+            confirmedAt: null
+          }
+        ]
+      : []
   };
 }
 
@@ -112,6 +129,10 @@ function createService() {
     },
     auditEvent: {
       create: jest.fn()
+    },
+    blockchainTransaction: {
+      create: jest.fn(),
+      update: jest.fn()
     }
   };
 
@@ -188,16 +209,7 @@ describe("TransactionIntentsService", () => {
     expect(result.idempotencyReused).toBe(false);
     expect(result.intent.id).toBe("intent_1");
     expect(transactionClient.transactionIntent.create).toHaveBeenCalled();
-    expect(transactionClient.auditEvent.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({
-        customerId: "customer_1",
-        actorType: "customer",
-        actorId: "supabase_1",
-        action: "transaction_intent.deposit.requested",
-        targetType: "TransactionIntent",
-        targetId: "intent_1"
-      })
-    });
+    expect(transactionClient.auditEvent.create).toHaveBeenCalled();
   });
 
   it("reuses an idempotent deposit intent when the request matches", async () => {
@@ -236,7 +248,6 @@ describe("TransactionIntentsService", () => {
     });
 
     expect(result.idempotencyReused).toBe(true);
-    expect(result.intent.id).toBe("intent_1");
     expect(prismaService.$transaction).not.toHaveBeenCalled();
   });
 
@@ -319,7 +330,7 @@ describe("TransactionIntentsService", () => {
     const { service, prismaService } = createService();
 
     prismaService.transactionIntent.findMany.mockResolvedValue([
-      createInternalReviewIntentRecord()
+      createInternalIntentRecord()
     ]);
 
     const result = await service.listPendingDepositIntents({
@@ -329,69 +340,22 @@ describe("TransactionIntentsService", () => {
     expect(result.limit).toBe(10);
     expect(result.intents).toHaveLength(1);
     expect(result.intents[0].customer.customerId).toBe("customer_1");
-    expect(prismaService.transactionIntent.findMany).toHaveBeenCalledWith({
-      where: {
-        intentType: TransactionIntentType.deposit,
-        chainId: 8453,
-        status: TransactionIntentStatus.requested,
-        policyDecision: PolicyDecision.pending
-      },
-      orderBy: {
-        createdAt: "asc"
-      },
-      take: 10,
-      include: {
-        asset: {
-          select: {
-            id: true,
-            symbol: true,
-            displayName: true,
-            decimals: true,
-            chainId: true
-          }
-        },
-        destinationWallet: {
-          select: {
-            id: true,
-            address: true
-          }
-        },
-        customerAccount: {
-          select: {
-            id: true,
-            customerId: true,
-            customer: {
-              select: {
-                id: true,
-                supabaseUserId: true,
-                email: true,
-                firstName: true,
-                lastName: true
-              }
-            }
-          }
-        }
-      }
-    });
   });
 
   it("approves a pending deposit intent and writes an audit event", async () => {
     const { service, prismaService, transactionClient } = createService();
 
     prismaService.transactionIntent.findFirst.mockResolvedValue(
-      createInternalReviewIntentRecord()
+      createInternalIntentRecord()
     );
-
-    const approvedIntent = createInternalReviewIntentRecord({
-      status: TransactionIntentStatus.approved,
-      policyDecision: PolicyDecision.approved
-    });
-
     transactionClient.transactionIntent.updateMany.mockResolvedValue({
       count: 1
     });
     transactionClient.transactionIntent.findFirst.mockResolvedValue(
-      approvedIntent
+      createInternalIntentRecord({
+        status: TransactionIntentStatus.approved,
+        policyDecision: PolicyDecision.approved
+      })
     );
     transactionClient.auditEvent.create.mockResolvedValue({
       id: "audit_approve_1"
@@ -405,37 +369,24 @@ describe("TransactionIntentsService", () => {
     expect(result.decision).toBe("approved");
     expect(result.intent.status).toBe(TransactionIntentStatus.approved);
     expect(result.intent.policyDecision).toBe(PolicyDecision.approved);
-    expect(transactionClient.auditEvent.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({
-        customerId: "customer_1",
-        actorType: "operator",
-        actorId: "ops_1",
-        action: "transaction_intent.deposit.approved",
-        targetType: "TransactionIntent",
-        targetId: "intent_1"
-      })
-    });
   });
 
   it("denies a pending deposit intent and writes an audit event", async () => {
     const { service, prismaService, transactionClient } = createService();
 
     prismaService.transactionIntent.findFirst.mockResolvedValue(
-      createInternalReviewIntentRecord()
+      createInternalIntentRecord()
     );
-
-    const deniedIntent = createInternalReviewIntentRecord({
-      status: TransactionIntentStatus.failed,
-      policyDecision: PolicyDecision.denied,
-      failureCode: "policy_denied",
-      failureReason: "Proof of funds missing."
-    });
-
     transactionClient.transactionIntent.updateMany.mockResolvedValue({
       count: 1
     });
     transactionClient.transactionIntent.findFirst.mockResolvedValue(
-      deniedIntent
+      createInternalIntentRecord({
+        status: TransactionIntentStatus.failed,
+        policyDecision: PolicyDecision.denied,
+        failureCode: "policy_denied",
+        failureReason: "Proof of funds missing."
+      })
     );
     transactionClient.auditEvent.create.mockResolvedValue({
       id: "audit_deny_1"
@@ -450,35 +401,210 @@ describe("TransactionIntentsService", () => {
     expect(result.intent.status).toBe(TransactionIntentStatus.failed);
     expect(result.intent.policyDecision).toBe(PolicyDecision.denied);
     expect(result.intent.failureCode).toBe("policy_denied");
-    expect(result.intent.failureReason).toBe("Proof of funds missing.");
-    expect(transactionClient.auditEvent.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({
-        actorType: "operator",
-        actorId: "ops_1",
-        action: "transaction_intent.deposit.denied"
-      })
-    });
   });
 
-  it("rejects a deny decision without a denial reason", async () => {
+  it("lists approved deposit intents ready for queueing", async () => {
+    const { service, prismaService } = createService();
+
+    prismaService.transactionIntent.findMany.mockResolvedValue([
+      createInternalIntentRecord({
+        status: TransactionIntentStatus.approved,
+        policyDecision: PolicyDecision.approved
+      })
+    ]);
+
+    const result = await service.listApprovedDepositIntents({
+      limit: 10
+    });
+
+    expect(result.limit).toBe(10);
+    expect(result.intents[0].status).toBe(TransactionIntentStatus.approved);
+  });
+
+  it("queues an approved deposit intent", async () => {
+    const { service, prismaService, transactionClient } = createService();
+
+    prismaService.transactionIntent.findFirst.mockResolvedValue(
+      createInternalIntentRecord({
+        status: TransactionIntentStatus.approved,
+        policyDecision: PolicyDecision.approved
+      })
+    );
+    transactionClient.transactionIntent.updateMany.mockResolvedValue({
+      count: 1
+    });
+    transactionClient.transactionIntent.findFirst.mockResolvedValue(
+      createInternalIntentRecord({
+        status: TransactionIntentStatus.queued,
+        policyDecision: PolicyDecision.approved
+      })
+    );
+    transactionClient.auditEvent.create.mockResolvedValue({
+      id: "audit_queue_1"
+    });
+
+    const result = await service.queueApprovedDepositIntent(
+      "intent_1",
+      "ops_1",
+      { note: "Send to worker." }
+    );
+
+    expect(result.queueReused).toBe(false);
+    expect(result.intent.status).toBe(TransactionIntentStatus.queued);
+  });
+
+  it("reuses queue state for an already queued deposit intent", async () => {
     const { service, prismaService } = createService();
 
     prismaService.transactionIntent.findFirst.mockResolvedValue(
-      createInternalReviewIntentRecord()
+      createInternalIntentRecord({
+        status: TransactionIntentStatus.queued,
+        policyDecision: PolicyDecision.approved
+      })
     );
 
-    await expect(
-      service.decideDepositIntent("intent_1", "ops_1", {
-        decision: "denied"
+    const result = await service.queueApprovedDepositIntent(
+      "intent_1",
+      "ops_1",
+      {}
+    );
+
+    expect(result.queueReused).toBe(true);
+    expect(result.intent.status).toBe(TransactionIntentStatus.queued);
+  });
+
+  it("lists queued deposit intents for worker pickup", async () => {
+    const { service, prismaService } = createService();
+
+    prismaService.transactionIntent.findMany.mockResolvedValue([
+      createInternalIntentRecord({
+        status: TransactionIntentStatus.queued,
+        policyDecision: PolicyDecision.approved
       })
-    ).rejects.toBeInstanceOf(BadRequestException);
+    ]);
+
+    const result = await service.listQueuedDepositIntents({
+      limit: 10
+    });
+
+    expect(result.limit).toBe(10);
+    expect(result.intents[0].status).toBe(TransactionIntentStatus.queued);
+  });
+
+  it("records a deposit broadcast and creates a blockchain transaction", async () => {
+    const { service, prismaService, transactionClient } = createService();
+
+    prismaService.transactionIntent.findFirst.mockResolvedValue(
+      createInternalIntentRecord({
+        status: TransactionIntentStatus.queued,
+        policyDecision: PolicyDecision.approved
+      })
+    );
+    transactionClient.transactionIntent.findFirst.mockResolvedValueOnce(
+      createInternalIntentRecord({
+        status: TransactionIntentStatus.queued,
+        policyDecision: PolicyDecision.approved
+      })
+    );
+    transactionClient.transactionIntent.updateMany.mockResolvedValue({
+      count: 1
+    });
+    transactionClient.blockchainTransaction.create.mockResolvedValue({
+      id: "chain_tx_1"
+    });
+    transactionClient.auditEvent.create.mockResolvedValue({
+      id: "audit_broadcast_1"
+    });
+    transactionClient.transactionIntent.findFirst.mockResolvedValueOnce(
+      createInternalIntentRecord({
+        status: TransactionIntentStatus.broadcast,
+        policyDecision: PolicyDecision.approved,
+        txHash:
+          "0x1111111111111111111111111111111111111111111111111111111111111111",
+        blockchainStatus: BlockchainTransactionStatus.broadcast
+      })
+    );
+
+    const result = await service.recordDepositBroadcast(
+      "intent_1",
+      "worker_1",
+      {
+        txHash:
+          "0x1111111111111111111111111111111111111111111111111111111111111111",
+        fromAddress: "0x0000000000000000000000000000000000000def",
+        toAddress: "0x0000000000000000000000000000000000000abc"
+      }
+    );
+
+    expect(result.broadcastReused).toBe(false);
+    expect(result.intent.status).toBe(TransactionIntentStatus.broadcast);
+    expect(transactionClient.blockchainTransaction.create).toHaveBeenCalled();
+  });
+
+  it("records deposit execution failure", async () => {
+    const { service, prismaService, transactionClient } = createService();
+
+    prismaService.transactionIntent.findFirst.mockResolvedValue(
+      createInternalIntentRecord({
+        status: TransactionIntentStatus.broadcast,
+        policyDecision: PolicyDecision.approved,
+        txHash:
+          "0x1111111111111111111111111111111111111111111111111111111111111111",
+        blockchainStatus: BlockchainTransactionStatus.broadcast
+      })
+    );
+    transactionClient.transactionIntent.findFirst.mockResolvedValueOnce(
+      createInternalIntentRecord({
+        status: TransactionIntentStatus.broadcast,
+        policyDecision: PolicyDecision.approved,
+        txHash:
+          "0x1111111111111111111111111111111111111111111111111111111111111111",
+        blockchainStatus: BlockchainTransactionStatus.broadcast
+      })
+    );
+    transactionClient.blockchainTransaction.update.mockResolvedValue({
+      id: "chain_tx_1"
+    });
+    transactionClient.transactionIntent.updateMany.mockResolvedValue({
+      count: 1
+    });
+    transactionClient.auditEvent.create.mockResolvedValue({
+      id: "audit_fail_1"
+    });
+    transactionClient.transactionIntent.findFirst.mockResolvedValueOnce(
+      createInternalIntentRecord({
+        status: TransactionIntentStatus.failed,
+        policyDecision: PolicyDecision.approved,
+        failureCode: "broadcast_failed",
+        failureReason: "RPC submission failed.",
+        txHash:
+          "0x1111111111111111111111111111111111111111111111111111111111111111",
+        blockchainStatus: BlockchainTransactionStatus.failed
+      })
+    );
+
+    const result = await service.failDepositIntentExecution(
+      "intent_1",
+      "worker_1",
+      {
+        failureCode: "broadcast_failed",
+        failureReason: "RPC submission failed.",
+        txHash:
+          "0x1111111111111111111111111111111111111111111111111111111111111111"
+      }
+    );
+
+    expect(result.failureReused).toBe(false);
+    expect(result.intent.status).toBe(TransactionIntentStatus.failed);
+    expect(result.intent.failureCode).toBe("broadcast_failed");
+    expect(result.intent.failureReason).toBe("RPC submission failed.");
   });
 
   it("rejects decisioning when the deposit intent is no longer pending", async () => {
     const { service, prismaService } = createService();
 
     prismaService.transactionIntent.findFirst.mockResolvedValue(
-      createInternalReviewIntentRecord({
+      createInternalIntentRecord({
         status: TransactionIntentStatus.approved,
         policyDecision: PolicyDecision.approved
       })

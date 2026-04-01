@@ -7,6 +7,7 @@ import {
 import { loadProductChainRuntimeConfig } from "@stealth-trails-bank/config/api";
 import {
   AssetStatus,
+  BlockchainTransactionStatus,
   PolicyDecision,
   Prisma,
   TransactionIntentStatus,
@@ -16,8 +17,13 @@ import {
 import { PrismaService } from "../prisma/prisma.service";
 import { CreateDepositIntentDto } from "./dto/create-deposit-intent.dto";
 import { DecideDepositIntentDto } from "./dto/decide-deposit-intent.dto";
+import { FailDepositIntentExecutionDto } from "./dto/fail-deposit-intent-execution.dto";
+import { ListApprovedDepositIntentsDto } from "./dto/list-approved-deposit-intents.dto";
 import { ListMyTransactionIntentsDto } from "./dto/list-my-transaction-intents.dto";
 import { ListPendingDepositIntentsDto } from "./dto/list-pending-deposit-intents.dto";
+import { ListQueuedDepositIntentsDto } from "./dto/list-queued-deposit-intents.dto";
+import { QueueApprovedDepositIntentDto } from "./dto/queue-approved-deposit-intent.dto";
+import { RecordDepositBroadcastDto } from "./dto/record-deposit-broadcast.dto";
 
 type DepositIntentContext = {
   customerId: string;
@@ -50,7 +56,7 @@ type CustomerIntentRecord = Prisma.TransactionIntentGetPayload<{
   };
 }>;
 
-type InternalReviewIntentRecord = Prisma.TransactionIntentGetPayload<{
+type InternalIntentRecord = Prisma.TransactionIntentGetPayload<{
   include: {
     asset: {
       select: {
@@ -82,8 +88,35 @@ type InternalReviewIntentRecord = Prisma.TransactionIntentGetPayload<{
         };
       };
     };
+    blockchainTransactions: {
+      orderBy: {
+        createdAt: "desc";
+      };
+      take: 1;
+      select: {
+        id: true;
+        txHash: true;
+        status: true;
+        fromAddress: true;
+        toAddress: true;
+        createdAt: true;
+        updatedAt: true;
+        confirmedAt: true;
+      };
+    };
   };
 }>;
+
+type LatestBlockchainTransactionProjection = {
+  id: string;
+  txHash: string | null;
+  status: BlockchainTransactionStatus;
+  fromAddress: string | null;
+  toAddress: string | null;
+  createdAt: string;
+  updatedAt: string;
+  confirmedAt: string | null;
+};
 
 type TransactionIntentProjection = {
   id: string;
@@ -120,6 +153,7 @@ type DepositIntentReviewProjection = TransactionIntentProjection & {
     firstName: string;
     lastName: string;
   };
+  latestBlockchainTransaction: LatestBlockchainTransactionProjection | null;
 };
 
 type CreateDepositIntentResult = {
@@ -140,6 +174,41 @@ type ListPendingDepositIntentsResult = {
 type DecideDepositIntentResult = {
   intent: DepositIntentReviewProjection;
   decision: "approved" | "denied";
+};
+
+type ListApprovedDepositIntentsResult = {
+  intents: DepositIntentReviewProjection[];
+  limit: number;
+};
+
+type QueueApprovedDepositIntentResult = {
+  intent: DepositIntentReviewProjection;
+  queueReused: boolean;
+};
+
+type ListQueuedDepositIntentsResult = {
+  intents: DepositIntentReviewProjection[];
+  limit: number;
+};
+
+type RecordDepositBroadcastResult = {
+  intent: DepositIntentReviewProjection;
+  broadcastReused: boolean;
+};
+
+type FailDepositIntentExecutionResult = {
+  intent: DepositIntentReviewProjection;
+  failureReused: boolean;
+};
+
+type BroadcastMutationResult = {
+  intent: InternalIntentRecord;
+  broadcastReused: boolean;
+};
+
+type FailureMutationResult = {
+  intent: InternalIntentRecord;
+  failureReused: boolean;
 };
 
 @Injectable()
@@ -210,8 +279,29 @@ export class TransactionIntentsService {
     };
   }
 
+  private mapLatestBlockchainTransaction(
+    intent: InternalIntentRecord
+  ): LatestBlockchainTransactionProjection | null {
+    const latestBlockchainTransaction = intent.blockchainTransactions[0];
+
+    if (!latestBlockchainTransaction) {
+      return null;
+    }
+
+    return {
+      id: latestBlockchainTransaction.id,
+      txHash: latestBlockchainTransaction.txHash,
+      status: latestBlockchainTransaction.status,
+      fromAddress: latestBlockchainTransaction.fromAddress,
+      toAddress: latestBlockchainTransaction.toAddress,
+      createdAt: latestBlockchainTransaction.createdAt.toISOString(),
+      updatedAt: latestBlockchainTransaction.updatedAt.toISOString(),
+      confirmedAt: latestBlockchainTransaction.confirmedAt?.toISOString() ?? null
+    };
+  }
+
   private mapIntentReviewProjection(
-    intent: InternalReviewIntentRecord
+    intent: InternalIntentRecord
   ): DepositIntentReviewProjection {
     return {
       ...this.mapIntentProjection(intent),
@@ -222,7 +312,8 @@ export class TransactionIntentsService {
         email: intent.customerAccount.customer.email,
         firstName: intent.customerAccount.customer.firstName ?? "",
         lastName: intent.customerAccount.customer.lastName ?? ""
-      }
+      },
+      latestBlockchainTransaction: this.mapLatestBlockchainTransaction(intent)
     };
   }
 
@@ -361,7 +452,7 @@ export class TransactionIntentsService {
 
   private async findDepositIntentForReview(
     intentId: string
-  ): Promise<InternalReviewIntentRecord | null> {
+  ): Promise<InternalIntentRecord | null> {
     return this.prismaService.transactionIntent.findFirst({
       where: {
         id: intentId,
@@ -398,6 +489,22 @@ export class TransactionIntentsService {
               }
             }
           }
+        },
+        blockchainTransactions: {
+          orderBy: {
+            createdAt: "desc"
+          },
+          take: 1,
+          select: {
+            id: true,
+            txHash: true,
+            status: true,
+            fromAddress: true,
+            toAddress: true,
+            createdAt: true,
+            updatedAt: true,
+            confirmedAt: true
+          }
         }
       }
     });
@@ -421,6 +528,41 @@ export class TransactionIntentsService {
     if (!matches) {
       throw new ConflictException(
         "Idempotency key already exists for a different transaction intent request."
+      );
+    }
+  }
+
+  private ensureDepositIntentIsPendingOperatorDecision(
+    intent: InternalIntentRecord
+  ): void {
+    if (
+      intent.status !== TransactionIntentStatus.requested ||
+      intent.policyDecision !== PolicyDecision.pending
+    ) {
+      throw new ConflictException(
+        "Deposit transaction intent is not pending operator decision."
+      );
+    }
+  }
+
+  private ensureDepositIntentIsApproved(intent: InternalIntentRecord): void {
+    if (
+      intent.status !== TransactionIntentStatus.approved ||
+      intent.policyDecision !== PolicyDecision.approved
+    ) {
+      throw new ConflictException(
+        "Deposit transaction intent is not approved and ready for queueing."
+      );
+    }
+  }
+
+  private ensureDepositIntentIsQueued(intent: InternalIntentRecord): void {
+    if (
+      intent.status !== TransactionIntentStatus.queued ||
+      intent.policyDecision !== PolicyDecision.approved
+    ) {
+      throw new ConflictException(
+        "Deposit transaction intent is not queued for worker execution."
       );
     }
   }
@@ -634,6 +776,22 @@ export class TransactionIntentsService {
               }
             }
           }
+        },
+        blockchainTransactions: {
+          orderBy: {
+            createdAt: "desc"
+          },
+          take: 1,
+          select: {
+            id: true,
+            txHash: true,
+            status: true,
+            fromAddress: true,
+            toAddress: true,
+            createdAt: true,
+            updatedAt: true,
+            confirmedAt: true
+          }
         }
       }
     });
@@ -654,7 +812,7 @@ export class TransactionIntentsService {
 
     if (dto.decision === "denied" && !denialReason) {
       throw new BadRequestException(
-        "Denial reason is required for denied deposit requests."
+        "Denial reason is required for denied decisions."
       );
     }
 
@@ -664,14 +822,7 @@ export class TransactionIntentsService {
       throw new NotFoundException("Deposit transaction intent not found.");
     }
 
-    if (
-      existingIntent.status !== TransactionIntentStatus.requested ||
-      existingIntent.policyDecision !== PolicyDecision.pending
-    ) {
-      throw new ConflictException(
-        "Deposit transaction intent is not pending operator decision."
-      );
-    }
+    this.ensureDepositIntentIsPendingOperatorDecision(existingIntent);
 
     const updatedIntent = await this.prismaService.$transaction(
       async (transaction) => {
@@ -704,48 +855,6 @@ export class TransactionIntentsService {
           throw new ConflictException(
             "Deposit transaction intent is not pending operator decision."
           );
-        }
-
-        const intent = await transaction.transactionIntent.findFirst({
-          where: {
-            id: existingIntent.id
-          },
-          include: {
-            asset: {
-              select: {
-                id: true,
-                symbol: true,
-                displayName: true,
-                decimals: true,
-                chainId: true
-              }
-            },
-            destinationWallet: {
-              select: {
-                id: true,
-                address: true
-              }
-            },
-            customerAccount: {
-              select: {
-                id: true,
-                customerId: true,
-                customer: {
-                  select: {
-                    id: true,
-                    supabaseUserId: true,
-                    email: true,
-                    firstName: true,
-                    lastName: true
-                  }
-                }
-              }
-            }
-          }
-        });
-
-        if (!intent) {
-          throw new NotFoundException("Deposit transaction intent not found.");
         }
 
         const metadata: Prisma.InputJsonObject = {
@@ -781,13 +890,918 @@ export class TransactionIntentsService {
           }
         });
 
-        return intent;
+        const refreshedIntent = await transaction.transactionIntent.findFirst({
+          where: {
+            id: existingIntent.id
+          },
+          include: {
+            asset: {
+              select: {
+                id: true,
+                symbol: true,
+                displayName: true,
+                decimals: true,
+                chainId: true
+              }
+            },
+            destinationWallet: {
+              select: {
+                id: true,
+                address: true
+              }
+            },
+            customerAccount: {
+              select: {
+                id: true,
+                customerId: true,
+                customer: {
+                  select: {
+                    id: true,
+                    supabaseUserId: true,
+                    email: true,
+                    firstName: true,
+                    lastName: true
+                  }
+                }
+              }
+            },
+            blockchainTransactions: {
+              orderBy: {
+                createdAt: "desc"
+              },
+              take: 1,
+              select: {
+                id: true,
+                txHash: true,
+                status: true,
+                fromAddress: true,
+                toAddress: true,
+                createdAt: true,
+                updatedAt: true,
+                confirmedAt: true
+              }
+            }
+          }
+        });
+
+        if (!refreshedIntent) {
+          throw new NotFoundException("Deposit transaction intent not found.");
+        }
+
+        return refreshedIntent;
       }
     );
 
     return {
       intent: this.mapIntentReviewProjection(updatedIntent),
       decision: dto.decision
+    };
+  }
+
+  async listApprovedDepositIntents(
+    query: ListApprovedDepositIntentsDto
+  ): Promise<ListApprovedDepositIntentsResult> {
+    const limit = query.limit ?? 20;
+
+    const intents = await this.prismaService.transactionIntent.findMany({
+      where: {
+        intentType: TransactionIntentType.deposit,
+        chainId: this.productChainId,
+        status: TransactionIntentStatus.approved,
+        policyDecision: PolicyDecision.approved
+      },
+      orderBy: {
+        createdAt: "asc"
+      },
+      take: limit,
+      include: {
+        asset: {
+          select: {
+            id: true,
+            symbol: true,
+            displayName: true,
+            decimals: true,
+            chainId: true
+          }
+        },
+        destinationWallet: {
+          select: {
+            id: true,
+            address: true
+          }
+        },
+        customerAccount: {
+          select: {
+            id: true,
+            customerId: true,
+            customer: {
+              select: {
+                id: true,
+                supabaseUserId: true,
+                email: true,
+                firstName: true,
+                lastName: true
+              }
+            }
+          }
+        },
+        blockchainTransactions: {
+          orderBy: {
+            createdAt: "desc"
+          },
+          take: 1,
+          select: {
+            id: true,
+            txHash: true,
+            status: true,
+            fromAddress: true,
+            toAddress: true,
+            createdAt: true,
+            updatedAt: true,
+            confirmedAt: true
+          }
+        }
+      }
+    });
+
+    return {
+      intents: intents.map((intent) => this.mapIntentReviewProjection(intent)),
+      limit
+    };
+  }
+
+  async queueApprovedDepositIntent(
+    intentId: string,
+    operatorId: string,
+    dto: QueueApprovedDepositIntentDto
+  ): Promise<QueueApprovedDepositIntentResult> {
+    const existingIntent = await this.findDepositIntentForReview(intentId);
+
+    if (!existingIntent) {
+      throw new NotFoundException("Deposit transaction intent not found.");
+    }
+
+    if (
+      existingIntent.status === TransactionIntentStatus.queued &&
+      existingIntent.policyDecision === PolicyDecision.approved
+    ) {
+      return {
+        intent: this.mapIntentReviewProjection(existingIntent),
+        queueReused: true
+      };
+    }
+
+    this.ensureDepositIntentIsApproved(existingIntent);
+
+    const note = dto.note?.trim() ?? null;
+
+    const updatedIntent = await this.prismaService.$transaction(
+      async (transaction) => {
+        const updated = await transaction.transactionIntent.updateMany({
+          where: {
+            id: existingIntent.id,
+            intentType: TransactionIntentType.deposit,
+            chainId: this.productChainId,
+            status: TransactionIntentStatus.approved,
+            policyDecision: PolicyDecision.approved
+          },
+          data: {
+            status: TransactionIntentStatus.queued,
+            failureCode: null,
+            failureReason: null
+          }
+        });
+
+        if (updated.count !== 1) {
+          throw new ConflictException(
+            "Deposit transaction intent is not approved and ready for queueing."
+          );
+        }
+
+        const metadata: Prisma.InputJsonObject = {
+          customerAccountId: existingIntent.customerAccount.id,
+          assetId: existingIntent.asset.id,
+          assetSymbol: existingIntent.asset.symbol,
+          assetDisplayName: existingIntent.asset.displayName,
+          requestedAmount: existingIntent.requestedAmount.toString(),
+          destinationWalletId: existingIntent.destinationWalletId,
+          destinationWalletAddress:
+            existingIntent.destinationWallet?.address ?? null,
+          chainId: existingIntent.chainId,
+          previousStatus: existingIntent.status,
+          newStatus: TransactionIntentStatus.queued,
+          previousPolicyDecision: existingIntent.policyDecision,
+          newPolicyDecision: existingIntent.policyDecision,
+          note
+        };
+
+        await transaction.auditEvent.create({
+          data: {
+            customerId: existingIntent.customerAccount.customer.id,
+            actorType: "operator",
+            actorId: operatorId,
+            action: "transaction_intent.deposit.queued",
+            targetType: "TransactionIntent",
+            targetId: existingIntent.id,
+            metadata
+          }
+        });
+
+        const refreshedIntent = await transaction.transactionIntent.findFirst({
+          where: {
+            id: existingIntent.id
+          },
+          include: {
+            asset: {
+              select: {
+                id: true,
+                symbol: true,
+                displayName: true,
+                decimals: true,
+                chainId: true
+              }
+            },
+            destinationWallet: {
+              select: {
+                id: true,
+                address: true
+              }
+            },
+            customerAccount: {
+              select: {
+                id: true,
+                customerId: true,
+                customer: {
+                  select: {
+                    id: true,
+                    supabaseUserId: true,
+                    email: true,
+                    firstName: true,
+                    lastName: true
+                  }
+                }
+              }
+            },
+            blockchainTransactions: {
+              orderBy: {
+                createdAt: "desc"
+              },
+              take: 1,
+              select: {
+                id: true,
+                txHash: true,
+                status: true,
+                fromAddress: true,
+                toAddress: true,
+                createdAt: true,
+                updatedAt: true,
+                confirmedAt: true
+              }
+            }
+          }
+        });
+
+        if (!refreshedIntent) {
+          throw new NotFoundException("Deposit transaction intent not found.");
+        }
+
+        return refreshedIntent;
+      }
+    );
+
+    return {
+      intent: this.mapIntentReviewProjection(updatedIntent),
+      queueReused: false
+    };
+  }
+
+  async listQueuedDepositIntents(
+    query: ListQueuedDepositIntentsDto
+  ): Promise<ListQueuedDepositIntentsResult> {
+    const limit = query.limit ?? 20;
+
+    const intents = await this.prismaService.transactionIntent.findMany({
+      where: {
+        intentType: TransactionIntentType.deposit,
+        chainId: this.productChainId,
+        status: TransactionIntentStatus.queued,
+        policyDecision: PolicyDecision.approved
+      },
+      orderBy: {
+        createdAt: "asc"
+      },
+      take: limit,
+      include: {
+        asset: {
+          select: {
+            id: true,
+            symbol: true,
+            displayName: true,
+            decimals: true,
+            chainId: true
+          }
+        },
+        destinationWallet: {
+          select: {
+            id: true,
+            address: true
+          }
+        },
+        customerAccount: {
+          select: {
+            id: true,
+            customerId: true,
+            customer: {
+              select: {
+                id: true,
+                supabaseUserId: true,
+                email: true,
+                firstName: true,
+                lastName: true
+              }
+            }
+          }
+        },
+        blockchainTransactions: {
+          orderBy: {
+            createdAt: "desc"
+          },
+          take: 1,
+          select: {
+            id: true,
+            txHash: true,
+            status: true,
+            fromAddress: true,
+            toAddress: true,
+            createdAt: true,
+            updatedAt: true,
+            confirmedAt: true
+          }
+        }
+      }
+    });
+
+    return {
+      intents: intents.map((intent) => this.mapIntentReviewProjection(intent)),
+      limit
+    };
+  }
+
+  async recordDepositBroadcast(
+    intentId: string,
+    workerId: string,
+    dto: RecordDepositBroadcastDto
+  ): Promise<RecordDepositBroadcastResult> {
+    const existingIntent = await this.findDepositIntentForReview(intentId);
+
+    if (!existingIntent) {
+      throw new NotFoundException("Deposit transaction intent not found.");
+    }
+
+    const latestBlockchainTransaction =
+      existingIntent.blockchainTransactions[0] ?? null;
+
+    if (
+      existingIntent.status === TransactionIntentStatus.broadcast &&
+      latestBlockchainTransaction?.txHash === dto.txHash &&
+      latestBlockchainTransaction.status === BlockchainTransactionStatus.broadcast
+    ) {
+      return {
+        intent: this.mapIntentReviewProjection(existingIntent),
+        broadcastReused: true
+      };
+    }
+
+    this.ensureDepositIntentIsQueued(existingIntent);
+
+    const result = await this.prismaService.$transaction(
+      async (transaction): Promise<BroadcastMutationResult> => {
+        const currentIntent = await transaction.transactionIntent.findFirst({
+          where: {
+            id: existingIntent.id
+          },
+          include: {
+            asset: {
+              select: {
+                id: true,
+                symbol: true,
+                displayName: true,
+                decimals: true,
+                chainId: true
+              }
+            },
+            destinationWallet: {
+              select: {
+                id: true,
+                address: true
+              }
+            },
+            customerAccount: {
+              select: {
+                id: true,
+                customerId: true,
+                customer: {
+                  select: {
+                    id: true,
+                    supabaseUserId: true,
+                    email: true,
+                    firstName: true,
+                    lastName: true
+                  }
+                }
+              }
+            },
+            blockchainTransactions: {
+              orderBy: {
+                createdAt: "desc"
+              },
+              take: 1,
+              select: {
+                id: true,
+                txHash: true,
+                status: true,
+                fromAddress: true,
+                toAddress: true,
+                createdAt: true,
+                updatedAt: true,
+                confirmedAt: true
+              }
+            }
+          }
+        });
+
+        if (!currentIntent) {
+          throw new NotFoundException("Deposit transaction intent not found.");
+        }
+
+        const currentLatestBlockchainTransaction =
+          currentIntent.blockchainTransactions[0] ?? null;
+
+        if (
+          currentIntent.status === TransactionIntentStatus.broadcast &&
+          currentLatestBlockchainTransaction?.txHash === dto.txHash &&
+          currentLatestBlockchainTransaction.status ===
+            BlockchainTransactionStatus.broadcast
+        ) {
+          return {
+            intent: currentIntent,
+            broadcastReused: true
+          };
+        }
+
+        this.ensureDepositIntentIsQueued(currentIntent);
+
+        if (
+          currentLatestBlockchainTransaction?.txHash &&
+          currentLatestBlockchainTransaction.txHash !== dto.txHash
+        ) {
+          throw new ConflictException(
+            "A different blockchain transaction is already recorded for this deposit intent."
+          );
+        }
+
+        if (currentLatestBlockchainTransaction) {
+          await transaction.blockchainTransaction.update({
+            where: {
+              id: currentLatestBlockchainTransaction.id
+            },
+            data: {
+              txHash: dto.txHash,
+              status: BlockchainTransactionStatus.broadcast,
+              fromAddress: dto.fromAddress ?? null,
+              toAddress: dto.toAddress ?? null
+            }
+          });
+        } else {
+          await transaction.blockchainTransaction.create({
+            data: {
+              transactionIntentId: currentIntent.id,
+              chainId: currentIntent.chainId,
+              txHash: dto.txHash,
+              nonce: null,
+              status: BlockchainTransactionStatus.broadcast,
+              fromAddress: dto.fromAddress ?? null,
+              toAddress: dto.toAddress ?? null,
+              confirmedAt: null
+            }
+          });
+        }
+
+        const updated = await transaction.transactionIntent.updateMany({
+          where: {
+            id: currentIntent.id,
+            intentType: TransactionIntentType.deposit,
+            chainId: this.productChainId,
+            status: TransactionIntentStatus.queued,
+            policyDecision: PolicyDecision.approved
+          },
+          data: {
+            status: TransactionIntentStatus.broadcast,
+            failureCode: null,
+            failureReason: null
+          }
+        });
+
+        if (updated.count !== 1) {
+          throw new ConflictException(
+            "Deposit transaction intent is not queued for worker execution."
+          );
+        }
+
+        const metadata: Prisma.InputJsonObject = {
+          customerAccountId: currentIntent.customerAccount.id,
+          assetId: currentIntent.asset.id,
+          assetSymbol: currentIntent.asset.symbol,
+          assetDisplayName: currentIntent.asset.displayName,
+          requestedAmount: currentIntent.requestedAmount.toString(),
+          destinationWalletId: currentIntent.destinationWalletId,
+          destinationWalletAddress:
+            currentIntent.destinationWallet?.address ?? null,
+          chainId: currentIntent.chainId,
+          txHash: dto.txHash,
+          fromAddress: dto.fromAddress ?? null,
+          toAddress: dto.toAddress ?? null,
+          previousStatus: currentIntent.status,
+          newStatus: TransactionIntentStatus.broadcast
+        };
+
+        await transaction.auditEvent.create({
+          data: {
+            customerId: currentIntent.customerAccount.customer.id,
+            actorType: "worker",
+            actorId: workerId,
+            action: "transaction_intent.deposit.broadcast",
+            targetType: "TransactionIntent",
+            targetId: currentIntent.id,
+            metadata
+          }
+        });
+
+        const refreshedIntent = await transaction.transactionIntent.findFirst({
+          where: {
+            id: currentIntent.id
+          },
+          include: {
+            asset: {
+              select: {
+                id: true,
+                symbol: true,
+                displayName: true,
+                decimals: true,
+                chainId: true
+              }
+            },
+            destinationWallet: {
+              select: {
+                id: true,
+                address: true
+              }
+            },
+            customerAccount: {
+              select: {
+                id: true,
+                customerId: true,
+                customer: {
+                  select: {
+                    id: true,
+                    supabaseUserId: true,
+                    email: true,
+                    firstName: true,
+                    lastName: true
+                  }
+                }
+              }
+            },
+            blockchainTransactions: {
+              orderBy: {
+                createdAt: "desc"
+              },
+              take: 1,
+              select: {
+                id: true,
+                txHash: true,
+                status: true,
+                fromAddress: true,
+                toAddress: true,
+                createdAt: true,
+                updatedAt: true,
+                confirmedAt: true
+              }
+            }
+          }
+        });
+
+        if (!refreshedIntent) {
+          throw new NotFoundException("Deposit transaction intent not found.");
+        }
+
+        return {
+          intent: refreshedIntent,
+          broadcastReused: false
+        };
+      }
+    );
+
+    return {
+      intent: this.mapIntentReviewProjection(result.intent),
+      broadcastReused: result.broadcastReused
+    };
+  }
+
+  async failDepositIntentExecution(
+    intentId: string,
+    workerId: string,
+    dto: FailDepositIntentExecutionDto
+  ): Promise<FailDepositIntentExecutionResult> {
+    const failureCode = dto.failureCode.trim();
+    const failureReason = dto.failureReason.trim();
+
+    const existingIntent = await this.findDepositIntentForReview(intentId);
+
+    if (!existingIntent) {
+      throw new NotFoundException("Deposit transaction intent not found.");
+    }
+
+    const latestBlockchainTransaction =
+      existingIntent.blockchainTransactions[0] ?? null;
+
+    if (
+      existingIntent.status === TransactionIntentStatus.failed &&
+      existingIntent.failureCode === failureCode &&
+      existingIntent.failureReason === failureReason &&
+      (!dto.txHash || latestBlockchainTransaction?.txHash === dto.txHash)
+    ) {
+      return {
+        intent: this.mapIntentReviewProjection(existingIntent),
+        failureReused: true
+      };
+    }
+
+    if (
+      existingIntent.policyDecision !== PolicyDecision.approved ||
+      ![
+        TransactionIntentStatus.queued,
+        TransactionIntentStatus.broadcast
+      ].includes(existingIntent.status)
+    ) {
+      throw new ConflictException(
+        "Deposit transaction intent is not in an execution state that can fail."
+      );
+    }
+
+    const result = await this.prismaService.$transaction(
+      async (transaction): Promise<FailureMutationResult> => {
+        const currentIntent = await transaction.transactionIntent.findFirst({
+          where: {
+            id: existingIntent.id
+          },
+          include: {
+            asset: {
+              select: {
+                id: true,
+                symbol: true,
+                displayName: true,
+                decimals: true,
+                chainId: true
+              }
+            },
+            destinationWallet: {
+              select: {
+                id: true,
+                address: true
+              }
+            },
+            customerAccount: {
+              select: {
+                id: true,
+                customerId: true,
+                customer: {
+                  select: {
+                    id: true,
+                    supabaseUserId: true,
+                    email: true,
+                    firstName: true,
+                    lastName: true
+                  }
+                }
+              }
+            },
+            blockchainTransactions: {
+              orderBy: {
+                createdAt: "desc"
+              },
+              take: 1,
+              select: {
+                id: true,
+                txHash: true,
+                status: true,
+                fromAddress: true,
+                toAddress: true,
+                createdAt: true,
+                updatedAt: true,
+                confirmedAt: true
+              }
+            }
+          }
+        });
+
+        if (!currentIntent) {
+          throw new NotFoundException("Deposit transaction intent not found.");
+        }
+
+        const currentLatestBlockchainTransaction =
+          currentIntent.blockchainTransactions[0] ?? null;
+
+        if (
+          currentIntent.status === TransactionIntentStatus.failed &&
+          currentIntent.failureCode === failureCode &&
+          currentIntent.failureReason === failureReason &&
+          (!dto.txHash || currentLatestBlockchainTransaction?.txHash === dto.txHash)
+        ) {
+          return {
+            intent: currentIntent,
+            failureReused: true
+          };
+        }
+
+        if (
+          currentIntent.policyDecision !== PolicyDecision.approved ||
+          ![
+            TransactionIntentStatus.queued,
+            TransactionIntentStatus.broadcast
+          ].includes(currentIntent.status)
+        ) {
+          throw new ConflictException(
+            "Deposit transaction intent is not in an execution state that can fail."
+          );
+        }
+
+        if (
+          dto.txHash &&
+          currentLatestBlockchainTransaction?.txHash &&
+          currentLatestBlockchainTransaction.txHash !== dto.txHash
+        ) {
+          throw new ConflictException(
+            "A different blockchain transaction is already recorded for this deposit intent."
+          );
+        }
+
+        if (currentLatestBlockchainTransaction) {
+          await transaction.blockchainTransaction.update({
+            where: {
+              id: currentLatestBlockchainTransaction.id
+            },
+            data: {
+              txHash: dto.txHash ?? currentLatestBlockchainTransaction.txHash,
+              status: BlockchainTransactionStatus.failed,
+              fromAddress:
+                dto.fromAddress ?? currentLatestBlockchainTransaction.fromAddress,
+              toAddress:
+                dto.toAddress ?? currentLatestBlockchainTransaction.toAddress
+            }
+          });
+        } else {
+          await transaction.blockchainTransaction.create({
+            data: {
+              transactionIntentId: currentIntent.id,
+              chainId: currentIntent.chainId,
+              txHash: dto.txHash ?? null,
+              nonce: null,
+              status: BlockchainTransactionStatus.failed,
+              fromAddress: dto.fromAddress ?? null,
+              toAddress: dto.toAddress ?? null,
+              confirmedAt: null
+            }
+          });
+        }
+
+        const updated = await transaction.transactionIntent.updateMany({
+          where: {
+            id: currentIntent.id,
+            intentType: TransactionIntentType.deposit,
+            chainId: this.productChainId,
+            policyDecision: PolicyDecision.approved,
+            status: {
+              in: [
+                TransactionIntentStatus.queued,
+                TransactionIntentStatus.broadcast
+              ]
+            }
+          },
+          data: {
+            status: TransactionIntentStatus.failed,
+            failureCode,
+            failureReason
+          }
+        });
+
+        if (updated.count !== 1) {
+          throw new ConflictException(
+            "Deposit transaction intent is not in an execution state that can fail."
+          );
+        }
+
+        const metadata: Prisma.InputJsonObject = {
+          customerAccountId: currentIntent.customerAccount.id,
+          assetId: currentIntent.asset.id,
+          assetSymbol: currentIntent.asset.symbol,
+          assetDisplayName: currentIntent.asset.displayName,
+          requestedAmount: currentIntent.requestedAmount.toString(),
+          destinationWalletId: currentIntent.destinationWalletId,
+          destinationWalletAddress:
+            currentIntent.destinationWallet?.address ?? null,
+          chainId: currentIntent.chainId,
+          txHash: dto.txHash ?? currentLatestBlockchainTransaction?.txHash ?? null,
+          fromAddress:
+            dto.fromAddress ?? currentLatestBlockchainTransaction?.fromAddress ?? null,
+          toAddress:
+            dto.toAddress ?? currentLatestBlockchainTransaction?.toAddress ?? null,
+          previousStatus: currentIntent.status,
+          newStatus: TransactionIntentStatus.failed,
+          failureCode,
+          failureReason
+        };
+
+        await transaction.auditEvent.create({
+          data: {
+            customerId: currentIntent.customerAccount.customer.id,
+            actorType: "worker",
+            actorId: workerId,
+            action: "transaction_intent.deposit.execution_failed",
+            targetType: "TransactionIntent",
+            targetId: currentIntent.id,
+            metadata
+          }
+        });
+
+        const refreshedIntent = await transaction.transactionIntent.findFirst({
+          where: {
+            id: currentIntent.id
+          },
+          include: {
+            asset: {
+              select: {
+                id: true,
+                symbol: true,
+                displayName: true,
+                decimals: true,
+                chainId: true
+              }
+            },
+            destinationWallet: {
+              select: {
+                id: true,
+                address: true
+              }
+            },
+            customerAccount: {
+              select: {
+                id: true,
+                customerId: true,
+                customer: {
+                  select: {
+                    id: true,
+                    supabaseUserId: true,
+                    email: true,
+                    firstName: true,
+                    lastName: true
+                  }
+                }
+              }
+            },
+            blockchainTransactions: {
+              orderBy: {
+                createdAt: "desc"
+              },
+              take: 1,
+              select: {
+                id: true,
+                txHash: true,
+                status: true,
+                fromAddress: true,
+                toAddress: true,
+                createdAt: true,
+                updatedAt: true,
+                confirmedAt: true
+              }
+            }
+          }
+        });
+
+        if (!refreshedIntent) {
+          throw new NotFoundException("Deposit transaction intent not found.");
+        }
+
+        return {
+          intent: refreshedIntent,
+          failureReused: false
+        };
+      }
+    );
+
+    return {
+      intent: this.mapIntentReviewProjection(result.intent),
+      failureReused: result.failureReused
     };
   }
 }

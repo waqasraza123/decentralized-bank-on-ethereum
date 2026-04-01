@@ -67,6 +67,10 @@ export type InternalOperatorRuntimeConfig = {
   readonly internalOperatorApiKey: string;
 };
 
+export type InternalWorkerRuntimeConfig = {
+  readonly internalWorkerApiKey: string;
+};
+
 export function loadDatabaseRuntimeConfig(
   env: RuntimeEnvShape = getNodeRuntimeEnv()
 ): DatabaseRuntimeConfig {
@@ -151,5 +155,13 @@ export function loadInternalOperatorRuntimeConfig(
       env,
       "INTERNAL_OPERATOR_API_KEY"
     )
+  };
+}
+
+export function loadInternalWorkerRuntimeConfig(
+  env: RuntimeEnvShape = getNodeRuntimeEnv()
+): InternalWorkerRuntimeConfig {
+  return {
+    internalWorkerApiKey: readRequiredRuntimeEnv(env, "INTERNAL_WORKER_API_KEY")
   };
 }
