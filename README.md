@@ -1,114 +1,231 @@
 # Stealth Trails Bank
 
-Monorepo for a DeFi-style banking experience: a **Vite + React** web app, a **NestJS** API with **Prisma** (PostgreSQL) and **Supabase**, and **Solidity** staking contracts built with **Hardhat**. The stack is orchestrated with **pnpm** workspaces and **Turborepo**.
+Stealth Trails Bank is a monorepo for a blockchain-backed banking platform.
+
+This repository is not only a website and an API. It is the working product codebase for a system that is moving from prototype banking flows into a production-grade platform with:
+
+- customer identity and account lifecycle
+- wallet ownership and projection repair tooling
+- transaction intent workflows
+- internal operator review paths
+- internal worker execution paths
+- blockchain transaction tracking
+- durable auditability around important state transitions
+
+The repo is being built in controlled stages so the platform can move forward without losing correctness in the areas that matter most for money movement.
+
+## What exists today
+
+The repository already includes real backend foundation for:
+
+- customer, customer account, and wallet projections
+- migration, audit, and repair tooling for legacy to new model adoption
+- deposit transaction intent request flow
+- internal operator approval and denial flow
+- operator queueing for approved deposit intents
+- worker broadcast and execution failure reporting for deposits
+- durable audit trails across those implemented workflow slices
+
+That means the project has moved beyond pure scaffolding. It now contains early but real money-state workflow slices.
+
+## What is still in progress
+
+This is not yet a finished banking product.
+
+The system still needs broader production coverage in areas such as:
+
+- confirmation and settlement slices
+- generalized ledger coverage across more money flows
+- reconciliation and replay safety
+- withdrawal flows
+- fuller customer UI replacement
+- fuller internal admin console
+- broader observability, incident tooling, and release hardening
 
 ## Repository layout
 
-| Path | Package | Role |
-|------|---------|------|
-| `apps/web` | `@stealth-trails-bank/web` | SPA (React, shadcn/Radix, Tailwind, React Router) |
-| `apps/api` | `@stealth-trails-bank/api` | REST API (NestJS, Prisma, ethers v5 for chain calls) |
-| `packages/contracts` | `@stealth-trails-bank/contracts` | Smart contracts (Hardhat, OpenZeppelin, ethers v6) |
+| Path | Purpose |
+|------|---------|
+| `apps/web` | Customer-facing web application |
+| `apps/api` | Backend API, workflow orchestration, persistence, and internal operational paths |
+| `packages/config` | Shared runtime config loading and validation |
+| `packages/db` | Shared Prisma client access |
+| `packages/types` | Shared TypeScript contracts and types |
+| `docs/` | Architecture, ADRs, runbooks, and operational notes |
 
-Hardhat and contract tooling live **only** under `packages/contracts`. The API does not bundle Hardhat.
+## How the system is shaped
 
-## Prerequisites
+At a high level:
 
-- **Node.js** (LTS recommended)
-- **pnpm** `9.x` (see root `package.json` → `packageManager`)
-- **PostgreSQL** reachable via `DATABASE_URL` (Prisma)
-- Optional for full flows: **local Ethereum node** (e.g. `pnpm --filter @stealth-trails-bank/contracts start-node`) and a deployed staking contract address
+1. customers interact with the platform through the web app and API
+2. the API owns customer identity, wallet linkage, workflow state, and persistence
+3. internal operator paths review sensitive actions
+4. internal worker paths move approved actions through execution state
+5. audit events provide a durable operational trail
+6. later slices extend this into confirmation, settlement, and broader accounting truth
+
+The direction of the repo is intentional:
+
+- workflow correctness first
+- durable persistence and auditability next
+- UI and operational visibility layered on top
+- correctness over speed in money-critical areas
+
+## Current implemented flow coverage
+
+The main implemented product slice today is the early deposit path:
+
+1. customer creates a deposit transaction intent
+2. operator reviews and approves or denies it
+3. operator queues approved work
+4. worker records broadcast
+5. worker records execution failure when needed
+
+This is important because it means the repo is no longer only a prototype shell. It already contains real workflow state, internal review, internal execution reporting, and auditability.
 
 ## Quick start
 
-```bash
+### 1. Install dependencies
+
+~~~bash
 pnpm install
-```
+~~~
 
-### Environment variables
+### 2. Prepare environment files
 
-**Web** — copy `apps/web/.env.example` to `apps/web/.env.local`:
+Use the existing example env files inside each app or package where present.
 
-| Variable | Purpose |
-|----------|---------|
-| `VITE_SERVER_URL` | Nest API base URL (default dev: `http://localhost:9001`) |
-| `VITE_SUPABASE_URL` | Supabase project URL |
-| `VITE_SUPABASE_ANON_KEY` | Supabase anon (public) key |
+At minimum, the API needs working values for:
 
-**API** — copy `apps/api/.env.example` to `apps/api/.env`:
+- `DATABASE_URL`
+- `DIRECT_URL`
+- `JWT_SECRET`
+- `JWT_EXPIRY_SECONDS`
+- `PRODUCT_CHAIN_ID`
+- `INTERNAL_OPERATOR_API_KEY`
+- `INTERNAL_WORKER_API_KEY`
 
-| Variable | Purpose |
-|----------|---------|
-| `DATABASE_URL` | PostgreSQL connection string (Prisma) |
-| `DIRECT_URL` | Direct DB URL (e.g. for migrations behind a pooler) |
-| `SUPABASE_URL` | Supabase URL (server) |
-| `SUPABASE_ANON_KEY` | Supabase anon key |
-| `RPC_URL` | JSON-RPC endpoint (e.g. local Hardhat `http://127.0.0.1:8545`) |
-| `STAKING_CONTRACT_ADDRESS` | Deployed staking contract |
-| `ETHEREUM_PRIVATE_KEY` | Wallet used for server-side transactions (keep secret; never commit) |
+For blockchain-connected flows you will also need:
 
-`EthereumService` (event indexing) and `StakingService` both expect **`RPC_URL`** and **`STAKING_CONTRACT_ADDRESS`** where applicable.
+- `RPC_URL`
+- `ETHEREUM_PRIVATE_KEY`
 
-### Database (API)
+For contract-connected flows where relevant:
 
-From the repo root (after `pnpm install`):
+- `STAKING_CONTRACT_ADDRESS`
 
-```bash
-pnpm --filter @stealth-trails-bank/api run prisma:generate
-pnpm --filter @stealth-trails-bank/api run prisma:migrate
-```
+Frontend environment values should be configured from the web app env examples where present and pointed at the local or deployed API.
 
-## Scripts (root)
+### 3. Generate Prisma client and run database migrations
 
-Run from the repository root:
+~~~bash
+pnpm --filter @stealth-trails-bank/api prisma:generate
+pnpm --filter @stealth-trails-bank/api prisma:migrate
+~~~
 
-| Command | Description |
-|---------|-------------|
-| `pnpm dev` | Turborepo `dev` (web Vite + API Nest watch; packages without `dev` are skipped) |
-| `pnpm build` | Build all packages that define `build` |
-| `pnpm lint` | Lint (currently defined on the web app) |
-| `pnpm test` | Tests (contracts package runs Hardhat tests) |
-| `pnpm compile` | `turbo run compile` (Hardhat compile for contracts) |
+### 4. Start local development
 
-### Ports (default dev)
+~~~bash
+pnpm dev
+~~~
 
-- **Web:** `8080` (Vite — see `apps/web/vite.config.ts`)
-- **API:** `9001` (see `apps/api/src/main.ts`)
+## Common commands
 
-### Package-scoped commands
+Run these from the repository root unless noted otherwise.
 
-Examples:
+### Root commands
 
-```bash
+| Command | Purpose |
+|---------|---------|
+| `pnpm dev` | Start repo development tasks |
+| `pnpm build` | Build workspace packages that define a build script |
+| `pnpm test` | Run workspace tests |
+| `pnpm lint` | Run lint tasks where defined |
+| `pnpm compile` | Run compile tasks where defined |
+
+### Package-scoped examples
+
+~~~bash
 pnpm --filter @stealth-trails-bank/web dev
 pnpm --filter @stealth-trails-bank/api start:dev
-pnpm --filter @stealth-trails-bank/contracts compile
-pnpm --filter @stealth-trails-bank/contracts test
-pnpm --filter @stealth-trails-bank/contracts start-node
-```
+pnpm --filter @stealth-trails-bank/api prisma:generate
+pnpm --filter @stealth-trails-bank/api prisma:migrate
+~~~
 
-## Architecture (high level)
+## Documentation map
 
-1. **Browser** talks to **Nest** over HTTP (`VITE_SERVER_URL`) for auth, user, staking, pools, deposits, etc.
-2. **Browser** also uses **Supabase** directly where the client is configured (`VITE_SUPABASE_*`).
-3. **API** persists domain data in **PostgreSQL** via **Prisma** and uses **Supabase** for some auth/user flows.
-4. **API** interacts with the chain via **ethers v5** (JSON-RPC + contract ABI in `apps/api/src/abis/`).
-5. **Contracts** are compiled and tested in `packages/contracts`; ABIs in the API should stay in sync when the contract interface changes.
+Use these docs first when working in the repo:
 
-## Important implementation notes
+- `docs/architecture/target-system.md`
+- `docs/architecture/production-roadmap.md`
+- `docs/architecture/data-model-target.md`
+- `docs/architecture/schema-transition-plan.md`
 
-- **Two ethers major versions:** `apps/api` uses **ethers v5**; `packages/contracts` uses **ethers v6**. They are intentionally isolated—do not hoist a single `ethers` version until the API is migrated.
-- **ABI source of truth:** The API ships `staking.abi.json` locally. After contract changes, regenerate or copy artifacts and update that file (or introduce a shared package later).
-- **Deploy script:** `packages/contracts` defines `deploy` as `hardhat run scripts/deploy.js`; ensure that script exists or adjust the command before relying on it.
-- **CORS:** The API enables `origin: '*'` in development-style setup; tighten for production.
-- **Secrets:** Never commit `.env` or `.env.local`. The anon key is public by design but still belongs in env files, not hardcoded in source.
+Use the runbooks when operating or verifying implemented flows:
 
-## Tech summary
+- wallet projection and repair runbooks under `docs/runbooks/`
+- deposit intent request, operator review, and execution runbooks
+- manual review and audit summary runbooks
 
-- **Web:** Vite 5, React 18, TypeScript, Tailwind, Radix/shadcn, TanStack Query, Zod, Zustand, Supabase JS, Axios.
-- **API:** NestJS 10, Prisma 6, PostgreSQL, Supabase JS, ethers 5, class-validator, Joi.
-- **Contracts:** Hardhat 2, Solidity 0.8.x, OpenZeppelin 5, Typechain, Mocha/Chai.
+## Engineering standards for this repo
 
-## Turborepo
+The project is being developed with a production-grade bias.
 
-Pipeline is defined in `turbo.json`. Task outputs include `dist/`, Hardhat `artifacts/`, `cache/`, and `typechain-types/` where relevant. See [Turborepo docs](https://turbo.build/repo/docs) for caching and filtering.
+That means contributions should aim for:
+
+- small focused modules
+- descriptive names
+- strong typing
+- explicit validation
+- durable auditability for important state changes
+- safe idempotent workflow behavior
+- no hidden magic around money state
+- readable code over clever code
+
+For money-moving or state-critical changes, always prefer:
+
+- explicit state transitions
+- durable persistence
+- audit visibility
+- recovery-safe behavior
+
+## Production posture
+
+This repository should be treated as a product codebase, not a demo template.
+
+A change is not production-grade here just because it works locally. It should also be:
+
+- reviewable
+- testable
+- recoverable
+- operationally understandable
+- safe to extend later
+
+For that reason, some parts of the repo will look more deliberate than move fast prototypes. That is by design.
+
+## Security note
+
+This repo contains financial workflow logic and blockchain-connected code.
+
+Do not:
+
+- commit secrets
+- commit real private keys
+- expose internal operator or worker keys
+- treat prototype defaults as production-safe settings
+
+Please read `SECURITY.md` before reporting issues or handling sensitive findings.
+
+## Collaboration
+
+Please read these files before opening major changes:
+
+- `CONTRIBUTING.md`
+- `CODE_OF_CONDUCT.md`
+- `SECURITY.md`
+
+## License
+
+This repository is currently distributed under a proprietary license. See `LICENSE`.
+
+If you later decide to open-source all or part of the repo, the license can be changed intentionally instead of by accident.
