@@ -20,7 +20,8 @@
     "repair:customer-wallet-projections": "ts-node src/scripts/repair-customer-wallet-projections.ts",
     "repair:customer-account-wallet-projections": "ts-node src/scripts/repair-customer-account-wallet-projections.ts",
     "export:wallet-projection-manual-review-queue": "ts-node src/scripts/export-wallet-projection-manual-review-queue.ts",
-    "repair:missing-customer-projections": "ts-node src/scripts/repair-missing-customer-projections.ts"
+    "repair:missing-customer-projections": "ts-node src/scripts/repair-missing-customer-projections.ts",
+    "repair:wallet-projection-safe-batch": "ts-node src/scripts/repair-wallet-projection-safe-batch.ts"
   },
   "dependencies": {
     "@nestjs/common": "^10.4.15",
