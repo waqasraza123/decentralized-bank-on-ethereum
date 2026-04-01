@@ -10,6 +10,7 @@ import {
   WalletStatus,
   type Prisma
 } from "@prisma/client";
+import { createWalletProjectionRepairAuditEvent } from "./lib/create-wallet-projection-repair-audit-event";
 import {
   type LegacyUserRecord,
   type WalletProjectionRepairMethod,
@@ -56,6 +57,7 @@ type RepairSummary = {
   appliedCustomerAccountCreates: number;
   appliedWalletCreates: number;
   appliedWalletAttachments: number;
+  appliedAuditEvents: number;
 };
 
 function parseOptions(argv: string[]): ScriptOptions {
@@ -64,6 +66,10 @@ function parseOptions(argv: string[]): ScriptOptions {
   let limit: number | undefined;
 
   for (const argument of argv) {
+    if (argument === "--") {
+      continue;
+    }
+
     if (argument === "--apply") {
       applyChanges = true;
       continue;
@@ -188,12 +194,14 @@ async function applyRepairPlan(
   customerAccountCreated: boolean;
   walletCreated: boolean;
   walletAttached: boolean;
+  auditEventCreated: boolean;
 }> {
   if (plan.action !== "repair_account_and_wallet") {
     return {
       customerAccountCreated: false,
       walletCreated: false,
-      walletAttached: false
+      walletAttached: false,
+      auditEventCreated: false
     };
   }
 
@@ -229,7 +237,7 @@ async function applyRepairPlan(
     });
 
     if (resolution.repairMethod === "attach_existing_wallet") {
-      await transaction.wallet.update({
+      const wallet = await transaction.wallet.update({
         where: {
           chainId_address: {
             chainId: productChainId,
@@ -244,14 +252,34 @@ async function applyRepairPlan(
         }
       });
 
-      return {
+      await createWalletProjectionRepairAuditEvent({
+        transaction,
+        customerId,
+        customerAccountId: customerAccount.id,
+        walletId: wallet.id,
+        walletAddress: wallet.address,
+        productChainId,
+        repairCommand: "repair:customer-account-wallet-projections",
+        repairSurface: "missing_customer_account",
+        repairMethod: "attach_existing_wallet",
+        legacyUserId: plan.legacyUser.id,
+        supabaseUserId: plan.legacyUser.supabaseUserId,
+        email: plan.legacyUser.email,
+        customerCreated: false,
         customerAccountCreated: true,
         walletCreated: false,
         walletAttached: true
+      });
+
+      return {
+        customerAccountCreated: true,
+        walletCreated: false,
+        walletAttached: true,
+        auditEventCreated: true
       };
     }
 
-    await transaction.wallet.create({
+    const wallet = await transaction.wallet.create({
       data: {
         customerAccountId: customerAccount.id,
         chainId: productChainId,
@@ -262,10 +290,30 @@ async function applyRepairPlan(
       }
     });
 
-    return {
+    await createWalletProjectionRepairAuditEvent({
+      transaction,
+      customerId,
+      customerAccountId: customerAccount.id,
+      walletId: wallet.id,
+      walletAddress: wallet.address,
+      productChainId,
+      repairCommand: "repair:customer-account-wallet-projections",
+      repairSurface: "missing_customer_account",
+      repairMethod: "create_wallet",
+      legacyUserId: plan.legacyUser.id,
+      supabaseUserId: plan.legacyUser.supabaseUserId,
+      email: plan.legacyUser.email,
+      customerCreated: false,
       customerAccountCreated: true,
       walletCreated: true,
       walletAttached: false
+    });
+
+    return {
+      customerAccountCreated: true,
+      walletCreated: true,
+      walletAttached: false,
+      auditEventCreated: true
     };
   });
 }
@@ -289,7 +337,8 @@ function createSummary(
     plannedWalletAttachments: 0,
     appliedCustomerAccountCreates: 0,
     appliedWalletCreates: 0,
-    appliedWalletAttachments: 0
+    appliedWalletAttachments: 0,
+    appliedAuditEvents: 0
   };
 }
 
@@ -312,7 +361,7 @@ async function main(): Promise<void> {
     email: string;
     supabaseUserId: string;
     action: RepairAction;
-    repairMethod: WalletProjectionRepairMethod;
+    repairMethod: WalletProjectionRepairMethod | null;
     normalizedAddress: string | null;
   }> = [];
 
@@ -372,6 +421,10 @@ async function main(): Promise<void> {
           summary.appliedWalletAttachments += 1;
         }
 
+        if (applied.auditEventCreated) {
+          summary.appliedAuditEvents += 1;
+        }
+
         continue;
       }
 
@@ -385,7 +438,8 @@ async function main(): Promise<void> {
         conflicts.push({
           email: legacyUser.email,
           supabaseUserId: legacyUser.supabaseUserId,
-          reason: plan.reason ?? "Legacy ethereumAddress is not a valid EVM address."
+          reason:
+            plan.reason ?? "Legacy ethereumAddress is not a valid EVM address."
         });
         continue;
       }

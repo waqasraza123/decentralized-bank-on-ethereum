@@ -9,6 +9,7 @@ import {
   WalletStatus,
   type Prisma
 } from "@prisma/client";
+import { createWalletProjectionRepairAuditEvent } from "./lib/create-wallet-projection-repair-audit-event";
 import {
   type LegacyUserRecord,
   type WalletProjectionRepairMethod,
@@ -33,6 +34,7 @@ type RepairAction =
 type RepairPlan = {
   action: RepairAction;
   legacyUser: LegacyUserRecord;
+  customerId?: string;
   customerAccountId?: string;
   normalizedAddress?: string;
   repairMethod?: WalletProjectionRepairMethod;
@@ -54,6 +56,7 @@ type RepairSummary = {
   plannedWalletAttachments: number;
   appliedWalletCreates: number;
   appliedWalletAttachments: number;
+  appliedAuditEvents: number;
 };
 
 function parseOptions(argv: string[]): ScriptOptions {
@@ -62,6 +65,10 @@ function parseOptions(argv: string[]): ScriptOptions {
   let limit: number | undefined;
 
   for (const argument of argv) {
+    if (argument === "--") {
+      continue;
+    }
+
     if (argument === "--apply") {
       applyChanges = true;
       continue;
@@ -115,6 +122,7 @@ async function buildRepairPlan(
     return {
       action: "already_projected",
       legacyUser,
+      customerId: resolution.customerId ?? undefined,
       customerAccountId: resolution.customerAccountId ?? undefined,
       normalizedAddress: resolution.normalizedLegacyEthereumAddress ?? undefined
     };
@@ -124,6 +132,7 @@ async function buildRepairPlan(
     return {
       action: "repair_wallet_only",
       legacyUser,
+      customerId: resolution.customerId ?? undefined,
       customerAccountId: resolution.customerAccountId ?? undefined,
       normalizedAddress: resolution.normalizedLegacyEthereumAddress ?? undefined,
       repairMethod: resolution.repairMethod,
@@ -144,6 +153,7 @@ async function buildRepairPlan(
     return {
       action: "missing_customer_account",
       legacyUser,
+      customerId: resolution.customerId ?? undefined,
       normalizedAddress: resolution.normalizedLegacyEthereumAddress ?? undefined,
       reason: resolution.reason
     };
@@ -168,6 +178,7 @@ async function buildRepairPlan(
   return {
     action: "conflict",
     legacyUser,
+    customerId: resolution.customerId ?? undefined,
     customerAccountId: resolution.customerAccountId ?? undefined,
     normalizedAddress: resolution.normalizedLegacyEthereumAddress ?? undefined,
     reason: resolution.reason
@@ -178,20 +189,26 @@ async function applyRepairPlan(
   prisma: ReturnType<typeof createStealthTrailsPrismaClient>,
   plan: RepairPlan,
   productChainId: number
-): Promise<{ walletCreated: boolean; walletAttached: boolean }> {
+): Promise<{
+  walletCreated: boolean;
+  walletAttached: boolean;
+  auditEventCreated: boolean;
+}> {
   if (plan.action !== "repair_wallet_only") {
     return {
       walletCreated: false,
-      walletAttached: false
+      walletAttached: false,
+      auditEventCreated: false
     };
   }
 
-  if (!plan.customerAccountId || !plan.normalizedAddress) {
+  if (!plan.customerId || !plan.customerAccountId || !plan.normalizedAddress) {
     throw new Error(
-      "Customer account id and normalized address are required for wallet repair."
+      "Customer id, customer account id, and normalized address are required for wallet repair."
     );
   }
 
+  const customerId = plan.customerId;
   const customerAccountId = plan.customerAccountId;
   const normalizedAddress = plan.normalizedAddress;
 
@@ -204,6 +221,7 @@ async function applyRepairPlan(
 
     if (
       resolution.surface !== "repair_wallet_only" ||
+      resolution.customerId !== customerId ||
       resolution.customerAccountId !== customerAccountId ||
       resolution.normalizedLegacyEthereumAddress !== normalizedAddress
     ) {
@@ -211,7 +229,7 @@ async function applyRepairPlan(
     }
 
     if (resolution.repairMethod === "attach_existing_wallet") {
-      await transaction.wallet.update({
+      const wallet = await transaction.wallet.update({
         where: {
           chainId_address: {
             chainId: productChainId,
@@ -226,13 +244,33 @@ async function applyRepairPlan(
         }
       });
 
-      return {
+      await createWalletProjectionRepairAuditEvent({
+        transaction,
+        customerId,
+        customerAccountId,
+        walletId: wallet.id,
+        walletAddress: wallet.address,
+        productChainId,
+        repairCommand: "repair:customer-wallet-projections",
+        repairSurface: "wallet_only",
+        repairMethod: "attach_existing_wallet",
+        legacyUserId: plan.legacyUser.id,
+        supabaseUserId: plan.legacyUser.supabaseUserId,
+        email: plan.legacyUser.email,
+        customerCreated: false,
+        customerAccountCreated: false,
         walletCreated: false,
         walletAttached: true
+      });
+
+      return {
+        walletCreated: false,
+        walletAttached: true,
+        auditEventCreated: true
       };
     }
 
-    await transaction.wallet.create({
+    const wallet = await transaction.wallet.create({
       data: {
         customerAccountId,
         chainId: productChainId,
@@ -243,9 +281,29 @@ async function applyRepairPlan(
       }
     });
 
-    return {
+    await createWalletProjectionRepairAuditEvent({
+      transaction,
+      customerId,
+      customerAccountId,
+      walletId: wallet.id,
+      walletAddress: wallet.address,
+      productChainId,
+      repairCommand: "repair:customer-wallet-projections",
+      repairSurface: "wallet_only",
+      repairMethod: "create_wallet",
+      legacyUserId: plan.legacyUser.id,
+      supabaseUserId: plan.legacyUser.supabaseUserId,
+      email: plan.legacyUser.email,
+      customerCreated: false,
+      customerAccountCreated: false,
       walletCreated: true,
       walletAttached: false
+    });
+
+    return {
+      walletCreated: true,
+      walletAttached: false,
+      auditEventCreated: true
     };
   });
 }
@@ -268,7 +326,8 @@ function createSummary(
     plannedWalletCreates: 0,
     plannedWalletAttachments: 0,
     appliedWalletCreates: 0,
-    appliedWalletAttachments: 0
+    appliedWalletAttachments: 0,
+    appliedAuditEvents: 0
   };
 }
 
@@ -291,7 +350,7 @@ async function main(): Promise<void> {
     email: string;
     supabaseUserId: string;
     action: RepairAction;
-    repairMethod: WalletProjectionRepairMethod;
+    repairMethod: WalletProjectionRepairMethod | null;
     normalizedAddress: string | null;
   }> = [];
 
@@ -347,6 +406,10 @@ async function main(): Promise<void> {
           summary.appliedWalletAttachments += 1;
         }
 
+        if (applied.auditEventCreated) {
+          summary.appliedAuditEvents += 1;
+        }
+
         continue;
       }
 
@@ -360,7 +423,8 @@ async function main(): Promise<void> {
         conflicts.push({
           email: legacyUser.email,
           supabaseUserId: legacyUser.supabaseUserId,
-          reason: plan.reason ?? "Legacy ethereumAddress is not a valid EVM address."
+          reason:
+            plan.reason ?? "Legacy ethereumAddress is not a valid EVM address."
         });
         continue;
       }
