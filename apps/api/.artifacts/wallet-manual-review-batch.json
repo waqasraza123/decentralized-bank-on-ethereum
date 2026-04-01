@@ -1,0 +1,14 @@
+{
+  "summary": {
+    "productChainId": 8453,
+    "scanned": 0,
+    "queueItems": 0,
+    "conflictingCustomerRecords": 0,
+    "missingWalletAddress": 0,
+    "invalidWalletAddress": 0,
+    "walletLegacyMismatch": 0,
+    "walletLinkedToOtherAccount": 0,
+    "multipleProductChainWallets": 0
+  },
+  "items": []
+}

@@ -1,0 +1,244 @@
+{
+  "mode": "dry-run",
+  "productChainId": 8453,
+  "filters": {
+    "email": null,
+    "limit": 10
+  },
+  "steps": {
+    "preRepairAudit": {
+      "command": "/Users/mc/.nvm/versions/node/v22.17.0/bin/node -r /Users/mc/development/blockchain/ethereum/stealth-trails-bank/node_modules/.pnpm/ts-node@10.9.2_@swc+core@1.15.21_@types+node@22.19.15_typescript@5.9.3/node_modules/ts-node/register/transpile-only.js /Users/mc/development/blockchain/ethereum/stealth-trails-bank/apps/api/src/scripts/audit-wallet-projection-coverage.ts --limit=10 --summary-only",
+      "summary": {
+        "productChainId": 8453,
+        "scanned": 0,
+        "walletProjected": 0,
+        "repairMissingCustomerProjection": 0,
+        "repairMissingCustomerAccount": 0,
+        "repairWalletOnly": 0,
+        "manualReviewMissingWalletAddress": 0,
+        "manualReviewInvalidWalletAddress": 0,
+        "manualReviewConflictingCustomerRecords": 0,
+        "manualReviewWalletLinkedToOtherAccount": 0,
+        "manualReviewWalletLegacyMismatch": 0,
+        "manualReviewMultipleProductChainWallets": 0,
+        "autoRepairableProfiles": 0,
+        "manualReviewProfiles": 0,
+        "walletSourceProfiles": 0,
+        "legacySourceProfiles": 0,
+        "noAddressProfiles": 0,
+        "conflictSourceProfiles": 0
+      }
+    },
+    "repairMissingCustomerProjection": {
+      "command": "/Users/mc/.nvm/versions/node/v22.17.0/bin/node -r /Users/mc/development/blockchain/ethereum/stealth-trails-bank/node_modules/.pnpm/ts-node@10.9.2_@swc+core@1.15.21_@types+node@22.19.15_typescript@5.9.3/node_modules/ts-node/register/transpile-only.js /Users/mc/development/blockchain/ethereum/stealth-trails-bank/apps/api/src/scripts/repair-missing-customer-projections.ts --limit=10",
+      "summary": {
+        "mode": "dry-run",
+        "chainId": 8453,
+        "scanned": 0,
+        "repairCustomerAccountAndWallet": 0,
+        "missingWalletAddress": 0,
+        "invalidWalletAddress": 0,
+        "customerExists": 0,
+        "conflicts": 0,
+        "plannedWalletCreates": 0,
+        "plannedWalletAttachments": 0,
+        "appliedCustomerCreates": 0,
+        "appliedCustomerAccountCreates": 0,
+        "appliedWalletCreates": 0,
+        "appliedWalletAttachments": 0
+      }
+    },
+    "repairMissingCustomerAccount": {
+      "command": "/Users/mc/.nvm/versions/node/v22.17.0/bin/node -r /Users/mc/development/blockchain/ethereum/stealth-trails-bank/node_modules/.pnpm/ts-node@10.9.2_@swc+core@1.15.21_@types+node@22.19.15_typescript@5.9.3/node_modules/ts-node/register/transpile-only.js /Users/mc/development/blockchain/ethereum/stealth-trails-bank/apps/api/src/scripts/repair-customer-account-wallet-projections.ts --limit=10",
+      "summary": {
+        "mode": "dry-run",
+        "chainId": 8453,
+        "scanned": 0,
+        "alreadyProjected": 0,
+        "repairAccountAndWallet": 0,
+        "missingWalletAddress": 0,
+        "invalidWalletAddress": 0,
+        "missingCustomerProjection": 0,
+        "customerAccountExists": 0,
+        "conflicts": 0,
+        "plannedWalletCreates": 0,
+        "plannedWalletAttachments": 0,
+        "appliedCustomerAccountCreates": 0,
+        "appliedWalletCreates": 0,
+        "appliedWalletAttachments": 0
+      }
+    },
+    "repairWalletOnly": {
+      "command": "/Users/mc/.nvm/versions/node/v22.17.0/bin/node -r /Users/mc/development/blockchain/ethereum/stealth-trails-bank/node_modules/.pnpm/ts-node@10.9.2_@swc+core@1.15.21_@types+node@22.19.15_typescript@5.9.3/node_modules/ts-node/register/transpile-only.js /Users/mc/development/blockchain/ethereum/stealth-trails-bank/apps/api/src/scripts/repair-customer-wallet-projections.ts --limit=10",
+      "summary": {
+        "mode": "dry-run",
+        "chainId": 8453,
+        "scanned": 0,
+        "alreadyProjected": 0,
+        "repairWalletOnly": 0,
+        "missingWalletAddress": 0,
+        "invalidWalletAddress": 0,
+        "missingCustomerProjection": 0,
+        "missingCustomerAccount": 0,
+        "conflicts": 0,
+        "plannedWalletCreates": 0,
+        "plannedWalletAttachments": 0,
+        "appliedWalletCreates": 0,
+        "appliedWalletAttachments": 0
+      }
+    },
+    "postRepairAudit": {
+      "command": "/Users/mc/.nvm/versions/node/v22.17.0/bin/node -r /Users/mc/development/blockchain/ethereum/stealth-trails-bank/node_modules/.pnpm/ts-node@10.9.2_@swc+core@1.15.21_@types+node@22.19.15_typescript@5.9.3/node_modules/ts-node/register/transpile-only.js /Users/mc/development/blockchain/ethereum/stealth-trails-bank/apps/api/src/scripts/audit-wallet-projection-coverage.ts --limit=10 --summary-only",
+      "summary": {
+        "productChainId": 8453,
+        "scanned": 0,
+        "walletProjected": 0,
+        "repairMissingCustomerProjection": 0,
+        "repairMissingCustomerAccount": 0,
+        "repairWalletOnly": 0,
+        "manualReviewMissingWalletAddress": 0,
+        "manualReviewInvalidWalletAddress": 0,
+        "manualReviewConflictingCustomerRecords": 0,
+        "manualReviewWalletLinkedToOtherAccount": 0,
+        "manualReviewWalletLegacyMismatch": 0,
+        "manualReviewMultipleProductChainWallets": 0,
+        "autoRepairableProfiles": 0,
+        "manualReviewProfiles": 0,
+        "walletSourceProfiles": 0,
+        "legacySourceProfiles": 0,
+        "noAddressProfiles": 0,
+        "conflictSourceProfiles": 0
+      }
+    },
+    "manualReviewExport": {
+      "command": "/Users/mc/.nvm/versions/node/v22.17.0/bin/node -r /Users/mc/development/blockchain/ethereum/stealth-trails-bank/node_modules/.pnpm/ts-node@10.9.2_@swc+core@1.15.21_@types+node@22.19.15_typescript@5.9.3/node_modules/ts-node/register/transpile-only.js /Users/mc/development/blockchain/ethereum/stealth-trails-bank/apps/api/src/scripts/export-wallet-projection-manual-review-queue.ts --limit=10 --format=json --output=.artifacts/wallet-manual-review-batch.json",
+      "summary": {
+        "productChainId": 8453,
+        "scanned": 0,
+        "queueItems": 0,
+        "conflictingCustomerRecords": 0,
+        "missingWalletAddress": 0,
+        "invalidWalletAddress": 0,
+        "walletLegacyMismatch": 0,
+        "walletLinkedToOtherAccount": 0,
+        "multipleProductChainWallets": 0
+      }
+    }
+  },
+  "delta": {
+    "byMetric": {
+      "scanned": {
+        "before": 0,
+        "after": 0,
+        "delta": 0
+      },
+      "walletProjected": {
+        "before": 0,
+        "after": 0,
+        "delta": 0
+      },
+      "repairMissingCustomerProjection": {
+        "before": 0,
+        "after": 0,
+        "delta": 0
+      },
+      "repairMissingCustomerAccount": {
+        "before": 0,
+        "after": 0,
+        "delta": 0
+      },
+      "repairWalletOnly": {
+        "before": 0,
+        "after": 0,
+        "delta": 0
+      },
+      "manualReviewMissingWalletAddress": {
+        "before": 0,
+        "after": 0,
+        "delta": 0
+      },
+      "manualReviewInvalidWalletAddress": {
+        "before": 0,
+        "after": 0,
+        "delta": 0
+      },
+      "manualReviewConflictingCustomerRecords": {
+        "before": 0,
+        "after": 0,
+        "delta": 0
+      },
+      "manualReviewWalletLinkedToOtherAccount": {
+        "before": 0,
+        "after": 0,
+        "delta": 0
+      },
+      "manualReviewWalletLegacyMismatch": {
+        "before": 0,
+        "after": 0,
+        "delta": 0
+      },
+      "manualReviewMultipleProductChainWallets": {
+        "before": 0,
+        "after": 0,
+        "delta": 0
+      },
+      "autoRepairableProfiles": {
+        "before": 0,
+        "after": 0,
+        "delta": 0
+      },
+      "manualReviewProfiles": {
+        "before": 0,
+        "after": 0,
+        "delta": 0
+      },
+      "walletSourceProfiles": {
+        "before": 0,
+        "after": 0,
+        "delta": 0
+      },
+      "legacySourceProfiles": {
+        "before": 0,
+        "after": 0,
+        "delta": 0
+      },
+      "noAddressProfiles": {
+        "before": 0,
+        "after": 0,
+        "delta": 0
+      },
+      "conflictSourceProfiles": {
+        "before": 0,
+        "after": 0,
+        "delta": 0
+      }
+    },
+    "highlights": {
+      "walletProjected": {
+        "before": 0,
+        "after": 0,
+        "delta": 0
+      },
+      "autoRepairableProfiles": {
+        "before": 0,
+        "after": 0,
+        "delta": 0
+      },
+      "manualReviewProfiles": {
+        "before": 0,
+        "after": 0,
+        "delta": 0
+      },
+      "legacySourceProfiles": {
+        "before": 0,
+        "after": 0,
+        "delta": 0
+      }
+    }
+  },
+  "manualReviewExport": {
+    "enabled": true,
+    "outputPath": ".artifacts/wallet-manual-review-batch.json"
+  },
+  "reportOutputPath": ".artifacts/wallet-safe-batch-report.json"
+}
