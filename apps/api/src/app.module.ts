@@ -3,7 +3,7 @@ import { AuthModule } from "./auth/auth.module";
 import { CustomerBalancesModule } from "./customer-balances/customer-balances.module";
 import { EthereumModule } from "./ethereum/ethereum.module";
 import { PoolsModule } from "./pools/pools.module";
-import { StakingModule } from "./staking/staking.module";
+import { StakingPoolModule } from "./staking/staking.module";
 import { TransactionIntentsModule } from "./transaction-intents/transaction-intents.module";
 import { UserModule } from "./user/user.module";
 
@@ -12,7 +12,7 @@ import { UserModule } from "./user/user.module";
     AuthModule,
     UserModule,
     PoolsModule,
-    StakingModule,
+    StakingPoolModule,
     EthereumModule,
     TransactionIntentsModule,
     CustomerBalancesModule

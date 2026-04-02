@@ -152,7 +152,7 @@ function createService() {
     )
   };
 
-  const service = new TransactionIntentsService(prismaService as never);
+  const service = new TransactionIntentsService(prismaService as never, {} as never);
 
   return {
     service,

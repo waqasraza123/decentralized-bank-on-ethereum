@@ -9,17 +9,25 @@ import { TransactionIntentsController } from "./transaction-intents.controller";
 import { TransactionIntentsInternalController } from "./transaction-intents-internal.controller";
 import { TransactionIntentsService } from "./transaction-intents.service";
 import { TransactionIntentsWorkerController } from "./transaction-intents-worker.controller";
+import { WithdrawalIntentsController } from "./withdrawal-intents.controller";
+import { WithdrawalIntentsInternalController } from "./withdrawal-intents-internal.controller";
+import { WithdrawalIntentsService } from "./withdrawal-intents.service";
+import { WithdrawalIntentsWorkerController } from "./withdrawal-intents-worker.controller";
 
 @Module({
   imports: [LedgerModule],
   controllers: [
     TransactionIntentsController,
+    WithdrawalIntentsController,
     TransactionIntentsInternalController,
+    WithdrawalIntentsInternalController,
     TransactionIntentsWorkerController,
+    WithdrawalIntentsWorkerController,
     DepositSettlementReconciliationController
   ],
   providers: [
     TransactionIntentsService,
+    WithdrawalIntentsService,
     DepositSettlementReconciliationService,
     PrismaService,
     InternalOperatorApiKeyGuard,

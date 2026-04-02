@@ -5,6 +5,7 @@ import {
   NotFoundException
 } from "@nestjs/common";
 import { loadProductChainRuntimeConfig } from "@stealth-trails-bank/config/api";
+import { utils as ethersUtils } from "ethers";
 import {
   AssetStatus,
   BlockchainTransactionStatus,
@@ -16,24 +17,24 @@ import {
 } from "@prisma/client";
 import { LedgerService } from "../ledger/ledger.service";
 import { PrismaService } from "../prisma/prisma.service";
-import { ConfirmDepositIntentDto } from "./dto/confirm-deposit-intent.dto";
-import { CreateDepositIntentDto } from "./dto/create-deposit-intent.dto";
-import { DecideDepositIntentDto } from "./dto/decide-deposit-intent.dto";
-import { FailDepositIntentExecutionDto } from "./dto/fail-deposit-intent-execution.dto";
-import { ListApprovedDepositIntentsDto } from "./dto/list-approved-deposit-intents.dto";
-import { ListBroadcastDepositIntentsDto } from "./dto/list-broadcast-deposit-intents.dto";
-import { ListMyTransactionIntentsDto } from "./dto/list-my-transaction-intents.dto";
-import { ListPendingDepositIntentsDto } from "./dto/list-pending-deposit-intents.dto";
-import { ListQueuedDepositIntentsDto } from "./dto/list-queued-deposit-intents.dto";
-import { QueueApprovedDepositIntentDto } from "./dto/queue-approved-deposit-intent.dto";
-import { RecordDepositBroadcastDto } from "./dto/record-deposit-broadcast.dto";
-import { SettleConfirmedDepositIntentDto } from "./dto/settle-confirmed-deposit-intent.dto";
+import { ConfirmWithdrawalIntentDto } from "./dto/confirm-withdrawal-intent.dto";
+import { CreateWithdrawalIntentDto } from "./dto/create-withdrawal-intent.dto";
+import { DecideWithdrawalIntentDto } from "./dto/decide-withdrawal-intent.dto";
+import { FailWithdrawalIntentExecutionDto } from "./dto/fail-withdrawal-intent-execution.dto";
+import { ListApprovedWithdrawalIntentsDto } from "./dto/list-approved-withdrawal-intents.dto";
+import { ListBroadcastWithdrawalIntentsDto } from "./dto/list-broadcast-withdrawal-intents.dto";
+import { ListPendingWithdrawalIntentsDto } from "./dto/list-pending-withdrawal-intents.dto";
+import { ListQueuedWithdrawalIntentsDto } from "./dto/list-queued-withdrawal-intents.dto";
+import { QueueApprovedWithdrawalIntentDto } from "./dto/queue-approved-withdrawal-intent.dto";
+import { RecordWithdrawalBroadcastDto } from "./dto/record-withdrawal-broadcast.dto";
+import { SettleConfirmedWithdrawalIntentDto } from "./dto/settle-confirmed-withdrawal-intent.dto";
 
-type DepositIntentContext = {
+type WithdrawalIntentContext = {
   customerId: string;
   customerAccountId: string;
-  destinationWalletId: string;
-  destinationWalletAddress: string;
+  sourceWalletId: string;
+  sourceWalletAddress: string;
+  externalAddress: string;
   assetId: string;
   assetSymbol: string;
   assetDisplayName: string;
@@ -51,7 +52,7 @@ type CustomerIntentRecord = Prisma.TransactionIntentGetPayload<{
         chainId: true;
       };
     };
-    destinationWallet: {
+    sourceWallet: {
       select: {
         id: true;
         address: true;
@@ -71,7 +72,7 @@ type InternalIntentRecord = Prisma.TransactionIntentGetPayload<{
         chainId: true;
       };
     };
-    destinationWallet: {
+    sourceWallet: {
       select: {
         id: true;
         address: true;
@@ -150,7 +151,7 @@ type TransactionIntentProjection = {
   updatedAt: string;
 };
 
-type DepositIntentReviewProjection = TransactionIntentProjection & {
+type WithdrawalIntentReviewProjection = TransactionIntentProjection & {
   customer: {
     customerId: string;
     customerAccountId: string;
@@ -162,75 +163,63 @@ type DepositIntentReviewProjection = TransactionIntentProjection & {
   latestBlockchainTransaction: LatestBlockchainTransactionProjection | null;
 };
 
-type CreateDepositIntentResult = {
+type CreateWithdrawalIntentResult = {
   intent: TransactionIntentProjection;
   idempotencyReused: boolean;
 };
 
-type ListMyTransactionIntentsResult = {
-  intents: TransactionIntentProjection[];
+type ListPendingWithdrawalIntentsResult = {
+  intents: WithdrawalIntentReviewProjection[];
   limit: number;
 };
 
-type ListPendingDepositIntentsResult = {
-  intents: DepositIntentReviewProjection[];
-  limit: number;
-};
-
-type DecideDepositIntentResult = {
-  intent: DepositIntentReviewProjection;
+type DecideWithdrawalIntentResult = {
+  intent: WithdrawalIntentReviewProjection;
   decision: "approved" | "denied";
 };
 
-type ListApprovedDepositIntentsResult = {
-  intents: DepositIntentReviewProjection[];
+type ListApprovedWithdrawalIntentsResult = {
+  intents: WithdrawalIntentReviewProjection[];
   limit: number;
 };
 
-type QueueApprovedDepositIntentResult = {
-  intent: DepositIntentReviewProjection;
+type QueueApprovedWithdrawalIntentResult = {
+  intent: WithdrawalIntentReviewProjection;
   queueReused: boolean;
 };
 
-type ListQueuedDepositIntentsResult = {
-  intents: DepositIntentReviewProjection[];
+type ListQueuedWithdrawalIntentsResult = {
+  intents: WithdrawalIntentReviewProjection[];
   limit: number;
 };
 
-type RecordDepositBroadcastResult = {
-  intent: DepositIntentReviewProjection;
+type RecordWithdrawalBroadcastResult = {
+  intent: WithdrawalIntentReviewProjection;
   broadcastReused: boolean;
 };
 
-type FailDepositIntentExecutionResult = {
-  intent: DepositIntentReviewProjection;
+type FailWithdrawalIntentExecutionResult = {
+  intent: WithdrawalIntentReviewProjection;
   failureReused: boolean;
 };
 
-type ListBroadcastDepositIntentsResult = {
-  intents: DepositIntentReviewProjection[];
+type ListBroadcastWithdrawalIntentsResult = {
+  intents: WithdrawalIntentReviewProjection[];
   limit: number;
 };
 
-type ConfirmDepositIntentResult = {
-  intent: DepositIntentReviewProjection;
+type ConfirmWithdrawalIntentResult = {
+  intent: WithdrawalIntentReviewProjection;
   confirmReused: boolean;
 };
 
-type SettleConfirmedDepositIntentResult = {
-  intent: DepositIntentReviewProjection;
+type SettleConfirmedWithdrawalIntentResult = {
+  intent: WithdrawalIntentReviewProjection;
   settlementReused: boolean;
 };
 
-type DepositTransitionActor = {
-  actorType: "worker" | "operator";
-  actorId: string;
-  reconciliationReplay: boolean;
-  replayReason: string | null;
-};
-
 @Injectable()
-export class TransactionIntentsService {
+export class WithdrawalIntentsService {
   private readonly productChainId: number;
 
   constructor(
@@ -248,6 +237,23 @@ export class TransactionIntentsService {
     }
 
     return normalizedAssetSymbol;
+  }
+
+  private normalizeBlockchainAddress(
+    value: string,
+    fieldName: string
+  ): string {
+    const normalizedValue = value.trim();
+
+    if (!normalizedValue) {
+      throw new BadRequestException(`${fieldName} is required.`);
+    }
+
+    if (!ethersUtils.isAddress(normalizedValue)) {
+      throw new BadRequestException(`${fieldName} must be a valid EVM address.`);
+    }
+
+    return ethersUtils.getAddress(normalizedValue);
   }
 
   private parseRequestedAmount(amount: string): Prisma.Decimal {
@@ -276,9 +282,9 @@ export class TransactionIntentsService {
         chainId: intent.asset.chainId
       },
       sourceWalletId: intent.sourceWalletId,
-      sourceWalletAddress: null,
+      sourceWalletAddress: intent.sourceWallet?.address ?? null,
       destinationWalletId: intent.destinationWalletId,
-      destinationWalletAddress: intent.destinationWallet?.address ?? null,
+      destinationWalletAddress: null,
       externalAddress: intent.externalAddress ?? null,
       chainId: intent.chainId,
       intentType: intent.intentType,
@@ -317,7 +323,7 @@ export class TransactionIntentsService {
 
   private mapIntentReviewProjection(
     intent: InternalIntentRecord
-  ): DepositIntentReviewProjection {
+  ): WithdrawalIntentReviewProjection {
     return {
       ...this.mapIntentProjection(intent),
       customer: {
@@ -332,10 +338,16 @@ export class TransactionIntentsService {
     };
   }
 
-  private async resolveDepositIntentContext(
+  private async resolveWithdrawalIntentContext(
     supabaseUserId: string,
-    assetSymbol: string
-  ): Promise<DepositIntentContext> {
+    assetSymbol: string,
+    externalAddress: string
+  ): Promise<WithdrawalIntentContext> {
+    const normalizedExternalAddress = this.normalizeBlockchainAddress(
+      externalAddress,
+      "destinationAddress"
+    );
+
     const customerAccount = await this.prismaService.customerAccount!.findFirst({
       where: {
         customer: {
@@ -382,6 +394,18 @@ export class TransactionIntentsService {
       );
     }
 
+    const sourceWallet = customerAccount.wallets[0];
+    const normalizedSourceWalletAddress = this.normalizeBlockchainAddress(
+      sourceWallet.address,
+      "sourceWalletAddress"
+    );
+
+    if (normalizedSourceWalletAddress === normalizedExternalAddress) {
+      throw new BadRequestException(
+        "Withdrawal destination address must differ from the product wallet address."
+      );
+    }
+
     const asset = await this.prismaService.asset.findUnique({
       where: {
         chainId_symbol: {
@@ -394,7 +418,6 @@ export class TransactionIntentsService {
         symbol: true,
         displayName: true,
         decimals: true,
-        chainId: true,
         status: true
       }
     });
@@ -406,34 +429,14 @@ export class TransactionIntentsService {
     return {
       customerId: customerAccount.customer.id,
       customerAccountId: customerAccount.id,
-      destinationWalletId: customerAccount.wallets[0].id,
-      destinationWalletAddress: customerAccount.wallets[0].address,
+      sourceWalletId: sourceWallet.id,
+      sourceWalletAddress: normalizedSourceWalletAddress,
+      externalAddress: normalizedExternalAddress,
       assetId: asset.id,
       assetSymbol: asset.symbol,
       assetDisplayName: asset.displayName,
       assetDecimals: asset.decimals
     };
-  }
-
-  private async requireCustomerAccountId(
-    supabaseUserId: string
-  ): Promise<string> {
-    const customerAccount = await this.prismaService.customerAccount!.findFirst({
-      where: {
-        customer: {
-          supabaseUserId
-        }
-      },
-      select: {
-        id: true
-      }
-    });
-
-    if (!customerAccount) {
-      throw new NotFoundException("Customer account projection not found.");
-    }
-
-    return customerAccount.id;
   }
 
   private async findIntentByIdempotencyKey(
@@ -453,7 +456,7 @@ export class TransactionIntentsService {
             chainId: true
           }
         },
-        destinationWallet: {
+        sourceWallet: {
           select: {
             id: true,
             address: true
@@ -463,13 +466,13 @@ export class TransactionIntentsService {
     });
   }
 
-  private async findDepositIntentForReview(
+  private async findWithdrawalIntentForReview(
     intentId: string
   ): Promise<InternalIntentRecord | null> {
     return this.prismaService.transactionIntent.findFirst({
       where: {
         id: intentId,
-        intentType: TransactionIntentType.deposit,
+        intentType: TransactionIntentType.withdrawal,
         chainId: this.productChainId
       },
       include: {
@@ -482,7 +485,7 @@ export class TransactionIntentsService {
             chainId: true
           }
         },
-        destinationWallet: {
+        sourceWallet: {
           select: {
             id: true,
             address: true
@@ -523,29 +526,29 @@ export class TransactionIntentsService {
     });
   }
 
-  private assertReusableDepositIntent(
+  private assertReusableWithdrawalIntent(
     existingIntent: CustomerIntentRecord,
-    context: DepositIntentContext,
+    context: WithdrawalIntentContext,
     requestedAmount: Prisma.Decimal
   ): void {
     const matches =
       existingIntent.customerAccountId === context.customerAccountId &&
-      existingIntent.intentType === TransactionIntentType.deposit &&
+      existingIntent.intentType === TransactionIntentType.withdrawal &&
       existingIntent.chainId === this.productChainId &&
       existingIntent.asset.symbol === context.assetSymbol &&
-      existingIntent.destinationWalletId === context.destinationWalletId &&
-      existingIntent.destinationWallet?.address ===
-        context.destinationWalletAddress &&
+      existingIntent.sourceWalletId === context.sourceWalletId &&
+      existingIntent.sourceWallet?.address === context.sourceWalletAddress &&
+      existingIntent.externalAddress === context.externalAddress &&
       existingIntent.requestedAmount.equals(requestedAmount);
 
     if (!matches) {
       throw new ConflictException(
-        "Idempotency key already exists for a different transaction intent request."
+        "Idempotency key already exists for a different withdrawal request."
       );
     }
   }
 
-  private ensureDepositIntentIsPendingOperatorDecision(
+  private ensureWithdrawalIntentIsPendingOperatorDecision(
     intent: InternalIntentRecord
   ): void {
     if (
@@ -553,99 +556,120 @@ export class TransactionIntentsService {
       intent.policyDecision !== PolicyDecision.pending
     ) {
       throw new ConflictException(
-        "Deposit transaction intent is not pending operator decision."
+        "Withdrawal transaction intent is not pending operator decision."
       );
     }
   }
 
-  private ensureDepositIntentIsApproved(intent: InternalIntentRecord): void {
+  private ensureWithdrawalIntentIsApproved(intent: InternalIntentRecord): void {
     if (
       intent.status !== TransactionIntentStatus.approved ||
       intent.policyDecision !== PolicyDecision.approved
     ) {
       throw new ConflictException(
-        "Deposit transaction intent is not approved and ready for queueing."
+        "Withdrawal transaction intent is not approved and ready for queueing."
       );
     }
   }
 
-  private ensureDepositIntentIsQueued(intent: InternalIntentRecord): void {
+  private ensureWithdrawalIntentIsQueued(intent: InternalIntentRecord): void {
     if (
       intent.status !== TransactionIntentStatus.queued ||
       intent.policyDecision !== PolicyDecision.approved
     ) {
       throw new ConflictException(
-        "Deposit transaction intent is not queued for worker execution."
+        "Withdrawal transaction intent is not queued for worker execution."
       );
     }
   }
 
-  private ensureDepositIntentIsBroadcast(intent: InternalIntentRecord): void {
+  private ensureWithdrawalIntentIsBroadcast(intent: InternalIntentRecord): void {
     if (
       intent.status !== TransactionIntentStatus.broadcast ||
       intent.policyDecision !== PolicyDecision.approved
     ) {
       throw new ConflictException(
-        "Deposit transaction intent is not broadcast and ready for confirmation."
+        "Withdrawal transaction intent is not broadcast and ready for confirmation."
       );
     }
   }
 
-  private ensureDepositIntentIsConfirmed(intent: InternalIntentRecord): void {
+  private ensureWithdrawalIntentIsConfirmed(intent: InternalIntentRecord): void {
     if (
       intent.status !== TransactionIntentStatus.confirmed ||
       intent.policyDecision !== PolicyDecision.approved
     ) {
       throw new ConflictException(
-        "Deposit transaction intent is not confirmed and ready for settlement."
+        "Withdrawal transaction intent is not confirmed and ready for settlement."
       );
     }
   }
 
-  async replayConfirmDepositIntent(
-    intentId: string,
-    operatorId: string,
-    note: string | null
-  ): Promise<ConfirmDepositIntentResult> {
-    return this.confirmDepositIntentWithActor(
-      intentId,
-      null,
-      note,
-      {
-        actorType: "operator",
-        actorId: operatorId,
-        reconciliationReplay: true,
-        replayReason: "deposit_settlement_reconciliation"
-      }
+  private resolveWithdrawalBroadcastAddresses(
+    intent: InternalIntentRecord,
+    fromAddress: string | null,
+    toAddress: string | null
+  ): {
+    normalizedFromAddress: string;
+    normalizedToAddress: string;
+  } {
+    if (!intent.sourceWallet?.address) {
+      throw new ConflictException(
+        "Withdrawal transaction intent source wallet is missing."
+      );
+    }
+
+    if (!intent.externalAddress) {
+      throw new ConflictException(
+        "Withdrawal transaction intent destination address is missing."
+      );
+    }
+
+    const expectedFromAddress = this.normalizeBlockchainAddress(
+      intent.sourceWallet.address,
+      "sourceWalletAddress"
     );
+    const expectedToAddress = this.normalizeBlockchainAddress(
+      intent.externalAddress,
+      "externalAddress"
+    );
+
+    const normalizedFromAddress = fromAddress
+      ? this.normalizeBlockchainAddress(fromAddress, "fromAddress")
+      : expectedFromAddress;
+
+    const normalizedToAddress = toAddress
+      ? this.normalizeBlockchainAddress(toAddress, "toAddress")
+      : expectedToAddress;
+
+    if (normalizedFromAddress !== expectedFromAddress) {
+      throw new ConflictException(
+        "Provided fromAddress does not match the withdrawal source wallet."
+      );
+    }
+
+    if (normalizedToAddress !== expectedToAddress) {
+      throw new ConflictException(
+        "Provided toAddress does not match the withdrawal destination address."
+      );
+    }
+
+    return {
+      normalizedFromAddress,
+      normalizedToAddress
+    };
   }
 
-  async replaySettleConfirmedDepositIntent(
-    intentId: string,
-    operatorId: string,
-    note: string | null
-  ): Promise<SettleConfirmedDepositIntentResult> {
-    return this.settleConfirmedDepositIntentWithActor(
-      intentId,
-      note,
-      {
-        actorType: "operator",
-        actorId: operatorId,
-        reconciliationReplay: true,
-        replayReason: "deposit_settlement_reconciliation"
-      }
-    );
-  }
-
-  async createDepositIntent(
+  async createWithdrawalIntent(
     supabaseUserId: string,
-    dto: CreateDepositIntentDto
-  ): Promise<CreateDepositIntentResult> {
+    dto: CreateWithdrawalIntentDto
+  ): Promise<CreateWithdrawalIntentResult> {
     const normalizedAssetSymbol = this.normalizeAssetSymbol(dto.assetSymbol);
     const requestedAmount = this.parseRequestedAmount(dto.amount);
-    const context = await this.resolveDepositIntentContext(
+    const context = await this.resolveWithdrawalIntentContext(
       supabaseUserId,
-      normalizedAssetSymbol
+      normalizedAssetSymbol,
+      dto.destinationAddress
     );
 
     const existingIntent = await this.findIntentByIdempotencyKey(
@@ -653,7 +677,7 @@ export class TransactionIntentsService {
     );
 
     if (existingIntent) {
-      this.assertReusableDepositIntent(
+      this.assertReusableWithdrawalIntent(
         existingIntent,
         context,
         requestedAmount
@@ -668,14 +692,22 @@ export class TransactionIntentsService {
     try {
       const createdIntent = await this.prismaService.$transaction(
         async (transaction) => {
+          const balanceTransition =
+            await this.ledgerService.reserveWithdrawalBalance(transaction, {
+              customerAccountId: context.customerAccountId,
+              assetId: context.assetId,
+              amount: requestedAmount
+            });
+
           const intent = await transaction.transactionIntent.create({
             data: {
               customerAccountId: context.customerAccountId,
               assetId: context.assetId,
-              sourceWalletId: null,
-              destinationWalletId: context.destinationWalletId,
+              sourceWalletId: context.sourceWalletId,
+              destinationWalletId: null,
+              externalAddress: context.externalAddress,
               chainId: this.productChainId,
-              intentType: TransactionIntentType.deposit,
+              intentType: TransactionIntentType.withdrawal,
               status: TransactionIntentStatus.requested,
               policyDecision: PolicyDecision.pending,
               requestedAmount,
@@ -694,7 +726,7 @@ export class TransactionIntentsService {
                   chainId: true
                 }
               },
-              destinationWallet: {
+              sourceWallet: {
                 select: {
                   id: true,
                   address: true
@@ -708,7 +740,7 @@ export class TransactionIntentsService {
               customerId: context.customerId,
               actorType: "customer",
               actorId: supabaseUserId,
-              action: "transaction_intent.deposit.requested",
+              action: "transaction_intent.withdrawal.requested",
               targetType: "TransactionIntent",
               targetId: intent.id,
               metadata: {
@@ -717,10 +749,13 @@ export class TransactionIntentsService {
                 assetSymbol: context.assetSymbol,
                 assetDisplayName: context.assetDisplayName,
                 requestedAmount: intent.requestedAmount.toString(),
-                destinationWalletId: context.destinationWalletId,
-                destinationWalletAddress: context.destinationWalletAddress,
+                sourceWalletId: context.sourceWalletId,
+                sourceWalletAddress: context.sourceWalletAddress,
+                externalAddress: context.externalAddress,
                 chainId: this.productChainId,
-                idempotencyKey: dto.idempotencyKey
+                idempotencyKey: dto.idempotencyKey,
+                availableBalance: balanceTransition.availableBalance,
+                pendingBalance: balanceTransition.pendingBalance
               }
             }
           });
@@ -746,7 +781,11 @@ export class TransactionIntentsService {
           throw error;
         }
 
-        this.assertReusableDepositIntent(reusedIntent, context, requestedAmount);
+        this.assertReusableWithdrawalIntent(
+          reusedIntent,
+          context,
+          requestedAmount
+        );
 
         return {
           intent: this.mapIntentProjection(reusedIntent),
@@ -758,54 +797,14 @@ export class TransactionIntentsService {
     }
   }
 
-  async listMyTransactionIntents(
-    supabaseUserId: string,
-    query: ListMyTransactionIntentsDto
-  ): Promise<ListMyTransactionIntentsResult> {
-    const limit = query.limit ?? 20;
-    const customerAccountId = await this.requireCustomerAccountId(supabaseUserId);
-
-    const intents = await this.prismaService.transactionIntent.findMany({
-      where: {
-        customerAccountId
-      },
-      orderBy: {
-        createdAt: "desc"
-      },
-      take: limit,
-      include: {
-        asset: {
-          select: {
-            id: true,
-            symbol: true,
-            displayName: true,
-            decimals: true,
-            chainId: true
-          }
-        },
-        destinationWallet: {
-          select: {
-            id: true,
-            address: true
-          }
-        }
-      }
-    });
-
-    return {
-      intents: intents.map((intent) => this.mapIntentProjection(intent)),
-      limit
-    };
-  }
-
-  async listPendingDepositIntents(
-    query: ListPendingDepositIntentsDto
-  ): Promise<ListPendingDepositIntentsResult> {
+  async listPendingWithdrawalIntents(
+    query: ListPendingWithdrawalIntentsDto
+  ): Promise<ListPendingWithdrawalIntentsResult> {
     const limit = query.limit ?? 20;
 
     const intents = await this.prismaService.transactionIntent.findMany({
       where: {
-        intentType: TransactionIntentType.deposit,
+        intentType: TransactionIntentType.withdrawal,
         chainId: this.productChainId,
         status: TransactionIntentStatus.requested,
         policyDecision: PolicyDecision.pending
@@ -824,7 +823,7 @@ export class TransactionIntentsService {
             chainId: true
           }
         },
-        destinationWallet: {
+        sourceWallet: {
           select: {
             id: true,
             address: true
@@ -870,27 +869,30 @@ export class TransactionIntentsService {
     };
   }
 
-  async decideDepositIntent(
+  async decideWithdrawalIntent(
     intentId: string,
     operatorId: string,
-    dto: DecideDepositIntentDto
-  ): Promise<DecideDepositIntentResult> {
+    dto: DecideWithdrawalIntentDto
+  ): Promise<DecideWithdrawalIntentResult> {
     if (dto.decision === "denied" && !dto.denialReason?.trim()) {
       throw new BadRequestException(
         "Denial reason is required for denied decisions."
       );
     }
 
-    const existingIntent = await this.findDepositIntentForReview(intentId);
+    const existingIntent = await this.findWithdrawalIntentForReview(intentId);
 
     if (!existingIntent) {
-      throw new NotFoundException("Deposit transaction intent not found.");
+      throw new NotFoundException("Withdrawal transaction intent not found.");
     }
 
-    this.ensureDepositIntentIsPendingOperatorDecision(existingIntent);
+    this.ensureWithdrawalIntentIsPendingOperatorDecision(existingIntent);
 
     const updatedIntent = await this.prismaService.$transaction(
       async (transaction) => {
+        let availableBalance: string | null = null;
+        let pendingBalance: string | null = null;
+
         const newStatus =
           dto.decision === "approved"
             ? TransactionIntentStatus.approved
@@ -899,6 +901,18 @@ export class TransactionIntentsService {
           dto.decision === "approved"
             ? PolicyDecision.approved
             : PolicyDecision.denied;
+
+        if (dto.decision === "denied") {
+          const balanceTransition =
+            await this.ledgerService.releaseWithdrawalReservation(transaction, {
+              customerAccountId: existingIntent.customerAccount!.id,
+              assetId: existingIntent.asset.id,
+              amount: existingIntent.requestedAmount
+            });
+
+          availableBalance = balanceTransition.availableBalance;
+          pendingBalance = balanceTransition.pendingBalance;
+        }
 
         await transaction.transactionIntent.update({
           where: {
@@ -920,8 +934,8 @@ export class TransactionIntentsService {
             actorId: operatorId,
             action:
               dto.decision === "approved"
-                ? "transaction_intent.deposit.approved"
-                : "transaction_intent.deposit.denied",
+                ? "transaction_intent.withdrawal.approved"
+                : "transaction_intent.withdrawal.denied",
             targetType: "TransactionIntent",
             targetId: existingIntent.id,
             metadata: {
@@ -930,9 +944,9 @@ export class TransactionIntentsService {
               assetSymbol: existingIntent.asset.symbol,
               assetDisplayName: existingIntent.asset.displayName,
               requestedAmount: existingIntent.requestedAmount.toString(),
-              destinationWalletId: existingIntent.destinationWalletId,
-              destinationWalletAddress:
-                existingIntent.destinationWallet?.address ?? null,
+              sourceWalletId: existingIntent.sourceWalletId,
+              sourceWalletAddress: existingIntent.sourceWallet?.address ?? null,
+              externalAddress: existingIntent.externalAddress,
               chainId: existingIntent.chainId,
               previousStatus: existingIntent.status,
               newStatus,
@@ -940,7 +954,9 @@ export class TransactionIntentsService {
               newPolicyDecision,
               note: dto.note?.trim() ?? null,
               denialReason:
-                dto.decision === "denied" ? dto.denialReason?.trim() ?? null : null
+                dto.decision === "denied" ? dto.denialReason?.trim() ?? null : null,
+              availableBalance,
+              pendingBalance
             }
           }
         });
@@ -959,7 +975,7 @@ export class TransactionIntentsService {
                 chainId: true
               }
             },
-            destinationWallet: {
+            sourceWallet: {
               select: {
                 id: true,
                 address: true
@@ -1000,7 +1016,7 @@ export class TransactionIntentsService {
         });
 
         if (!refreshedIntent) {
-          throw new NotFoundException("Deposit transaction intent not found.");
+          throw new NotFoundException("Withdrawal transaction intent not found.");
         }
 
         return refreshedIntent;
@@ -1013,14 +1029,14 @@ export class TransactionIntentsService {
     };
   }
 
-  async listApprovedDepositIntents(
-    query: ListApprovedDepositIntentsDto
-  ): Promise<ListApprovedDepositIntentsResult> {
+  async listApprovedWithdrawalIntents(
+    query: ListApprovedWithdrawalIntentsDto
+  ): Promise<ListApprovedWithdrawalIntentsResult> {
     const limit = query.limit ?? 20;
 
     const intents = await this.prismaService.transactionIntent.findMany({
       where: {
-        intentType: TransactionIntentType.deposit,
+        intentType: TransactionIntentType.withdrawal,
         chainId: this.productChainId,
         status: TransactionIntentStatus.approved,
         policyDecision: PolicyDecision.approved
@@ -1039,7 +1055,7 @@ export class TransactionIntentsService {
             chainId: true
           }
         },
-        destinationWallet: {
+        sourceWallet: {
           select: {
             id: true,
             address: true
@@ -1085,15 +1101,15 @@ export class TransactionIntentsService {
     };
   }
 
-  async queueApprovedDepositIntent(
+  async queueApprovedWithdrawalIntent(
     intentId: string,
     operatorId: string,
-    dto: QueueApprovedDepositIntentDto
-  ): Promise<QueueApprovedDepositIntentResult> {
-    const existingIntent = await this.findDepositIntentForReview(intentId);
+    dto: QueueApprovedWithdrawalIntentDto
+  ): Promise<QueueApprovedWithdrawalIntentResult> {
+    const existingIntent = await this.findWithdrawalIntentForReview(intentId);
 
     if (!existingIntent) {
-      throw new NotFoundException("Deposit transaction intent not found.");
+      throw new NotFoundException("Withdrawal transaction intent not found.");
     }
 
     if (
@@ -1106,7 +1122,7 @@ export class TransactionIntentsService {
       };
     }
 
-    this.ensureDepositIntentIsApproved(existingIntent);
+    this.ensureWithdrawalIntentIsApproved(existingIntent);
 
     const updatedIntent = await this.prismaService.$transaction(
       async (transaction) => {
@@ -1126,7 +1142,7 @@ export class TransactionIntentsService {
             customerId: existingIntent.customerAccount!.customer.id,
             actorType: "operator",
             actorId: operatorId,
-            action: "transaction_intent.deposit.queued",
+            action: "transaction_intent.withdrawal.queued",
             targetType: "TransactionIntent",
             targetId: existingIntent.id,
             metadata: {
@@ -1135,9 +1151,9 @@ export class TransactionIntentsService {
               assetSymbol: existingIntent.asset.symbol,
               assetDisplayName: existingIntent.asset.displayName,
               requestedAmount: existingIntent.requestedAmount.toString(),
-              destinationWalletId: existingIntent.destinationWalletId,
-              destinationWalletAddress:
-                existingIntent.destinationWallet?.address ?? null,
+              sourceWalletId: existingIntent.sourceWalletId,
+              sourceWalletAddress: existingIntent.sourceWallet?.address ?? null,
+              externalAddress: existingIntent.externalAddress,
               chainId: existingIntent.chainId,
               previousStatus: existingIntent.status,
               newStatus: TransactionIntentStatus.queued,
@@ -1162,7 +1178,7 @@ export class TransactionIntentsService {
                 chainId: true
               }
             },
-            destinationWallet: {
+            sourceWallet: {
               select: {
                 id: true,
                 address: true
@@ -1203,7 +1219,7 @@ export class TransactionIntentsService {
         });
 
         if (!refreshedIntent) {
-          throw new NotFoundException("Deposit transaction intent not found.");
+          throw new NotFoundException("Withdrawal transaction intent not found.");
         }
 
         return refreshedIntent;
@@ -1216,14 +1232,14 @@ export class TransactionIntentsService {
     };
   }
 
-  async listQueuedDepositIntents(
-    query: ListQueuedDepositIntentsDto
-  ): Promise<ListQueuedDepositIntentsResult> {
+  async listQueuedWithdrawalIntents(
+    query: ListQueuedWithdrawalIntentsDto
+  ): Promise<ListQueuedWithdrawalIntentsResult> {
     const limit = query.limit ?? 20;
 
     const intents = await this.prismaService.transactionIntent.findMany({
       where: {
-        intentType: TransactionIntentType.deposit,
+        intentType: TransactionIntentType.withdrawal,
         chainId: this.productChainId,
         status: TransactionIntentStatus.queued,
         policyDecision: PolicyDecision.approved
@@ -1242,7 +1258,7 @@ export class TransactionIntentsService {
             chainId: true
           }
         },
-        destinationWallet: {
+        sourceWallet: {
           select: {
             id: true,
             address: true
@@ -1288,15 +1304,15 @@ export class TransactionIntentsService {
     };
   }
 
-  async recordDepositBroadcast(
+  async recordWithdrawalBroadcast(
     intentId: string,
     workerId: string,
-    dto: RecordDepositBroadcastDto
-  ): Promise<RecordDepositBroadcastResult> {
-    const existingIntent = await this.findDepositIntentForReview(intentId);
+    dto: RecordWithdrawalBroadcastDto
+  ): Promise<RecordWithdrawalBroadcastResult> {
+    const existingIntent = await this.findWithdrawalIntentForReview(intentId);
 
     if (!existingIntent) {
-      throw new NotFoundException("Deposit transaction intent not found.");
+      throw new NotFoundException("Withdrawal transaction intent not found.");
     }
 
     const latestBlockchainTransaction =
@@ -1313,7 +1329,7 @@ export class TransactionIntentsService {
       };
     }
 
-    this.ensureDepositIntentIsQueued(existingIntent);
+    this.ensureWithdrawalIntentIsQueued(existingIntent);
 
     const updatedIntent = await this.prismaService.$transaction(
       async (transaction) => {
@@ -1331,7 +1347,7 @@ export class TransactionIntentsService {
                 chainId: true
               }
             },
-            destinationWallet: {
+            sourceWallet: {
               select: {
                 id: true,
                 address: true
@@ -1372,7 +1388,7 @@ export class TransactionIntentsService {
         });
 
         if (!currentIntent) {
-          throw new NotFoundException("Deposit transaction intent not found.");
+          throw new NotFoundException("Withdrawal transaction intent not found.");
         }
 
         const currentLatestBlockchainTransaction =
@@ -1387,16 +1403,23 @@ export class TransactionIntentsService {
           return currentIntent;
         }
 
-        this.ensureDepositIntentIsQueued(currentIntent);
+        this.ensureWithdrawalIntentIsQueued(currentIntent);
 
         if (
           currentLatestBlockchainTransaction?.txHash &&
           currentLatestBlockchainTransaction.txHash !== dto.txHash
         ) {
           throw new ConflictException(
-            "A different blockchain transaction is already recorded for this deposit intent."
+            "A different blockchain transaction is already recorded for this withdrawal intent."
           );
         }
+
+        const { normalizedFromAddress, normalizedToAddress } =
+          this.resolveWithdrawalBroadcastAddresses(
+            currentIntent,
+            dto.fromAddress?.trim() ?? null,
+            dto.toAddress?.trim() ?? null
+          );
 
         if (currentLatestBlockchainTransaction) {
           await transaction.blockchainTransaction.update({
@@ -1406,8 +1429,8 @@ export class TransactionIntentsService {
             data: {
               txHash: dto.txHash,
               status: BlockchainTransactionStatus.broadcast,
-              fromAddress: dto.fromAddress ?? null,
-              toAddress: dto.toAddress ?? null
+              fromAddress: normalizedFromAddress,
+              toAddress: normalizedToAddress
             }
           });
         } else {
@@ -1418,8 +1441,8 @@ export class TransactionIntentsService {
               txHash: dto.txHash,
               nonce: null,
               status: BlockchainTransactionStatus.broadcast,
-              fromAddress: dto.fromAddress ?? null,
-              toAddress: dto.toAddress ?? null,
+              fromAddress: normalizedFromAddress,
+              toAddress: normalizedToAddress,
               confirmedAt: null
             }
           });
@@ -1441,7 +1464,7 @@ export class TransactionIntentsService {
             customerId: currentIntent.customerAccount!.customer.id,
             actorType: "worker",
             actorId: workerId,
-            action: "transaction_intent.deposit.broadcast",
+            action: "transaction_intent.withdrawal.broadcast",
             targetType: "TransactionIntent",
             targetId: currentIntent.id,
             metadata: {
@@ -1450,13 +1473,13 @@ export class TransactionIntentsService {
               assetSymbol: currentIntent.asset.symbol,
               assetDisplayName: currentIntent.asset.displayName,
               requestedAmount: currentIntent.requestedAmount.toString(),
-              destinationWalletId: currentIntent.destinationWalletId,
-              destinationWalletAddress:
-                currentIntent.destinationWallet?.address ?? null,
+              sourceWalletId: currentIntent.sourceWalletId,
+              sourceWalletAddress: normalizedFromAddress,
+              externalAddress: currentIntent.externalAddress,
               chainId: currentIntent.chainId,
               txHash: dto.txHash,
-              fromAddress: dto.fromAddress ?? null,
-              toAddress: dto.toAddress ?? null,
+              fromAddress: normalizedFromAddress,
+              toAddress: normalizedToAddress,
               previousStatus: currentIntent.status,
               newStatus: TransactionIntentStatus.broadcast
             }
@@ -1477,7 +1500,7 @@ export class TransactionIntentsService {
                 chainId: true
               }
             },
-            destinationWallet: {
+            sourceWallet: {
               select: {
                 id: true,
                 address: true
@@ -1518,7 +1541,7 @@ export class TransactionIntentsService {
         });
 
         if (!refreshedIntent) {
-          throw new NotFoundException("Deposit transaction intent not found.");
+          throw new NotFoundException("Withdrawal transaction intent not found.");
         }
 
         return refreshedIntent;
@@ -1531,18 +1554,18 @@ export class TransactionIntentsService {
     };
   }
 
-  async failDepositIntentExecution(
+  async failWithdrawalIntentExecution(
     intentId: string,
     workerId: string,
-    dto: FailDepositIntentExecutionDto
-  ): Promise<FailDepositIntentExecutionResult> {
+    dto: FailWithdrawalIntentExecutionDto
+  ): Promise<FailWithdrawalIntentExecutionResult> {
     const failureCode = dto.failureCode.trim();
     const failureReason = dto.failureReason.trim();
 
-    const existingIntent = await this.findDepositIntentForReview(intentId);
+    const existingIntent = await this.findWithdrawalIntentForReview(intentId);
 
     if (!existingIntent) {
-      throw new NotFoundException("Deposit transaction intent not found.");
+      throw new NotFoundException("Withdrawal transaction intent not found.");
     }
 
     const latestBlockchainTransaction =
@@ -1556,7 +1579,7 @@ export class TransactionIntentsService {
         existingIntent.status !== TransactionIntentStatus.broadcast)
     ) {
       throw new ConflictException(
-        "Deposit transaction intent is not in an execution state that can fail."
+        "Withdrawal transaction intent is not in an execution state that can fail."
       );
     }
 
@@ -1576,7 +1599,7 @@ export class TransactionIntentsService {
                 chainId: true
               }
             },
-            destinationWallet: {
+            sourceWallet: {
               select: {
                 id: true,
                 address: true
@@ -1617,7 +1640,7 @@ export class TransactionIntentsService {
         });
 
         if (!currentIntent) {
-          throw new NotFoundException("Deposit transaction intent not found.");
+          throw new NotFoundException("Withdrawal transaction intent not found.");
         }
 
         const currentLatestBlockchainTransaction =
@@ -1625,6 +1648,7 @@ export class TransactionIntentsService {
 
         if (
           currentIntent.status === TransactionIntentStatus.failed &&
+          currentIntent.policyDecision === PolicyDecision.approved &&
           currentIntent.failureCode === failureCode &&
           currentIntent.failureReason === failureReason &&
           (!dto.txHash || currentLatestBlockchainTransaction?.txHash === dto.txHash)
@@ -1638,7 +1662,7 @@ export class TransactionIntentsService {
             currentIntent.status !== TransactionIntentStatus.broadcast)
         ) {
           throw new ConflictException(
-            "Deposit transaction intent is not in an execution state that can fail."
+            "Withdrawal transaction intent is not in an execution state that can fail."
           );
         }
 
@@ -1648,9 +1672,20 @@ export class TransactionIntentsService {
           currentLatestBlockchainTransaction.txHash !== dto.txHash
         ) {
           throw new ConflictException(
-            "A different blockchain transaction is already recorded for this deposit intent."
+            "A different blockchain transaction is already recorded for this withdrawal intent."
           );
         }
+
+        const { normalizedFromAddress, normalizedToAddress } =
+          this.resolveWithdrawalBroadcastAddresses(
+            currentIntent,
+            dto.fromAddress?.trim() ??
+              currentLatestBlockchainTransaction?.fromAddress ??
+              null,
+            dto.toAddress?.trim() ??
+              currentLatestBlockchainTransaction?.toAddress ??
+              null
+          );
 
         if (currentLatestBlockchainTransaction) {
           await transaction.blockchainTransaction.update({
@@ -1660,9 +1695,8 @@ export class TransactionIntentsService {
             data: {
               txHash: dto.txHash ?? currentLatestBlockchainTransaction.txHash,
               status: BlockchainTransactionStatus.failed,
-              fromAddress:
-                dto.fromAddress ?? currentLatestBlockchainTransaction.fromAddress,
-              toAddress: dto.toAddress ?? currentLatestBlockchainTransaction.toAddress
+              fromAddress: normalizedFromAddress,
+              toAddress: normalizedToAddress
             }
           });
         } else {
@@ -1673,12 +1707,19 @@ export class TransactionIntentsService {
               txHash: dto.txHash ?? null,
               nonce: null,
               status: BlockchainTransactionStatus.failed,
-              fromAddress: dto.fromAddress ?? null,
-              toAddress: dto.toAddress ?? null,
+              fromAddress: normalizedFromAddress,
+              toAddress: normalizedToAddress,
               confirmedAt: null
             }
           });
         }
+
+        const balanceTransition =
+          await this.ledgerService.releaseWithdrawalReservation(transaction, {
+            customerAccountId: currentIntent.customerAccount!.id,
+            assetId: currentIntent.asset.id,
+            amount: currentIntent.requestedAmount
+          });
 
         await transaction.transactionIntent.update({
           where: {
@@ -1696,7 +1737,7 @@ export class TransactionIntentsService {
             customerId: currentIntent.customerAccount!.customer.id,
             actorType: "worker",
             actorId: workerId,
-            action: "transaction_intent.deposit.execution_failed",
+            action: "transaction_intent.withdrawal.execution_failed",
             targetType: "TransactionIntent",
             targetId: currentIntent.id,
             metadata: {
@@ -1705,19 +1746,19 @@ export class TransactionIntentsService {
               assetSymbol: currentIntent.asset.symbol,
               assetDisplayName: currentIntent.asset.displayName,
               requestedAmount: currentIntent.requestedAmount.toString(),
-              destinationWalletId: currentIntent.destinationWalletId,
-              destinationWalletAddress:
-                currentIntent.destinationWallet?.address ?? null,
+              sourceWalletId: currentIntent.sourceWalletId,
+              sourceWalletAddress: normalizedFromAddress,
+              externalAddress: currentIntent.externalAddress,
               chainId: currentIntent.chainId,
               txHash: dto.txHash ?? currentLatestBlockchainTransaction?.txHash ?? null,
-              fromAddress:
-                dto.fromAddress ?? currentLatestBlockchainTransaction?.fromAddress ?? null,
-              toAddress:
-                dto.toAddress ?? currentLatestBlockchainTransaction?.toAddress ?? null,
+              fromAddress: normalizedFromAddress,
+              toAddress: normalizedToAddress,
               previousStatus: currentIntent.status,
               newStatus: TransactionIntentStatus.failed,
               failureCode,
-              failureReason
+              failureReason,
+              availableBalance: balanceTransition.availableBalance,
+              pendingBalance: balanceTransition.pendingBalance
             }
           }
         });
@@ -1736,7 +1777,7 @@ export class TransactionIntentsService {
                 chainId: true
               }
             },
-            destinationWallet: {
+            sourceWallet: {
               select: {
                 id: true,
                 address: true
@@ -1777,7 +1818,7 @@ export class TransactionIntentsService {
         });
 
         if (!refreshedIntent) {
-          throw new NotFoundException("Deposit transaction intent not found.");
+          throw new NotFoundException("Withdrawal transaction intent not found.");
         }
 
         return refreshedIntent;
@@ -1786,24 +1827,18 @@ export class TransactionIntentsService {
 
     return {
       intent: this.mapIntentReviewProjection(updatedIntent),
-      failureReused:
-        updatedIntent.status === TransactionIntentStatus.failed &&
-        updatedIntent.failureCode === failureCode &&
-        updatedIntent.failureReason === failureReason &&
-        false &&
-        existingIntent.failureCode === failureCode &&
-        existingIntent.failureReason === failureReason
+      failureReused: false
     };
   }
 
-  async listBroadcastDepositIntents(
-    query: ListBroadcastDepositIntentsDto
-  ): Promise<ListBroadcastDepositIntentsResult> {
+  async listBroadcastWithdrawalIntents(
+    query: ListBroadcastWithdrawalIntentsDto
+  ): Promise<ListBroadcastWithdrawalIntentsResult> {
     const limit = query.limit ?? 20;
 
     const intents = await this.prismaService.transactionIntent.findMany({
       where: {
-        intentType: TransactionIntentType.deposit,
+        intentType: TransactionIntentType.withdrawal,
         chainId: this.productChainId,
         status: TransactionIntentStatus.broadcast,
         policyDecision: PolicyDecision.approved
@@ -1822,7 +1857,7 @@ export class TransactionIntentsService {
             chainId: true
           }
         },
-        destinationWallet: {
+        sourceWallet: {
           select: {
             id: true,
             address: true
@@ -1868,34 +1903,17 @@ export class TransactionIntentsService {
     };
   }
 
-  async confirmDepositIntent(
+  async confirmWithdrawalIntent(
     intentId: string,
     workerId: string,
-    dto: ConfirmDepositIntentDto
-  ): Promise<ConfirmDepositIntentResult> {
-    return this.confirmDepositIntentWithActor(
-      intentId,
-      dto.txHash?.trim() ?? null,
-      null,
-      {
-        actorType: "worker",
-        actorId: workerId,
-        reconciliationReplay: false,
-        replayReason: null
-      }
-    );
-  }
+    dto: ConfirmWithdrawalIntentDto
+  ): Promise<ConfirmWithdrawalIntentResult> {
+    const txHash = dto.txHash?.trim() ?? null;
 
-  private async confirmDepositIntentWithActor(
-    intentId: string,
-    txHash: string | null,
-    note: string | null,
-    actor: DepositTransitionActor
-  ): Promise<ConfirmDepositIntentResult> {
-    const existingIntent = await this.findDepositIntentForReview(intentId);
+    const existingIntent = await this.findWithdrawalIntentForReview(intentId);
 
     if (!existingIntent) {
-      throw new NotFoundException("Deposit transaction intent not found.");
+      throw new NotFoundException("Withdrawal transaction intent not found.");
     }
 
     const latestBlockchainTransaction =
@@ -1903,7 +1921,7 @@ export class TransactionIntentsService {
 
     if (!latestBlockchainTransaction) {
       throw new ConflictException(
-        "No blockchain transaction exists for this deposit intent."
+        "No blockchain transaction exists for this withdrawal intent."
       );
     }
 
@@ -1923,7 +1941,7 @@ export class TransactionIntentsService {
       };
     }
 
-    this.ensureDepositIntentIsBroadcast(existingIntent);
+    this.ensureWithdrawalIntentIsBroadcast(existingIntent);
 
     const updatedIntent = await this.prismaService.$transaction(
       async (transaction) => {
@@ -1941,7 +1959,7 @@ export class TransactionIntentsService {
                 chainId: true
               }
             },
-            destinationWallet: {
+            sourceWallet: {
               select: {
                 id: true,
                 address: true
@@ -1982,7 +2000,7 @@ export class TransactionIntentsService {
         });
 
         if (!currentIntent) {
-          throw new NotFoundException("Deposit transaction intent not found.");
+          throw new NotFoundException("Withdrawal transaction intent not found.");
         }
 
         const currentLatestBlockchainTransaction =
@@ -1990,7 +2008,7 @@ export class TransactionIntentsService {
 
         if (!currentLatestBlockchainTransaction) {
           throw new ConflictException(
-            "No blockchain transaction exists for this deposit intent."
+            "No blockchain transaction exists for this withdrawal intent."
           );
         }
 
@@ -2008,7 +2026,7 @@ export class TransactionIntentsService {
           return currentIntent;
         }
 
-        this.ensureDepositIntentIsBroadcast(currentIntent);
+        this.ensureWithdrawalIntentIsBroadcast(currentIntent);
 
         await transaction.blockchainTransaction.update({
           where: {
@@ -2032,9 +2050,9 @@ export class TransactionIntentsService {
         await transaction.auditEvent.create({
           data: {
             customerId: currentIntent.customerAccount!.customer.id,
-            actorType: actor.actorType,
-            actorId: actor.actorId,
-            action: "transaction_intent.deposit.confirmed",
+            actorType: "worker",
+            actorId: workerId,
+            action: "transaction_intent.withdrawal.confirmed",
             targetType: "TransactionIntent",
             targetId: currentIntent.id,
             metadata: {
@@ -2043,16 +2061,13 @@ export class TransactionIntentsService {
               assetSymbol: currentIntent.asset.symbol,
               assetDisplayName: currentIntent.asset.displayName,
               requestedAmount: currentIntent.requestedAmount.toString(),
-              destinationWalletId: currentIntent.destinationWalletId,
-              destinationWalletAddress:
-                currentIntent.destinationWallet?.address ?? null,
+              sourceWalletId: currentIntent.sourceWalletId,
+              sourceWalletAddress: currentIntent.sourceWallet?.address ?? null,
+              externalAddress: currentIntent.externalAddress,
               chainId: currentIntent.chainId,
               txHash: currentLatestBlockchainTransaction.txHash,
               previousStatus: currentIntent.status,
-              newStatus: TransactionIntentStatus.confirmed,
-              note,
-              reconciliationReplay: actor.reconciliationReplay,
-              replayReason: actor.replayReason
+              newStatus: TransactionIntentStatus.confirmed
             }
           }
         });
@@ -2071,7 +2086,7 @@ export class TransactionIntentsService {
                 chainId: true
               }
             },
-            destinationWallet: {
+            sourceWallet: {
               select: {
                 id: true,
                 address: true
@@ -2112,7 +2127,7 @@ export class TransactionIntentsService {
         });
 
         if (!refreshedIntent) {
-          throw new NotFoundException("Deposit transaction intent not found.");
+          throw new NotFoundException("Withdrawal transaction intent not found.");
         }
 
         return refreshedIntent;
@@ -2125,32 +2140,17 @@ export class TransactionIntentsService {
     };
   }
 
-  async settleConfirmedDepositIntent(
+  async settleConfirmedWithdrawalIntent(
     intentId: string,
     workerId: string,
-    dto: SettleConfirmedDepositIntentDto
-  ): Promise<SettleConfirmedDepositIntentResult> {
-    return this.settleConfirmedDepositIntentWithActor(
-      intentId,
-      dto.note?.trim() ?? null,
-      {
-        actorType: "worker",
-        actorId: workerId,
-        reconciliationReplay: false,
-        replayReason: null
-      }
-    );
-  }
+    dto: SettleConfirmedWithdrawalIntentDto
+  ): Promise<SettleConfirmedWithdrawalIntentResult> {
+    const note = dto.note?.trim() ?? null;
 
-  private async settleConfirmedDepositIntentWithActor(
-    intentId: string,
-    note: string | null,
-    actor: DepositTransitionActor
-  ): Promise<SettleConfirmedDepositIntentResult> {
-    const existingIntent = await this.findDepositIntentForReview(intentId);
+    const existingIntent = await this.findWithdrawalIntentForReview(intentId);
 
     if (!existingIntent) {
-      throw new NotFoundException("Deposit transaction intent not found.");
+      throw new NotFoundException("Withdrawal transaction intent not found.");
     }
 
     const existingLedgerJournal = await this.prismaService.ledgerJournal.findUnique({
@@ -2184,7 +2184,7 @@ export class TransactionIntentsService {
       );
     }
 
-    this.ensureDepositIntentIsConfirmed(existingIntent);
+    this.ensureWithdrawalIntentIsConfirmed(existingIntent);
 
     const updatedIntent = await this.prismaService.$transaction(
       async (transaction) => {
@@ -2202,7 +2202,7 @@ export class TransactionIntentsService {
                 chainId: true
               }
             },
-            destinationWallet: {
+            sourceWallet: {
               select: {
                 id: true,
                 address: true
@@ -2243,23 +2243,7 @@ export class TransactionIntentsService {
         });
 
         if (!currentIntent) {
-          throw new NotFoundException("Deposit transaction intent not found.");
-        }
-
-        const currentLedgerJournal = await transaction.ledgerJournal.findUnique({
-          where: {
-            transactionIntentId: currentIntent.id
-          },
-          select: {
-            id: true
-          }
-        });
-
-        if (
-          currentIntent.status === TransactionIntentStatus.settled &&
-          currentLedgerJournal
-        ) {
-          return currentIntent;
+          throw new NotFoundException("Withdrawal transaction intent not found.");
         }
 
         const currentLatestBlockchainTransaction =
@@ -2275,9 +2259,9 @@ export class TransactionIntentsService {
           );
         }
 
-        this.ensureDepositIntentIsConfirmed(currentIntent);
+        this.ensureWithdrawalIntentIsConfirmed(currentIntent);
 
-        const ledgerResult = await this.ledgerService.settleConfirmedDeposit(
+        const ledgerResult = await this.ledgerService.settleConfirmedWithdrawal(
           transaction,
           {
             transactionIntentId: currentIntent.id,
@@ -2301,9 +2285,9 @@ export class TransactionIntentsService {
         await transaction.auditEvent.create({
           data: {
             customerId: currentIntent.customerAccount!.customer.id,
-            actorType: actor.actorType,
-            actorId: actor.actorId,
-            action: "transaction_intent.deposit.settled",
+            actorType: "worker",
+            actorId: workerId,
+            action: "transaction_intent.withdrawal.settled",
             targetType: "TransactionIntent",
             targetId: currentIntent.id,
             metadata: {
@@ -2313,9 +2297,9 @@ export class TransactionIntentsService {
               assetDisplayName: currentIntent.asset.displayName,
               requestedAmount: currentIntent.requestedAmount.toString(),
               settledAmount: currentIntent.requestedAmount.toString(),
-              destinationWalletId: currentIntent.destinationWalletId,
-              destinationWalletAddress:
-                currentIntent.destinationWallet?.address ?? null,
+              sourceWalletId: currentIntent.sourceWalletId,
+              sourceWalletAddress: currentIntent.sourceWallet?.address ?? null,
+              externalAddress: currentIntent.externalAddress,
               chainId: currentIntent.chainId,
               txHash: currentLatestBlockchainTransaction.txHash,
               previousStatus: currentIntent.status,
@@ -2324,9 +2308,8 @@ export class TransactionIntentsService {
               debitLedgerAccountId: ledgerResult.debitLedgerAccountId,
               creditLedgerAccountId: ledgerResult.creditLedgerAccountId,
               availableBalance: ledgerResult.availableBalance,
-              note,
-              reconciliationReplay: actor.reconciliationReplay,
-              replayReason: actor.replayReason
+              pendingBalance: ledgerResult.pendingBalance,
+              note
             }
           }
         });
@@ -2345,7 +2328,7 @@ export class TransactionIntentsService {
                 chainId: true
               }
             },
-            destinationWallet: {
+            sourceWallet: {
               select: {
                 id: true,
                 address: true
@@ -2386,7 +2369,7 @@ export class TransactionIntentsService {
         });
 
         if (!refreshedIntent) {
-          throw new NotFoundException("Deposit transaction intent not found.");
+          throw new NotFoundException("Withdrawal transaction intent not found.");
         }
 
         return refreshedIntent;

@@ -105,6 +105,7 @@ model TransactionIntent {
   sourceWallet           Wallet?                 @relation("SourceWallet", fields: [sourceWalletId], references: [id])
   destinationWalletId    String?
   destinationWallet      Wallet?                 @relation("DestinationWallet", fields: [destinationWalletId], references: [id])
+  externalAddress        String?
   chainId                Int
   intentType             TransactionIntentType
   status                 TransactionIntentStatus
@@ -125,6 +126,7 @@ model TransactionIntent {
   @@index([destinationWalletId])
   @@index([chainId, intentType])
   @@index([status, policyDecision])
+  @@index([chainId, externalAddress])
   ledgerJournal          LedgerJournal?
 }
 
@@ -400,11 +402,13 @@ model CustomerAssetBalance {
 
 enum LedgerAccountType {
   asset_inbound_clearing
+  asset_outbound_clearing
   customer_asset_liability
 }
 
 enum LedgerJournalType {
   deposit_settlement
+  withdrawal_settlement
 }
 
 enum LedgerPostingDirection {
