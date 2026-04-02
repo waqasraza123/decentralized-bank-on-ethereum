@@ -3,6 +3,7 @@ import { AuthModule } from "./auth/auth.module";
 import { CustomerBalancesModule } from "./customer-balances/customer-balances.module";
 import { EthereumModule } from "./ethereum/ethereum.module";
 import { PoolsModule } from "./pools/pools.module";
+import { ReviewCasesModule } from "./review-cases/review-cases.module";
 import { StakingPoolModule } from "./staking/staking.module";
 import { TransactionIntentsModule } from "./transaction-intents/transaction-intents.module";
 import { UserModule } from "./user/user.module";
@@ -15,7 +16,8 @@ import { UserModule } from "./user/user.module";
     StakingPoolModule,
     EthereumModule,
     TransactionIntentsModule,
-    CustomerBalancesModule
+    CustomerBalancesModule,
+    ReviewCasesModule
   ]
 })
 export class AppModule {}

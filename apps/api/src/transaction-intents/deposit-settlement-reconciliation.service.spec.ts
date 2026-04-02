@@ -100,9 +100,12 @@ function createService() {
     replaySettleConfirmedDepositIntent: jest.fn()
   };
 
+  const reviewCasesService = {} as never;
+
   const service = new DepositSettlementReconciliationService(
     prismaService as never,
-    transactionIntentsService as never
+    transactionIntentsService as never,
+    reviewCasesService
   );
 
   return {

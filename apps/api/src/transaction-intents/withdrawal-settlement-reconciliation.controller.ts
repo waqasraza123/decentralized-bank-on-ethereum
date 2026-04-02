@@ -10,6 +10,7 @@ import {
   ValidationPipe
 } from "@nestjs/common";
 import { InternalOperatorApiKeyGuard } from "../auth/guards/internal-operator-api-key.guard";
+import { OpenReconciliationReviewCaseDto } from "../review-cases/dto/open-reconciliation-review-case.dto";
 import { CustomJsonResponse } from "../types/CustomJsonResponse";
 import { ListWithdrawalSettlementReconciliationDto } from "./dto/list-withdrawal-settlement-reconciliation.dto";
 import { ReplayWithdrawalSettlementStepDto } from "./dto/replay-withdrawal-settlement-step.dto";
@@ -103,6 +104,34 @@ export class WithdrawalSettlementReconciliationController {
       message: result.settlementReused
         ? "Withdrawal settle replay reused successfully."
         : "Withdrawal settle replay completed successfully.",
+      data: result
+    };
+  }
+
+  @Post("withdrawal-settlements/:intentId/open-review-case")
+  async openManualReviewCase(
+    @Param("intentId") intentId: string,
+    @Body(
+      new ValidationPipe({
+        whitelist: true,
+        forbidNonWhitelisted: true
+      })
+    )
+    dto: OpenReconciliationReviewCaseDto,
+    @Request() request: InternalOperatorRequest
+  ): Promise<CustomJsonResponse> {
+    const result =
+      await this.withdrawalSettlementReconciliationService.openManualReviewCase(
+        intentId,
+        request.internalOperator.operatorId,
+        dto
+      );
+
+    return {
+      status: "success",
+      message: result.reviewCaseReused
+        ? "Withdrawal reconciliation review case reused successfully."
+        : "Withdrawal reconciliation review case opened successfully.",
       data: result
     };
   }

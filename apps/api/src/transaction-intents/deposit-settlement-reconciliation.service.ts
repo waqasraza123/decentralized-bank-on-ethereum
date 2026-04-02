@@ -7,10 +7,13 @@ import { loadProductChainRuntimeConfig } from "@stealth-trails-bank/config/api";
 import {
   BlockchainTransactionStatus,
   Prisma,
+  ReviewCaseType,
   TransactionIntentStatus,
   TransactionIntentType
 } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
+import { OpenReconciliationReviewCaseDto } from "../review-cases/dto/open-reconciliation-review-case.dto";
+import { ReviewCasesService } from "../review-cases/review-cases.service";
 import { classifyDepositSettlementReconciliation } from "./domain/deposit-settlement-reconciliation";
 import type {
   DepositSettlementReconciliationDecision,
@@ -144,7 +147,8 @@ export class DepositSettlementReconciliationService {
 
   constructor(
     private readonly prismaService: PrismaService,
-    private readonly transactionIntentsService: TransactionIntentsService
+    private readonly transactionIntentsService: TransactionIntentsService,
+    private readonly reviewCasesService: ReviewCasesService
   ) {
     this.productChainId = loadProductChainRuntimeConfig().productChainId;
   }
@@ -451,5 +455,44 @@ export class DepositSettlementReconciliationService {
       operatorId,
       dto.note?.trim() ?? null
     );
+  }
+
+  async openManualReviewCase(
+    intentId: string,
+    operatorId: string,
+    dto: OpenReconciliationReviewCaseDto
+  ) {
+    const record = await this.findRecordByIntentId(intentId);
+
+    if (!record) {
+      throw new NotFoundException("Deposit transaction intent not found.");
+    }
+
+    const item = this.mapItem(record);
+
+    if (item.reconciliation.state !== "manual_review_required") {
+      throw new ConflictException(
+        "Deposit transaction intent is not in a manual-review-required reconciliation state."
+      );
+    }
+
+    return this.reviewCasesService.openOrReuseReviewCase(this.prismaService, {
+      customerId: item.intent.customer.customerId,
+      customerAccountId: item.intent.customer.customerAccountId,
+      transactionIntentId: item.intent.id,
+      type: ReviewCaseType.reconciliation_review,
+      reasonCode: item.reconciliation.reasonCode,
+      notes: dto.note?.trim() ?? item.reconciliation.reason,
+      actorType: "operator",
+      actorId: operatorId,
+      auditAction: "review_case.reconciliation_review.opened",
+      auditMetadata: {
+        intentType: "deposit",
+        reconciliationState: item.reconciliation.state,
+        reconciliationReason: item.reconciliation.reason,
+        replayAction: item.reconciliation.replayAction,
+        chainId: item.intent.chainId
+      }
+    });
   }
 }

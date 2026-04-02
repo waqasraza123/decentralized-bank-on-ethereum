@@ -160,13 +160,20 @@ model ReviewCase {
   status              ReviewCaseStatus   @default(open)
   reasonCode          String?
   notes               String?
+  assignedOperatorId  String?
+  startedAt           DateTime?
+  resolvedAt          DateTime?
+  dismissedAt         DateTime?
   createdAt           DateTime           @default(now())
   updatedAt           DateTime           @updatedAt
+  events              ReviewCaseEvent[]
 
   @@index([customerId])
   @@index([customerAccountId])
   @@index([transactionIntentId])
   @@index([type, status])
+  @@index([reasonCode])
+  @@index([status, assignedOperatorId])
 }
 
 model AuditEvent {
@@ -414,4 +421,28 @@ enum LedgerJournalType {
 enum LedgerPostingDirection {
   debit
   credit
+}
+
+model ReviewCaseEvent {
+  id           String              @id @default(cuid())
+  reviewCaseId String
+  reviewCase   ReviewCase          @relation(fields: [reviewCaseId], references: [id])
+  actorType    String
+  actorId      String?
+  eventType    ReviewCaseEventType
+  note         String?
+  metadata     Json?
+  createdAt    DateTime            @default(now())
+
+  @@index([reviewCaseId, createdAt])
+  @@index([eventType, createdAt])
+}
+
+enum ReviewCaseEventType {
+  opened
+  started
+  note_added
+  handed_off
+  resolved
+  dismissed
 }

@@ -10,6 +10,7 @@ import {
   ValidationPipe
 } from "@nestjs/common";
 import { InternalOperatorApiKeyGuard } from "../auth/guards/internal-operator-api-key.guard";
+import { OpenReconciliationReviewCaseDto } from "../review-cases/dto/open-reconciliation-review-case.dto";
 import { CustomJsonResponse } from "../types/CustomJsonResponse";
 import { DepositSettlementReconciliationService } from "./deposit-settlement-reconciliation.service";
 import { ListDepositSettlementReconciliationDto } from "./dto/list-deposit-settlement-reconciliation.dto";
@@ -30,7 +31,13 @@ export class DepositSettlementReconciliationController {
 
   @Get("deposit-settlements")
   async listDepositSettlementReconciliation(
-    @Query(new ValidationPipe({ transform: true }))
+    @Query(
+      new ValidationPipe({
+        transform: true,
+        whitelist: true,
+        forbidNonWhitelisted: true
+      })
+    )
     query: ListDepositSettlementReconciliationDto
   ): Promise<CustomJsonResponse> {
     const result =
@@ -48,7 +55,13 @@ export class DepositSettlementReconciliationController {
   @Post("deposit-settlements/:intentId/replay-confirm")
   async replayConfirm(
     @Param("intentId") intentId: string,
-    @Body(new ValidationPipe()) dto: ReplayDepositSettlementStepDto,
+    @Body(
+      new ValidationPipe({
+        whitelist: true,
+        forbidNonWhitelisted: true
+      })
+    )
+    dto: ReplayDepositSettlementStepDto,
     @Request() request: InternalOperatorRequest
   ): Promise<CustomJsonResponse> {
     const result = await this.depositSettlementReconciliationService.replayConfirm(
@@ -69,7 +82,13 @@ export class DepositSettlementReconciliationController {
   @Post("deposit-settlements/:intentId/replay-settle")
   async replaySettle(
     @Param("intentId") intentId: string,
-    @Body(new ValidationPipe()) dto: ReplayDepositSettlementStepDto,
+    @Body(
+      new ValidationPipe({
+        whitelist: true,
+        forbidNonWhitelisted: true
+      })
+    )
+    dto: ReplayDepositSettlementStepDto,
     @Request() request: InternalOperatorRequest
   ): Promise<CustomJsonResponse> {
     const result = await this.depositSettlementReconciliationService.replaySettle(
@@ -83,6 +102,34 @@ export class DepositSettlementReconciliationController {
       message: result.settlementReused
         ? "Deposit settle replay reused successfully."
         : "Deposit settle replay completed successfully.",
+      data: result
+    };
+  }
+
+  @Post("deposit-settlements/:intentId/open-review-case")
+  async openManualReviewCase(
+    @Param("intentId") intentId: string,
+    @Body(
+      new ValidationPipe({
+        whitelist: true,
+        forbidNonWhitelisted: true
+      })
+    )
+    dto: OpenReconciliationReviewCaseDto,
+    @Request() request: InternalOperatorRequest
+  ): Promise<CustomJsonResponse> {
+    const result =
+      await this.depositSettlementReconciliationService.openManualReviewCase(
+        intentId,
+        request.internalOperator.operatorId,
+        dto
+      );
+
+    return {
+      status: "success",
+      message: result.reviewCaseReused
+        ? "Deposit reconciliation review case reused successfully."
+        : "Deposit reconciliation review case opened successfully.",
       data: result
     };
   }

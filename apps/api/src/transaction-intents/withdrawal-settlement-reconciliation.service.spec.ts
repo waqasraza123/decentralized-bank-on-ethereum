@@ -106,9 +106,12 @@ function createService(records: any[] = []) {
     replaySettleConfirmedWithdrawalIntent: jest.fn()
   } as any;
 
+  const reviewCasesService = {} as never;
+
   const service = new WithdrawalSettlementReconciliationService(
-    prismaService,
-    withdrawalIntentsService
+    prismaService as never,
+    withdrawalIntentsService as never,
+    reviewCasesService
   );
 
   return {

@@ -3,6 +3,7 @@ import { InternalOperatorApiKeyGuard } from "../auth/guards/internal-operator-ap
 import { InternalWorkerApiKeyGuard } from "../auth/guards/internal-worker-api-key.guard";
 import { LedgerModule } from "../ledger/ledger.module";
 import { PrismaService } from "../prisma/prisma.service";
+import { ReviewCasesModule } from "../review-cases/review-cases.module";
 import { DepositSettlementReconciliationController } from "./deposit-settlement-reconciliation.controller";
 import { DepositSettlementReconciliationService } from "./deposit-settlement-reconciliation.service";
 import { TransactionHistoryController } from "./transaction-history.controller";
@@ -20,7 +21,7 @@ import { WithdrawalSettlementReconciliationController } from "./withdrawal-settl
 import { WithdrawalSettlementReconciliationService } from "./withdrawal-settlement-reconciliation.service";
 
 @Module({
-  imports: [LedgerModule],
+  imports: [LedgerModule, ReviewCasesModule],
   controllers: [
     TransactionIntentsController,
     TransactionHistoryController,
