@@ -13,6 +13,8 @@ import { WithdrawalIntentsController } from "./withdrawal-intents.controller";
 import { WithdrawalIntentsInternalController } from "./withdrawal-intents-internal.controller";
 import { WithdrawalIntentsService } from "./withdrawal-intents.service";
 import { WithdrawalIntentsWorkerController } from "./withdrawal-intents-worker.controller";
+import { WithdrawalSettlementReconciliationController } from "./withdrawal-settlement-reconciliation.controller";
+import { WithdrawalSettlementReconciliationService } from "./withdrawal-settlement-reconciliation.service";
 
 @Module({
   imports: [LedgerModule],
@@ -23,12 +25,14 @@ import { WithdrawalIntentsWorkerController } from "./withdrawal-intents-worker.c
     WithdrawalIntentsInternalController,
     TransactionIntentsWorkerController,
     WithdrawalIntentsWorkerController,
-    DepositSettlementReconciliationController
+    DepositSettlementReconciliationController,
+    WithdrawalSettlementReconciliationController
   ],
   providers: [
     TransactionIntentsService,
     WithdrawalIntentsService,
     DepositSettlementReconciliationService,
+    WithdrawalSettlementReconciliationService,
     PrismaService,
     InternalOperatorApiKeyGuard,
     InternalWorkerApiKeyGuard

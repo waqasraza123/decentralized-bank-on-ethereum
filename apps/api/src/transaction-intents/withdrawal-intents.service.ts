@@ -218,6 +218,13 @@ type SettleConfirmedWithdrawalIntentResult = {
   settlementReused: boolean;
 };
 
+type WithdrawalTransitionActor = {
+  actorType: "worker" | "operator";
+  actorId: string;
+  reconciliationReplay: boolean;
+  replayReason: string | null;
+};
+
 @Injectable()
 export class WithdrawalIntentsService {
   private readonly productChainId: number;
@@ -1903,13 +1910,57 @@ export class WithdrawalIntentsService {
     };
   }
 
+  async replayConfirmWithdrawalIntent(
+    intentId: string,
+    operatorId: string,
+    note: string | null
+  ): Promise<ConfirmWithdrawalIntentResult> {
+    return this.confirmWithdrawalIntentWithActor(intentId, null, note, {
+      actorType: "operator",
+      actorId: operatorId,
+      reconciliationReplay: true,
+      replayReason: "withdrawal_settlement_reconciliation"
+    });
+  }
+
+  async replaySettleConfirmedWithdrawalIntent(
+    intentId: string,
+    operatorId: string,
+    note: string | null
+  ): Promise<SettleConfirmedWithdrawalIntentResult> {
+    return this.settleConfirmedWithdrawalIntentWithActor(intentId, note, {
+      actorType: "operator",
+      actorId: operatorId,
+      reconciliationReplay: true,
+      replayReason: "withdrawal_settlement_reconciliation"
+    });
+  }
+
+
   async confirmWithdrawalIntent(
     intentId: string,
     workerId: string,
     dto: ConfirmWithdrawalIntentDto
   ): Promise<ConfirmWithdrawalIntentResult> {
-    const txHash = dto.txHash?.trim() ?? null;
+    return this.confirmWithdrawalIntentWithActor(
+      intentId,
+      dto.txHash?.trim() ?? null,
+      null,
+      {
+        actorType: "worker",
+        actorId: workerId,
+        reconciliationReplay: false,
+        replayReason: null
+      }
+    );
+  }
 
+  private async confirmWithdrawalIntentWithActor(
+    intentId: string,
+    txHash: string | null,
+    note: string | null,
+    actor: WithdrawalTransitionActor
+  ): Promise<ConfirmWithdrawalIntentResult> {
     const existingIntent = await this.findWithdrawalIntentForReview(intentId);
 
     if (!existingIntent) {
@@ -2050,8 +2101,8 @@ export class WithdrawalIntentsService {
         await transaction.auditEvent.create({
           data: {
             customerId: currentIntent.customerAccount!.customer.id,
-            actorType: "worker",
-            actorId: workerId,
+            actorType: actor.actorType,
+            actorId: actor.actorId,
             action: "transaction_intent.withdrawal.confirmed",
             targetType: "TransactionIntent",
             targetId: currentIntent.id,
@@ -2067,7 +2118,10 @@ export class WithdrawalIntentsService {
               chainId: currentIntent.chainId,
               txHash: currentLatestBlockchainTransaction.txHash,
               previousStatus: currentIntent.status,
-              newStatus: TransactionIntentStatus.confirmed
+              newStatus: TransactionIntentStatus.confirmed,
+              note,
+              reconciliationReplay: actor.reconciliationReplay,
+              replayReason: actor.replayReason
             }
           }
         });
@@ -2145,8 +2199,23 @@ export class WithdrawalIntentsService {
     workerId: string,
     dto: SettleConfirmedWithdrawalIntentDto
   ): Promise<SettleConfirmedWithdrawalIntentResult> {
-    const note = dto.note?.trim() ?? null;
+    return this.settleConfirmedWithdrawalIntentWithActor(
+      intentId,
+      dto.note?.trim() ?? null,
+      {
+        actorType: "worker",
+        actorId: workerId,
+        reconciliationReplay: false,
+        replayReason: null
+      }
+    );
+  }
 
+  private async settleConfirmedWithdrawalIntentWithActor(
+    intentId: string,
+    note: string | null,
+    actor: WithdrawalTransitionActor
+  ): Promise<SettleConfirmedWithdrawalIntentResult> {
     const existingIntent = await this.findWithdrawalIntentForReview(intentId);
 
     if (!existingIntent) {
@@ -2285,8 +2354,8 @@ export class WithdrawalIntentsService {
         await transaction.auditEvent.create({
           data: {
             customerId: currentIntent.customerAccount!.customer.id,
-            actorType: "worker",
-            actorId: workerId,
+            actorType: actor.actorType,
+            actorId: actor.actorId,
             action: "transaction_intent.withdrawal.settled",
             targetType: "TransactionIntent",
             targetId: currentIntent.id,
@@ -2309,7 +2378,9 @@ export class WithdrawalIntentsService {
               creditLedgerAccountId: ledgerResult.creditLedgerAccountId,
               availableBalance: ledgerResult.availableBalance,
               pendingBalance: ledgerResult.pendingBalance,
-              note
+              note,
+              reconciliationReplay: actor.reconciliationReplay,
+              replayReason: actor.replayReason
             }
           }
         });

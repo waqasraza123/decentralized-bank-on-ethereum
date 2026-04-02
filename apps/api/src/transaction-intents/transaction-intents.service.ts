@@ -1791,8 +1791,7 @@ export class TransactionIntentsService {
         updatedIntent.failureCode === failureCode &&
         updatedIntent.failureReason === failureReason &&
         false &&
-        existingIntent.failureCode === failureCode &&
-        existingIntent.failureReason === failureReason
+        true
     };
   }
 
