@@ -36,24 +36,31 @@ model Customer {
 }
 
 model CustomerAccount {
-  id                 String                 @id @default(cuid())
-  customerId         String                 @unique
-  customer           Customer               @relation(fields: [customerId], references: [id])
-  status             AccountLifecycleStatus @default(registered)
-  activatedAt        DateTime?
-  restrictedAt       DateTime?
-  frozenAt           DateTime?
-  closedAt           DateTime?
-  createdAt          DateTime               @default(now())
-  updatedAt          DateTime               @updatedAt
-  wallets            Wallet[]
-  transactionIntents TransactionIntent[]
-  reviewCases        ReviewCase[]
-  oversightIncidents OversightIncident[]    @relation("OversightIncidentCustomerAccount")
+  id                             String                 @id @default(cuid())
+  customerId                     String                 @unique
+  customer                       Customer               @relation(fields: [customerId], references: [id])
+  status                         AccountLifecycleStatus @default(registered)
+  activatedAt                    DateTime?
+  restrictedAt                   DateTime?
+  restrictedFromStatus           AccountLifecycleStatus?
+  restrictionReasonCode          String?
+  restrictedByOperatorId         String?
+  restrictedByOversightIncidentId String?
+  restrictionReleasedAt          DateTime?
+  restrictionReleasedByOperatorId String?
+  frozenAt                       DateTime?
+  closedAt                       DateTime?
+  createdAt                      DateTime               @default(now())
+  updatedAt                      DateTime               @updatedAt
+  wallets                        Wallet[]
+  transactionIntents             TransactionIntent[]
+  reviewCases                    ReviewCase[]
+  oversightIncidents             OversightIncident[]    @relation("OversightIncidentCustomerAccount")
 
   @@index([status])
-  ledgerAccounts     LedgerAccount[]
-  assetBalances      CustomerAssetBalance[]
+  @@index([restrictedByOversightIncidentId])
+  ledgerAccounts                 LedgerAccount[]
+  assetBalances                  CustomerAssetBalance[]
 }
 
 model Wallet {
@@ -518,6 +525,8 @@ enum OversightIncidentEventType {
   opened
   started
   note_added
+  account_restriction_applied
+  account_restriction_released
   resolved
   dismissed
 }

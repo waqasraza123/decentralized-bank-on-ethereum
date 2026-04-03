@@ -6,6 +6,7 @@ import {
 } from "@nestjs/common";
 import { loadProductChainRuntimeConfig } from "@stealth-trails-bank/config/api";
 import {
+  AccountLifecycleStatus,
   AssetStatus,
   BlockchainTransactionStatus,
   PolicyDecision,
@@ -250,6 +251,25 @@ export class TransactionIntentsService {
     return normalizedAssetSymbol;
   }
 
+  private assertSensitiveIntentRequestAllowed(
+    accountStatus: AccountLifecycleStatus
+  ): void {
+    if (accountStatus === AccountLifecycleStatus.restricted) {
+      throw new ConflictException(
+        "Customer account is currently under a risk hold and cannot create sensitive transaction requests."
+      );
+    }
+
+    if (
+      accountStatus === AccountLifecycleStatus.frozen ||
+      accountStatus === AccountLifecycleStatus.closed
+    ) {
+      throw new ConflictException(
+        "Customer account is not eligible for sensitive transaction requests in its current lifecycle state."
+      );
+    }
+  }
+
   private parseRequestedAmount(amount: string): Prisma.Decimal {
     const requestedAmount = new Prisma.Decimal(amount);
 
@@ -336,7 +356,7 @@ export class TransactionIntentsService {
     supabaseUserId: string,
     assetSymbol: string
   ): Promise<DepositIntentContext> {
-    const customerAccount = await this.prismaService.customerAccount!.findFirst({
+    const customerAccount = await this.prismaService.customerAccount.findFirst({
       where: {
         customer: {
           supabaseUserId
@@ -344,6 +364,7 @@ export class TransactionIntentsService {
       },
       select: {
         id: true,
+        status: true,
         customer: {
           select: {
             id: true
@@ -370,6 +391,8 @@ export class TransactionIntentsService {
       throw new NotFoundException("Customer account projection not found.");
     }
 
+    this.assertSensitiveIntentRequestAllowed(customerAccount.status);
+
     if (customerAccount.wallets.length === 0) {
       throw new NotFoundException(
         "Active product-chain wallet projection not found."
@@ -381,6 +404,8 @@ export class TransactionIntentsService {
         "Multiple active product-chain wallets found for customer account."
       );
     }
+
+    const destinationWallet = customerAccount.wallets[0];
 
     const asset = await this.prismaService.asset.findUnique({
       where: {
@@ -394,7 +419,6 @@ export class TransactionIntentsService {
         symbol: true,
         displayName: true,
         decimals: true,
-        chainId: true,
         status: true
       }
     });
@@ -406,8 +430,8 @@ export class TransactionIntentsService {
     return {
       customerId: customerAccount.customer.id,
       customerAccountId: customerAccount.id,
-      destinationWalletId: customerAccount.wallets[0].id,
-      destinationWalletAddress: customerAccount.wallets[0].address,
+      destinationWalletId: destinationWallet.id,
+      destinationWalletAddress: destinationWallet.address,
       assetId: asset.id,
       assetSymbol: asset.symbol,
       assetDisplayName: asset.displayName,
@@ -418,7 +442,7 @@ export class TransactionIntentsService {
   private async requireCustomerAccountId(
     supabaseUserId: string
   ): Promise<string> {
-    const customerAccount = await this.prismaService.customerAccount!.findFirst({
+    const customerAccount = await this.prismaService.customerAccount.findFirst({
       where: {
         customer: {
           supabaseUserId

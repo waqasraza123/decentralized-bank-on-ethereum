@@ -12,12 +12,14 @@ import {
 import { InternalOperatorApiKeyGuard } from "../auth/guards/internal-operator-api-key.guard";
 import { CustomJsonResponse } from "../types/CustomJsonResponse";
 import { AddOversightIncidentNoteDto } from "./dto/add-oversight-incident-note.dto";
+import { ApplyAccountRestrictionDto } from "./dto/apply-account-restriction.dto";
 import { DismissOversightIncidentDto } from "./dto/dismiss-oversight-incident.dto";
 import { GetOversightIncidentWorkspaceDto } from "./dto/get-oversight-incident-workspace.dto";
 import { ListOversightAlertsDto } from "./dto/list-oversight-alerts.dto";
 import { ListOversightIncidentsDto } from "./dto/list-oversight-incidents.dto";
 import { OpenCustomerOversightIncidentDto } from "./dto/open-customer-oversight-incident.dto";
 import { OpenOperatorOversightIncidentDto } from "./dto/open-operator-oversight-incident.dto";
+import { ReleaseAccountRestrictionDto } from "./dto/release-account-restriction.dto";
 import { ResolveOversightIncidentDto } from "./dto/resolve-oversight-incident.dto";
 import { StartOversightIncidentDto } from "./dto/start-oversight-incident.dto";
 import { OversightIncidentsService } from "./oversight-incidents.service";
@@ -225,6 +227,60 @@ export class OversightIncidentsController {
     return {
       status: "success",
       message: "Oversight incident note added successfully.",
+      data: result
+    };
+  }
+
+  @Post(":oversightIncidentId/place-account-hold")
+  async applyAccountRestriction(
+    @Param("oversightIncidentId") oversightIncidentId: string,
+    @Body(
+      new ValidationPipe({
+        whitelist: true,
+        forbidNonWhitelisted: true
+      })
+    )
+    dto: ApplyAccountRestrictionDto,
+    @Request() request: InternalOperatorRequest
+  ): Promise<CustomJsonResponse> {
+    const result = await this.oversightIncidentsService.applyAccountRestriction(
+      oversightIncidentId,
+      request.internalOperator.operatorId,
+      dto
+    );
+
+    return {
+      status: "success",
+      message: result.stateReused
+        ? "Account hold state reused successfully."
+        : "Account hold placed successfully.",
+      data: result
+    };
+  }
+
+  @Post(":oversightIncidentId/release-account-hold")
+  async releaseAccountRestriction(
+    @Param("oversightIncidentId") oversightIncidentId: string,
+    @Body(
+      new ValidationPipe({
+        whitelist: true,
+        forbidNonWhitelisted: true
+      })
+    )
+    dto: ReleaseAccountRestrictionDto,
+    @Request() request: InternalOperatorRequest
+  ): Promise<CustomJsonResponse> {
+    const result = await this.oversightIncidentsService.releaseAccountRestriction(
+      oversightIncidentId,
+      request.internalOperator.operatorId,
+      dto
+    );
+
+    return {
+      status: "success",
+      message: result.stateReused
+        ? "Account hold release state reused successfully."
+        : "Account hold released successfully.",
       data: result
     };
   }

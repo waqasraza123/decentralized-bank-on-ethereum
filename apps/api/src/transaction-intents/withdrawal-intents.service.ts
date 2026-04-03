@@ -7,6 +7,7 @@ import {
 import { loadProductChainRuntimeConfig } from "@stealth-trails-bank/config/api";
 import { utils as ethersUtils } from "ethers";
 import {
+  AccountLifecycleStatus,
   AssetStatus,
   BlockchainTransactionStatus,
   PolicyDecision,
@@ -263,6 +264,25 @@ export class WithdrawalIntentsService {
     return ethersUtils.getAddress(normalizedValue);
   }
 
+  private assertSensitiveIntentRequestAllowed(
+    accountStatus: AccountLifecycleStatus
+  ): void {
+    if (accountStatus === AccountLifecycleStatus.restricted) {
+      throw new ConflictException(
+        "Customer account is currently under a risk hold and cannot create sensitive transaction requests."
+      );
+    }
+
+    if (
+      accountStatus === AccountLifecycleStatus.frozen ||
+      accountStatus === AccountLifecycleStatus.closed
+    ) {
+      throw new ConflictException(
+        "Customer account is not eligible for sensitive transaction requests in its current lifecycle state."
+      );
+    }
+  }
+
   private parseRequestedAmount(amount: string): Prisma.Decimal {
     const requestedAmount = new Prisma.Decimal(amount);
 
@@ -355,7 +375,7 @@ export class WithdrawalIntentsService {
       "destinationAddress"
     );
 
-    const customerAccount = await this.prismaService.customerAccount!.findFirst({
+    const customerAccount = await this.prismaService.customerAccount.findFirst({
       where: {
         customer: {
           supabaseUserId
@@ -363,6 +383,7 @@ export class WithdrawalIntentsService {
       },
       select: {
         id: true,
+        status: true,
         customer: {
           select: {
             id: true
@@ -388,6 +409,8 @@ export class WithdrawalIntentsService {
     if (!customerAccount) {
       throw new NotFoundException("Customer account projection not found.");
     }
+
+    this.assertSensitiveIntentRequestAllowed(customerAccount.status);
 
     if (customerAccount.wallets.length === 0) {
       throw new NotFoundException(

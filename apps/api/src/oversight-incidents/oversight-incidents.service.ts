@@ -1,10 +1,5 @@
 import {
-  ConflictException,
-  Injectable,
-  NotFoundException
-} from "@nestjs/common";
-import { loadProductChainRuntimeConfig } from "@stealth-trails-bank/config/api";
-import {
+  AccountLifecycleStatus,
   BlockchainTransactionStatus,
   OversightIncidentEventType,
   OversightIncidentStatus,
@@ -12,14 +7,22 @@ import {
   Prisma,
   TransactionIntentType
 } from "@prisma/client";
+import {
+  ConflictException,
+  Injectable,
+  NotFoundException
+} from "@nestjs/common";
+import { loadProductChainRuntimeConfig } from "@stealth-trails-bank/config/api";
 import { PrismaService } from "../prisma/prisma.service";
 import { AddOversightIncidentNoteDto } from "./dto/add-oversight-incident-note.dto";
+import { ApplyAccountRestrictionDto } from "./dto/apply-account-restriction.dto";
 import { DismissOversightIncidentDto } from "./dto/dismiss-oversight-incident.dto";
 import { GetOversightIncidentWorkspaceDto } from "./dto/get-oversight-incident-workspace.dto";
 import { ListOversightAlertsDto } from "./dto/list-oversight-alerts.dto";
 import { ListOversightIncidentsDto } from "./dto/list-oversight-incidents.dto";
 import { OpenCustomerOversightIncidentDto } from "./dto/open-customer-oversight-incident.dto";
 import { OpenOperatorOversightIncidentDto } from "./dto/open-operator-oversight-incident.dto";
+import { ReleaseAccountRestrictionDto } from "./dto/release-account-restriction.dto";
 import { ResolveOversightIncidentDto } from "./dto/resolve-oversight-incident.dto";
 import { StartOversightIncidentDto } from "./dto/start-oversight-incident.dto";
 
@@ -91,7 +94,15 @@ const oversightIncidentInclude = {
   subjectCustomerAccount: {
     select: {
       id: true,
-      customerId: true
+      customerId: true,
+      status: true,
+      restrictedAt: true,
+      restrictedFromStatus: true,
+      restrictionReasonCode: true,
+      restrictedByOperatorId: true,
+      restrictedByOversightIncidentId: true,
+      restrictionReleasedAt: true,
+      restrictionReleasedByOperatorId: true
     }
   }
 } satisfies Prisma.OversightIncidentInclude;
@@ -117,6 +128,21 @@ type ReviewCaseSummaryRecord = Prisma.ReviewCaseGetPayload<{
     customerAccountId: true;
     updatedAt: true;
     resolvedAt: true;
+  };
+}>;
+
+type SubjectCustomerAccountRecord = Prisma.CustomerAccountGetPayload<{
+  select: {
+    id: true;
+    customerId: true;
+    status: true;
+    restrictedAt: true;
+    restrictedFromStatus: true;
+    restrictionReasonCode: true;
+    restrictedByOperatorId: true;
+    restrictedByOversightIncidentId: true;
+    restrictionReleasedAt: true;
+    restrictionReleasedByOperatorId: true;
   };
 }>;
 
@@ -163,6 +189,19 @@ type ManuallyResolvedIntentProjection = {
   manualResolutionOperatorRole: string | null;
   manualResolutionReviewCaseId: string | null;
   latestBlockchainTransaction: LatestBlockchainTransactionProjection | null;
+};
+
+type OversightAccountRestrictionProjection = {
+  active: boolean;
+  customerAccountId: string | null;
+  accountStatus: AccountLifecycleStatus | null;
+  restrictedAt: string | null;
+  restrictedFromStatus: AccountLifecycleStatus | null;
+  restrictionReasonCode: string | null;
+  restrictedByOperatorId: string | null;
+  restrictedByOversightIncidentId: string | null;
+  restrictionReleasedAt: string | null;
+  restrictionReleasedByOperatorId: string | null;
 };
 
 type OversightIncidentProjection = {
@@ -260,6 +299,7 @@ type GetOversightIncidentResult = {
 
 type OversightIncidentWorkspaceResult = {
   oversightIncident: OversightIncidentProjection;
+  accountRestriction: OversightAccountRestrictionProjection;
   events: OversightIncidentEventProjection[];
   recentManuallyResolvedIntents: ManuallyResolvedIntentProjection[];
   recentReviewCases: ReviewCaseSummaryProjection[];
@@ -274,6 +314,12 @@ type UpdateOversightIncidentStateResult = {
 type AddOversightIncidentNoteResult = {
   oversightIncident: OversightIncidentProjection;
   event: OversightIncidentEventProjection;
+};
+
+type UpdateOversightAccountRestrictionResult = {
+  oversightIncident: OversightIncidentProjection;
+  accountRestriction: OversightAccountRestrictionProjection;
+  stateReused: boolean;
 };
 
 @Injectable()
@@ -347,6 +393,26 @@ export class OversightIncidentsService {
       manualResolutionOperatorRole: intent.manualResolutionOperatorRole,
       manualResolutionReviewCaseId: intent.manualResolutionReviewCaseId,
       latestBlockchainTransaction: this.mapLatestBlockchainTransaction(intent)
+    };
+  }
+
+  private mapAccountRestrictionProjection(
+    customerAccount: SubjectCustomerAccountRecord | null
+  ): OversightAccountRestrictionProjection {
+    return {
+      active: customerAccount?.status === AccountLifecycleStatus.restricted,
+      customerAccountId: customerAccount?.id ?? null,
+      accountStatus: customerAccount?.status ?? null,
+      restrictedAt: customerAccount?.restrictedAt?.toISOString() ?? null,
+      restrictedFromStatus: customerAccount?.restrictedFromStatus ?? null,
+      restrictionReasonCode: customerAccount?.restrictionReasonCode ?? null,
+      restrictedByOperatorId: customerAccount?.restrictedByOperatorId ?? null,
+      restrictedByOversightIncidentId:
+        customerAccount?.restrictedByOversightIncidentId ?? null,
+      restrictionReleasedAt:
+        customerAccount?.restrictionReleasedAt?.toISOString() ?? null,
+      restrictionReleasedByOperatorId:
+        customerAccount?.restrictionReleasedByOperatorId ?? null
     };
   }
 
@@ -429,6 +495,14 @@ export class OversightIncidentsService {
 
     if (incident.status === OversightIncidentStatus.dismissed) {
       throw new ConflictException("Oversight incident is already dismissed.");
+    }
+  }
+
+  private ensureOversightIncidentSupportsRestrictionRelease(
+    incident: OversightIncidentRecord
+  ): void {
+    if (incident.status === OversightIncidentStatus.dismissed) {
+      throw new ConflictException("Dismissed oversight incidents do not support restriction release.");
     }
   }
 
@@ -541,7 +615,8 @@ export class OversightIncidentsService {
 
     for (const incident of openIncidents) {
       if (
-        incident.incidentType === OversightIncidentType.customer_manual_resolution_spike &&
+        incident.incidentType ===
+          OversightIncidentType.customer_manual_resolution_spike &&
         incident.subjectCustomerAccountId
       ) {
         openCustomerIncidentMap.set(
@@ -551,7 +626,8 @@ export class OversightIncidentsService {
       }
 
       if (
-        incident.incidentType === OversightIncidentType.operator_manual_resolution_spike &&
+        incident.incidentType ===
+          OversightIncidentType.operator_manual_resolution_spike &&
         incident.subjectOperatorId
       ) {
         openOperatorIncidentMap.set(incident.subjectOperatorId, incident.id);
@@ -723,21 +799,19 @@ export class OversightIncidentsService {
       }
     }
 
-    const sortedAlerts = alerts
-      .sort((left, right) => {
-        if (right.count !== left.count) {
-          return right.count - left.count;
-        }
-
-        return (
-          new Date(right.latestManualResolutionAt).getTime() -
-          new Date(left.latestManualResolutionAt).getTime()
-        );
-      })
-      .slice(0, limit);
-
     return {
-      alerts: sortedAlerts,
+      alerts: alerts
+        .sort((left, right) => {
+          if (right.count !== left.count) {
+            return right.count - left.count;
+          }
+
+          return (
+            new Date(right.latestManualResolutionAt).getTime() -
+            new Date(left.latestManualResolutionAt).getTime()
+          );
+        })
+        .slice(0, limit),
       limit,
       sinceDays,
       customerThreshold,
@@ -766,7 +840,9 @@ export class OversightIncidentsService {
     const customerAccount = intents[0]?.customerAccount;
 
     if (!customerAccount) {
-      throw new NotFoundException("Customer account not found for oversight incident.");
+      throw new NotFoundException(
+        "Customer account not found for oversight incident."
+      );
     }
 
     const existingIncident = await this.prismaService.oversightIncident.findFirst({
@@ -796,7 +872,7 @@ export class OversightIncidentsService {
             reasonCode: "manual_resolution_threshold_exceeded",
             summaryNote:
               dto.note?.trim() ??
-              "Customer exceeded manual resolution threshold within the recent review window.",
+              "Customer exceeded manual resolution threshold within the review window.",
             subjectCustomerId: customerAccount.customer.id,
             subjectCustomerAccountId: customerAccount.id,
             subjectOperatorId: null,
@@ -869,8 +945,7 @@ export class OversightIncidentsService {
       );
     }
 
-    const subjectOperatorRole =
-      intents[0]?.manualResolutionOperatorRole ?? null;
+    const subjectOperatorRole = intents[0]?.manualResolutionOperatorRole ?? null;
 
     const existingIncident = await this.prismaService.oversightIncident.findFirst({
       where: {
@@ -899,7 +974,7 @@ export class OversightIncidentsService {
             reasonCode: "manual_resolution_threshold_exceeded",
             summaryNote:
               dto.note?.trim() ??
-              "Operator exceeded manual resolution threshold within the recent review window.",
+              "Operator exceeded manual resolution threshold within the review window.",
             subjectCustomerId: null,
             subjectCustomerAccountId: null,
             subjectOperatorId,
@@ -988,7 +1063,9 @@ export class OversightIncidentsService {
 
     if (query.email?.trim()) {
       where.subjectCustomer = {
-        email: query.email.trim().toLowerCase()
+        is: {
+          email: query.email.trim().toLowerCase()
+        }
       };
     }
 
@@ -1043,7 +1120,7 @@ export class OversightIncidentsService {
       }
     });
 
-    const intentWhere: Prisma.TransactionIntentWhereInput = {
+    const recentIntentsWhere: Prisma.TransactionIntentWhereInput = {
       chainId: this.productChainId,
       manuallyResolvedAt: {
         not: null
@@ -1051,34 +1128,35 @@ export class OversightIncidentsService {
     };
 
     if (incident.subjectCustomerAccountId) {
-      intentWhere.customerAccountId = incident.subjectCustomerAccountId;
+      recentIntentsWhere.customerAccountId = incident.subjectCustomerAccountId;
     }
 
     if (incident.subjectOperatorId) {
-      intentWhere.manualResolvedByOperatorId = incident.subjectOperatorId;
+      recentIntentsWhere.manualResolvedByOperatorId = incident.subjectOperatorId;
     }
 
-    const recentManuallyResolvedIntents = await this.prismaService.transactionIntent.findMany({
-      where: intentWhere,
-      orderBy: {
-        manuallyResolvedAt: "desc"
-      },
-      take: recentLimit,
-      include: manuallyResolvedIntentInclude
-    });
+    const recentManuallyResolvedIntents =
+      await this.prismaService.transactionIntent.findMany({
+        where: recentIntentsWhere,
+        orderBy: {
+          manuallyResolvedAt: "desc"
+        },
+        take: recentLimit,
+        include: manuallyResolvedIntentInclude
+      });
 
-    const reviewCaseWhere: Prisma.ReviewCaseWhereInput = {};
+    const recentReviewCasesWhere: Prisma.ReviewCaseWhereInput = {};
 
     if (incident.subjectCustomerAccountId) {
-      reviewCaseWhere.customerAccountId = incident.subjectCustomerAccountId;
+      recentReviewCasesWhere.customerAccountId = incident.subjectCustomerAccountId;
     }
 
     if (incident.subjectOperatorId) {
-      reviewCaseWhere.assignedOperatorId = incident.subjectOperatorId;
+      recentReviewCasesWhere.assignedOperatorId = incident.subjectOperatorId;
     }
 
     const recentReviewCases = await this.prismaService.reviewCase.findMany({
-      where: reviewCaseWhere,
+      where: recentReviewCasesWhere,
       orderBy: {
         updatedAt: "desc"
       },
@@ -1098,6 +1176,9 @@ export class OversightIncidentsService {
 
     return {
       oversightIncident: this.mapOversightIncidentProjection(incident),
+      accountRestriction: this.mapAccountRestrictionProjection(
+        incident.subjectCustomerAccount
+      ),
       events: events.map((event) =>
         this.mapOversightIncidentEventProjection(event)
       ),
@@ -1262,6 +1343,329 @@ export class OversightIncidentsService {
         result.oversightIncident
       ),
       event: this.mapOversightIncidentEventProjection(result.event)
+    };
+  }
+
+  async applyAccountRestriction(
+    oversightIncidentId: string,
+    operatorId: string,
+    dto: ApplyAccountRestrictionDto
+  ): Promise<UpdateOversightAccountRestrictionResult> {
+    const incident = await this.findOversightIncidentById(oversightIncidentId);
+
+    if (!incident) {
+      throw new NotFoundException("Oversight incident not found.");
+    }
+
+    this.ensureOversightIncidentIsActionable(incident);
+    this.ensureOperatorCanMutateOversightIncident(incident, operatorId);
+
+    if (!incident.subjectCustomerAccountId) {
+      throw new ConflictException(
+        "Oversight incident does not target a customer account."
+      );
+    }
+
+    const customerAccount = await this.prismaService.customerAccount.findUnique({
+      where: {
+        id: incident.subjectCustomerAccountId
+      },
+      select: {
+        id: true,
+        customerId: true,
+        status: true,
+        restrictedAt: true,
+        restrictedFromStatus: true,
+        restrictionReasonCode: true,
+        restrictedByOperatorId: true,
+        restrictedByOversightIncidentId: true,
+        restrictionReleasedAt: true,
+        restrictionReleasedByOperatorId: true
+      }
+    });
+
+    if (!customerAccount) {
+      throw new NotFoundException("Customer account not found.");
+    }
+
+    if (
+      customerAccount.status === AccountLifecycleStatus.restricted &&
+      customerAccount.restrictedByOversightIncidentId === incident.id &&
+      !customerAccount.restrictionReleasedAt
+    ) {
+      return {
+        oversightIncident: this.mapOversightIncidentProjection(incident),
+        accountRestriction: this.mapAccountRestrictionProjection(customerAccount),
+        stateReused: true
+      };
+    }
+
+    if (customerAccount.status === AccountLifecycleStatus.restricted) {
+      throw new ConflictException(
+        "Customer account is already restricted by another active hold."
+      );
+    }
+
+    if (
+      customerAccount.status === AccountLifecycleStatus.frozen ||
+      customerAccount.status === AccountLifecycleStatus.closed
+    ) {
+      throw new ConflictException(
+        "Customer account is already in a stronger restricted lifecycle state."
+      );
+    }
+
+    const restrictionReasonCode = dto.restrictionReasonCode.trim();
+    const note = dto.note?.trim() ?? null;
+
+    const result = await this.prismaService.$transaction(async (transaction) => {
+      const updatedAccount = await transaction.customerAccount.update({
+        where: {
+          id: customerAccount.id
+        },
+        data: {
+          status: AccountLifecycleStatus.restricted,
+          restrictedAt: new Date(),
+          restrictedFromStatus: customerAccount.status,
+          restrictionReasonCode,
+          restrictedByOperatorId: operatorId,
+          restrictedByOversightIncidentId: incident.id,
+          restrictionReleasedAt: null,
+          restrictionReleasedByOperatorId: null
+        },
+        select: {
+          id: true,
+          customerId: true,
+          status: true,
+          restrictedAt: true,
+          restrictedFromStatus: true,
+          restrictionReasonCode: true,
+          restrictedByOperatorId: true,
+          restrictedByOversightIncidentId: true,
+          restrictionReleasedAt: true,
+          restrictionReleasedByOperatorId: true
+        }
+      });
+
+      const updatedIncident = await transaction.oversightIncident.update({
+        where: {
+          id: incident.id
+        },
+        data: {
+          status:
+            incident.status === OversightIncidentStatus.open
+              ? OversightIncidentStatus.in_progress
+              : incident.status,
+          assignedOperatorId: incident.assignedOperatorId ?? operatorId,
+          startedAt: incident.startedAt ?? new Date(),
+          summaryNote: note ?? incident.summaryNote
+        },
+        include: oversightIncidentInclude
+      });
+
+      await this.appendOversightIncidentEvent(
+        transaction,
+        incident.id,
+        "operator",
+        operatorId,
+        OversightIncidentEventType.account_restriction_applied,
+        note,
+        {
+          previousAccountStatus: customerAccount.status,
+          newAccountStatus: AccountLifecycleStatus.restricted,
+          restrictionReasonCode
+        } as Prisma.InputJsonValue
+      );
+
+      await transaction.auditEvent.create({
+        data: {
+          customerId: incident.subjectCustomerId,
+          actorType: "operator",
+          actorId: operatorId,
+          action: "customer_account.restricted",
+          targetType: "CustomerAccount",
+          targetId: customerAccount.id,
+          metadata: {
+            previousStatus: customerAccount.status,
+            newStatus: AccountLifecycleStatus.restricted,
+            restrictionReasonCode,
+            note,
+            oversightIncidentId: incident.id,
+            oversightIncidentType: incident.incidentType
+          }
+        }
+      });
+
+      return {
+        updatedIncident,
+        updatedAccount
+      };
+    });
+
+    return {
+      oversightIncident: this.mapOversightIncidentProjection(
+        result.updatedIncident
+      ),
+      accountRestriction: this.mapAccountRestrictionProjection(
+        result.updatedAccount
+      ),
+      stateReused: false
+    };
+  }
+
+  async releaseAccountRestriction(
+    oversightIncidentId: string,
+    operatorId: string,
+    dto: ReleaseAccountRestrictionDto
+  ): Promise<UpdateOversightAccountRestrictionResult> {
+    const incident = await this.findOversightIncidentById(oversightIncidentId);
+
+    if (!incident) {
+      throw new NotFoundException("Oversight incident not found.");
+    }
+
+    this.ensureOversightIncidentSupportsRestrictionRelease(incident);
+    this.ensureOperatorCanMutateOversightIncident(incident, operatorId);
+
+    if (!incident.subjectCustomerAccountId) {
+      throw new ConflictException(
+        "Oversight incident does not target a customer account."
+      );
+    }
+
+    const customerAccount = await this.prismaService.customerAccount.findUnique({
+      where: {
+        id: incident.subjectCustomerAccountId
+      },
+      select: {
+        id: true,
+        customerId: true,
+        status: true,
+        restrictedAt: true,
+        restrictedFromStatus: true,
+        restrictionReasonCode: true,
+        restrictedByOperatorId: true,
+        restrictedByOversightIncidentId: true,
+        restrictionReleasedAt: true,
+        restrictionReleasedByOperatorId: true
+      }
+    });
+
+    if (!customerAccount) {
+      throw new NotFoundException("Customer account not found.");
+    }
+
+    if (
+      customerAccount.status !== AccountLifecycleStatus.restricted &&
+      customerAccount.restrictionReleasedAt &&
+      customerAccount.restrictedByOversightIncidentId === incident.id
+    ) {
+      return {
+        oversightIncident: this.mapOversightIncidentProjection(incident),
+        accountRestriction: this.mapAccountRestrictionProjection(customerAccount),
+        stateReused: true
+      };
+    }
+
+    if (customerAccount.status !== AccountLifecycleStatus.restricted) {
+      throw new ConflictException(
+        "Customer account is not currently under an active restriction."
+      );
+    }
+
+    if (customerAccount.restrictedByOversightIncidentId !== incident.id) {
+      throw new ConflictException(
+        "Customer account is restricted by a different oversight hold."
+      );
+    }
+
+    const restoredStatus =
+      customerAccount.restrictedFromStatus ?? AccountLifecycleStatus.registered;
+    const note = dto.note?.trim() ?? null;
+
+    const result = await this.prismaService.$transaction(async (transaction) => {
+      const updatedAccount = await transaction.customerAccount.update({
+        where: {
+          id: customerAccount.id
+        },
+        data: {
+          status: restoredStatus,
+          restrictionReleasedAt: new Date(),
+          restrictionReleasedByOperatorId: operatorId
+        },
+        select: {
+          id: true,
+          customerId: true,
+          status: true,
+          restrictedAt: true,
+          restrictedFromStatus: true,
+          restrictionReasonCode: true,
+          restrictedByOperatorId: true,
+          restrictedByOversightIncidentId: true,
+          restrictionReleasedAt: true,
+          restrictionReleasedByOperatorId: true
+        }
+      });
+
+      const updatedIncident = await transaction.oversightIncident.update({
+        where: {
+          id: incident.id
+        },
+        data: {
+          assignedOperatorId: incident.assignedOperatorId ?? operatorId,
+          startedAt: incident.startedAt ?? new Date(),
+          summaryNote: note ?? incident.summaryNote
+        },
+        include: oversightIncidentInclude
+      });
+
+      await this.appendOversightIncidentEvent(
+        transaction,
+        incident.id,
+        "operator",
+        operatorId,
+        OversightIncidentEventType.account_restriction_released,
+        note,
+        {
+          previousAccountStatus: customerAccount.status,
+          newAccountStatus: restoredStatus,
+          restrictionReasonCode: customerAccount.restrictionReasonCode
+        } as Prisma.InputJsonValue
+      );
+
+      await transaction.auditEvent.create({
+        data: {
+          customerId: incident.subjectCustomerId,
+          actorType: "operator",
+          actorId: operatorId,
+          action: "customer_account.restriction_released",
+          targetType: "CustomerAccount",
+          targetId: customerAccount.id,
+          metadata: {
+            previousStatus: customerAccount.status,
+            newStatus: restoredStatus,
+            restrictionReasonCode: customerAccount.restrictionReasonCode,
+            note,
+            oversightIncidentId: incident.id,
+            oversightIncidentType: incident.incidentType
+          }
+        }
+      });
+
+      return {
+        updatedIncident,
+        updatedAccount
+      };
+    });
+
+    return {
+      oversightIncident: this.mapOversightIncidentProjection(
+        result.updatedIncident
+      ),
+      accountRestriction: this.mapAccountRestrictionProjection(
+        result.updatedAccount
+      ),
+      stateReused: false
     };
   }
 
