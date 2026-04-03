@@ -1,5 +1,7 @@
 import { Module } from "@nestjs/common";
 import { AuthModule } from "./auth/auth.module";
+import { CustomerAccountIncidentPackageModule } from "./customer-account-incident-package/customer-account-incident-package.module";
+import { CustomerAccountOperationsModule } from "./customer-account-operations/customer-account-operations.module";
 import { CustomerBalancesModule } from "./customer-balances/customer-balances.module";
 import { EthereumModule } from "./ethereum/ethereum.module";
 import { OversightIncidentsModule } from "./oversight-incidents/oversight-incidents.module";
@@ -19,7 +21,9 @@ import { UserModule } from "./user/user.module";
     TransactionIntentsModule,
     CustomerBalancesModule,
     ReviewCasesModule,
-    OversightIncidentsModule
+    OversightIncidentsModule,
+    CustomerAccountOperationsModule,
+    CustomerAccountIncidentPackageModule
   ]
 })
 export class AppModule {}
