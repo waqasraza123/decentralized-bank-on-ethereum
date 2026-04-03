@@ -121,11 +121,16 @@ function createInternalIntentRecord(
 }
 
 function createService() {
+  const prismaTransactionIntentReadMock = jest.fn();
+  const transactionClientTransactionIntentReadMock = jest.fn();
+  const transactionIntentWriteMock = jest.fn();
   const transactionClient = {
     transactionIntent: {
       create: jest.fn(),
-      updateMany: jest.fn(),
-      findFirst: jest.fn()
+      update: transactionIntentWriteMock,
+      updateMany: transactionIntentWriteMock,
+      findFirst: transactionClientTransactionIntentReadMock,
+      findUnique: transactionClientTransactionIntentReadMock
     },
     auditEvent: {
       create: jest.fn()
@@ -144,8 +149,9 @@ function createService() {
       findUnique: jest.fn()
     },
     transactionIntent: {
-      findFirst: jest.fn(),
-      findMany: jest.fn()
+      findFirst: prismaTransactionIntentReadMock,
+      findMany: jest.fn(),
+      findUnique: prismaTransactionIntentReadMock
     },
     $transaction: jest.fn(async (callback: (client: unknown) => unknown) =>
       callback(transactionClient)

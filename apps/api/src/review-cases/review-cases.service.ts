@@ -1,9 +1,13 @@
 import {
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException
 } from "@nestjs/common";
-import { loadProductChainRuntimeConfig } from "@stealth-trails-bank/config/api";
+import {
+  loadManualResolutionPolicyRuntimeConfig,
+  loadProductChainRuntimeConfig
+} from "@stealth-trails-bank/config/api";
 import {
   BlockchainTransactionStatus,
   PolicyDecision,
@@ -121,6 +125,9 @@ type TransactionIntentProjection = {
   manuallyResolvedAt: string | null;
   manualResolutionReasonCode: string | null;
   manualResolutionNote: string | null;
+  manualResolvedByOperatorId: string | null;
+  manualResolutionOperatorRole: string | null;
+  manualResolutionReviewCaseId: string | null;
   sourceWalletId: string | null;
   sourceWalletAddress: string | null;
   destinationWalletId: string | null;
@@ -197,6 +204,7 @@ type CustomerBalanceProjection = {
 
 type ManualResolutionRecommendedAction =
   | "apply_manual_resolution"
+  | "requires_privileged_operator"
   | "use_runtime_flow"
   | "resolve_case_only"
   | "not_supported";
@@ -205,6 +213,9 @@ type ManualResolutionEligibilityProjection = {
   eligible: boolean;
   reasonCode: string;
   reason: string;
+  operatorRole: string | null;
+  operatorAuthorized: boolean;
+  allowedOperatorRoles: string[];
   currentIntentStatus: TransactionIntentStatus | null;
   currentReviewCaseStatus: ReviewCaseStatus;
   currentReviewCaseType: ReviewCaseType;
@@ -267,9 +278,14 @@ type ApplyManualResolutionResult = {
 @Injectable()
 export class ReviewCasesService {
   private readonly productChainId: number;
+  private readonly manualResolutionAllowedOperatorRoles: string[];
 
   constructor(private readonly prismaService: PrismaService) {
     this.productChainId = loadProductChainRuntimeConfig().productChainId;
+    this.manualResolutionAllowedOperatorRoles = [
+      ...loadManualResolutionPolicyRuntimeConfig()
+        .manualResolutionAllowedOperatorRoles
+    ];
   }
 
   private mapLatestBlockchainTransaction(
@@ -308,6 +324,9 @@ export class ReviewCasesService {
       manuallyResolvedAt: intent.manuallyResolvedAt?.toISOString() ?? null,
       manualResolutionReasonCode: intent.manualResolutionReasonCode,
       manualResolutionNote: intent.manualResolutionNote,
+      manualResolvedByOperatorId: intent.manualResolvedByOperatorId,
+      manualResolutionOperatorRole: intent.manualResolutionOperatorRole,
+      manualResolutionReviewCaseId: intent.manualResolutionReviewCaseId,
       sourceWalletId: intent.sourceWalletId,
       sourceWalletAddress: intent.sourceWallet?.address ?? null,
       destinationWalletId: intent.destinationWalletId,
@@ -425,88 +444,114 @@ export class ReviewCasesService {
   }
 
   private buildManualResolutionEligibility(
-    reviewCase: ReviewCaseRecord
+    reviewCase: ReviewCaseRecord,
+    operatorRole?: string
   ): ManualResolutionEligibilityProjection {
+    const normalizedOperatorRole = operatorRole?.trim().toLowerCase() ?? null;
+    const operatorAuthorized =
+      normalizedOperatorRole !== null &&
+      this.manualResolutionAllowedOperatorRoles.includes(normalizedOperatorRole);
     const intent = reviewCase.transactionIntent;
+    const projectionBase = {
+      operatorRole: normalizedOperatorRole,
+      operatorAuthorized,
+      allowedOperatorRoles: [...this.manualResolutionAllowedOperatorRoles],
+      currentReviewCaseStatus: reviewCase.status,
+      currentReviewCaseType: reviewCase.type
+    };
 
     if (!intent) {
       return {
+        ...projectionBase,
         eligible: false,
         reasonCode: "no_linked_transaction_intent",
         reason: "Review case is not linked to a transaction intent.",
         currentIntentStatus: null,
-        currentReviewCaseStatus: reviewCase.status,
-        currentReviewCaseType: reviewCase.type,
         recommendedAction: "resolve_case_only"
       };
     }
 
+    const resolvedProjection = (
+      projection: Omit<
+        ManualResolutionEligibilityProjection,
+        | "operatorRole"
+        | "operatorAuthorized"
+        | "allowedOperatorRoles"
+        | "currentReviewCaseStatus"
+        | "currentReviewCaseType"
+      >
+    ): ManualResolutionEligibilityProjection => ({
+      ...projectionBase,
+      ...projection
+    });
+
     if (reviewCase.status === ReviewCaseStatus.dismissed) {
-      return {
+      return resolvedProjection({
         eligible: false,
         reasonCode: "review_case_dismissed",
         reason: "Dismissed review cases do not support manual resolution.",
         currentIntentStatus: intent.status,
-        currentReviewCaseStatus: reviewCase.status,
-        currentReviewCaseType: reviewCase.type,
         recommendedAction: "resolve_case_only"
-      };
+      });
     }
 
     if (reviewCase.status === ReviewCaseStatus.resolved) {
-      return {
+      return resolvedProjection({
         eligible: false,
         reasonCode: "review_case_resolved",
         reason: "Resolved review cases do not support another manual intervention.",
         currentIntentStatus: intent.status,
-        currentReviewCaseStatus: reviewCase.status,
-        currentReviewCaseType: reviewCase.type,
         recommendedAction: "resolve_case_only"
-      };
+      });
     }
 
     if (intent.status === TransactionIntentStatus.manually_resolved) {
-      return {
+      return resolvedProjection({
         eligible: false,
         reasonCode: "intent_already_manually_resolved",
         reason: "The linked transaction intent is already manually resolved.",
         currentIntentStatus: intent.status,
-        currentReviewCaseStatus: reviewCase.status,
-        currentReviewCaseType: reviewCase.type,
         recommendedAction: "resolve_case_only"
-      };
+      });
     }
 
     if (
       intent.status === TransactionIntentStatus.failed ||
       intent.status === TransactionIntentStatus.cancelled
     ) {
-      return {
+      if (!operatorAuthorized) {
+        return resolvedProjection({
+          eligible: false,
+          reasonCode: "operator_role_not_authorized",
+          reason:
+            "The caller is not authorized to apply manual resolution for this review case.",
+          currentIntentStatus: intent.status,
+          recommendedAction: "requires_privileged_operator"
+        });
+      }
+
+      return resolvedProjection({
         eligible: true,
         reasonCode: "terminal_intent_safe_for_manual_resolution",
         reason:
           "The linked transaction intent is already in a terminal non-money-truth runtime state and can be manually resolved safely.",
         currentIntentStatus: intent.status,
-        currentReviewCaseStatus: reviewCase.status,
-        currentReviewCaseType: reviewCase.type,
         recommendedAction: "apply_manual_resolution"
-      };
+      });
     }
 
     if (
       intent.status === TransactionIntentStatus.broadcast ||
       intent.status === TransactionIntentStatus.confirmed
     ) {
-      return {
+      return resolvedProjection({
         eligible: false,
         reasonCode: "active_runtime_state_use_runtime_flow",
         reason:
           "The linked transaction intent is still in an active runtime state. Use replay or runtime recovery instead of manual resolution.",
         currentIntentStatus: intent.status,
-        currentReviewCaseStatus: reviewCase.status,
-        currentReviewCaseType: reviewCase.type,
         recommendedAction: "use_runtime_flow"
-      };
+      });
     }
 
     if (
@@ -515,45 +560,40 @@ export class ReviewCasesService {
       intent.status === TransactionIntentStatus.approved ||
       intent.status === TransactionIntentStatus.queued
     ) {
-      return {
+      return resolvedProjection({
         eligible: false,
         reasonCode: "non_terminal_runtime_state_use_runtime_flow",
         reason:
           "The linked transaction intent is not terminal yet. Continue the normal runtime workflow instead of applying manual resolution.",
         currentIntentStatus: intent.status,
-        currentReviewCaseStatus: reviewCase.status,
-        currentReviewCaseType: reviewCase.type,
         recommendedAction: "use_runtime_flow"
-      };
+      });
     }
 
     if (intent.status === TransactionIntentStatus.settled) {
-      return {
+      return resolvedProjection({
         eligible: false,
         reasonCode: "settled_money_state_not_supported",
         reason:
           "Settled transaction intents are money-truth states and cannot be manually resolved in this slice.",
         currentIntentStatus: intent.status,
-        currentReviewCaseStatus: reviewCase.status,
-        currentReviewCaseType: reviewCase.type,
         recommendedAction: "not_supported"
-      };
+      });
     }
 
-    return {
+    return resolvedProjection({
       eligible: false,
       reasonCode: "unsupported_manual_resolution_state",
       reason:
         "The linked transaction intent is in a state that does not support manual resolution.",
       currentIntentStatus: intent.status,
-      currentReviewCaseStatus: reviewCase.status,
-      currentReviewCaseType: reviewCase.type,
       recommendedAction: "not_supported"
-    };
+    });
   }
 
   async getManualResolutionEligibility(
-    reviewCaseId: string
+    reviewCaseId: string,
+    operatorRole?: string
   ): Promise<ManualResolutionEligibilityProjection> {
     const reviewCase = await this.findReviewCaseById(reviewCaseId);
 
@@ -561,7 +601,7 @@ export class ReviewCasesService {
       throw new NotFoundException("Review case not found.");
     }
 
-    return this.buildManualResolutionEligibility(reviewCase);
+    return this.buildManualResolutionEligibility(reviewCase, operatorRole);
   }
 
   async openOrReuseReviewCase(
@@ -715,7 +755,8 @@ export class ReviewCasesService {
 
   async getReviewCaseWorkspace(
     reviewCaseId: string,
-    query: GetReviewCaseWorkspaceDto
+    query: GetReviewCaseWorkspaceDto,
+    operatorRole?: string
   ): Promise<ReviewCaseWorkspaceResult> {
     const recentLimit = query.recentLimit ?? 20;
     const reviewCase = await this.findReviewCaseById(reviewCaseId);
@@ -785,8 +826,10 @@ export class ReviewCasesService {
 
     return {
       reviewCase: this.mapReviewCaseProjection(reviewCase),
-      manualResolutionEligibility:
-        this.buildManualResolutionEligibility(reviewCase),
+      manualResolutionEligibility: this.buildManualResolutionEligibility(
+        reviewCase,
+        operatorRole
+      ),
       caseEvents: caseEvents.map((event) =>
         this.mapReviewCaseEventProjection(event)
       ),
@@ -1224,6 +1267,7 @@ export class ReviewCasesService {
   async applyManualResolution(
     reviewCaseId: string,
     operatorId: string,
+    operatorRole: string | undefined,
     dto: ApplyManualResolutionDto
   ): Promise<ApplyManualResolutionResult> {
     const existingReviewCase = await this.findReviewCaseById(reviewCaseId);
@@ -1248,10 +1292,17 @@ export class ReviewCasesService {
       };
     }
 
-    const eligibility = this.buildManualResolutionEligibility(existingReviewCase);
+    const callerAwareEligibility = this.buildManualResolutionEligibility(
+      existingReviewCase,
+      operatorRole
+    );
 
-    if (!eligibility.eligible) {
-      throw new ConflictException(eligibility.reason);
+    if (callerAwareEligibility.reasonCode === "operator_role_not_authorized") {
+      throw new ForbiddenException(callerAwareEligibility.reason);
+    }
+
+    if (!callerAwareEligibility.eligible) {
+      throw new ConflictException(callerAwareEligibility.reason);
     }
 
     if (!existingReviewCase.transactionIntent) {
@@ -1272,7 +1323,11 @@ export class ReviewCasesService {
           status: TransactionIntentStatus.manually_resolved,
           manuallyResolvedAt: new Date(),
           manualResolutionReasonCode,
-          manualResolutionNote: note
+          manualResolutionNote: note,
+          manualResolvedByOperatorId: operatorId,
+          manualResolutionOperatorRole:
+            callerAwareEligibility.operatorRole,
+          manualResolutionReviewCaseId: existingReviewCase.id
         },
         include: transactionIntentInclude
       });
@@ -1301,7 +1356,11 @@ export class ReviewCasesService {
         {
           previousIntentStatus: existingReviewCase.transactionIntent!.status,
           newIntentStatus: TransactionIntentStatus.manually_resolved,
-          manualResolutionReasonCode
+          manualResolutionReasonCode,
+          manualResolvedByOperatorId: operatorId,
+          manualResolutionOperatorRole:
+            callerAwareEligibility.operatorRole,
+          manualResolutionReviewCaseId: existingReviewCase.id
         } as Prisma.InputJsonValue
       );
 
@@ -1332,6 +1391,10 @@ export class ReviewCasesService {
             newStatus: TransactionIntentStatus.manually_resolved,
             manualResolutionReasonCode,
             manualResolutionNote: note,
+            manualResolvedByOperatorId: operatorId,
+            manualResolutionOperatorRole:
+              callerAwareEligibility.operatorRole,
+            manualResolutionReviewCaseId: existingReviewCase.id,
             reviewCaseId: existingReviewCase.id,
             reviewCaseType: existingReviewCase.type,
             customerAccountId: existingReviewCase.customerAccountId

@@ -1,5 +1,6 @@
 import {
   ConflictException,
+  ForbiddenException,
   NotFoundException
 } from "@nestjs/common";
 import {
@@ -56,6 +57,9 @@ function buildReviewCaseRecord(
       manuallyResolvedAt: null,
       manualResolutionReasonCode: null,
       manualResolutionNote: null,
+      manualResolvedByOperatorId: null,
+      manualResolutionOperatorRole: null,
+      manualResolutionReviewCaseId: null,
       sourceWalletId: "wallet_1",
       destinationWalletId: null,
       externalAddress: "0x0000000000000000000000000000000000000abc",
@@ -127,28 +131,48 @@ function createService() {
   };
 }
 
-describe("ReviewCasesService manual resolution", () => {
+describe("ReviewCasesService manual resolution governance", () => {
   afterEach(() => {
     jest.clearAllMocks();
     jest.restoreAllMocks();
   });
 
-  it("returns manual resolution eligibility for a failed linked intent", async () => {
+  it("returns caller-aware eligibility for an authorized privileged operator role", async () => {
     const { service } = createService();
 
     jest.spyOn(service as any, "findReviewCaseById").mockResolvedValue(
       buildReviewCaseRecord()
     );
 
-    const result = await service.getManualResolutionEligibility("review_case_1");
+    const result = await service.getManualResolutionEligibility(
+      "review_case_1",
+      "operations_admin"
+    );
 
     expect(result.eligible).toBe(true);
-    expect(result.reasonCode).toBe(
-      "terminal_intent_safe_for_manual_resolution"
-    );
+    expect(result.operatorAuthorized).toBe(true);
+    expect(result.recommendedAction).toBe("apply_manual_resolution");
   });
 
-  it("applies manual resolution and resolves the review case", async () => {
+  it("returns caller-aware eligibility for an unauthorized operator role", async () => {
+    const { service } = createService();
+
+    jest.spyOn(service as any, "findReviewCaseById").mockResolvedValue(
+      buildReviewCaseRecord()
+    );
+
+    const result = await service.getManualResolutionEligibility(
+      "review_case_1",
+      "junior_operator"
+    );
+
+    expect(result.eligible).toBe(false);
+    expect(result.operatorAuthorized).toBe(false);
+    expect(result.reasonCode).toBe("operator_role_not_authorized");
+    expect(result.recommendedAction).toBe("requires_privileged_operator");
+  });
+
+  it("applies manual resolution and stores governance metadata", async () => {
     const { service, prismaService } = createService();
 
     const existingReviewCase = buildReviewCaseRecord();
@@ -162,7 +186,10 @@ describe("ReviewCasesService manual resolution", () => {
       status: TransactionIntentStatus.manually_resolved,
       manuallyResolvedAt: new Date("2026-04-01T00:30:00.000Z"),
       manualResolutionReasonCode: "support_case_closed",
-      manualResolutionNote: "Handled off-platform."
+      manualResolutionNote: "Handled off-platform.",
+      manualResolvedByOperatorId: "ops_1",
+      manualResolutionOperatorRole: "operations_admin",
+      manualResolutionReviewCaseId: "review_case_1"
     };
 
     const updatedReviewCase = {
@@ -214,16 +241,46 @@ describe("ReviewCasesService manual resolution", () => {
       async (callback: (tx: any) => Promise<unknown>) => callback(transaction)
     );
 
-    const result = await service.applyManualResolution("review_case_1", "ops_1", {
-      manualResolutionReasonCode: "support_case_closed",
-      note: "Handled off-platform."
-    });
+    const result = await service.applyManualResolution(
+      "review_case_1",
+      "ops_1",
+      "operations_admin",
+      {
+        manualResolutionReasonCode: "support_case_closed",
+        note: "Handled off-platform."
+      }
+    );
 
     expect(result.stateReused).toBe(false);
     expect(result.transactionIntent.status).toBe(
       TransactionIntentStatus.manually_resolved
     );
-    expect(result.reviewCase.status).toBe(ReviewCaseStatus.resolved);
+    expect(result.transactionIntent.manualResolvedByOperatorId).toBe("ops_1");
+    expect(result.transactionIntent.manualResolutionOperatorRole).toBe(
+      "operations_admin"
+    );
+    expect(result.transactionIntent.manualResolutionReviewCaseId).toBe(
+      "review_case_1"
+    );
+  });
+
+  it("rejects manual resolution when the operator role is not authorized", async () => {
+    const { service } = createService();
+
+    jest.spyOn(service as any, "findReviewCaseById").mockResolvedValue(
+      buildReviewCaseRecord()
+    );
+
+    await expect(
+      service.applyManualResolution(
+        "review_case_1",
+        "ops_1",
+        "junior_operator",
+        {
+          manualResolutionReasonCode: "support_case_closed"
+        }
+      )
+    ).rejects.toBeInstanceOf(ForbiddenException);
   });
 
   it("rejects manual resolution for a settled linked intent", async () => {
@@ -242,26 +299,14 @@ describe("ReviewCasesService manual resolution", () => {
     );
 
     await expect(
-      service.applyManualResolution("review_case_1", "ops_1", {
-        manualResolutionReasonCode: "operator_override_not_needed"
-      })
-    ).rejects.toBeInstanceOf(ConflictException);
-  });
-
-  it("rejects manual resolution when the case is assigned to another operator", async () => {
-    const { service } = createService();
-
-    jest.spyOn(service as any, "findReviewCaseById").mockResolvedValue(
-      buildReviewCaseRecord({
-        status: ReviewCaseStatus.in_progress,
-        assignedOperatorId: "ops_2"
-      })
-    );
-
-    await expect(
-      service.applyManualResolution("review_case_1", "ops_1", {
-        manualResolutionReasonCode: "support_case_closed"
-      })
+      service.applyManualResolution(
+        "review_case_1",
+        "ops_1",
+        "operations_admin",
+        {
+          manualResolutionReasonCode: "operator_override_not_needed"
+        }
+      )
     ).rejects.toBeInstanceOf(ConflictException);
   });
 
@@ -271,7 +316,7 @@ describe("ReviewCasesService manual resolution", () => {
     jest.spyOn(service as any, "findReviewCaseById").mockResolvedValue(null);
 
     await expect(
-      service.getManualResolutionEligibility("missing_case")
+      service.getManualResolutionEligibility("missing_case", "operations_admin")
     ).rejects.toBeInstanceOf(NotFoundException);
   });
 });

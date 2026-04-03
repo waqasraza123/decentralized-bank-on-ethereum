@@ -25,6 +25,7 @@ import { ReviewCasesService } from "./review-cases.service";
 type InternalOperatorRequest = {
   internalOperator: {
     operatorId: string;
+    operatorRole?: string;
   };
 };
 
@@ -103,11 +104,13 @@ export class ReviewCasesController {
         forbidNonWhitelisted: true
       })
     )
-    query: GetReviewCaseWorkspaceDto
+    query: GetReviewCaseWorkspaceDto,
+    @Request() request: InternalOperatorRequest
   ): Promise<CustomJsonResponse> {
     const result = await this.reviewCasesService.getReviewCaseWorkspace(
       reviewCaseId,
-      query
+      query,
+      request.internalOperator.operatorRole
     );
 
     return {
@@ -119,10 +122,13 @@ export class ReviewCasesController {
 
   @Get(":reviewCaseId/manual-resolution-eligibility")
   async getManualResolutionEligibility(
-    @Param("reviewCaseId") reviewCaseId: string
+    @Param("reviewCaseId") reviewCaseId: string,
+    @Request() request: InternalOperatorRequest
   ): Promise<CustomJsonResponse> {
-    const result =
-      await this.reviewCasesService.getManualResolutionEligibility(reviewCaseId);
+    const result = await this.reviewCasesService.getManualResolutionEligibility(
+      reviewCaseId,
+      request.internalOperator.operatorRole
+    );
 
     return {
       status: "success",
@@ -225,6 +231,7 @@ export class ReviewCasesController {
     const result = await this.reviewCasesService.applyManualResolution(
       reviewCaseId,
       request.internalOperator.operatorId,
+      request.internalOperator.operatorRole,
       dto
     );
 

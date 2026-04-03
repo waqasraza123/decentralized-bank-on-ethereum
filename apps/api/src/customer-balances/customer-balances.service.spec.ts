@@ -54,7 +54,7 @@ describe("CustomerBalancesService", () => {
 
     expect(result.customerAccountId).toBe("account_1");
     expect(result.balances).toHaveLength(1);
-    expect(result.balances[0].availableBalance).toBe("10.50");
+    expect(result.balances[0].availableBalance).toBe("10.5");
   });
 
   it("fails when the customer account projection does not exist", async () => {

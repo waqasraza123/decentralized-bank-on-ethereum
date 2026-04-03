@@ -6,6 +6,7 @@ export {
   loadInternalOperatorRuntimeConfig,
   loadInternalWorkerRuntimeConfig,
   loadJwtRuntimeConfig,
+  loadManualResolutionPolicyRuntimeConfig,
   loadProductChainRuntimeConfig,
   type BlockchainContractReadRuntimeConfig,
   type BlockchainContractWriteRuntimeConfig,
@@ -14,5 +15,6 @@ export {
   type InternalOperatorRuntimeConfig,
   type InternalWorkerRuntimeConfig,
   type JwtRuntimeConfig,
+  type ManualResolutionPolicyRuntimeConfig,
   type ProductChainRuntimeConfig
 } from "./src/node-runtime-config";

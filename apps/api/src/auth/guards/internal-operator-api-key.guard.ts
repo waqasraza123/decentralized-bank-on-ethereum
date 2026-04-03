@@ -11,6 +11,7 @@ type InternalOperatorRequest = {
   headers: Record<string, string | string[] | undefined>;
   internalOperator?: {
     operatorId: string;
+    operatorRole?: string;
   };
 };
 
@@ -55,6 +56,7 @@ export class InternalOperatorApiKeyGuard implements CanActivate {
     const request = context.switchToHttp().getRequest<InternalOperatorRequest>();
     const providedApiKey = this.readHeaderValue(request, "x-operator-api-key");
     const operatorId = this.readHeaderValue(request, "x-operator-id");
+    const operatorRole = this.readHeaderValue(request, "x-operator-role");
 
     if (!providedApiKey) {
       throw new UnauthorizedException("Missing operator API key.");
@@ -70,9 +72,14 @@ export class InternalOperatorApiKeyGuard implements CanActivate {
       throw new UnauthorizedException("Invalid operator API key.");
     }
 
-    request.internalOperator = {
-      operatorId
-    };
+    request.internalOperator = operatorRole
+      ? {
+          operatorId,
+          operatorRole: operatorRole.toLowerCase()
+        }
+      : {
+          operatorId
+        };
 
     return true;
   }

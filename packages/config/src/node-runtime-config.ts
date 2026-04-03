@@ -6,6 +6,11 @@ import {
 } from "./runtime-env";
 
 const DEFAULT_PRODUCT_CHAIN_ID = 8453;
+const DEFAULT_MANUAL_RESOLUTION_ALLOWED_OPERATOR_ROLES = [
+  "operations_admin",
+  "risk_manager",
+  "senior_operator"
+] as const;
 
 let nodeRuntimeEnvInitialized = false;
 
@@ -31,6 +36,22 @@ function parsePositiveInteger(value: string, name: string): number {
   }
 
   return parsedValue;
+}
+
+function parseCommaSeparatedValues(
+  value: string,
+  name: string
+): string[] {
+  const values = value
+    .split(",")
+    .map((entry) => entry.trim().toLowerCase())
+    .filter(Boolean);
+
+  if (values.length === 0) {
+    throw new Error(`${name} must include at least one value.`);
+  }
+
+  return Array.from(new Set(values));
 }
 
 export type DatabaseRuntimeConfig = {
@@ -69,6 +90,10 @@ export type InternalOperatorRuntimeConfig = {
 
 export type InternalWorkerRuntimeConfig = {
   readonly internalWorkerApiKey: string;
+};
+
+export type ManualResolutionPolicyRuntimeConfig = {
+  readonly manualResolutionAllowedOperatorRoles: readonly string[];
 };
 
 export function loadDatabaseRuntimeConfig(
@@ -163,5 +188,29 @@ export function loadInternalWorkerRuntimeConfig(
 ): InternalWorkerRuntimeConfig {
   return {
     internalWorkerApiKey: readRequiredRuntimeEnv(env, "INTERNAL_WORKER_API_KEY")
+  };
+}
+
+export function loadManualResolutionPolicyRuntimeConfig(
+  env: RuntimeEnvShape = getNodeRuntimeEnv()
+): ManualResolutionPolicyRuntimeConfig {
+  const configuredRoles = readOptionalRuntimeEnv(
+    env,
+    "MANUAL_RESOLUTION_ALLOWED_OPERATOR_ROLES"
+  );
+
+  if (!configuredRoles) {
+    return {
+      manualResolutionAllowedOperatorRoles: [
+        ...DEFAULT_MANUAL_RESOLUTION_ALLOWED_OPERATOR_ROLES
+      ]
+    };
+  }
+
+  return {
+    manualResolutionAllowedOperatorRoles: parseCommaSeparatedValues(
+      configuredRoles,
+      "MANUAL_RESOLUTION_ALLOWED_OPERATOR_ROLES"
+    )
   };
 }
