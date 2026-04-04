@@ -20,6 +20,9 @@ const DEFAULT_ACCOUNT_HOLD_RELEASE_ALLOWED_OPERATOR_ROLES = [
   "risk_manager",
   "compliance_lead"
 ] as const;
+const DEFAULT_INCIDENT_PACKAGE_EXPORT_MAX_RECENT_LIMIT = 100;
+const DEFAULT_INCIDENT_PACKAGE_EXPORT_MAX_TIMELINE_LIMIT = 500;
+const DEFAULT_INCIDENT_PACKAGE_EXPORT_MAX_SINCE_DAYS = 90;
 
 let nodeRuntimeEnvInitialized = false;
 
@@ -47,10 +50,7 @@ function parsePositiveInteger(value: string, name: string): number {
   return parsedValue;
 }
 
-function parseCommaSeparatedValues(
-  value: string,
-  name: string
-): string[] {
+function parseCommaSeparatedValues(value: string, name: string): string[] {
   const values = value
     .split(",")
     .map((entry) => entry.trim().toLowerCase())
@@ -108,6 +108,12 @@ export type ManualResolutionPolicyRuntimeConfig = {
 export type AccountHoldPolicyRuntimeConfig = {
   readonly accountHoldApplyAllowedOperatorRoles: readonly string[];
   readonly accountHoldReleaseAllowedOperatorRoles: readonly string[];
+};
+
+export type IncidentPackageExportGovernanceRuntimeConfig = {
+  readonly incidentPackageExportMaxRecentLimit: number;
+  readonly incidentPackageExportMaxTimelineLimit: number;
+  readonly incidentPackageExportMaxSinceDays: number;
 };
 
 export function loadDatabaseRuntimeConfig(
@@ -254,5 +260,43 @@ export function loadAccountHoldPolicyRuntimeConfig(
           "ACCOUNT_HOLD_RELEASE_ALLOWED_OPERATOR_ROLES"
         )
       : [...DEFAULT_ACCOUNT_HOLD_RELEASE_ALLOWED_OPERATOR_ROLES]
+  };
+}
+
+export function loadIncidentPackageExportGovernanceRuntimeConfig(
+  env: RuntimeEnvShape = getNodeRuntimeEnv()
+): IncidentPackageExportGovernanceRuntimeConfig {
+  const configuredMaxRecentLimit = readOptionalRuntimeEnv(
+    env,
+    "INCIDENT_PACKAGE_EXPORT_MAX_RECENT_LIMIT"
+  );
+  const configuredMaxTimelineLimit = readOptionalRuntimeEnv(
+    env,
+    "INCIDENT_PACKAGE_EXPORT_MAX_TIMELINE_LIMIT"
+  );
+  const configuredMaxSinceDays = readOptionalRuntimeEnv(
+    env,
+    "INCIDENT_PACKAGE_EXPORT_MAX_SINCE_DAYS"
+  );
+
+  return {
+    incidentPackageExportMaxRecentLimit: configuredMaxRecentLimit
+      ? parsePositiveInteger(
+          configuredMaxRecentLimit,
+          "INCIDENT_PACKAGE_EXPORT_MAX_RECENT_LIMIT"
+        )
+      : DEFAULT_INCIDENT_PACKAGE_EXPORT_MAX_RECENT_LIMIT,
+    incidentPackageExportMaxTimelineLimit: configuredMaxTimelineLimit
+      ? parsePositiveInteger(
+          configuredMaxTimelineLimit,
+          "INCIDENT_PACKAGE_EXPORT_MAX_TIMELINE_LIMIT"
+        )
+      : DEFAULT_INCIDENT_PACKAGE_EXPORT_MAX_TIMELINE_LIMIT,
+    incidentPackageExportMaxSinceDays: configuredMaxSinceDays
+      ? parsePositiveInteger(
+          configuredMaxSinceDays,
+          "INCIDENT_PACKAGE_EXPORT_MAX_SINCE_DAYS"
+        )
+      : DEFAULT_INCIDENT_PACKAGE_EXPORT_MAX_SINCE_DAYS
   };
 }
