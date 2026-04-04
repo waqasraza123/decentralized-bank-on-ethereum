@@ -23,6 +23,11 @@ const DEFAULT_ACCOUNT_HOLD_RELEASE_ALLOWED_OPERATOR_ROLES = [
 const DEFAULT_INCIDENT_PACKAGE_EXPORT_MAX_RECENT_LIMIT = 100;
 const DEFAULT_INCIDENT_PACKAGE_EXPORT_MAX_TIMELINE_LIMIT = 500;
 const DEFAULT_INCIDENT_PACKAGE_EXPORT_MAX_SINCE_DAYS = 90;
+const DEFAULT_INCIDENT_PACKAGE_RELEASE_APPROVER_ALLOWED_OPERATOR_ROLES = [
+  "compliance_lead",
+  "risk_manager"
+] as const;
+const DEFAULT_INCIDENT_PACKAGE_RELEASE_APPROVAL_EXPIRY_HOURS = 72;
 
 let nodeRuntimeEnvInitialized = false;
 
@@ -114,6 +119,11 @@ export type IncidentPackageExportGovernanceRuntimeConfig = {
   readonly incidentPackageExportMaxRecentLimit: number;
   readonly incidentPackageExportMaxTimelineLimit: number;
   readonly incidentPackageExportMaxSinceDays: number;
+};
+
+export type IncidentPackageReleaseGovernanceRuntimeConfig = {
+  readonly incidentPackageReleaseApproverAllowedOperatorRoles: readonly string[];
+  readonly incidentPackageReleaseApprovalExpiryHours: number;
 };
 
 export function loadDatabaseRuntimeConfig(
@@ -298,5 +308,33 @@ export function loadIncidentPackageExportGovernanceRuntimeConfig(
           "INCIDENT_PACKAGE_EXPORT_MAX_SINCE_DAYS"
         )
       : DEFAULT_INCIDENT_PACKAGE_EXPORT_MAX_SINCE_DAYS
+  };
+}
+
+export function loadIncidentPackageReleaseGovernanceRuntimeConfig(
+  env: RuntimeEnvShape = getNodeRuntimeEnv()
+): IncidentPackageReleaseGovernanceRuntimeConfig {
+  const configuredApproverRoles = readOptionalRuntimeEnv(
+    env,
+    "INCIDENT_PACKAGE_RELEASE_APPROVER_ALLOWED_OPERATOR_ROLES"
+  );
+  const configuredApprovalExpiryHours = readOptionalRuntimeEnv(
+    env,
+    "INCIDENT_PACKAGE_RELEASE_APPROVAL_EXPIRY_HOURS"
+  );
+
+  return {
+    incidentPackageReleaseApproverAllowedOperatorRoles: configuredApproverRoles
+      ? parseCommaSeparatedValues(
+          configuredApproverRoles,
+          "INCIDENT_PACKAGE_RELEASE_APPROVER_ALLOWED_OPERATOR_ROLES"
+        )
+      : [...DEFAULT_INCIDENT_PACKAGE_RELEASE_APPROVER_ALLOWED_OPERATOR_ROLES],
+    incidentPackageReleaseApprovalExpiryHours: configuredApprovalExpiryHours
+      ? parsePositiveInteger(
+          configuredApprovalExpiryHours,
+          "INCIDENT_PACKAGE_RELEASE_APPROVAL_EXPIRY_HOURS"
+        )
+      : DEFAULT_INCIDENT_PACKAGE_RELEASE_APPROVAL_EXPIRY_HOURS
   };
 }

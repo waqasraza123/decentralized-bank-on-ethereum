@@ -62,6 +62,7 @@ model CustomerAccount {
   @@index([restrictedByOversightIncidentId])
   ledgerAccounts                  LedgerAccount[]
   assetBalances                   CustomerAssetBalance[]
+  incidentPackageReleases CustomerAccountIncidentPackageRelease[]
 }
 
 model Wallet {
@@ -590,3 +591,66 @@ enum CustomerAccountRestrictionReleaseDecisionStatus {
   approved
   denied
 }
+
+enum IncidentPackageExportMode {
+  internal_full
+  redaction_ready
+  compliance_focused
+}
+
+enum IncidentPackageReleaseTarget {
+  internal_casefile
+  compliance_handoff
+  regulator_response
+  external_counsel
+}
+
+enum CustomerAccountIncidentPackageReleaseStatus {
+  pending_approval
+  approved
+  rejected
+  released
+  expired
+}
+
+model CustomerAccountIncidentPackageRelease {
+  id                      String                                      @id @default(cuid())
+  customerAccountId       String
+  customerAccount         CustomerAccount                             @relation(fields: [customerAccountId], references: [id])
+  status                  CustomerAccountIncidentPackageReleaseStatus @default(pending_approval)
+  exportMode              IncidentPackageExportMode
+  releaseTarget           IncidentPackageReleaseTarget
+  releaseReasonCode       String
+  requestedByOperatorId   String
+  requestedByOperatorRole String?
+  approvedByOperatorId    String?
+  approvedByOperatorRole  String?
+  rejectedByOperatorId    String?
+  rejectedByOperatorRole  String?
+  releasedByOperatorId    String?
+  releasedByOperatorRole  String?
+  requestNote             String?
+  approvalNote            String?
+  rejectionNote           String?
+  releaseNote             String?
+  artifactChecksumSha256  String
+  artifactPayload         Json
+  requestedAt             DateTime                                    @default(now())
+  approvedAt              DateTime?
+  rejectedAt              DateTime?
+  releasedAt              DateTime?
+  expiresAt               DateTime?
+  createdAt               DateTime                                    @default(now())
+  updatedAt               DateTime                                    @updatedAt
+
+  @@index([customerAccountId, status])
+  @@index([status, requestedAt])
+  @@index([status, approvedAt])
+  @@index([status, releasedAt])
+  @@index([exportMode, status])
+  @@index([releaseTarget, status])
+  @@index([requestedByOperatorId, requestedAt])
+  @@index([approvedByOperatorId, approvedAt])
+  @@index([releasedByOperatorId, releasedAt])
+}
+
