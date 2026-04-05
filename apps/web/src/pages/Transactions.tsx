@@ -1,94 +1,174 @@
-
 import { useState } from "react";
 import { Layout } from "@/components/Layout";
 import { Card } from "@/components/ui/card";
 import { TransactionFilter } from "@/components/transactions/TransactionFilter";
+import {
+  useMyTransactionHistory,
+  type TransactionHistoryIntent,
+} from "@/hooks/transactions/useMyTransactionHistory";
 
-interface Transaction {
+type TransactionFilters = {
+  search: string;
+  types: string[];
+  statuses: string[];
+  dateRange: { from: Date | undefined; to: Date | undefined };
+};
+
+type TransactionRow = {
   id: string;
   type: string;
   amount: string;
   date: string;
   status: string;
   address: string;
+  assetSymbol: string;
+  rawDate: Date;
+};
+
+const emptyFilters: TransactionFilters = {
+  search: "",
+  types: [],
+  statuses: [],
+  dateRange: {
+    from: undefined,
+    to: undefined,
+  },
+};
+
+function formatAmount(
+  amount: string,
+  assetSymbol: string,
+  intentType: "deposit" | "withdrawal"
+): string {
+  const prefix = intentType === "deposit" ? "+" : "-";
+  return `${prefix}${amount} ${assetSymbol}`;
+}
+
+function formatDate(value: string): string {
+  return new Date(value).toLocaleDateString(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
+}
+
+function normalizeTypeLabel(intentType: "deposit" | "withdrawal"): string {
+  return intentType === "deposit" ? "Deposit" : "Withdrawal";
+}
+
+function resolveAddress(input: {
+  intentType: "deposit" | "withdrawal";
+  externalAddress: string | null;
+  destinationWalletAddress: string | null;
+  sourceWalletAddress: string | null;
+  latestBlockchainTransaction:
+    | {
+        fromAddress: string | null;
+        toAddress: string | null;
+      }
+    | null;
+}): string {
+  if (input.intentType === "withdrawal") {
+    return (
+      input.externalAddress ??
+      input.latestBlockchainTransaction?.toAddress ??
+      input.sourceWalletAddress ??
+      "N/A"
+    );
+  }
+
+  return (
+    input.destinationWalletAddress ??
+    input.latestBlockchainTransaction?.toAddress ??
+    "N/A"
+  );
+}
+
+function getStatusTone(status: string): string {
+  if (status === "settled" || status === "confirmed") {
+    return "bg-mint-100 text-mint-700";
+  }
+
+  if (status === "failed" || status === "cancelled") {
+    return "bg-red-100 text-red-700";
+  }
+
+  return "bg-orange-100 text-orange-700";
+}
+
+function mapHistoryToRows(
+  intents: TransactionHistoryIntent[] | undefined
+): TransactionRow[] {
+  if (!intents) {
+    return [];
+  }
+
+  return intents.map((intent) => ({
+    id: intent.id,
+    type: normalizeTypeLabel(intent.intentType),
+    amount: formatAmount(
+      intent.settledAmount ?? intent.requestedAmount,
+      intent.asset.symbol,
+      intent.intentType
+    ),
+    date: formatDate(intent.createdAt),
+    rawDate: new Date(intent.createdAt),
+    status: intent.status,
+    address: resolveAddress(intent),
+    assetSymbol: intent.asset.symbol,
+  }));
 }
 
 const Transactions = () => {
-  const allTransactions = [
-    {
-      id: "1",
-      type: "Deposit",
-      amount: "+$1,000.00",
-      date: "2024-03-20",
-      status: "completed",
-      address: "0x1234...5678",
-    },
-    {
-      id: "2",
-      type: "Withdrawal",
-      amount: "-$500.00",
-      date: "2024-03-19",
-      status: "pending",
-      address: "0x8765...4321",
-    },
-    {
-      id: "3",
-      type: "Transfer",
-      amount: "-$250.00",
-      date: "2024-03-18",
-      status: "completed",
-      address: "0x9876...1234",
-    },
-  ];
+  const [filters, setFilters] = useState<TransactionFilters>(emptyFilters);
+  const historyQuery = useMyTransactionHistory(100);
+  const allTransactions = mapHistoryToRows(historyQuery.data?.intents);
 
-  const [filteredTransactions, setFilteredTransactions] = useState(allTransactions);
+  let filteredTransactions = allTransactions;
 
-  const handleFilterChange = (filters: {
-    search: string;
-    types: string[];
-    statuses: string[];
-    dateRange: { from: Date | undefined; to: Date | undefined };
-  }) => {
-    let filtered = allTransactions;
+  if (filters.search) {
+    const searchLower = filters.search.toLowerCase();
+    filteredTransactions = filteredTransactions.filter(
+      (tx) =>
+        tx.type.toLowerCase().includes(searchLower) ||
+        tx.amount.toLowerCase().includes(searchLower) ||
+        tx.address.toLowerCase().includes(searchLower) ||
+        tx.assetSymbol.toLowerCase().includes(searchLower)
+    );
+  }
 
-    // Filter by search term
-    if (filters.search) {
-      const searchLower = filters.search.toLowerCase();
-      filtered = filtered.filter(
-        (tx) =>
-          tx.type.toLowerCase().includes(searchLower) ||
-          tx.amount.toLowerCase().includes(searchLower) ||
-          tx.address.toLowerCase().includes(searchLower)
-      );
-    }
+  if (filters.types.length > 0) {
+    filteredTransactions = filteredTransactions.filter((tx) =>
+      filters.types.includes(tx.type)
+    );
+  }
 
-    // Filter by type
-    if (filters.types.length > 0) {
-      filtered = filtered.filter((tx) => filters.types.includes(tx.type));
-    }
+  if (filters.statuses.length > 0) {
+    filteredTransactions = filteredTransactions.filter((tx) =>
+      filters.statuses.includes(tx.status)
+    );
+  }
 
-    // Filter by status
-    if (filters.statuses.length > 0) {
-      filtered = filtered.filter((tx) => filters.statuses.includes(tx.status));
-    }
+  if (filters.dateRange.from || filters.dateRange.to) {
+    filteredTransactions = filteredTransactions.filter((tx) => {
+      if (filters.dateRange.from && filters.dateRange.to) {
+        return (
+          tx.rawDate >= filters.dateRange.from &&
+          tx.rawDate <= filters.dateRange.to
+        );
+      }
 
-    // Filter by date range
-    if (filters.dateRange.from || filters.dateRange.to) {
-      filtered = filtered.filter((tx) => {
-        const txDate = new Date(tx.date);
-        if (filters.dateRange.from && filters.dateRange.to) {
-          return txDate >= filters.dateRange.from && txDate <= filters.dateRange.to;
-        } else if (filters.dateRange.from) {
-          return txDate >= filters.dateRange.from;
-        } else if (filters.dateRange.to) {
-          return txDate <= filters.dateRange.to;
-        }
-        return true;
-      });
-    }
+      if (filters.dateRange.from) {
+        return tx.rawDate >= filters.dateRange.from;
+      }
 
-    setFilteredTransactions(filtered);
-  };
+      if (filters.dateRange.to) {
+        return tx.rawDate <= filters.dateRange.to;
+      }
+
+      return true;
+    });
+  }
 
   return (
     <Layout>
@@ -96,7 +176,22 @@ const Transactions = () => {
         <h1 className="text-3xl font-semibold text-foreground">Transactions</h1>
         
         <Card className="p-4 glass-card">
-          <TransactionFilter onFilterChange={handleFilterChange} />
+          <TransactionFilter
+            onFilterChange={setFilters}
+            typeOptions={["Deposit", "Withdrawal"]}
+            statusOptions={[
+              "requested",
+              "review_required",
+              "approved",
+              "queued",
+              "broadcast",
+              "confirmed",
+              "settled",
+              "failed",
+              "cancelled",
+              "manually_resolved",
+            ]}
+          />
         </Card>
 
         <Card className="glass-card overflow-hidden">
@@ -112,7 +207,21 @@ const Transactions = () => {
                 </tr>
               </thead>
               <tbody>
-                {filteredTransactions.length > 0 ? (
+                {historyQuery.isLoading ? (
+                  <tr>
+                    <td colSpan={5} className="px-6 py-8 text-center text-muted-foreground">
+                      Loading transaction history...
+                    </td>
+                  </tr>
+                ) : historyQuery.isError ? (
+                  <tr>
+                    <td colSpan={5} className="px-6 py-8 text-center text-destructive">
+                      {historyQuery.error instanceof Error
+                        ? historyQuery.error.message
+                        : "Failed to load transaction history."}
+                    </td>
+                  </tr>
+                ) : filteredTransactions.length > 0 ? (
                   filteredTransactions.map((tx) => (
                     <tr key={tx.id} className="border-b last:border-0 hover:bg-mint-50/50">
                       <td className="px-6 py-4">{tx.type}</td>
@@ -125,11 +234,9 @@ const Transactions = () => {
                       <td className="px-6 py-4 font-mono text-sm">{tx.address}</td>
                       <td className="px-6 py-4">
                         <span
-                          className={`inline-flex rounded-full px-2 py-1 text-xs font-medium ${
-                            tx.status === "completed"
-                              ? "bg-mint-100 text-mint-700"
-                              : "bg-orange-100 text-orange-700"
-                          }`}
+                          className={`inline-flex rounded-full px-2 py-1 text-xs font-medium ${getStatusTone(
+                            tx.status
+                          )}`}
                         >
                           {tx.status}
                         </span>

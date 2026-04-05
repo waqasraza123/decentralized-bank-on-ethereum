@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { loadWorkerRuntimeConfig } from "@stealth-trails-bank/config/api";
+import {
+  loadInternalOperatorRuntimeConfig,
+  loadInternalWorkerRuntimeConfig,
+  loadWorkerRuntimeConfig
+} from "@stealth-trails-bank/config/api";
 
 test("worker runtime config defaults to monitor mode and requires rpc", () => {
   const runtime = loadWorkerRuntimeConfig({
@@ -15,6 +19,38 @@ test("worker runtime config defaults to monitor mode and requires rpc", () => {
   assert.equal(runtime.internalApiBaseUrl, "http://localhost:9001");
   assert.equal(runtime.confirmationBlocks, 1);
   assert.equal(runtime.depositSignerPrivateKey, null);
+});
+
+test("worker runtime config defaults local development to synthetic mode", () => {
+  const runtime = loadWorkerRuntimeConfig({
+    NODE_ENV: "development"
+  });
+
+  assert.equal(runtime.workerId, "worker-local-1");
+  assert.equal(runtime.internalApiBaseUrl, "http://localhost:9001");
+  assert.equal(runtime.internalWorkerApiKey, "local-dev-worker-key");
+  assert.equal(runtime.executionMode, "synthetic");
+  assert.equal(runtime.rpcUrl, null);
+});
+
+test("internal API key config defaults in local development", () => {
+  assert.deepEqual(
+    loadInternalWorkerRuntimeConfig({
+      NODE_ENV: "development"
+    }),
+    {
+      internalWorkerApiKey: "local-dev-worker-key"
+    }
+  );
+
+  assert.deepEqual(
+    loadInternalOperatorRuntimeConfig({
+      NODE_ENV: "development"
+    }),
+    {
+      internalOperatorApiKey: "local-dev-operator-key"
+    }
+  );
 });
 
 test("worker runtime config rejects synthetic mode in production", () => {

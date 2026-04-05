@@ -1,5 +1,9 @@
-import { Injectable } from "@nestjs/common";
-import { loadBlockchainContractWriteRuntimeConfig } from "@stealth-trails-bank/config/api";
+import {
+  Injectable,
+  Logger,
+  ServiceUnavailableException
+} from "@nestjs/common";
+import { loadOptionalBlockchainContractWriteRuntimeConfig } from "@stealth-trails-bank/config/api";
 import { ethers } from "ethers";
 import stakingAbi from "../abis/staking.abi.json";
 import { AuthService } from "../auth/auth.service";
@@ -15,17 +19,37 @@ import { withdraw } from "./methods/withdraw";
 
 @Injectable()
 export class StakingService {
+  private readonly logger = new Logger(StakingService.name);
   private readonly provider: ethers.providers.JsonRpcProvider;
-  private readonly wallet: ethers.Wallet;
-  private readonly stakingContract: ethers.Contract;
+  private readonly wallet: ethers.Wallet | null;
+  private readonly stakingContract: ethers.Contract | null;
 
   constructor(
     private readonly prismaService: PrismaService,
     private readonly authService: AuthService
   ) {
-    const runtimeConfig = loadBlockchainContractWriteRuntimeConfig();
+    const runtimeConfig = loadOptionalBlockchainContractWriteRuntimeConfig();
 
     this.provider = new ethers.providers.JsonRpcProvider(runtimeConfig.rpcUrl);
+
+    if (
+      !runtimeConfig.stakingContractAddress ||
+      !runtimeConfig.ethereumPrivateKey
+    ) {
+      if (runtimeConfig.environment === "production") {
+        throw new Error(
+          "STAKING_CONTRACT_ADDRESS and ETHEREUM_PRIVATE_KEY are required in production when staking write operations are enabled."
+        );
+      }
+
+      this.wallet = null;
+      this.stakingContract = null;
+      this.logger.warn(
+        "Staking write operations are disabled because contract or signer configuration is missing."
+      );
+      return;
+    }
+
     this.wallet = new ethers.Wallet(
       runtimeConfig.ethereumPrivateKey,
       this.provider
@@ -37,17 +61,29 @@ export class StakingService {
     );
   }
 
+  private requireStakingContract(): ethers.Contract {
+    if (!this.stakingContract) {
+      throw new ServiceUnavailableException(
+        "Staking integration is not configured in this environment."
+      );
+    }
+
+    return this.stakingContract;
+  }
+
   async createPool(rewardRate: number) {
+    const stakingContract = this.requireStakingContract();
     return createPool(
-      this.stakingContract,
+      stakingContract,
       this.prismaService,
       rewardRate
     );
   }
 
   async deposit(poolId: number, amount: string, supabaseUserId: string) {
+    const stakingContract = this.requireStakingContract();
     return deposit(
-      this.stakingContract,
+      stakingContract,
       this.prismaService,
       this.authService,
       poolId,
@@ -57,8 +93,9 @@ export class StakingService {
   }
 
   async withdraw(poolId: number, amount: string, supabaseUserId: string) {
+    const stakingContract = this.requireStakingContract();
     return withdraw(
-      this.stakingContract,
+      stakingContract,
       this.prismaService,
       this.authService,
       poolId,
@@ -68,24 +105,27 @@ export class StakingService {
   }
 
   async claimReward(databasePoolId: number) {
+    const stakingContract = this.requireStakingContract();
     return claimReward(
-      this.stakingContract,
+      stakingContract,
       this.prismaService,
       databasePoolId
     );
   }
 
   async emergencyWithdraw(databasePoolId: number) {
+    const stakingContract = this.requireStakingContract();
     return emergencyWithdraw(
-      this.stakingContract,
+      stakingContract,
       this.prismaService,
       databasePoolId
     );
   }
 
   async getStakedBalance(address: string, databasePoolId: number) {
+    const stakingContract = this.requireStakingContract();
     return getStakedBalance(
-      this.stakingContract,
+      stakingContract,
       this.prismaService,
       address,
       databasePoolId
@@ -93,8 +133,9 @@ export class StakingService {
   }
 
   async getPendingReward(address: string, databasePoolId: number) {
+    const stakingContract = this.requireStakingContract();
     return getPendingReward(
-      this.stakingContract,
+      stakingContract,
       this.prismaService,
       address,
       databasePoolId
@@ -102,8 +143,9 @@ export class StakingService {
   }
 
   async getTotalStaked(databasePoolId: number) {
+    const stakingContract = this.requireStakingContract();
     return getTotalStaked(
-      this.stakingContract,
+      stakingContract,
       this.prismaService,
       databasePoolId
     );

@@ -14,10 +14,68 @@ type ApiEnvelope<T> = {
   data?: T;
 };
 
+const RETRYABLE_INTERNAL_API_ERROR_CODES = new Set([
+  "ECONNREFUSED",
+  "ECONNRESET",
+  "ENOTFOUND",
+  "ETIMEDOUT",
+  "ECONNABORTED"
+]);
+
+export class InternalApiUnavailableError extends Error {
+  readonly code: string | null;
+  readonly baseUrl: string;
+
+  constructor(args: {
+    baseUrl: string;
+    code: string | null;
+    message: string;
+    cause: unknown;
+  }) {
+    super(args.message, {
+      cause: args.cause
+    });
+    this.name = "InternalApiUnavailableError";
+    this.code = args.code;
+    this.baseUrl = args.baseUrl;
+  }
+}
+
+function normalizeInternalApiError(baseUrl: string, error: unknown): Error {
+  if (
+    axios.isAxiosError(error) &&
+    !error.response &&
+    RETRYABLE_INTERNAL_API_ERROR_CODES.has(error.code ?? "")
+  ) {
+    return new InternalApiUnavailableError({
+      baseUrl,
+      code: error.code ?? null,
+      message:
+        error.code === "ECONNREFUSED"
+          ? `Internal API is not accepting connections at ${baseUrl}.`
+          : `Internal API is temporarily unavailable at ${baseUrl}.`,
+      cause: error
+    });
+  }
+
+  if (error instanceof Error) {
+    return error;
+  }
+
+  return new Error("Internal API request failed.");
+}
+
 async function readResponseData<T>(
-  promise: Promise<{ data: ApiEnvelope<T> }>
+  promise: Promise<{ data: ApiEnvelope<T> }>,
+  baseUrl: string
 ): Promise<T> {
-  const response = await promise;
+  let response: { data: ApiEnvelope<T> };
+
+  try {
+    response = await promise;
+  } catch (error) {
+    throw normalizeInternalApiError(baseUrl, error);
+  }
 
   if (response.data.status !== "success" || !response.data.data) {
     throw new Error(response.data.message || "Internal API request failed.");
@@ -39,6 +97,7 @@ export function createInternalWorkerApiClient(runtime: WorkerRuntime) {
       "x-worker-id": runtime.workerId
     }
   });
+  const baseUrl = runtime.internalApiBaseUrl;
 
   return {
     async listQueuedDepositIntents(limit: number): Promise<ListIntentsResult> {
@@ -48,7 +107,8 @@ export function createInternalWorkerApiClient(runtime: WorkerRuntime) {
           {
             params: { limit }
           }
-        )
+        ),
+        baseUrl
       );
     },
 
@@ -59,7 +119,8 @@ export function createInternalWorkerApiClient(runtime: WorkerRuntime) {
           {
             params: { limit }
           }
-        )
+        ),
+        baseUrl
       );
     },
 
@@ -71,7 +132,8 @@ export function createInternalWorkerApiClient(runtime: WorkerRuntime) {
         httpClient.post<ApiEnvelope<{ intentId: string }>>(
           `/transaction-intents/internal/worker/deposit-requests/${intentId}/broadcast`,
           payload
-        )
+        ),
+        baseUrl
       );
     },
 
@@ -83,7 +145,8 @@ export function createInternalWorkerApiClient(runtime: WorkerRuntime) {
         httpClient.post<ApiEnvelope<{ intentId: string }>>(
           `/transaction-intents/internal/worker/deposit-requests/${intentId}/confirm`,
           payload
-        )
+        ),
+        baseUrl
       );
     },
 
@@ -95,7 +158,8 @@ export function createInternalWorkerApiClient(runtime: WorkerRuntime) {
         httpClient.post<ApiEnvelope<{ intentId: string }>>(
           `/transaction-intents/internal/worker/deposit-requests/${intentId}/settle`,
           payload
-        )
+        ),
+        baseUrl
       );
     },
 
@@ -107,7 +171,8 @@ export function createInternalWorkerApiClient(runtime: WorkerRuntime) {
         httpClient.post<ApiEnvelope<{ intentId: string }>>(
           `/transaction-intents/internal/worker/deposit-requests/${intentId}/fail`,
           payload
-        )
+        ),
+        baseUrl
       );
     },
 
@@ -118,7 +183,8 @@ export function createInternalWorkerApiClient(runtime: WorkerRuntime) {
           {
             params: { limit }
           }
-        )
+        ),
+        baseUrl
       );
     },
 
@@ -131,7 +197,8 @@ export function createInternalWorkerApiClient(runtime: WorkerRuntime) {
           {
             params: { limit }
           }
-        )
+        ),
+        baseUrl
       );
     },
 
@@ -143,7 +210,8 @@ export function createInternalWorkerApiClient(runtime: WorkerRuntime) {
         httpClient.post<ApiEnvelope<{ intentId: string }>>(
           `/transaction-intents/internal/worker/withdrawal-requests/${intentId}/broadcast`,
           payload
-        )
+        ),
+        baseUrl
       );
     },
 
@@ -155,7 +223,8 @@ export function createInternalWorkerApiClient(runtime: WorkerRuntime) {
         httpClient.post<ApiEnvelope<{ intentId: string }>>(
           `/transaction-intents/internal/worker/withdrawal-requests/${intentId}/confirm`,
           payload
-        )
+        ),
+        baseUrl
       );
     },
 
@@ -167,7 +236,8 @@ export function createInternalWorkerApiClient(runtime: WorkerRuntime) {
         httpClient.post<ApiEnvelope<{ intentId: string }>>(
           `/transaction-intents/internal/worker/withdrawal-requests/${intentId}/settle`,
           payload
-        )
+        ),
+        baseUrl
       );
     },
 
@@ -179,7 +249,8 @@ export function createInternalWorkerApiClient(runtime: WorkerRuntime) {
         httpClient.post<ApiEnvelope<{ intentId: string }>>(
           `/transaction-intents/internal/worker/withdrawal-requests/${intentId}/fail`,
           payload
-        )
+        ),
+        baseUrl
       );
     }
   };

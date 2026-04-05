@@ -10,6 +10,7 @@ import { CustomerAccountOperationsService } from "./customer-account-operations.
     CustomerAccountOperationsService,
     PrismaService,
     InternalOperatorApiKeyGuard
-  ]
+  ],
+  exports: [CustomerAccountOperationsService]
 })
 export class CustomerAccountOperationsModule {}

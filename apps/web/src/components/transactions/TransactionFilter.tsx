@@ -22,6 +22,8 @@ import { Badge } from "@/components/ui/badge";
 
 interface TransactionFilterProps {
   onFilterChange: (filters: FilterState) => void;
+  typeOptions?: string[];
+  statusOptions?: string[];
 }
 
 interface FilterState {
@@ -39,15 +41,27 @@ const emptyDateRange: FilterState["dateRange"] = {
   to: undefined,
 };
 
-export const TransactionFilter = ({ onFilterChange }: TransactionFilterProps) => {
+const defaultTypeOptions = ["Deposit", "Withdrawal"];
+const defaultStatusOptions = [
+  "requested",
+  "approved",
+  "queued",
+  "broadcast",
+  "confirmed",
+  "settled",
+  "failed",
+];
+
+export const TransactionFilter = ({
+  onFilterChange,
+  typeOptions = defaultTypeOptions,
+  statusOptions = defaultStatusOptions,
+}: TransactionFilterProps) => {
   const [search, setSearch] = useState("");
   const [types, setTypes] = useState<string[]>([]);
   const [statuses, setStatuses] = useState<string[]>([]);
   const [dateRange, setDateRange] = useState<FilterState["dateRange"]>(emptyDateRange);
   const [activeFilters, setActiveFilters] = useState<string[]>([]);
-
-  const typeOptions = ["Deposit", "Withdrawal", "Transfer"];
-  const statusOptions = ["completed", "pending"];
 
   const updateActiveFilters = () => {
     const active: string[] = [];

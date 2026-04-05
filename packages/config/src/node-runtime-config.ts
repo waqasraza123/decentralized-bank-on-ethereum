@@ -41,6 +41,10 @@ const DEFAULT_WORKER_POLL_INTERVAL_MS = 10_000;
 const DEFAULT_WORKER_BATCH_LIMIT = 20;
 const DEFAULT_WORKER_REQUEST_TIMEOUT_MS = 10_000;
 const DEFAULT_WORKER_CONFIRMATION_BLOCKS = 1;
+const DEFAULT_LOCAL_WORKER_ID = "worker-local-1";
+const DEFAULT_LOCAL_INTERNAL_API_BASE_URL = "http://localhost:9001";
+const DEFAULT_LOCAL_INTERNAL_WORKER_API_KEY = "local-dev-worker-key";
+const DEFAULT_LOCAL_INTERNAL_OPERATOR_API_KEY = "local-dev-operator-key";
 
 let nodeRuntimeEnvInitialized = false;
 
@@ -182,6 +186,41 @@ function parseWorkerExecutionMode(
   );
 }
 
+function resolveWorkerExecutionMode(
+  environment: ApiRuntimeEnvironment,
+  configuredExecutionMode: string | undefined,
+  rpcUrl: string | undefined
+): WorkerExecutionMode {
+  if (configuredExecutionMode) {
+    return parseWorkerExecutionMode(configuredExecutionMode);
+  }
+
+  if (environment === "development" && !rpcUrl) {
+    return "synthetic";
+  }
+
+  return "monitor";
+}
+
+function readDevelopmentAwareRequiredRuntimeEnv(
+  env: RuntimeEnvShape,
+  environment: ApiRuntimeEnvironment,
+  name: string,
+  developmentDefaultValue: string
+): string {
+  const configuredValue = readOptionalRuntimeEnv(env, name);
+
+  if (configuredValue) {
+    return configuredValue;
+  }
+
+  if (environment === "development") {
+    return developmentDefaultValue;
+  }
+
+  return readRequiredRuntimeEnv(env, name);
+}
+
 export type DatabaseRuntimeConfig = {
   readonly databaseUrl: string;
   readonly directUrl: string;
@@ -202,10 +241,23 @@ export type BlockchainContractReadRuntimeConfig = {
   readonly stakingContractAddress: string;
 };
 
+export type OptionalBlockchainContractReadRuntimeConfig = {
+  readonly environment: ApiRuntimeEnvironment;
+  readonly rpcUrl: string;
+  readonly stakingContractAddress: string | null;
+};
+
 export type BlockchainContractWriteRuntimeConfig = {
   readonly rpcUrl: string;
   readonly stakingContractAddress: string;
   readonly ethereumPrivateKey: string;
+};
+
+export type OptionalBlockchainContractWriteRuntimeConfig = {
+  readonly environment: ApiRuntimeEnvironment;
+  readonly rpcUrl: string;
+  readonly stakingContractAddress: string | null;
+  readonly ethereumPrivateKey: string | null;
 };
 
 export type ProductChainRuntimeConfig = {
@@ -305,6 +357,21 @@ export function loadBlockchainContractReadRuntimeConfig(
   };
 }
 
+export function loadOptionalBlockchainContractReadRuntimeConfig(
+  env: RuntimeEnvShape = getNodeRuntimeEnv()
+): OptionalBlockchainContractReadRuntimeConfig {
+  return {
+    environment: parseApiRuntimeEnvironment(
+      readOptionalRuntimeEnv(env, "NODE_ENV")
+    ),
+    rpcUrl: readRequiredRuntimeEnv(env, "RPC_URL"),
+    stakingContractAddress: readOptionalRuntimeEnv(
+      env,
+      "STAKING_CONTRACT_ADDRESS"
+    ) ?? null
+  };
+}
+
 export function loadBlockchainContractWriteRuntimeConfig(
   env: RuntimeEnvShape = getNodeRuntimeEnv()
 ): BlockchainContractWriteRuntimeConfig {
@@ -315,6 +382,22 @@ export function loadBlockchainContractWriteRuntimeConfig(
       "STAKING_CONTRACT_ADDRESS"
     ),
     ethereumPrivateKey: readRequiredRuntimeEnv(env, "ETHEREUM_PRIVATE_KEY")
+  };
+}
+
+export function loadOptionalBlockchainContractWriteRuntimeConfig(
+  env: RuntimeEnvShape = getNodeRuntimeEnv()
+): OptionalBlockchainContractWriteRuntimeConfig {
+  return {
+    environment: parseApiRuntimeEnvironment(
+      readOptionalRuntimeEnv(env, "NODE_ENV")
+    ),
+    rpcUrl: readRequiredRuntimeEnv(env, "RPC_URL"),
+    stakingContractAddress: readOptionalRuntimeEnv(
+      env,
+      "STAKING_CONTRACT_ADDRESS"
+    ) ?? null,
+    ethereumPrivateKey: readOptionalRuntimeEnv(env, "ETHEREUM_PRIVATE_KEY") ?? null
   };
 }
 
@@ -378,10 +461,12 @@ export function loadWorkerRuntimeConfig(
   const environment = parseApiRuntimeEnvironment(
     readOptionalRuntimeEnv(env, "NODE_ENV")
   );
-  const executionMode = parseWorkerExecutionMode(
-    readOptionalRuntimeEnv(env, "WORKER_EXECUTION_MODE")
-  );
   const rpcUrl = readOptionalRuntimeEnv(env, "RPC_URL");
+  const executionMode = resolveWorkerExecutionMode(
+    environment,
+    readOptionalRuntimeEnv(env, "WORKER_EXECUTION_MODE"),
+    rpcUrl
+  );
 
   if (executionMode === "synthetic" && environment === "production") {
     throw new Error(
@@ -417,12 +502,27 @@ export function loadWorkerRuntimeConfig(
 
   return {
     environment,
-    workerId: readRequiredRuntimeEnv(env, "WORKER_ID"),
+    workerId: readDevelopmentAwareRequiredRuntimeEnv(
+      env,
+      environment,
+      "WORKER_ID",
+      DEFAULT_LOCAL_WORKER_ID
+    ),
     internalApiBaseUrl: normalizeBaseUrl(
-      readRequiredRuntimeEnv(env, "INTERNAL_API_BASE_URL"),
+      readDevelopmentAwareRequiredRuntimeEnv(
+        env,
+        environment,
+        "INTERNAL_API_BASE_URL",
+        DEFAULT_LOCAL_INTERNAL_API_BASE_URL
+      ),
       "INTERNAL_API_BASE_URL"
     ),
-    internalWorkerApiKey: readRequiredRuntimeEnv(env, "INTERNAL_WORKER_API_KEY"),
+    internalWorkerApiKey: readDevelopmentAwareRequiredRuntimeEnv(
+      env,
+      environment,
+      "INTERNAL_WORKER_API_KEY",
+      DEFAULT_LOCAL_INTERNAL_WORKER_API_KEY
+    ),
     executionMode,
     pollIntervalMs: parsePositiveInteger(
       readOptionalRuntimeEnv(env, "WORKER_POLL_INTERVAL_MS") ??
@@ -448,10 +548,16 @@ export function loadWorkerRuntimeConfig(
 export function loadInternalOperatorRuntimeConfig(
   env: RuntimeEnvShape = getNodeRuntimeEnv()
 ): InternalOperatorRuntimeConfig {
+  const environment = parseApiRuntimeEnvironment(
+    readOptionalRuntimeEnv(env, "NODE_ENV")
+  );
+
   return {
-    internalOperatorApiKey: readRequiredRuntimeEnv(
+    internalOperatorApiKey: readDevelopmentAwareRequiredRuntimeEnv(
       env,
-      "INTERNAL_OPERATOR_API_KEY"
+      environment,
+      "INTERNAL_OPERATOR_API_KEY",
+      DEFAULT_LOCAL_INTERNAL_OPERATOR_API_KEY
     )
   };
 }
@@ -459,8 +565,17 @@ export function loadInternalOperatorRuntimeConfig(
 export function loadInternalWorkerRuntimeConfig(
   env: RuntimeEnvShape = getNodeRuntimeEnv()
 ): InternalWorkerRuntimeConfig {
+  const environment = parseApiRuntimeEnvironment(
+    readOptionalRuntimeEnv(env, "NODE_ENV")
+  );
+
   return {
-    internalWorkerApiKey: readRequiredRuntimeEnv(env, "INTERNAL_WORKER_API_KEY")
+    internalWorkerApiKey: readDevelopmentAwareRequiredRuntimeEnv(
+      env,
+      environment,
+      "INTERNAL_WORKER_API_KEY",
+      DEFAULT_LOCAL_INTERNAL_WORKER_API_KEY
+    )
   };
 }
 

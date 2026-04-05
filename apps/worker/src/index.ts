@@ -1,6 +1,9 @@
 import { findWorkspaceBoundary } from "@stealth-trails-bank/config";
 import type { WorkspaceBoundary } from "@stealth-trails-bank/types";
-import { createInternalWorkerApiClient } from "./runtime/internal-worker-api-client";
+import {
+  createInternalWorkerApiClient,
+  InternalApiUnavailableError
+} from "./runtime/internal-worker-api-client";
 import { createManagedDepositBroadcaster } from "./runtime/deposit-broadcaster";
 import { createJsonRpcClient } from "./runtime/json-rpc-client";
 import { createWorkerLogger } from "./runtime/worker-logger";
@@ -73,9 +76,17 @@ export async function startWorkerRuntime(): Promise<void> {
     try {
       await orchestrator.runOnce();
     } catch (error) {
-      logger.error("worker_iteration_failed", {
-        error
-      });
+      if (error instanceof InternalApiUnavailableError) {
+        logger.warn("internal_api_unavailable_retrying", {
+          baseUrl: error.baseUrl,
+          errorCode: error.code,
+          retryInMs: runtime.pollIntervalMs
+        });
+      } else {
+        logger.error("worker_iteration_failed", {
+          error
+        });
+      }
     }
 
     if (shutdownRequested) {
