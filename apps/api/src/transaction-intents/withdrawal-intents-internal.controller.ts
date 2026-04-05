@@ -11,15 +11,22 @@ import {
 } from "@nestjs/common";
 import { InternalOperatorApiKeyGuard } from "../auth/guards/internal-operator-api-key.guard";
 import { CustomJsonResponse } from "../types/CustomJsonResponse";
+import { ConfirmWithdrawalIntentDto } from "./dto/confirm-withdrawal-intent.dto";
 import { DecideWithdrawalIntentDto } from "./dto/decide-withdrawal-intent.dto";
+import { FailWithdrawalIntentExecutionDto } from "./dto/fail-withdrawal-intent-execution.dto";
 import { ListApprovedWithdrawalIntentsDto } from "./dto/list-approved-withdrawal-intents.dto";
+import { ListBroadcastWithdrawalIntentsDto } from "./dto/list-broadcast-withdrawal-intents.dto";
 import { ListPendingWithdrawalIntentsDto } from "./dto/list-pending-withdrawal-intents.dto";
+import { ListQueuedWithdrawalIntentsDto } from "./dto/list-queued-withdrawal-intents.dto";
 import { QueueApprovedWithdrawalIntentDto } from "./dto/queue-approved-withdrawal-intent.dto";
+import { RecordWithdrawalBroadcastDto } from "./dto/record-withdrawal-broadcast.dto";
+import { SettleConfirmedWithdrawalIntentDto } from "./dto/settle-confirmed-withdrawal-intent.dto";
 import { WithdrawalIntentsService } from "./withdrawal-intents.service";
 
 type InternalOperatorRequest = {
   internalOperator: {
     operatorId: string;
+    operatorRole?: string;
   };
 };
 
@@ -124,6 +131,160 @@ export class WithdrawalIntentsInternalController {
       message: result.queueReused
         ? "Withdrawal request queue state reused successfully."
         : "Withdrawal request queued successfully.",
+      data: result
+    };
+  }
+
+  @Get("withdrawal-requests/queued")
+  async listQueuedWithdrawalIntents(
+    @Query(
+      new ValidationPipe({
+        transform: true,
+        whitelist: true,
+        forbidNonWhitelisted: true
+      })
+    )
+    query: ListQueuedWithdrawalIntentsDto
+  ): Promise<CustomJsonResponse> {
+    const result =
+      await this.withdrawalIntentsService.listQueuedWithdrawalIntents(query);
+
+    return {
+      status: "success",
+      message: "Queued withdrawal custody operations retrieved successfully.",
+      data: result
+    };
+  }
+
+  @Get("withdrawal-requests/broadcast")
+  async listBroadcastWithdrawalIntents(
+    @Query(
+      new ValidationPipe({
+        transform: true,
+        whitelist: true,
+        forbidNonWhitelisted: true
+      })
+    )
+    query: ListBroadcastWithdrawalIntentsDto
+  ): Promise<CustomJsonResponse> {
+    const result =
+      await this.withdrawalIntentsService.listBroadcastWithdrawalIntents(query);
+
+    return {
+      status: "success",
+      message: "Broadcast withdrawal custody operations retrieved successfully.",
+      data: result
+    };
+  }
+
+  @Post("withdrawal-requests/:intentId/broadcast")
+  async recordWithdrawalBroadcast(
+    @Param("intentId") intentId: string,
+    @Body(
+      new ValidationPipe({
+        whitelist: true,
+        forbidNonWhitelisted: true
+      })
+    )
+    dto: RecordWithdrawalBroadcastDto,
+    @Request() request: InternalOperatorRequest
+  ): Promise<CustomJsonResponse> {
+    const result =
+      await this.withdrawalIntentsService.recordWithdrawalBroadcastByOperator(
+        intentId,
+        request.internalOperator.operatorId,
+        dto
+      );
+
+    return {
+      status: "success",
+      message: result.broadcastReused
+        ? "Withdrawal custody broadcast state reused successfully."
+        : "Withdrawal custody broadcast recorded successfully.",
+      data: result
+    };
+  }
+
+  @Post("withdrawal-requests/:intentId/fail")
+  async failWithdrawalIntentExecution(
+    @Param("intentId") intentId: string,
+    @Body(
+      new ValidationPipe({
+        whitelist: true,
+        forbidNonWhitelisted: true
+      })
+    )
+    dto: FailWithdrawalIntentExecutionDto,
+    @Request() request: InternalOperatorRequest
+  ): Promise<CustomJsonResponse> {
+    const result =
+      await this.withdrawalIntentsService.failWithdrawalIntentExecutionByOperator(
+        intentId,
+        request.internalOperator.operatorId,
+        dto
+      );
+
+    return {
+      status: "success",
+      message: result.failureReused
+        ? "Withdrawal custody failure state reused successfully."
+        : "Withdrawal custody failure recorded successfully.",
+      data: result
+    };
+  }
+
+  @Post("withdrawal-requests/:intentId/confirm")
+  async confirmWithdrawalIntent(
+    @Param("intentId") intentId: string,
+    @Body(
+      new ValidationPipe({
+        whitelist: true,
+        forbidNonWhitelisted: true
+      })
+    )
+    dto: ConfirmWithdrawalIntentDto,
+    @Request() request: InternalOperatorRequest
+  ): Promise<CustomJsonResponse> {
+    const result =
+      await this.withdrawalIntentsService.confirmWithdrawalIntentByOperator(
+        intentId,
+        request.internalOperator.operatorId,
+        dto
+      );
+
+    return {
+      status: "success",
+      message: result.confirmReused
+        ? "Withdrawal custody confirm state reused successfully."
+        : "Withdrawal custody confirmation recorded successfully.",
+      data: result
+    };
+  }
+
+  @Post("withdrawal-requests/:intentId/settle")
+  async settleConfirmedWithdrawalIntent(
+    @Param("intentId") intentId: string,
+    @Body(
+      new ValidationPipe({
+        whitelist: true,
+        forbidNonWhitelisted: true
+      })
+    )
+    dto: SettleConfirmedWithdrawalIntentDto,
+    @Request() request: InternalOperatorRequest
+  ): Promise<CustomJsonResponse> {
+    const result =
+      await this.withdrawalIntentsService.settleConfirmedWithdrawalIntentByOperator(
+        intentId,
+        request.internalOperator.operatorId,
+        dto
+      );
+
+    return {
+      status: "success",
+      message: result.settlementReused
+        ? "Withdrawal custody settlement state reused successfully."
+        : "Withdrawal custody settlement recorded successfully.",
       data: result
     };
   }

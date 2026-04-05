@@ -299,6 +299,81 @@ describe("WithdrawalIntentsService", () => {
     expect(result.broadcastReused).toBe(false);
   });
 
+  it("records a withdrawal broadcast from the operator custody surface", async () => {
+    const { service, prismaService } = createService();
+
+    const existingIntent = buildInternalIntentRecord({
+      status: TransactionIntentStatus.queued,
+      policyDecision: PolicyDecision.approved
+    });
+
+    jest
+      .spyOn(service as any, "findWithdrawalIntentForReview")
+      .mockResolvedValue(existingIntent);
+
+    const refreshedIntent = buildInternalIntentRecord({
+      status: TransactionIntentStatus.broadcast,
+      policyDecision: PolicyDecision.approved,
+      blockchainTransactions: [
+        {
+          id: "tx_1",
+          txHash: "0x1111111111111111111111111111111111111111111111111111111111111111",
+          status: BlockchainTransactionStatus.broadcast,
+          fromAddress: "0x0000000000000000000000000000000000000def",
+          toAddress: "0x0000000000000000000000000000000000000abc",
+          createdAt: new Date("2026-04-01T00:00:00.000Z"),
+          updatedAt: new Date("2026-04-01T00:00:00.000Z"),
+          confirmedAt: null
+        }
+      ]
+    });
+
+    const transaction = {
+      transactionIntent: {
+        findFirst: jest
+          .fn()
+          .mockResolvedValueOnce(existingIntent)
+          .mockResolvedValueOnce(refreshedIntent),
+        update: jest.fn().mockResolvedValue(undefined)
+      },
+      blockchainTransaction: {
+        create: jest.fn().mockResolvedValue(undefined),
+        update: jest.fn().mockResolvedValue(undefined)
+      },
+      auditEvent: {
+        create: jest.fn().mockResolvedValue(undefined)
+      }
+    };
+
+    (prismaService.$transaction as jest.Mock).mockImplementation(
+      async (callback: (transactionClient: any) => Promise<unknown>) =>
+        callback(transaction)
+    );
+
+    const result = await service.recordWithdrawalBroadcastByOperator(
+      "intent_1",
+      "ops_1",
+      {
+        txHash:
+          "0x1111111111111111111111111111111111111111111111111111111111111111"
+      }
+    );
+
+    expect(transaction.auditEvent.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          actorType: "operator",
+          actorId: "ops_1",
+          metadata: expect.objectContaining({
+            executionChannel: "manual_custody"
+          })
+        })
+      })
+    );
+    expect(result.intent.status).toBe(TransactionIntentStatus.broadcast);
+    expect(result.broadcastReused).toBe(false);
+  });
+
   it("records withdrawal execution failure and releases the reservation", async () => {
     const { service, prismaService, ledgerService } = createService();
 
@@ -454,6 +529,94 @@ describe("WithdrawalIntentsService", () => {
     expect(ledgerService.settleConfirmedWithdrawal).toHaveBeenCalled();
     expect(result.intent.status).toBe(TransactionIntentStatus.settled);
     expect(result.settlementReused).toBe(false);
+  });
+
+  it("confirms a broadcast withdrawal from the operator custody surface", async () => {
+    const { service, prismaService } = createService();
+
+    const existingIntent = buildInternalIntentRecord({
+      status: TransactionIntentStatus.broadcast,
+      policyDecision: PolicyDecision.approved,
+      blockchainTransactions: [
+        {
+          id: "tx_1",
+          txHash: "0x1111111111111111111111111111111111111111111111111111111111111111",
+          status: BlockchainTransactionStatus.broadcast,
+          fromAddress: "0x0000000000000000000000000000000000000def",
+          toAddress: "0x0000000000000000000000000000000000000abc",
+          createdAt: new Date("2026-04-01T00:00:00.000Z"),
+          updatedAt: new Date("2026-04-01T00:00:00.000Z"),
+          confirmedAt: null
+        }
+      ]
+    });
+
+    jest
+      .spyOn(service as any, "findWithdrawalIntentForReview")
+      .mockResolvedValue(existingIntent);
+
+    const refreshedIntent = buildInternalIntentRecord({
+      status: TransactionIntentStatus.confirmed,
+      policyDecision: PolicyDecision.approved,
+      blockchainTransactions: [
+        {
+          id: "tx_1",
+          txHash: "0x1111111111111111111111111111111111111111111111111111111111111111",
+          status: BlockchainTransactionStatus.confirmed,
+          fromAddress: "0x0000000000000000000000000000000000000def",
+          toAddress: "0x0000000000000000000000000000000000000abc",
+          createdAt: new Date("2026-04-01T00:00:00.000Z"),
+          updatedAt: new Date("2026-04-01T00:05:00.000Z"),
+          confirmedAt: new Date("2026-04-01T00:05:00.000Z")
+        }
+      ]
+    });
+
+    const transaction = {
+      transactionIntent: {
+        findFirst: jest
+          .fn()
+          .mockResolvedValueOnce(existingIntent)
+          .mockResolvedValueOnce(refreshedIntent),
+        update: jest.fn().mockResolvedValue(undefined)
+      },
+      blockchainTransaction: {
+        update: jest.fn().mockResolvedValue(undefined)
+      },
+      auditEvent: {
+        create: jest.fn().mockResolvedValue(undefined)
+      }
+    };
+
+    (prismaService.$transaction as jest.Mock).mockImplementation(
+      async (callback: (transactionClient: any) => Promise<unknown>) =>
+        callback(transaction)
+    );
+
+    const result = await service.confirmWithdrawalIntentByOperator(
+      "intent_1",
+      "ops_1",
+      {
+        txHash:
+          "0x1111111111111111111111111111111111111111111111111111111111111111",
+        note: "Custody desk confirmed on-chain inclusion."
+      }
+    );
+
+    expect(transaction.auditEvent.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          actorType: "operator",
+          actorId: "ops_1",
+          metadata: expect.objectContaining({
+            executionChannel: "manual_custody",
+            note: "Custody desk confirmed on-chain inclusion."
+          })
+        })
+      })
+    );
+    expect(result.intent.status).toBe(TransactionIntentStatus.confirmed);
+    expect(result.confirmReused).toBe(false);
   });
 
   it("rejects settlement when the latest blockchain transaction is not confirmed", async () => {

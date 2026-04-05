@@ -237,6 +237,20 @@ export class WithdrawalIntentsService {
     this.productChainId = loadProductChainRuntimeConfig().productChainId;
   }
 
+  private resolveExecutionChannel(
+    actor: WithdrawalTransitionActor
+  ): "worker_runtime" | "manual_custody" | "reconciliation_replay" {
+    if (actor.reconciliationReplay) {
+      return "reconciliation_replay";
+    }
+
+    if (actor.actorType === "operator") {
+      return "manual_custody";
+    }
+
+    return "worker_runtime";
+  }
+
   private normalizeAssetSymbol(assetSymbol: string): string {
     const normalizedAssetSymbol = assetSymbol.trim().toUpperCase();
 
@@ -1339,6 +1353,32 @@ export class WithdrawalIntentsService {
     workerId: string,
     dto: RecordWithdrawalBroadcastDto
   ): Promise<RecordWithdrawalBroadcastResult> {
+    return this.recordWithdrawalBroadcastWithActor(intentId, dto, {
+      actorType: "worker",
+      actorId: workerId,
+      reconciliationReplay: false,
+      replayReason: null
+    });
+  }
+
+  async recordWithdrawalBroadcastByOperator(
+    intentId: string,
+    operatorId: string,
+    dto: RecordWithdrawalBroadcastDto
+  ): Promise<RecordWithdrawalBroadcastResult> {
+    return this.recordWithdrawalBroadcastWithActor(intentId, dto, {
+      actorType: "operator",
+      actorId: operatorId,
+      reconciliationReplay: false,
+      replayReason: null
+    });
+  }
+
+  private async recordWithdrawalBroadcastWithActor(
+    intentId: string,
+    dto: RecordWithdrawalBroadcastDto,
+    actor: WithdrawalTransitionActor
+  ): Promise<RecordWithdrawalBroadcastResult> {
     const existingIntent = await this.findWithdrawalIntentForReview(intentId);
 
     if (!existingIntent) {
@@ -1492,8 +1532,8 @@ export class WithdrawalIntentsService {
         await transaction.auditEvent.create({
           data: {
             customerId: currentIntent.customerAccount!.customer.id,
-            actorType: "worker",
-            actorId: workerId,
+            actorType: actor.actorType,
+            actorId: actor.actorId,
             action: "transaction_intent.withdrawal.broadcast",
             targetType: "TransactionIntent",
             targetId: currentIntent.id,
@@ -1511,7 +1551,10 @@ export class WithdrawalIntentsService {
               fromAddress: normalizedFromAddress,
               toAddress: normalizedToAddress,
               previousStatus: currentIntent.status,
-              newStatus: TransactionIntentStatus.broadcast
+              newStatus: TransactionIntentStatus.broadcast,
+              executionChannel: this.resolveExecutionChannel(actor),
+              reconciliationReplay: actor.reconciliationReplay,
+              replayReason: actor.replayReason
             }
           }
         });
@@ -1588,6 +1631,32 @@ export class WithdrawalIntentsService {
     intentId: string,
     workerId: string,
     dto: FailWithdrawalIntentExecutionDto
+  ): Promise<FailWithdrawalIntentExecutionResult> {
+    return this.failWithdrawalIntentExecutionWithActor(intentId, dto, {
+      actorType: "worker",
+      actorId: workerId,
+      reconciliationReplay: false,
+      replayReason: null
+    });
+  }
+
+  async failWithdrawalIntentExecutionByOperator(
+    intentId: string,
+    operatorId: string,
+    dto: FailWithdrawalIntentExecutionDto
+  ): Promise<FailWithdrawalIntentExecutionResult> {
+    return this.failWithdrawalIntentExecutionWithActor(intentId, dto, {
+      actorType: "operator",
+      actorId: operatorId,
+      reconciliationReplay: false,
+      replayReason: null
+    });
+  }
+
+  private async failWithdrawalIntentExecutionWithActor(
+    intentId: string,
+    dto: FailWithdrawalIntentExecutionDto,
+    actor: WithdrawalTransitionActor
   ): Promise<FailWithdrawalIntentExecutionResult> {
     const failureCode = dto.failureCode.trim();
     const failureReason = dto.failureReason.trim();
@@ -1765,8 +1834,8 @@ export class WithdrawalIntentsService {
         await transaction.auditEvent.create({
           data: {
             customerId: currentIntent.customerAccount!.customer.id,
-            actorType: "worker",
-            actorId: workerId,
+            actorType: actor.actorType,
+            actorId: actor.actorId,
             action: "transaction_intent.withdrawal.execution_failed",
             targetType: "TransactionIntent",
             targetId: currentIntent.id,
@@ -1788,7 +1857,10 @@ export class WithdrawalIntentsService {
               failureCode,
               failureReason,
               availableBalance: balanceTransition.availableBalance,
-              pendingBalance: balanceTransition.pendingBalance
+              pendingBalance: balanceTransition.pendingBalance,
+              executionChannel: this.resolveExecutionChannel(actor),
+              reconciliationReplay: actor.reconciliationReplay,
+              replayReason: actor.replayReason
             }
           }
         });
@@ -1959,6 +2031,23 @@ export class WithdrawalIntentsService {
     });
   }
 
+  async confirmWithdrawalIntentByOperator(
+    intentId: string,
+    operatorId: string,
+    dto: ConfirmWithdrawalIntentDto
+  ): Promise<ConfirmWithdrawalIntentResult> {
+    return this.confirmWithdrawalIntentWithActor(
+      intentId,
+      dto.txHash?.trim() ?? null,
+      dto.note?.trim() ?? null,
+      {
+        actorType: "operator",
+        actorId: operatorId,
+        reconciliationReplay: false,
+        replayReason: null
+      }
+    );
+  }
 
 
   async confirmWithdrawalIntent(
@@ -2143,6 +2232,7 @@ export class WithdrawalIntentsService {
               txHash: currentLatestBlockchainTransaction.txHash,
               previousStatus: currentIntent.status,
               newStatus: TransactionIntentStatus.confirmed,
+              executionChannel: this.resolveExecutionChannel(actor),
               note,
               reconciliationReplay: actor.reconciliationReplay,
               replayReason: actor.replayReason
@@ -2229,6 +2319,23 @@ export class WithdrawalIntentsService {
       {
         actorType: "worker",
         actorId: workerId,
+        reconciliationReplay: false,
+        replayReason: null
+      }
+    );
+  }
+
+  async settleConfirmedWithdrawalIntentByOperator(
+    intentId: string,
+    operatorId: string,
+    dto: SettleConfirmedWithdrawalIntentDto
+  ): Promise<SettleConfirmedWithdrawalIntentResult> {
+    return this.settleConfirmedWithdrawalIntentWithActor(
+      intentId,
+      dto.note?.trim() ?? null,
+      {
+        actorType: "operator",
+        actorId: operatorId,
         reconciliationReplay: false,
         replayReason: null
       }
@@ -2402,6 +2509,7 @@ export class WithdrawalIntentsService {
               creditLedgerAccountId: ledgerResult.creditLedgerAccountId,
               availableBalance: ledgerResult.availableBalance,
               pendingBalance: ledgerResult.pendingBalance,
+              executionChannel: this.resolveExecutionChannel(actor),
               note,
               reconciliationReplay: actor.reconciliationReplay,
               replayReason: actor.replayReason
