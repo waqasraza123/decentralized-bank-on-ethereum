@@ -81,6 +81,50 @@ const _abi = [
     type: "event",
   },
   {
+    anonymous: false,
+    inputs: [
+      {
+        indexed: true,
+        internalType: "uint256",
+        name: "poolId",
+        type: "uint256",
+      },
+      {
+        indexed: false,
+        internalType: "bool",
+        name: "depositsPaused",
+        type: "bool",
+      },
+    ],
+    name: "PoolDepositPauseUpdated",
+    type: "event",
+  },
+  {
+    anonymous: false,
+    inputs: [
+      {
+        indexed: true,
+        internalType: "uint256",
+        name: "poolId",
+        type: "uint256",
+      },
+      {
+        indexed: false,
+        internalType: "uint256",
+        name: "amount",
+        type: "uint256",
+      },
+      {
+        indexed: false,
+        internalType: "uint256",
+        name: "newRewardReserve",
+        type: "uint256",
+      },
+    ],
+    name: "PoolRewardFunded",
+    type: "event",
+  },
+  {
     inputs: [
       {
         internalType: "uint256",
@@ -102,6 +146,19 @@ const _abi = [
       },
     ],
     stateMutability: "nonpayable",
+    type: "function",
+  },
+  {
+    inputs: [
+      {
+        internalType: "uint256",
+        name: "poolId",
+        type: "uint256",
+      },
+    ],
+    name: "fundPoolRewards",
+    outputs: [],
+    stateMutability: "payable",
     type: "function",
   },
   {
@@ -155,6 +212,16 @@ const _abi = [
         name: "totalRewardsPaid",
         type: "uint256",
       },
+      {
+        internalType: "uint256",
+        name: "rewardReserve",
+        type: "uint256",
+      },
+      {
+        internalType: "bool",
+        name: "depositsPaused",
+        type: "bool",
+      },
     ],
     stateMutability: "view",
     type: "function",
@@ -162,6 +229,24 @@ const _abi = [
   {
     inputs: [],
     name: "renounceOwnership",
+    outputs: [],
+    stateMutability: "nonpayable",
+    type: "function",
+  },
+  {
+    inputs: [
+      {
+        internalType: "uint256",
+        name: "poolId",
+        type: "uint256",
+      },
+      {
+        internalType: "bool",
+        name: "depositsPaused",
+        type: "bool",
+      },
+    ],
+    name: "setPoolDepositPause",
     outputs: [],
     stateMutability: "nonpayable",
     type: "function",

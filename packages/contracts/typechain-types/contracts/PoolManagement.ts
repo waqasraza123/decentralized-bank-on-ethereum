@@ -27,21 +27,31 @@ export interface PoolManagementInterface extends Interface {
   getFunction(
     nameOrSignature:
       | "createPool"
+      | "fundPoolRewards"
       | "owner"
       | "poolCount"
       | "pools"
       | "renounceOwnership"
+      | "setPoolDepositPause"
       | "stakers"
       | "transferOwnership"
   ): FunctionFragment;
 
   getEvent(
-    nameOrSignatureOrTopic: "OwnershipTransferred" | "PoolCreated"
+    nameOrSignatureOrTopic:
+      | "OwnershipTransferred"
+      | "PoolCreated"
+      | "PoolDepositPauseUpdated"
+      | "PoolRewardFunded"
   ): EventFragment;
 
   encodeFunctionData(
     functionFragment: "createPool",
     values: [BigNumberish, BigNumberish]
+  ): string;
+  encodeFunctionData(
+    functionFragment: "fundPoolRewards",
+    values: [BigNumberish]
   ): string;
   encodeFunctionData(functionFragment: "owner", values?: undefined): string;
   encodeFunctionData(functionFragment: "poolCount", values?: undefined): string;
@@ -49,6 +59,10 @@ export interface PoolManagementInterface extends Interface {
   encodeFunctionData(
     functionFragment: "renounceOwnership",
     values?: undefined
+  ): string;
+  encodeFunctionData(
+    functionFragment: "setPoolDepositPause",
+    values: [BigNumberish, boolean]
   ): string;
   encodeFunctionData(
     functionFragment: "stakers",
@@ -60,11 +74,19 @@ export interface PoolManagementInterface extends Interface {
   ): string;
 
   decodeFunctionResult(functionFragment: "createPool", data: BytesLike): Result;
+  decodeFunctionResult(
+    functionFragment: "fundPoolRewards",
+    data: BytesLike
+  ): Result;
   decodeFunctionResult(functionFragment: "owner", data: BytesLike): Result;
   decodeFunctionResult(functionFragment: "poolCount", data: BytesLike): Result;
   decodeFunctionResult(functionFragment: "pools", data: BytesLike): Result;
   decodeFunctionResult(
     functionFragment: "renounceOwnership",
+    data: BytesLike
+  ): Result;
+  decodeFunctionResult(
+    functionFragment: "setPoolDepositPause",
     data: BytesLike
   ): Result;
   decodeFunctionResult(functionFragment: "stakers", data: BytesLike): Result;
@@ -102,6 +124,41 @@ export namespace PoolCreatedEvent {
     poolId: bigint;
     rewardRate: bigint;
     externalPoolId: bigint;
+  }
+  export type Event = TypedContractEvent<InputTuple, OutputTuple, OutputObject>;
+  export type Filter = TypedDeferredTopicFilter<Event>;
+  export type Log = TypedEventLog<Event>;
+  export type LogDescription = TypedLogDescription<Event>;
+}
+
+export namespace PoolDepositPauseUpdatedEvent {
+  export type InputTuple = [poolId: BigNumberish, depositsPaused: boolean];
+  export type OutputTuple = [poolId: bigint, depositsPaused: boolean];
+  export interface OutputObject {
+    poolId: bigint;
+    depositsPaused: boolean;
+  }
+  export type Event = TypedContractEvent<InputTuple, OutputTuple, OutputObject>;
+  export type Filter = TypedDeferredTopicFilter<Event>;
+  export type Log = TypedEventLog<Event>;
+  export type LogDescription = TypedLogDescription<Event>;
+}
+
+export namespace PoolRewardFundedEvent {
+  export type InputTuple = [
+    poolId: BigNumberish,
+    amount: BigNumberish,
+    newRewardReserve: BigNumberish
+  ];
+  export type OutputTuple = [
+    poolId: bigint,
+    amount: bigint,
+    newRewardReserve: bigint
+  ];
+  export interface OutputObject {
+    poolId: bigint;
+    amount: bigint;
+    newRewardReserve: bigint;
   }
   export type Event = TypedContractEvent<InputTuple, OutputTuple, OutputObject>;
   export type Filter = TypedDeferredTopicFilter<Event>;
@@ -158,6 +215,12 @@ export interface PoolManagement extends BaseContract {
     "nonpayable"
   >;
 
+  fundPoolRewards: TypedContractMethod<
+    [poolId: BigNumberish],
+    [void],
+    "payable"
+  >;
+
   owner: TypedContractMethod<[], [string], "view">;
 
   poolCount: TypedContractMethod<[], [bigint], "view">;
@@ -165,16 +228,24 @@ export interface PoolManagement extends BaseContract {
   pools: TypedContractMethod<
     [arg0: BigNumberish],
     [
-      [bigint, bigint, bigint] & {
+      [bigint, bigint, bigint, bigint, boolean] & {
         rewardRate: bigint;
         totalStaked: bigint;
         totalRewardsPaid: bigint;
+        rewardReserve: bigint;
+        depositsPaused: boolean;
       }
     ],
     "view"
   >;
 
   renounceOwnership: TypedContractMethod<[], [void], "nonpayable">;
+
+  setPoolDepositPause: TypedContractMethod<
+    [poolId: BigNumberish, depositsPaused: boolean],
+    [void],
+    "nonpayable"
+  >;
 
   stakers: TypedContractMethod<
     [arg0: AddressLike, arg1: BigNumberish],
@@ -206,6 +277,9 @@ export interface PoolManagement extends BaseContract {
     "nonpayable"
   >;
   getFunction(
+    nameOrSignature: "fundPoolRewards"
+  ): TypedContractMethod<[poolId: BigNumberish], [void], "payable">;
+  getFunction(
     nameOrSignature: "owner"
   ): TypedContractMethod<[], [string], "view">;
   getFunction(
@@ -216,10 +290,12 @@ export interface PoolManagement extends BaseContract {
   ): TypedContractMethod<
     [arg0: BigNumberish],
     [
-      [bigint, bigint, bigint] & {
+      [bigint, bigint, bigint, bigint, boolean] & {
         rewardRate: bigint;
         totalStaked: bigint;
         totalRewardsPaid: bigint;
+        rewardReserve: bigint;
+        depositsPaused: boolean;
       }
     ],
     "view"
@@ -227,6 +303,13 @@ export interface PoolManagement extends BaseContract {
   getFunction(
     nameOrSignature: "renounceOwnership"
   ): TypedContractMethod<[], [void], "nonpayable">;
+  getFunction(
+    nameOrSignature: "setPoolDepositPause"
+  ): TypedContractMethod<
+    [poolId: BigNumberish, depositsPaused: boolean],
+    [void],
+    "nonpayable"
+  >;
   getFunction(
     nameOrSignature: "stakers"
   ): TypedContractMethod<
@@ -258,6 +341,20 @@ export interface PoolManagement extends BaseContract {
     PoolCreatedEvent.OutputTuple,
     PoolCreatedEvent.OutputObject
   >;
+  getEvent(
+    key: "PoolDepositPauseUpdated"
+  ): TypedContractEvent<
+    PoolDepositPauseUpdatedEvent.InputTuple,
+    PoolDepositPauseUpdatedEvent.OutputTuple,
+    PoolDepositPauseUpdatedEvent.OutputObject
+  >;
+  getEvent(
+    key: "PoolRewardFunded"
+  ): TypedContractEvent<
+    PoolRewardFundedEvent.InputTuple,
+    PoolRewardFundedEvent.OutputTuple,
+    PoolRewardFundedEvent.OutputObject
+  >;
 
   filters: {
     "OwnershipTransferred(address,address)": TypedContractEvent<
@@ -280,6 +377,28 @@ export interface PoolManagement extends BaseContract {
       PoolCreatedEvent.InputTuple,
       PoolCreatedEvent.OutputTuple,
       PoolCreatedEvent.OutputObject
+    >;
+
+    "PoolDepositPauseUpdated(uint256,bool)": TypedContractEvent<
+      PoolDepositPauseUpdatedEvent.InputTuple,
+      PoolDepositPauseUpdatedEvent.OutputTuple,
+      PoolDepositPauseUpdatedEvent.OutputObject
+    >;
+    PoolDepositPauseUpdated: TypedContractEvent<
+      PoolDepositPauseUpdatedEvent.InputTuple,
+      PoolDepositPauseUpdatedEvent.OutputTuple,
+      PoolDepositPauseUpdatedEvent.OutputObject
+    >;
+
+    "PoolRewardFunded(uint256,uint256,uint256)": TypedContractEvent<
+      PoolRewardFundedEvent.InputTuple,
+      PoolRewardFundedEvent.OutputTuple,
+      PoolRewardFundedEvent.OutputObject
+    >;
+    PoolRewardFunded: TypedContractEvent<
+      PoolRewardFundedEvent.InputTuple,
+      PoolRewardFundedEvent.OutputTuple,
+      PoolRewardFundedEvent.OutputObject
     >;
   };
 }

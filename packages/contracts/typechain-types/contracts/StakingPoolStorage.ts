@@ -86,10 +86,12 @@ export interface StakingPoolStorage extends BaseContract {
   pools: TypedContractMethod<
     [arg0: BigNumberish],
     [
-      [bigint, bigint, bigint] & {
+      [bigint, bigint, bigint, bigint, boolean] & {
         rewardRate: bigint;
         totalStaked: bigint;
         totalRewardsPaid: bigint;
+        rewardReserve: bigint;
+        depositsPaused: boolean;
       }
     ],
     "view"
@@ -119,10 +121,12 @@ export interface StakingPoolStorage extends BaseContract {
   ): TypedContractMethod<
     [arg0: BigNumberish],
     [
-      [bigint, bigint, bigint] & {
+      [bigint, bigint, bigint, bigint, boolean] & {
         rewardRate: bigint;
         totalStaked: bigint;
         totalRewardsPaid: bigint;
+        rewardReserve: bigint;
+        depositsPaused: boolean;
       }
     ],
     "view"

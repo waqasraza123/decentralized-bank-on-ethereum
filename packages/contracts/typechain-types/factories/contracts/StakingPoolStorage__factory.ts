@@ -47,6 +47,16 @@ const _abi = [
         name: "totalRewardsPaid",
         type: "uint256",
       },
+      {
+        internalType: "uint256",
+        name: "rewardReserve",
+        type: "uint256",
+      },
+      {
+        internalType: "bool",
+        name: "depositsPaused",
+        type: "bool",
+      },
     ],
     stateMutability: "view",
     type: "function",

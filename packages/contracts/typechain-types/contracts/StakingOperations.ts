@@ -204,10 +204,12 @@ export interface StakingOperations extends BaseContract {
   pools: TypedContractMethod<
     [arg0: BigNumberish],
     [
-      [bigint, bigint, bigint] & {
+      [bigint, bigint, bigint, bigint, boolean] & {
         rewardRate: bigint;
         totalStaked: bigint;
         totalRewardsPaid: bigint;
+        rewardReserve: bigint;
+        depositsPaused: boolean;
       }
     ],
     "view"
@@ -226,7 +228,7 @@ export interface StakingOperations extends BaseContract {
   >;
 
   withdraw: TypedContractMethod<
-    [poolId: BigNumberish, _amount: BigNumberish],
+    [poolId: BigNumberish, amount: BigNumberish],
     [void],
     "nonpayable"
   >;
@@ -256,10 +258,12 @@ export interface StakingOperations extends BaseContract {
   ): TypedContractMethod<
     [arg0: BigNumberish],
     [
-      [bigint, bigint, bigint] & {
+      [bigint, bigint, bigint, bigint, boolean] & {
         rewardRate: bigint;
         totalStaked: bigint;
         totalRewardsPaid: bigint;
+        rewardReserve: bigint;
+        depositsPaused: boolean;
       }
     ],
     "view"
@@ -280,7 +284,7 @@ export interface StakingOperations extends BaseContract {
   getFunction(
     nameOrSignature: "withdraw"
   ): TypedContractMethod<
-    [poolId: BigNumberish, _amount: BigNumberish],
+    [poolId: BigNumberish, amount: BigNumberish],
     [void],
     "nonpayable"
   >;

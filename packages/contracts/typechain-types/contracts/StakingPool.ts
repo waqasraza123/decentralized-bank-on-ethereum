@@ -26,17 +26,21 @@ import type {
 export interface StakingPoolInterface extends Interface {
   getFunction(
     nameOrSignature:
+      | "arePoolDepositsPaused"
       | "claimReward"
       | "createPool"
       | "deposit"
       | "emergencyWithdraw"
+      | "fundPoolRewards"
       | "getPendingReward"
+      | "getPoolRewardReserve"
       | "getStakedBalance"
       | "getTotalStaked"
       | "owner"
       | "poolCount"
       | "pools"
       | "renounceOwnership"
+      | "setPoolDepositPause"
       | "stakers"
       | "transferOwnership"
       | "withdraw"
@@ -47,10 +51,16 @@ export interface StakingPoolInterface extends Interface {
       | "Deposited"
       | "OwnershipTransferred"
       | "PoolCreated"
+      | "PoolDepositPauseUpdated"
+      | "PoolRewardFunded"
       | "RewardClaimed"
       | "Withdrawn"
   ): EventFragment;
 
+  encodeFunctionData(
+    functionFragment: "arePoolDepositsPaused",
+    values: [BigNumberish]
+  ): string;
   encodeFunctionData(
     functionFragment: "claimReward",
     values: [BigNumberish]
@@ -68,8 +78,16 @@ export interface StakingPoolInterface extends Interface {
     values: [BigNumberish]
   ): string;
   encodeFunctionData(
+    functionFragment: "fundPoolRewards",
+    values: [BigNumberish]
+  ): string;
+  encodeFunctionData(
     functionFragment: "getPendingReward",
     values: [AddressLike, BigNumberish]
+  ): string;
+  encodeFunctionData(
+    functionFragment: "getPoolRewardReserve",
+    values: [BigNumberish]
   ): string;
   encodeFunctionData(
     functionFragment: "getStakedBalance",
@@ -87,6 +105,10 @@ export interface StakingPoolInterface extends Interface {
     values?: undefined
   ): string;
   encodeFunctionData(
+    functionFragment: "setPoolDepositPause",
+    values: [BigNumberish, boolean]
+  ): string;
+  encodeFunctionData(
     functionFragment: "stakers",
     values: [AddressLike, BigNumberish]
   ): string;
@@ -100,6 +122,10 @@ export interface StakingPoolInterface extends Interface {
   ): string;
 
   decodeFunctionResult(
+    functionFragment: "arePoolDepositsPaused",
+    data: BytesLike
+  ): Result;
+  decodeFunctionResult(
     functionFragment: "claimReward",
     data: BytesLike
   ): Result;
@@ -110,7 +136,15 @@ export interface StakingPoolInterface extends Interface {
     data: BytesLike
   ): Result;
   decodeFunctionResult(
+    functionFragment: "fundPoolRewards",
+    data: BytesLike
+  ): Result;
+  decodeFunctionResult(
     functionFragment: "getPendingReward",
+    data: BytesLike
+  ): Result;
+  decodeFunctionResult(
+    functionFragment: "getPoolRewardReserve",
     data: BytesLike
   ): Result;
   decodeFunctionResult(
@@ -126,6 +160,10 @@ export interface StakingPoolInterface extends Interface {
   decodeFunctionResult(functionFragment: "pools", data: BytesLike): Result;
   decodeFunctionResult(
     functionFragment: "renounceOwnership",
+    data: BytesLike
+  ): Result;
+  decodeFunctionResult(
+    functionFragment: "setPoolDepositPause",
     data: BytesLike
   ): Result;
   decodeFunctionResult(functionFragment: "stakers", data: BytesLike): Result;
@@ -182,6 +220,41 @@ export namespace PoolCreatedEvent {
     poolId: bigint;
     rewardRate: bigint;
     externalPoolId: bigint;
+  }
+  export type Event = TypedContractEvent<InputTuple, OutputTuple, OutputObject>;
+  export type Filter = TypedDeferredTopicFilter<Event>;
+  export type Log = TypedEventLog<Event>;
+  export type LogDescription = TypedLogDescription<Event>;
+}
+
+export namespace PoolDepositPauseUpdatedEvent {
+  export type InputTuple = [poolId: BigNumberish, depositsPaused: boolean];
+  export type OutputTuple = [poolId: bigint, depositsPaused: boolean];
+  export interface OutputObject {
+    poolId: bigint;
+    depositsPaused: boolean;
+  }
+  export type Event = TypedContractEvent<InputTuple, OutputTuple, OutputObject>;
+  export type Filter = TypedDeferredTopicFilter<Event>;
+  export type Log = TypedEventLog<Event>;
+  export type LogDescription = TypedLogDescription<Event>;
+}
+
+export namespace PoolRewardFundedEvent {
+  export type InputTuple = [
+    poolId: BigNumberish,
+    amount: BigNumberish,
+    newRewardReserve: BigNumberish
+  ];
+  export type OutputTuple = [
+    poolId: bigint,
+    amount: bigint,
+    newRewardReserve: bigint
+  ];
+  export interface OutputObject {
+    poolId: bigint;
+    amount: bigint;
+    newRewardReserve: bigint;
   }
   export type Event = TypedContractEvent<InputTuple, OutputTuple, OutputObject>;
   export type Filter = TypedDeferredTopicFilter<Event>;
@@ -275,6 +348,12 @@ export interface StakingPool extends BaseContract {
     event?: TCEvent
   ): Promise<this>;
 
+  arePoolDepositsPaused: TypedContractMethod<
+    [poolId: BigNumberish],
+    [boolean],
+    "view"
+  >;
+
   claimReward: TypedContractMethod<
     [poolId: BigNumberish],
     [void],
@@ -299,8 +378,20 @@ export interface StakingPool extends BaseContract {
     "nonpayable"
   >;
 
+  fundPoolRewards: TypedContractMethod<
+    [poolId: BigNumberish],
+    [void],
+    "payable"
+  >;
+
   getPendingReward: TypedContractMethod<
     [_user: AddressLike, poolId: BigNumberish],
+    [bigint],
+    "view"
+  >;
+
+  getPoolRewardReserve: TypedContractMethod<
+    [poolId: BigNumberish],
     [bigint],
     "view"
   >;
@@ -320,16 +411,24 @@ export interface StakingPool extends BaseContract {
   pools: TypedContractMethod<
     [arg0: BigNumberish],
     [
-      [bigint, bigint, bigint] & {
+      [bigint, bigint, bigint, bigint, boolean] & {
         rewardRate: bigint;
         totalStaked: bigint;
         totalRewardsPaid: bigint;
+        rewardReserve: bigint;
+        depositsPaused: boolean;
       }
     ],
     "view"
   >;
 
   renounceOwnership: TypedContractMethod<[], [void], "nonpayable">;
+
+  setPoolDepositPause: TypedContractMethod<
+    [poolId: BigNumberish, depositsPaused: boolean],
+    [void],
+    "nonpayable"
+  >;
 
   stakers: TypedContractMethod<
     [arg0: AddressLike, arg1: BigNumberish],
@@ -350,7 +449,7 @@ export interface StakingPool extends BaseContract {
   >;
 
   withdraw: TypedContractMethod<
-    [poolId: BigNumberish, _amount: BigNumberish],
+    [poolId: BigNumberish, amount: BigNumberish],
     [void],
     "nonpayable"
   >;
@@ -359,6 +458,9 @@ export interface StakingPool extends BaseContract {
     key: string | FunctionFragment
   ): T;
 
+  getFunction(
+    nameOrSignature: "arePoolDepositsPaused"
+  ): TypedContractMethod<[poolId: BigNumberish], [boolean], "view">;
   getFunction(
     nameOrSignature: "claimReward"
   ): TypedContractMethod<[poolId: BigNumberish], [void], "nonpayable">;
@@ -380,12 +482,18 @@ export interface StakingPool extends BaseContract {
     nameOrSignature: "emergencyWithdraw"
   ): TypedContractMethod<[poolId: BigNumberish], [void], "nonpayable">;
   getFunction(
+    nameOrSignature: "fundPoolRewards"
+  ): TypedContractMethod<[poolId: BigNumberish], [void], "payable">;
+  getFunction(
     nameOrSignature: "getPendingReward"
   ): TypedContractMethod<
     [_user: AddressLike, poolId: BigNumberish],
     [bigint],
     "view"
   >;
+  getFunction(
+    nameOrSignature: "getPoolRewardReserve"
+  ): TypedContractMethod<[poolId: BigNumberish], [bigint], "view">;
   getFunction(
     nameOrSignature: "getStakedBalance"
   ): TypedContractMethod<
@@ -407,10 +515,12 @@ export interface StakingPool extends BaseContract {
   ): TypedContractMethod<
     [arg0: BigNumberish],
     [
-      [bigint, bigint, bigint] & {
+      [bigint, bigint, bigint, bigint, boolean] & {
         rewardRate: bigint;
         totalStaked: bigint;
         totalRewardsPaid: bigint;
+        rewardReserve: bigint;
+        depositsPaused: boolean;
       }
     ],
     "view"
@@ -418,6 +528,13 @@ export interface StakingPool extends BaseContract {
   getFunction(
     nameOrSignature: "renounceOwnership"
   ): TypedContractMethod<[], [void], "nonpayable">;
+  getFunction(
+    nameOrSignature: "setPoolDepositPause"
+  ): TypedContractMethod<
+    [poolId: BigNumberish, depositsPaused: boolean],
+    [void],
+    "nonpayable"
+  >;
   getFunction(
     nameOrSignature: "stakers"
   ): TypedContractMethod<
@@ -437,7 +554,7 @@ export interface StakingPool extends BaseContract {
   getFunction(
     nameOrSignature: "withdraw"
   ): TypedContractMethod<
-    [poolId: BigNumberish, _amount: BigNumberish],
+    [poolId: BigNumberish, amount: BigNumberish],
     [void],
     "nonpayable"
   >;
@@ -462,6 +579,20 @@ export interface StakingPool extends BaseContract {
     PoolCreatedEvent.InputTuple,
     PoolCreatedEvent.OutputTuple,
     PoolCreatedEvent.OutputObject
+  >;
+  getEvent(
+    key: "PoolDepositPauseUpdated"
+  ): TypedContractEvent<
+    PoolDepositPauseUpdatedEvent.InputTuple,
+    PoolDepositPauseUpdatedEvent.OutputTuple,
+    PoolDepositPauseUpdatedEvent.OutputObject
+  >;
+  getEvent(
+    key: "PoolRewardFunded"
+  ): TypedContractEvent<
+    PoolRewardFundedEvent.InputTuple,
+    PoolRewardFundedEvent.OutputTuple,
+    PoolRewardFundedEvent.OutputObject
   >;
   getEvent(
     key: "RewardClaimed"
@@ -510,6 +641,28 @@ export interface StakingPool extends BaseContract {
       PoolCreatedEvent.InputTuple,
       PoolCreatedEvent.OutputTuple,
       PoolCreatedEvent.OutputObject
+    >;
+
+    "PoolDepositPauseUpdated(uint256,bool)": TypedContractEvent<
+      PoolDepositPauseUpdatedEvent.InputTuple,
+      PoolDepositPauseUpdatedEvent.OutputTuple,
+      PoolDepositPauseUpdatedEvent.OutputObject
+    >;
+    PoolDepositPauseUpdated: TypedContractEvent<
+      PoolDepositPauseUpdatedEvent.InputTuple,
+      PoolDepositPauseUpdatedEvent.OutputTuple,
+      PoolDepositPauseUpdatedEvent.OutputObject
+    >;
+
+    "PoolRewardFunded(uint256,uint256,uint256)": TypedContractEvent<
+      PoolRewardFundedEvent.InputTuple,
+      PoolRewardFundedEvent.OutputTuple,
+      PoolRewardFundedEvent.OutputObject
+    >;
+    PoolRewardFunded: TypedContractEvent<
+      PoolRewardFundedEvent.InputTuple,
+      PoolRewardFundedEvent.OutputTuple,
+      PoolRewardFundedEvent.OutputObject
     >;
 
     "RewardClaimed(address,uint256,uint256)": TypedContractEvent<

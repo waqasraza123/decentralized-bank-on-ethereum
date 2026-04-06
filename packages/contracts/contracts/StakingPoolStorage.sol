@@ -6,6 +6,8 @@ abstract contract StakingPoolStorage {
         uint256 rewardRate;
         uint256 totalStaked;
         uint256 totalRewardsPaid;
+        uint256 rewardReserve;
+        bool depositsPaused;
     }
 
     struct Staker {
