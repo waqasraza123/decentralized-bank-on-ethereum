@@ -314,6 +314,7 @@ export type WorkerRuntimeConfig = {
   readonly batchLimit: number;
   readonly requestTimeoutMs: number;
   readonly confirmationBlocks: number;
+  readonly reconciliationScanIntervalMs: number;
   readonly rpcUrl: string | null;
   readonly depositSignerPrivateKey: string | null;
 };
@@ -578,6 +579,11 @@ export function loadWorkerRuntimeConfig(
       readOptionalRuntimeEnv(env, "WORKER_CONFIRMATION_BLOCKS") ??
         String(DEFAULT_WORKER_CONFIRMATION_BLOCKS),
       "WORKER_CONFIRMATION_BLOCKS"
+    ),
+    reconciliationScanIntervalMs: parsePositiveInteger(
+      readOptionalRuntimeEnv(env, "WORKER_RECONCILIATION_SCAN_INTERVAL_MS") ??
+        "300000",
+      "WORKER_RECONCILIATION_SCAN_INTERVAL_MS"
     ),
     rpcUrl: rpcUrl ?? null,
     depositSignerPrivateKey: depositSignerPrivateKey ?? null

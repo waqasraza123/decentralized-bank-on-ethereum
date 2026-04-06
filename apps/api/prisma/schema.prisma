@@ -33,6 +33,7 @@ model Customer {
   reviewCases        ReviewCase[]
   auditEvents        AuditEvent[]
   oversightIncidents OversightIncident[] @relation("OversightIncidentCustomer")
+  ledgerReconciliationMismatches LedgerReconciliationMismatch[]
 }
 
 model CustomerAccount {
@@ -62,7 +63,8 @@ model CustomerAccount {
   @@index([restrictedByOversightIncidentId])
   ledgerAccounts                  LedgerAccount[]
   assetBalances                   CustomerAssetBalance[]
-  incidentPackageReleases CustomerAccountIncidentPackageRelease[]
+  incidentPackageReleases         CustomerAccountIncidentPackageRelease[]
+  ledgerReconciliationMismatches  LedgerReconciliationMismatch[]
 }
 
 model Wallet {
@@ -104,6 +106,7 @@ model Asset {
   ledgerAccounts     LedgerAccount[]
   ledgerJournals     LedgerJournal[]
   customerBalances   CustomerAssetBalance[]
+  ledgerReconciliationMismatches LedgerReconciliationMismatch[]
 }
 
 model TransactionIntent {
@@ -148,6 +151,7 @@ model TransactionIntent {
   @@index([manualResolvedByOperatorId, manuallyResolvedAt])
   @@index([manualResolutionReasonCode, manuallyResolvedAt])
   ledgerJournal                LedgerJournal?
+  ledgerReconciliationMismatches LedgerReconciliationMismatch[]
 }
 
 model BlockchainTransaction {
@@ -188,6 +192,7 @@ model ReviewCase {
   updatedAt           DateTime           @updatedAt
   events              ReviewCaseEvent[]
   restrictionReleaseReviews CustomerAccountRestriction[] @relation("RestrictionReleaseReviewCase")
+  ledgerReconciliationMismatches LedgerReconciliationMismatch[]
 
   @@index([customerId])
   @@index([customerAccountId])
@@ -428,6 +433,50 @@ model CustomerAssetBalance {
   @@index([assetId])
 }
 
+model LedgerReconciliationMismatch {
+  id                    String                                @id @default(cuid())
+  mismatchKey           String                                @unique
+  scope                 LedgerReconciliationMismatchScope
+  status                LedgerReconciliationMismatchStatus    @default(open)
+  severity              LedgerReconciliationMismatchSeverity
+  recommendedAction     LedgerReconciliationMismatchRecommendedAction @default(none)
+  reasonCode            String
+  summary               String
+  chainId               Int
+  customerId            String?
+  customer              Customer?                             @relation(fields: [customerId], references: [id])
+  customerAccountId     String?
+  customerAccount       CustomerAccount?                      @relation(fields: [customerAccountId], references: [id])
+  transactionIntentId   String?
+  transactionIntent     TransactionIntent?                    @relation(fields: [transactionIntentId], references: [id])
+  assetId               String?
+  asset                 Asset?                                @relation(fields: [assetId], references: [id])
+  linkedReviewCaseId    String?
+  linkedReviewCase      ReviewCase?                           @relation(fields: [linkedReviewCaseId], references: [id])
+  latestSnapshot        Json
+  resolutionMetadata    Json?
+  resolutionNote        String?
+  detectionCount        Int                                   @default(1)
+  firstDetectedAt       DateTime                              @default(now())
+  lastDetectedAt        DateTime                              @default(now())
+  resolvedAt            DateTime?
+  resolvedByOperatorId  String?
+  dismissedAt           DateTime?
+  dismissedByOperatorId String?
+  createdAt             DateTime                              @default(now())
+  updatedAt             DateTime                              @updatedAt
+
+  @@index([status, updatedAt])
+  @@index([scope, status, updatedAt])
+  @@index([reasonCode, status])
+  @@index([recommendedAction, status])
+  @@index([customerAccountId, status])
+  @@index([transactionIntentId, status])
+  @@index([assetId, status])
+  @@index([chainId, scope, status])
+  @@index([linkedReviewCaseId])
+}
+
 enum LedgerAccountType {
   asset_inbound_clearing
   asset_outbound_clearing
@@ -442,6 +491,88 @@ enum LedgerJournalType {
 enum LedgerPostingDirection {
   debit
   credit
+}
+
+enum LedgerReconciliationMismatchScope {
+  transaction_intent
+  customer_balance
+}
+
+enum LedgerReconciliationMismatchStatus {
+  open
+  resolved
+  dismissed
+}
+
+enum LedgerReconciliationMismatchSeverity {
+  warning
+  critical
+}
+
+enum LedgerReconciliationMismatchRecommendedAction {
+  none
+  replay_confirm
+  replay_settle
+  open_review_case
+  repair_customer_balance
+}
+
+model LedgerReconciliationScanRun {
+  id                   String                               @id @default(cuid())
+  triggerSource        LedgerReconciliationScanTriggerSource
+  status               LedgerReconciliationScanRunStatus    @default(running)
+  requestedScope       LedgerReconciliationMismatchScope?
+  customerAccountId    String?
+  transactionIntentId  String?
+  triggeredByOperatorId String?
+  triggeredByWorkerId  String?
+  startedAt            DateTime                             @default(now())
+  completedAt          DateTime?
+  durationMs           Int?
+  createdCount         Int                                  @default(0)
+  reopenedCount        Int                                  @default(0)
+  refreshedCount       Int                                  @default(0)
+  autoResolvedCount    Int                                  @default(0)
+  activeMismatchCount  Int                                  @default(0)
+  errorCode            String?
+  errorMessage         String?
+  resultSnapshot       Json?
+  createdAt            DateTime                             @default(now())
+  updatedAt            DateTime                             @updatedAt
+
+  @@index([status, startedAt])
+  @@index([triggerSource, startedAt])
+  @@index([requestedScope, startedAt])
+  @@index([customerAccountId, startedAt])
+  @@index([transactionIntentId, startedAt])
+  @@index([triggeredByWorkerId, startedAt])
+}
+
+model WorkerRuntimeHeartbeat {
+  id                              String                       @id @default(cuid())
+  workerId                        String                       @unique
+  environment                     WorkerRuntimeEnvironment
+  executionMode                   WorkerRuntimeExecutionMode
+  lastIterationStatus             WorkerRuntimeIterationStatus
+  lastHeartbeatAt                 DateTime                     @default(now())
+  lastIterationStartedAt          DateTime?
+  lastIterationCompletedAt        DateTime?
+  consecutiveFailureCount         Int                          @default(0)
+  lastErrorCode                   String?
+  lastErrorMessage                String?
+  lastReconciliationScanRunId     String?
+  lastReconciliationScanStartedAt DateTime?
+  lastReconciliationScanCompletedAt DateTime?
+  lastReconciliationScanStatus    LedgerReconciliationScanRunStatus?
+  runtimeMetadata                 Json?
+  latestIterationMetrics          Json?
+  createdAt                       DateTime                     @default(now())
+  updatedAt                       DateTime                     @updatedAt
+
+  @@index([lastHeartbeatAt])
+  @@index([lastIterationStatus, lastHeartbeatAt])
+  @@index([executionMode, lastHeartbeatAt])
+  @@index([lastReconciliationScanStatus, lastHeartbeatAt])
 }
 
 model ReviewCaseEvent {
@@ -470,6 +601,36 @@ enum ReviewCaseEventType {
   account_release_denied
   resolved
   dismissed
+}
+
+enum LedgerReconciliationScanTriggerSource {
+  operator
+  worker
+  system
+}
+
+enum LedgerReconciliationScanRunStatus {
+  running
+  succeeded
+  failed
+}
+
+enum WorkerRuntimeIterationStatus {
+  running
+  succeeded
+  failed
+}
+
+enum WorkerRuntimeEnvironment {
+  development
+  test
+  production
+}
+
+enum WorkerRuntimeExecutionMode {
+  monitor
+  synthetic
+  managed
 }
 
 model OversightIncident {
@@ -653,4 +814,3 @@ model CustomerAccountIncidentPackageRelease {
   @@index([approvedByOperatorId, approvedAt])
   @@index([releasedByOperatorId, releasedAt])
 }
-

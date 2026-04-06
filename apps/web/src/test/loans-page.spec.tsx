@@ -1,12 +1,11 @@
-import type { ReactNode } from "react";
 import { cleanup, render, screen } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useMyBalances } from "@/hooks/balances/useMyBalances";
 import { useMyTransactionHistory } from "@/hooks/transactions/useMyTransactionHistory";
 import { useGetUser } from "@/hooks/user/useGetUser";
 import Loans from "@/pages/Loans";
 import { useUserStore } from "@/stores/userStore";
+import { renderWithRouter } from "@/test/render-with-router";
 
 const mockUseGetUser = vi.mocked(useGetUser);
 const mockUseMyBalances = vi.mocked(useMyBalances);
@@ -23,10 +22,6 @@ vi.mock("@/hooks/balances/useMyBalances", () => ({
 vi.mock("@/hooks/transactions/useMyTransactionHistory", () => ({
   useMyTransactionHistory: vi.fn()
 }));
-
-function renderWithRouter(element: ReactNode) {
-  return render(<MemoryRouter>{element}</MemoryRouter>);
-}
 
 describe("loans page", () => {
   beforeEach(() => {

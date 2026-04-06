@@ -1,7 +1,5 @@
-import type { ReactNode } from "react";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useSupportedAssets } from "@/hooks/assets/useSupportedAssets";
 import { useMyBalances } from "@/hooks/balances/useMyBalances";
@@ -9,6 +7,7 @@ import { useCreateDepositIntent } from "@/hooks/transaction-intents/useCreateDep
 import { useCreateWithdrawalIntent } from "@/hooks/transaction-intents/useCreateWithdrawalIntent";
 import Wallet from "@/pages/Wallet";
 import { useUserStore } from "@/stores/userStore";
+import { renderWithRouter } from "@/test/render-with-router";
 
 const mockUseSupportedAssets = vi.mocked(useSupportedAssets);
 const mockUseMyBalances = vi.mocked(useMyBalances);
@@ -30,10 +29,6 @@ vi.mock("@/hooks/transaction-intents/useCreateDepositIntent", () => ({
 vi.mock("@/hooks/transaction-intents/useCreateWithdrawalIntent", () => ({
   useCreateWithdrawalIntent: vi.fn()
 }));
-
-function renderWithRouter(element: ReactNode) {
-  return render(<MemoryRouter>{element}</MemoryRouter>);
-}
 
 describe("wallet page", () => {
   const mutateDepositAsync = vi.fn();

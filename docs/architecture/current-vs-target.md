@@ -6,10 +6,13 @@ This document maps the current repository state to the target production system 
 
 ## Summary
 
-The current repository is a prototype with useful building blocks:
-- a customer-facing web app shell
-- a NestJS API with real auth and blockchain integration paths
-- a Hardhat contracts package with prototype product logic
+The current repository is no longer only a prototype shell. It now contains:
+- customer and operator web surfaces
+- a NestJS API with customer, operator, and worker workflow slices
+- a worker runtime for async execution and monitoring
+- shared config, DB, and type boundaries
+- a Hardhat contracts package that compiles and has tests
+- early ledger, reconciliation, reporting, and governed export flows
 
 The target repository is a production-grade Ethereum financial platform with:
 - clear repo boundaries
@@ -25,9 +28,14 @@ The target repository is a production-grade Ethereum financial platform with:
 ### Repo Structure
 
 #### Current
+- `apps/admin`
 - `apps/web`
 - `apps/api`
+- `apps/worker`
 - `packages/contracts`
+- `packages/db`
+- `packages/types`
+- `packages/config`
 
 #### Target
 - `apps/web`
@@ -42,42 +50,48 @@ The target repository is a production-grade Ethereum financial platform with:
 - `packages/security`
 
 #### Gap
-The repo currently lacks the packages and apps needed to express production boundaries.
+The repo now expresses most of the intended production boundaries. The main repo-boundary gaps are the missing `packages/contracts-sdk` and `packages/security` slices plus deeper operational use of the existing boundaries.
 
 #### Consequence
-If we keep adding features to the current layout, business logic, blockchain logic, and operational tooling will become tightly coupled and harder to harden.
+Boundary drift is no longer the main problem. The main risk now is leaving the introduced boundaries underused or inconsistently hardened across apps.
 
 ### Customer UI
 
 #### Current
-The customer UI has real routing and shared UI primitives, but major financial pages remain mocked.
+The customer UI now has real auth and API-backed financial reads across the main customer surface.
 
 Examples:
-- dashboard is mocked
-- staking is mocked
-- create pool is mocked
-- transactions are mocked
-- loans is UI-only
+- auth uses real backend login flows
+- dashboard and wallet use real balances and supported assets
+- transaction history is backed by API reads
+- profile uses customer account data
+- staking surfaces use the current backend contract/product routes
+- loans remains a constrained placeholder surface rather than a finished product path
 
 #### Target
 Every customer-facing financial page must be backed by real APIs and truthful read models.
 
 #### Gap
-The current UI implies product maturity that does not yet exist in the backend.
+The customer UI is materially more truthful than the earlier architecture baseline, but it still does not represent a finished production banking experience.
 
 #### Consequence
-Wiring fake pages directly to unstable prototype APIs would create rework and trust issues.
+The remaining risk is not mock-heavy UI drift so much as overextending partially implemented product areas before underlying controls are complete.
 
 ### Backend API
 
 #### Current
 The API already contains:
 - auth
-- user fetch
-- deposits
-- pool routes
-- staking routes
-- Ethereum event listening
+- user and customer account reads
+- customer balances
+- deposit and withdrawal intent APIs
+- transaction history and operations reporting
+- review cases and manual resolution reporting
+- oversight incidents and account hold reporting
+- governed incident package export and release workflows
+- internal worker and internal operator guarded routes
+- staking, pool, asset, and Ethereum integration paths
+- ledger services and settlement reconciliation slices
 
 #### Target
 The API should expose:
@@ -89,15 +103,15 @@ The API should expose:
 - clean domain boundaries
 
 #### Gap
-The current API still mixes prototype flows and production-sensitive actions without the necessary control plane.
+The API has moved far beyond the earlier prototype baseline, but it still mixes mature operational slices with unfinished product areas and incomplete production control-plane hardening.
 
 #### Consequence
-Money-moving logic is not yet guarded or structured well enough for production.
+The remaining work is about consistency, observability, and hardening rather than absence of domain APIs.
 
 ### Contracts
 
 #### Current
-The contracts package contains a prototype staking contract system and currently fails to compile.
+The contracts package contains a prototype staking contract system that now compiles and has passing tests.
 
 #### Target
 The contracts package should contain:
@@ -135,21 +149,21 @@ Auth and product flows risk drift, duplication, and authorization gaps.
 ### Balance Model
 
 #### Current
-The repo contains product tables for deposits and withdrawals, but it does not have a formal ledger.
+The repo now includes customer balance projections plus ledger journals and postings for implemented settlement and reservation flows.
 
 #### Target
 Balances must be ledger-derived and reconcilable.
 
 #### Gap
-There is no accounting core that can support production-grade financial state.
+The accounting core has started, but ledger coverage is still partial and the reconciliation/reporting surface is not yet broad enough to treat the whole platform as fully ledger-derived.
 
 #### Consequence
-Customer balances, treasury views, and operational repair flows would remain fragile.
+Customer balances are stronger than the original baseline, but extension into more products without broader ledger coverage would still be fragile.
 
 ### Blockchain Processing
 
 #### Current
-The API contains direct chain interaction and a thin event listener.
+The repository now contains a dedicated worker runtime with internal API polling, synthetic mode, monitor mode, managed deposit broadcasting, retry handling, and test coverage.
 
 #### Target
 Blockchain processing should be handled by an async worker system with:
@@ -160,15 +174,15 @@ Blockchain processing should be handled by an async worker system with:
 - reconciliation hooks
 
 #### Gap
-The repo has no worker runtime or durable async orchestration.
+The repo now has a real worker boundary and orchestration loop, but it still lacks a fuller queue-based execution substrate, broader ingestion coverage, and stronger replay/operability guarantees.
 
 #### Consequence
-Chain operations remain fragile and hard to recover under failure.
+Chain processing is less fragile than the earlier baseline, but it still needs stronger production recovery and observability characteristics.
 
 ### Admin and Operations
 
 #### Current
-There is no admin app and no dedicated operator experience.
+The repository now includes a first internal operator console for review cases, oversight incidents, hold-release reviews, and incident package export governance.
 
 #### Target
 A dedicated internal surface must exist for:
@@ -180,10 +194,10 @@ A dedicated internal surface must exist for:
 - incident actions
 
 #### Gap
-Critical operations currently have no production operating surface.
+Critical operator loops now have an internal UI, but the full treasury, reconciliation, audit-log, and incident-management operating surface is still incomplete.
 
 #### Consequence
-Important workflows would otherwise be hidden in logs, direct DB access, or ad hoc scripts.
+Without deeper admin coverage, operators will still fall back to logs, scripts, or direct data inspection for some important workflows.
 
 ### Governance and Treasury
 
@@ -206,7 +220,7 @@ The current model is not acceptable for a professional financial platform.
 ### Observability and Reconciliation
 
 #### Current
-There is no real observability, reconciliation layer, or operator repair path.
+The repo now has runbooks, reconciliation services, reporting slices, targeted repair tooling, worker heartbeat persistence, scheduled reconciliation scan history, and operator-visible runtime health views, but not a full platform-wide observability stack.
 
 #### Target
 The system must provide:
@@ -218,27 +232,23 @@ The system must provide:
 - incident runbooks
 
 #### Gap
-The repo is not yet operable as a financial system.
+The repo is more operable than the original baseline, but structured metrics, alert routing, richer incident automation, and broader reconciliation/reporting depth are still missing.
 
 #### Consequence
 Failures would be harder to detect, classify, and repair safely.
 
 ## Transformation Strategy
 
-The repository should not be transformed by patching random broken screens and routes first.
+The repository should not be treated as if it were still stuck before the worker, ledger, and admin boundaries exist.
 
-The transformation should follow this order:
-1. lock architecture and roadmap docs
-2. restructure the monorepo
-3. redesign the data model
-4. rebuild auth and account lifecycle
-5. redesign the product contracts
-6. add worker and blockchain orchestration
-7. add ledger and reconciliation
-8. rebuild backend APIs on the new foundation
-9. replace mocked customer flows
-10. add admin operations
-11. add observability and release hardening
+The practical transformation order from the current repo position is:
+1. keep architecture and roadmap docs aligned with implemented reality
+2. continue hardening the data model, auth boundary, and policy controls already introduced
+3. deepen worker recovery, replay, and operational safety
+4. extend ledger coverage and reconciliation reporting
+5. keep customer and operator surfaces truthful as backend slices mature
+6. expand observability, incident response, and release hardening
+7. finish contract and governance hardening before any real launch posture
 
 ## What Must Not Happen
 
@@ -254,6 +264,6 @@ The following are explicitly unsafe transformation patterns:
 
 ## Immediate Planning Outcome
 
-The current repository is good enough to begin a structured production transformation, but not good enough to support direct feature expansion as if it were already a production-grade financial platform.
+The current repository already contains meaningful production-oriented slices across customer, operator, worker, ledger, and governed export workflows.
 
-The next step after this document is to keep decisions moving forward in writing and then start the additive repo restructuring phase.
+The next step after this document is not more placeholder boundary work. It is to harden observability, reconciliation, and operational safety around the slices that already exist.

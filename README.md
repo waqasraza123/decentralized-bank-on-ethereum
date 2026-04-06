@@ -20,10 +20,14 @@ The repository already includes real backend foundation for:
 
 - customer, customer account, and wallet projections
 - migration, audit, and repair tooling for legacy to new model adoption
-- deposit transaction intent request flow
-- internal operator approval and denial flow
-- operator queueing for approved deposit intents
-- worker broadcast and execution failure reporting for deposits
+- customer balance read models and early ledger posting coverage
+- deposit and withdrawal transaction intent request, review, and replay-safe workflow slices
+- internal operator review cases, oversight incidents, and account hold governance
+- operator queueing, settlement reconciliation, and incident package release governance
+- async worker runtime with synthetic, monitor, and managed execution modes
+- worker heartbeat, scheduled reconciliation scanning, and scan history reporting
+- customer web flows backed by real APIs for auth, dashboard, wallet, profile, staking, and transaction history
+- internal admin console for review, oversight, hold-release, and export-governance workflows
 - durable audit trails across those implemented workflow slices
 
 That means the project has moved beyond pure scaffolding. It now contains early but real money-state workflow slices.
@@ -34,23 +38,26 @@ This is not yet a finished banking product.
 
 The system still needs broader production coverage in areas such as:
 
-- confirmation and settlement slices
+- broader confirmation and settlement automation
 - generalized ledger coverage across more money flows
-- reconciliation and replay safety
-- withdrawal flows
-- fuller customer UI replacement
-- fuller internal admin console
+- deeper reconciliation, replay, and operator repair safety
+- fuller custody execution coverage for withdrawals and treasury operations
+- completion of remaining customer UI gaps such as loans and security settings
+- broader internal admin coverage for treasury, reconciliation, and audit operations
 - broader observability, incident tooling, and release hardening
 
 ## Repository layout
 
 | Path | Purpose |
 |------|---------|
+| `apps/admin` | Internal operator console for review, oversight, and governed export workflows |
 | `apps/web` | Customer-facing web application |
 | `apps/api` | Backend API, workflow orchestration, persistence, and internal operational paths |
+| `apps/worker` | Async worker runtime for internal execution and blockchain monitoring |
 | `packages/config` | Shared runtime config loading and validation |
 | `packages/db` | Shared Prisma client access |
 | `packages/types` | Shared TypeScript contracts and types |
+| `packages/contracts` | Hardhat contracts package and contract tests |
 | `docs/` | Architecture, ADRs, runbooks, and operational notes |
 
 ## How the system is shaped
@@ -59,8 +66,8 @@ At a high level:
 
 1. customers interact with the platform through the web app and API
 2. the API owns customer identity, wallet linkage, workflow state, and persistence
-3. internal operator paths review sensitive actions
-4. internal worker paths move approved actions through execution state
+3. internal operator paths review sensitive actions, manage holds, and govern exports
+4. internal worker paths monitor and move approved actions through execution state
 5. audit events provide a durable operational trail
 6. later slices extend this into confirmation, settlement, and broader accounting truth
 
@@ -73,13 +80,16 @@ The direction of the repo is intentional:
 
 ## Current implemented flow coverage
 
-The main implemented product slice today is the early deposit path:
+The implemented slices today go beyond the initial deposit path and now cover:
 
-1. customer creates a deposit transaction intent
-2. operator reviews and approves or denies it
-3. operator queues approved work
-4. worker records broadcast
-5. worker records execution failure when needed
+1. customer auth, account lookup, balances, wallet, staking, and transaction history reads
+2. deposit and withdrawal intent request flows with operator review paths
+3. queueing, replay, reconciliation, and settlement handling across transaction intent slices
+4. internal review cases, manual resolution governance, and oversight incident workflows
+5. account hold placement and release review workflows
+6. worker broadcast, monitoring, and managed execution coverage for approved deposit work
+7. governed customer incident package exports and release approvals
+8. internal admin UI coverage for the review, oversight, hold-release, and export-governance loops
 
 This is important because it means the repo is no longer only a prototype shell. It already contains real workflow state, internal review, internal execution reporting, and auditability.
 

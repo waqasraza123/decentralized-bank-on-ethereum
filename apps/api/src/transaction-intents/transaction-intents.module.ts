@@ -43,6 +43,7 @@ import { WithdrawalSettlementReconciliationService } from "./withdrawal-settleme
     PrismaService,
     InternalOperatorApiKeyGuard,
     InternalWorkerApiKeyGuard
-  ]
+  ],
+  exports: [TransactionIntentsService, WithdrawalIntentsService]
 })
 export class TransactionIntentsModule {}

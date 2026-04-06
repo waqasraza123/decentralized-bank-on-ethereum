@@ -18,6 +18,7 @@ test("worker runtime config defaults to monitor mode and requires rpc", () => {
   assert.equal(runtime.executionMode, "monitor");
   assert.equal(runtime.internalApiBaseUrl, "http://localhost:9001");
   assert.equal(runtime.confirmationBlocks, 1);
+  assert.equal(runtime.reconciliationScanIntervalMs, 300000);
   assert.equal(runtime.depositSignerPrivateKey, null);
 });
 

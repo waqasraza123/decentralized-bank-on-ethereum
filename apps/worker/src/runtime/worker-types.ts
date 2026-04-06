@@ -90,3 +90,65 @@ export type WorkerLogger = {
   warn(event: string, metadata: Record<string, unknown>): void;
   error(event: string, metadata: Record<string, unknown>): void;
 };
+
+export type WorkerIterationMetrics = {
+  queuedDepositCount: number;
+  queuedWithdrawalCount: number;
+  broadcastDepositCount: number;
+  broadcastWithdrawalCount: number;
+  depositBroadcastRecordedCount: number;
+  withdrawalBroadcastRecordedCount: number;
+  depositConfirmedCount: number;
+  withdrawalConfirmedCount: number;
+  depositSettledCount: number;
+  withdrawalSettledCount: number;
+  depositFailedCount: number;
+  withdrawalFailedCount: number;
+  manualWithdrawalBacklogCount: number;
+};
+
+export type TrackedLedgerReconciliationScanRun = {
+  id: string;
+  status: string;
+  triggerSource: string;
+  requestedScope: string | null;
+  startedAt: string;
+  completedAt: string | null;
+  durationMs: number | null;
+  createdCount: number;
+  reopenedCount: number;
+  refreshedCount: number;
+  autoResolvedCount: number;
+  activeMismatchCount: number;
+  errorCode: string | null;
+  errorMessage: string | null;
+};
+
+export type TrackedLedgerReconciliationScanResult = {
+  scanRun: TrackedLedgerReconciliationScanRun;
+  result: {
+    scannedAt: string;
+    createdCount: number;
+    reopenedCount: number;
+    refreshedCount: number;
+    autoResolvedCount: number;
+    activeMismatchCount: number;
+  };
+};
+
+export type WorkerHeartbeatPayload = {
+  environment: "development" | "test" | "production";
+  executionMode: "monitor" | "synthetic" | "managed";
+  lastIterationStatus: "running" | "succeeded" | "failed";
+  lastIterationStartedAt?: string;
+  lastIterationCompletedAt?: string;
+  lastErrorCode?: string;
+  lastErrorMessage?: string;
+  lastReconciliationScanRunId?: string;
+  lastReconciliationScanStartedAt?: string;
+  lastReconciliationScanCompletedAt?: string;
+  lastReconciliationScanStatus?: "running" | "succeeded" | "failed";
+  runtimeMetadata?: Record<string, unknown>;
+  latestIterationMetrics?: Record<string, unknown>;
+  lastIterationDurationMs?: number;
+};

@@ -195,10 +195,15 @@ export function isEthereumAddress(value: string): boolean {
 }
 
 export function buildRequestIdempotencyKey(prefix: string): string {
-  const timestamp = new Date()
-    .toISOString()
-    .replace(/[-:.TZ]/g, "")
-    .slice(0, 14);
+  const now = new Date();
+  const timestamp = [
+    now.getUTCFullYear().toString(),
+    String(now.getUTCMonth() + 1).padStart(2, "0"),
+    String(now.getUTCDate()).padStart(2, "0"),
+    String(now.getUTCHours()).padStart(2, "0"),
+    String(now.getUTCMinutes()).padStart(2, "0"),
+    String(now.getUTCSeconds()).padStart(2, "0"),
+  ].join("");
   const randomSegment =
     globalThis.crypto?.randomUUID?.().replace(/-/g, "").slice(0, 12) ??
     `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;

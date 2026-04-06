@@ -8,6 +8,7 @@ import type {
   ListIntentsResult,
   RecordBroadcastPayload,
   WorkerIntentProjection,
+  WorkerIterationMetrics,
   WorkerLogger
 } from "./worker-types";
 
@@ -41,10 +42,29 @@ function stringifyIntentIds(intents: WorkerIntentProjection[]): string[] {
   return intents.map((intent) => intent.id);
 }
 
+function createEmptyIterationMetrics(): WorkerIterationMetrics {
+  return {
+    queuedDepositCount: 0,
+    queuedWithdrawalCount: 0,
+    broadcastDepositCount: 0,
+    broadcastWithdrawalCount: 0,
+    depositBroadcastRecordedCount: 0,
+    withdrawalBroadcastRecordedCount: 0,
+    depositConfirmedCount: 0,
+    withdrawalConfirmedCount: 0,
+    depositSettledCount: 0,
+    withdrawalSettledCount: 0,
+    depositFailedCount: 0,
+    withdrawalFailedCount: 0,
+    manualWithdrawalBacklogCount: 0
+  };
+}
+
 export class WorkerOrchestrator {
   constructor(private readonly deps: WorkerOrchestratorDeps) {}
 
-  async runOnce(): Promise<void> {
+  async runOnce(): Promise<WorkerIterationMetrics> {
+    const metrics = createEmptyIterationMetrics();
     const queuedDeposits = await this.deps.internalApiClient.listQueuedDepositIntents(
       this.deps.runtime.batchLimit
     );
@@ -53,12 +73,15 @@ export class WorkerOrchestrator {
         this.deps.runtime.batchLimit
       );
 
+    metrics.queuedDepositCount = queuedDeposits.intents.length;
+    metrics.queuedWithdrawalCount = queuedWithdrawals.intents.length;
+
     if (this.deps.runtime.executionMode === "synthetic") {
-      await this.processQueuedDepositsSynthetic(queuedDeposits);
-      await this.processQueuedWithdrawalsSynthetic(queuedWithdrawals);
+      await this.processQueuedDepositsSynthetic(queuedDeposits, metrics);
+      await this.processQueuedWithdrawalsSynthetic(queuedWithdrawals, metrics);
     } else if (this.deps.runtime.executionMode === "managed") {
-      await this.processQueuedDepositsManaged(queuedDeposits);
-      this.logQueuedWithdrawalsRequiringManualExecution(queuedWithdrawals);
+      await this.processQueuedDepositsManaged(queuedDeposits, metrics);
+      this.logQueuedWithdrawalsRequiringManualExecution(queuedWithdrawals, metrics);
     } else {
       this.logQueuedBacklog("deposit", queuedDeposits);
       this.logQueuedBacklog("withdrawal", queuedWithdrawals);
@@ -73,14 +96,19 @@ export class WorkerOrchestrator {
         this.deps.runtime.batchLimit
       );
 
+    metrics.broadcastDepositCount = broadcastDeposits.intents.length;
+    metrics.broadcastWithdrawalCount = broadcastWithdrawals.intents.length;
+
     if (this.deps.runtime.executionMode === "synthetic") {
-      await this.processBroadcastDepositsSynthetic(broadcastDeposits);
-      await this.processBroadcastWithdrawalsSynthetic(broadcastWithdrawals);
-      return;
+      await this.processBroadcastDepositsSynthetic(broadcastDeposits, metrics);
+      await this.processBroadcastWithdrawalsSynthetic(broadcastWithdrawals, metrics);
+      return metrics;
     }
 
-    await this.processBroadcastDepositsMonitor(broadcastDeposits);
-    await this.processBroadcastWithdrawalsMonitor(broadcastWithdrawals);
+    await this.processBroadcastDepositsMonitor(broadcastDeposits, metrics);
+    await this.processBroadcastWithdrawalsMonitor(broadcastWithdrawals, metrics);
+
+    return metrics;
   }
 
   private logQueuedBacklog(
@@ -99,7 +127,8 @@ export class WorkerOrchestrator {
   }
 
   private async processQueuedDepositsSynthetic(
-    result: ListIntentsResult
+    result: ListIntentsResult,
+    metrics: WorkerIterationMetrics
   ): Promise<void> {
     for (const intent of result.intents) {
       const payload: RecordBroadcastPayload = {
@@ -109,6 +138,7 @@ export class WorkerOrchestrator {
       };
 
       await this.deps.internalApiClient.recordDepositBroadcast(intent.id, payload);
+      metrics.depositBroadcastRecordedCount += 1;
       this.deps.logger.info("synthetic_deposit_broadcast_recorded", {
         intentId: intent.id,
         txHash: payload.txHash
@@ -117,7 +147,8 @@ export class WorkerOrchestrator {
   }
 
   private async processQueuedDepositsManaged(
-    result: ListIntentsResult
+    result: ListIntentsResult,
+    metrics: WorkerIterationMetrics
   ): Promise<void> {
     if (!this.deps.depositBroadcaster) {
       throw new Error("Managed deposit broadcaster is required in managed mode.");
@@ -132,6 +163,7 @@ export class WorkerOrchestrator {
           fromAddress: broadcast.fromAddress,
           toAddress: broadcast.toAddress
         });
+        metrics.depositBroadcastRecordedCount += 1;
         this.deps.logger.info("managed_deposit_broadcast_recorded", {
           intentId: intent.id,
           txHash: broadcast.txHash,
@@ -148,6 +180,7 @@ export class WorkerOrchestrator {
             fromAddress: error.failure.fromAddress,
             toAddress: error.failure.toAddress
           });
+          metrics.depositFailedCount += 1;
           this.deps.logger.warn("managed_deposit_execution_failed_permanently", {
             intentId: intent.id,
             failureCode: error.failure.failureCode,
@@ -168,7 +201,8 @@ export class WorkerOrchestrator {
   }
 
   private async processQueuedWithdrawalsSynthetic(
-    result: ListIntentsResult
+    result: ListIntentsResult,
+    metrics: WorkerIterationMetrics
   ): Promise<void> {
     for (const intent of result.intents) {
       const payload: RecordBroadcastPayload = {
@@ -181,6 +215,7 @@ export class WorkerOrchestrator {
         intent.id,
         payload
       );
+      metrics.withdrawalBroadcastRecordedCount += 1;
       this.deps.logger.info("synthetic_withdrawal_broadcast_recorded", {
         intentId: intent.id,
         txHash: payload.txHash
@@ -189,12 +224,14 @@ export class WorkerOrchestrator {
   }
 
   private logQueuedWithdrawalsRequiringManualExecution(
-    result: ListIntentsResult
+    result: ListIntentsResult,
+    metrics: WorkerIterationMetrics
   ): void {
     if (result.intents.length === 0) {
       return;
     }
 
+    metrics.manualWithdrawalBacklogCount = result.intents.length;
     this.deps.logger.warn("queued_withdrawals_require_manual_custody_execution", {
       count: result.intents.length,
       intentIds: stringifyIntentIds(result.intents),
@@ -204,7 +241,8 @@ export class WorkerOrchestrator {
   }
 
   private async processBroadcastDepositsSynthetic(
-    result: ListIntentsResult
+    result: ListIntentsResult,
+    metrics: WorkerIterationMetrics
   ): Promise<void> {
     for (const intent of result.intents) {
       const txHash = intent.latestBlockchainTransaction?.txHash ?? undefined;
@@ -212,9 +250,11 @@ export class WorkerOrchestrator {
       await this.deps.internalApiClient.confirmDepositIntent(intent.id, {
         txHash
       });
+      metrics.depositConfirmedCount += 1;
       await this.deps.internalApiClient.settleDepositIntent(intent.id, {
         note: "Settled by synthetic worker runtime."
       });
+      metrics.depositSettledCount += 1;
       this.deps.logger.info("synthetic_deposit_settled", {
         intentId: intent.id,
         txHash
@@ -223,7 +263,8 @@ export class WorkerOrchestrator {
   }
 
   private async processBroadcastWithdrawalsSynthetic(
-    result: ListIntentsResult
+    result: ListIntentsResult,
+    metrics: WorkerIterationMetrics
   ): Promise<void> {
     for (const intent of result.intents) {
       const txHash = intent.latestBlockchainTransaction?.txHash ?? undefined;
@@ -231,9 +272,11 @@ export class WorkerOrchestrator {
       await this.deps.internalApiClient.confirmWithdrawalIntent(intent.id, {
         txHash
       });
+      metrics.withdrawalConfirmedCount += 1;
       await this.deps.internalApiClient.settleWithdrawalIntent(intent.id, {
         note: "Settled by synthetic worker runtime."
       });
+      metrics.withdrawalSettledCount += 1;
       this.deps.logger.info("synthetic_withdrawal_settled", {
         intentId: intent.id,
         txHash
@@ -242,12 +285,14 @@ export class WorkerOrchestrator {
   }
 
   private async processBroadcastDepositsMonitor(
-    result: ListIntentsResult
+    result: ListIntentsResult,
+    metrics: WorkerIterationMetrics
   ): Promise<void> {
     for (const intent of result.intents) {
       await this.advanceBroadcastIntent({
         intentType: "deposit",
         intent,
+        metrics,
         failIntent: (intentId, payload) =>
           this.deps.internalApiClient.failDepositIntent(intentId, payload),
         confirmIntent: (intentId, payload) =>
@@ -259,12 +304,14 @@ export class WorkerOrchestrator {
   }
 
   private async processBroadcastWithdrawalsMonitor(
-    result: ListIntentsResult
+    result: ListIntentsResult,
+    metrics: WorkerIterationMetrics
   ): Promise<void> {
     for (const intent of result.intents) {
       await this.advanceBroadcastIntent({
         intentType: "withdrawal",
         intent,
+        metrics,
         failIntent: (intentId, payload) =>
           this.deps.internalApiClient.failWithdrawalIntent(intentId, payload),
         confirmIntent: (intentId, payload) =>
@@ -278,6 +325,7 @@ export class WorkerOrchestrator {
   private async advanceBroadcastIntent(args: {
     intentType: "deposit" | "withdrawal";
     intent: WorkerIntentProjection;
+    metrics: WorkerIterationMetrics;
     failIntent: (
       intentId: string,
       payload: {
@@ -330,6 +378,11 @@ export class WorkerOrchestrator {
         fromAddress: receipt.fromAddress ?? undefined,
         toAddress: receipt.toAddress ?? undefined
       });
+      if (args.intentType === "deposit") {
+        args.metrics.depositFailedCount += 1;
+      } else {
+        args.metrics.withdrawalFailedCount += 1;
+      }
       this.deps.logger.warn("broadcast_intent_marked_failed", {
         intentType: args.intentType,
         intentId: args.intent.id,
@@ -353,9 +406,19 @@ export class WorkerOrchestrator {
     }
 
     await args.confirmIntent(args.intent.id, { txHash });
+    if (args.intentType === "deposit") {
+      args.metrics.depositConfirmedCount += 1;
+    } else {
+      args.metrics.withdrawalConfirmedCount += 1;
+    }
     await args.settleIntent(args.intent.id, {
       note: `Settled by worker after ${confirmations.toString()} confirmations.`
     });
+    if (args.intentType === "deposit") {
+      args.metrics.depositSettledCount += 1;
+    } else {
+      args.metrics.withdrawalSettledCount += 1;
+    }
 
     this.deps.logger.info("broadcast_intent_confirmed_and_settled", {
       intentType: args.intentType,

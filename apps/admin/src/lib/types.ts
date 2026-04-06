@@ -1,0 +1,770 @@
+export type JsonValue =
+  | null
+  | boolean
+  | number
+  | string
+  | JsonValue[]
+  | {
+      [key: string]: JsonValue;
+    };
+
+export type OperatorSession = {
+  baseUrl: string;
+  operatorId: string;
+  operatorRole: string;
+  apiKey: string;
+};
+
+export type ApiResponseEnvelope<T> = {
+  status: "success" | "failed";
+  message: string;
+  data?: T;
+  error?: unknown;
+};
+
+export type ManualResolutionSummary = {
+  totalIntents: number;
+  byIntentType: Array<{
+    intentType: string;
+    count: number;
+  }>;
+  byReasonCode: Array<{
+    manualResolutionReasonCode: string;
+    count: number;
+  }>;
+  byOperator: Array<{
+    manualResolvedByOperatorId: string;
+    manualResolutionOperatorRole: string | null;
+    count: number;
+  }>;
+};
+
+export type LatestBlockchainTransaction = {
+  id: string;
+  txHash: string | null;
+  status: string;
+  fromAddress: string | null;
+  toAddress: string | null;
+  createdAt: string;
+  updatedAt: string;
+  confirmedAt: string | null;
+};
+
+export type TransactionIntent = {
+  id: string;
+  intentType: string;
+  status: string;
+  policyDecision: string;
+  requestedAmount: string;
+  settledAmount: string | null;
+  failureCode: string | null;
+  failureReason: string | null;
+  manuallyResolvedAt: string | null;
+  manualResolutionReasonCode: string | null;
+  manualResolutionNote: string | null;
+  manualResolvedByOperatorId: string | null;
+  manualResolutionOperatorRole: string | null;
+  manualResolutionReviewCaseId: string | null;
+  sourceWalletId: string | null;
+  sourceWalletAddress: string | null;
+  destinationWalletId: string | null;
+  destinationWalletAddress: string | null;
+  externalAddress: string | null;
+  asset: {
+    id: string;
+    symbol: string;
+    displayName: string;
+    decimals: number;
+    chainId: number;
+  };
+  latestBlockchainTransaction: LatestBlockchainTransaction | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ReviewCase = {
+  id: string;
+  type: string;
+  status: string;
+  reasonCode: string | null;
+  notes: string | null;
+  assignedOperatorId: string | null;
+  startedAt: string | null;
+  resolvedAt: string | null;
+  dismissedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  customer: {
+    customerId: string | null;
+    supabaseUserId: string | null;
+    email: string | null;
+    firstName: string;
+    lastName: string;
+  };
+  customerAccountId: string | null;
+  transactionIntent: TransactionIntent | null;
+};
+
+export type ManualResolutionEligibility = {
+  eligible: boolean;
+  reasonCode: string;
+  reason: string;
+  operatorRole: string | null;
+  operatorAuthorized: boolean;
+  allowedOperatorRoles: string[];
+  currentIntentStatus: string | null;
+  currentReviewCaseStatus: string;
+  currentReviewCaseType: string;
+  recommendedAction: string;
+};
+
+export type ReviewCaseEvent = {
+  id: string;
+  actorType: string;
+  actorId: string | null;
+  eventType: string;
+  note: string | null;
+  metadata: JsonValue;
+  createdAt: string;
+};
+
+export type AuditTimelineEntry = {
+  id: string;
+  actorType: string;
+  actorId: string | null;
+  action: string;
+  targetType: string;
+  targetId: string | null;
+  metadata: JsonValue;
+  createdAt: string;
+};
+
+export type LedgerReconciliationMismatch = {
+  id: string;
+  mismatchKey: string;
+  scope: string;
+  status: string;
+  severity: string;
+  recommendedAction: string;
+  reasonCode: string;
+  summary: string;
+  chainId: number;
+  customer: {
+    customerId: string | null;
+    email: string | null;
+    supabaseUserId: string | null;
+    firstName: string;
+    lastName: string;
+  } | null;
+  customerAccount: {
+    customerAccountId: string | null;
+    status: string | null;
+  } | null;
+  asset: {
+    assetId: string;
+    symbol: string;
+    displayName: string;
+    decimals: number;
+    chainId: number;
+  } | null;
+  transactionIntent: {
+    transactionIntentId: string;
+    intentType: string;
+    status: string;
+    policyDecision: string;
+    requestedAmount: string;
+    settledAmount: string | null;
+    createdAt: string;
+    updatedAt: string;
+  } | null;
+  linkedReviewCase: {
+    reviewCaseId: string;
+    type: string;
+    status: string;
+    assignedOperatorId: string | null;
+    updatedAt: string;
+  } | null;
+  latestSnapshot: JsonValue;
+  resolutionMetadata: JsonValue | null;
+  resolutionNote: string | null;
+  detectionCount: number;
+  firstDetectedAt: string;
+  lastDetectedAt: string;
+  resolvedAt: string | null;
+  resolvedByOperatorId: string | null;
+  dismissedAt: string | null;
+  dismissedByOperatorId: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type LedgerReconciliationMismatchList = {
+  mismatches: LedgerReconciliationMismatch[];
+  limit: number;
+  totalCount: number;
+  summary: {
+    byStatus: Array<{
+      status: string;
+      count: number;
+    }>;
+    byScope: Array<{
+      scope: string;
+      count: number;
+    }>;
+    bySeverity: Array<{
+      severity: string;
+      count: number;
+    }>;
+    byRecommendedAction: Array<{
+      recommendedAction: string;
+      count: number;
+    }>;
+  };
+};
+
+export type ScanLedgerReconciliationResult = {
+  scanRun: LedgerReconciliationScanRun;
+  result: {
+    scannedAt: string;
+    createdCount: number;
+    reopenedCount: number;
+    refreshedCount: number;
+    autoResolvedCount: number;
+    activeMismatchCount: number;
+    mismatches: LedgerReconciliationMismatch[];
+  };
+};
+
+export type LedgerReconciliationScanRun = {
+  id: string;
+  triggerSource: string;
+  status: string;
+  requestedScope: string | null;
+  customerAccountId: string | null;
+  transactionIntentId: string | null;
+  triggeredByOperatorId: string | null;
+  triggeredByWorkerId: string | null;
+  startedAt: string;
+  completedAt: string | null;
+  durationMs: number | null;
+  createdCount: number;
+  reopenedCount: number;
+  refreshedCount: number;
+  autoResolvedCount: number;
+  activeMismatchCount: number;
+  errorCode: string | null;
+  errorMessage: string | null;
+  resultSnapshot: JsonValue | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type LedgerReconciliationScanRunList = {
+  runs: LedgerReconciliationScanRun[];
+  limit: number;
+  totalCount: number;
+};
+
+export type WorkerRuntimeHealth = {
+  workerId: string;
+  healthStatus: "healthy" | "degraded" | "stale";
+  environment: string;
+  executionMode: string;
+  lastIterationStatus: string;
+  lastHeartbeatAt: string;
+  lastIterationStartedAt: string | null;
+  lastIterationCompletedAt: string | null;
+  consecutiveFailureCount: number;
+  lastErrorCode: string | null;
+  lastErrorMessage: string | null;
+  lastReconciliationScanRunId: string | null;
+  lastReconciliationScanStartedAt: string | null;
+  lastReconciliationScanCompletedAt: string | null;
+  lastReconciliationScanStatus: string | null;
+  runtimeMetadata: JsonValue | null;
+  latestIterationMetrics: JsonValue | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type WorkerRuntimeHealthList = {
+  workers: WorkerRuntimeHealth[];
+  limit: number;
+  staleAfterSeconds: number;
+  totalCount: number;
+};
+
+export type LedgerReconciliationWorkspace = {
+  mismatch: LedgerReconciliationMismatch;
+  currentSnapshot: JsonValue;
+  recentAuditEvents: AuditTimelineEntry[];
+};
+
+export type LedgerReconciliationMutationResult = {
+  mismatch: LedgerReconciliationMismatch;
+};
+
+export type CustomerBalance = {
+  asset: {
+    id: string;
+    symbol: string;
+    displayName: string;
+    decimals: number;
+    chainId: number;
+  };
+  availableBalance: string;
+  pendingBalance: string;
+  updatedAt: string;
+};
+
+export type ReviewCaseWorkspace = {
+  reviewCase: ReviewCase;
+  manualResolutionEligibility: ManualResolutionEligibility;
+  caseEvents: ReviewCaseEvent[];
+  relatedTransactionAuditEvents: AuditTimelineEntry[];
+  balances: CustomerBalance[];
+  recentIntents: TransactionIntent[];
+  recentLimit: number;
+};
+
+export type ReviewCaseList = {
+  reviewCases: ReviewCase[];
+  limit: number;
+};
+
+export type ReviewCaseMutationResult = {
+  reviewCase: ReviewCase;
+  stateReused: boolean;
+};
+
+export type ReviewCaseNoteMutationResult = {
+  reviewCase: ReviewCase;
+  event: ReviewCaseEvent;
+};
+
+export type ApplyManualResolutionResult = {
+  reviewCase: ReviewCase;
+  transactionIntent: TransactionIntent;
+  stateReused: boolean;
+};
+
+export type OversightIncident = {
+  id: string;
+  incidentType: string;
+  status: string;
+  reasonCode: string | null;
+  summaryNote: string | null;
+  subjectCustomer: {
+    customerId: string | null;
+    customerAccountId: string | null;
+    supabaseUserId: string | null;
+    email: string | null;
+    firstName: string;
+    lastName: string;
+  };
+  subjectOperatorId: string | null;
+  subjectOperatorRole: string | null;
+  assignedOperatorId: string | null;
+  openedAt: string;
+  startedAt: string | null;
+  resolvedAt: string | null;
+  dismissedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type OversightIncidentEvent = {
+  id: string;
+  actorType: string;
+  actorId: string | null;
+  eventType: string;
+  note: string | null;
+  metadata: JsonValue;
+  createdAt: string;
+};
+
+export type ManuallyResolvedIntent = {
+  id: string;
+  customer: {
+    customerId: string;
+    customerAccountId: string;
+    supabaseUserId: string;
+    email: string;
+    firstName: string;
+    lastName: string;
+  };
+  asset: {
+    id: string;
+    symbol: string;
+    displayName: string;
+    decimals: number;
+    chainId: number;
+  };
+  intentType: string;
+  requestedAmount: string;
+  settledAmount: string | null;
+  failureCode: string | null;
+  failureReason: string | null;
+  sourceWalletAddress: string | null;
+  destinationWalletAddress: string | null;
+  externalAddress: string | null;
+  manuallyResolvedAt: string;
+  manualResolutionReasonCode: string | null;
+  manualResolutionNote: string | null;
+  manualResolvedByOperatorId: string | null;
+  manualResolutionOperatorRole: string | null;
+  manualResolutionReviewCaseId: string | null;
+  latestBlockchainTransaction: LatestBlockchainTransaction | null;
+};
+
+export type OversightReviewCaseSummary = {
+  id: string;
+  type: string;
+  status: string;
+  reasonCode: string | null;
+  assignedOperatorId: string | null;
+  transactionIntentId: string | null;
+  customerAccountId: string | null;
+  updatedAt: string;
+  resolvedAt: string | null;
+};
+
+export type OversightAccountRestriction = {
+  active: boolean;
+  customerAccountId: string | null;
+  accountStatus: string | null;
+  restrictedAt: string | null;
+  restrictedFromStatus: string | null;
+  restrictionReasonCode: string | null;
+  restrictedByOperatorId: string | null;
+  restrictedByOversightIncidentId: string | null;
+  restrictionReleasedAt: string | null;
+  restrictionReleasedByOperatorId: string | null;
+};
+
+export type OversightAccountHoldGovernance = {
+  operatorRole: string | null;
+  canApplyAccountHold: boolean;
+  canReleaseAccountHold: boolean;
+  allowedApplyOperatorRoles: string[];
+  allowedReleaseOperatorRoles: string[];
+};
+
+export type OversightWorkspace = {
+  oversightIncident: OversightIncident;
+  accountRestriction: OversightAccountRestriction;
+  accountHoldGovernance: OversightAccountHoldGovernance;
+  events: OversightIncidentEvent[];
+  recentManuallyResolvedIntents: ManuallyResolvedIntent[];
+  recentReviewCases: OversightReviewCaseSummary[];
+  recentLimit: number;
+};
+
+export type OversightIncidentList = {
+  oversightIncidents: OversightIncident[];
+  limit: number;
+};
+
+export type OversightMutationResult = {
+  oversightIncident: OversightIncident;
+  stateReused: boolean;
+};
+
+export type OversightNoteMutationResult = {
+  oversightIncident: OversightIncident;
+  event: OversightIncidentEvent;
+};
+
+export type OversightRestrictionMutationResult = {
+  oversightIncident: OversightIncident;
+  accountRestriction: OversightAccountRestriction;
+  stateReused: boolean;
+};
+
+export type OversightAlert = {
+  incidentType: string;
+  subjectCustomer: {
+    customerId: string | null;
+    customerAccountId: string | null;
+    supabaseUserId: string | null;
+    email: string | null;
+    firstName: string;
+    lastName: string;
+  } | null;
+  subjectOperatorId: string | null;
+  subjectOperatorRole: string | null;
+  count: number;
+  threshold: number;
+  sinceDays: number;
+  latestManualResolutionAt: string;
+  reasonCodeBreakdown: Array<{
+    manualResolutionReasonCode: string;
+    count: number;
+  }>;
+  openIncidentId: string | null;
+  recommendedAction: "open_incident" | "monitor_existing_incident";
+};
+
+export type OversightAlertList = {
+  alerts: OversightAlert[];
+  limit: number;
+  sinceDays: number;
+  customerThreshold: number;
+  operatorThreshold: number;
+};
+
+export type AccountHold = {
+  hold: {
+    id: string;
+    status: string;
+    restrictionReasonCode: string;
+    appliedByOperatorId: string;
+    appliedByOperatorRole: string | null;
+    appliedNote: string | null;
+    previousStatus: string;
+    appliedAt: string;
+    releasedAt: string | null;
+    releasedByOperatorId: string | null;
+    releasedByOperatorRole: string | null;
+    releaseNote: string | null;
+    restoredStatus: string | null;
+    holdDurationMs: number | null;
+  };
+  customer: {
+    customerId: string;
+    customerAccountId: string;
+    status: string;
+    supabaseUserId: string;
+    email: string;
+    firstName: string;
+    lastName: string;
+  };
+  oversightIncident: {
+    id: string;
+    incidentType: string;
+    status: string;
+    reasonCode: string | null;
+    summaryNote: string | null;
+    assignedOperatorId: string | null;
+    openedAt: string;
+    updatedAt: string;
+  };
+  releaseReview: {
+    reviewCaseId: string | null;
+    reviewCaseStatus: string | null;
+    reviewCaseAssignedOperatorId: string | null;
+    decisionStatus: string;
+    requestedAt: string | null;
+    requestedByOperatorId: string | null;
+    requestNote: string | null;
+    decidedAt: string | null;
+    decidedByOperatorId: string | null;
+    decisionNote: string | null;
+  };
+};
+
+export type AccountHoldList = {
+  holds: AccountHold[];
+  limit: number;
+};
+
+export type AccountHoldSummary = {
+  totalHolds: number;
+  activeHolds: number;
+  releasedHolds: number;
+  byIncidentType: Array<{
+    incidentType: string;
+    count: number;
+  }>;
+  byReasonCode: Array<{
+    restrictionReasonCode: string;
+    count: number;
+  }>;
+  byAppliedOperator: Array<{
+    appliedByOperatorId: string;
+    appliedByOperatorRole: string | null;
+    count: number;
+  }>;
+  byReleasedOperator: Array<{
+    releasedByOperatorId: string;
+    releasedByOperatorRole: string | null;
+    count: number;
+  }>;
+};
+
+export type AccountReleaseReview = {
+  reviewCase: {
+    id: string;
+    type: string;
+    status: string;
+    reasonCode: string | null;
+    notes: string | null;
+    assignedOperatorId: string | null;
+    startedAt: string | null;
+    resolvedAt: string | null;
+    dismissedAt: string | null;
+    createdAt: string;
+    updatedAt: string;
+  };
+  restriction: {
+    id: string;
+    status: string;
+    restrictionReasonCode: string;
+    appliedByOperatorId: string;
+    appliedByOperatorRole: string | null;
+    appliedNote: string | null;
+    previousStatus: string;
+    appliedAt: string;
+    releasedAt: string | null;
+    releasedByOperatorId: string | null;
+    releasedByOperatorRole: string | null;
+    releaseNote: string | null;
+    restoredStatus: string | null;
+    releaseDecisionStatus: string;
+    releaseRequestedAt: string | null;
+    releaseRequestedByOperatorId: string | null;
+    releaseRequestNote: string | null;
+    releaseDecidedAt: string | null;
+    releaseDecidedByOperatorId: string | null;
+    releaseDecisionNote: string | null;
+    releaseReviewCaseId: string | null;
+  };
+  customer: {
+    customerId: string;
+    customerAccountId: string;
+    status: string;
+    supabaseUserId: string;
+    email: string;
+    firstName: string;
+    lastName: string;
+  };
+  oversightIncident: {
+    id: string;
+    incidentType: string;
+    status: string;
+    reasonCode: string | null;
+    summaryNote: string | null;
+    assignedOperatorId: string | null;
+    openedAt: string;
+    updatedAt: string;
+  };
+};
+
+export type AccountReleaseReviewList = {
+  reviews: AccountReleaseReview[];
+  limit: number;
+};
+
+export type IncidentPackageRelease = {
+  id: string;
+  customer: {
+    customerId: string;
+    customerAccountId: string;
+    supabaseUserId: string;
+    email: string;
+    firstName: string;
+    lastName: string;
+    accountStatus: string;
+  };
+  status: string;
+  exportMode: string;
+  releaseTarget: string;
+  releaseReasonCode: string;
+  requestedByOperatorId: string;
+  requestedByOperatorRole: string | null;
+  approvedByOperatorId: string | null;
+  approvedByOperatorRole: string | null;
+  rejectedByOperatorId: string | null;
+  rejectedByOperatorRole: string | null;
+  releasedByOperatorId: string | null;
+  releasedByOperatorRole: string | null;
+  requestNote: string | null;
+  approvalNote: string | null;
+  rejectionNote: string | null;
+  releaseNote: string | null;
+  artifactChecksumSha256: string;
+  artifactPayload: JsonValue;
+  requestedAt: string;
+  approvedAt: string | null;
+  rejectedAt: string | null;
+  releasedAt: string | null;
+  expiresAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type IncidentPackageReleaseList = {
+  releases: IncidentPackageRelease[];
+  limit: number;
+};
+
+export type IncidentPackageReleaseMutationResult = {
+  release: IncidentPackageRelease;
+  stateReused?: boolean;
+};
+
+export type GovernedIncidentPackageExport = {
+  exportMetadata: {
+    exportMode: string;
+    generatedAt: string;
+    generatedByOperatorId: string;
+    generatedByOperatorRole: string | null;
+    redactionsApplied: boolean;
+    recentLimitRequested: number | null;
+    recentLimitApplied: number;
+    timelineLimitRequested: number | null;
+    timelineLimitApplied: number;
+    sinceDaysRequested: number | null;
+    sinceDaysApplied: number | null;
+    packageChecksumSha256: string;
+  };
+  complianceSummary: {
+    accountStatus: string;
+    activeRestriction: boolean;
+    activeRestrictionReasonCode: string | null;
+    openReviewCases: number;
+    openOversightIncidents: number;
+    activeAccountHolds: number;
+    manuallyResolvedTransactionIntents: number;
+    releaseReviewDecisionStates: Array<{
+      decisionStatus: string;
+      count: number;
+    }>;
+    timelineEventBreakdown: Array<{
+      eventType: string;
+      count: number;
+    }>;
+  };
+  narrative: {
+    executiveSummary: string;
+    controlPosture: string;
+    investigationSummary: string;
+    complianceObservations: string;
+  };
+  package: JsonValue;
+};
+
+export type IncidentPackageSnapshot = {
+  generatedAt: string;
+  customer: {
+    customerId: string;
+    customerAccountId: string;
+    supabaseUserId: string;
+    email: string;
+    firstName: string;
+    lastName: string;
+  };
+  accountStatus: string;
+  currentRestriction: JsonValue;
+  balances: JsonValue[];
+  activeHolds: JsonValue[];
+  holdHistory: JsonValue[];
+  reviewCases: JsonValue[];
+  oversightIncidents: JsonValue[];
+  recentTransactionIntents: JsonValue[];
+  timeline: JsonValue[];
+  limits: {
+    recentLimit: number;
+    timelineLimit: number;
+  };
+};

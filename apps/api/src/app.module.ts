@@ -4,6 +4,8 @@ import { CustomerAccountIncidentPackageModule } from "./customer-account-inciden
 import { CustomerAccountOperationsModule } from "./customer-account-operations/customer-account-operations.module";
 import { CustomerBalancesModule } from "./customer-balances/customer-balances.module";
 import { EthereumModule } from "./ethereum/ethereum.module";
+import { LedgerReconciliationModule } from "./ledger-reconciliation/ledger-reconciliation.module";
+import { OperationsMonitoringModule } from "./operations-monitoring/operations-monitoring.module";
 import { OversightIncidentsModule } from "./oversight-incidents/oversight-incidents.module";
 import { PoolsModule } from "./pools/pools.module";
 import { ReviewCasesModule } from "./review-cases/review-cases.module";
@@ -19,6 +21,8 @@ import { UserModule } from "./user/user.module";
     PoolsModule,
     StakingPoolModule,
     EthereumModule,
+    LedgerReconciliationModule,
+    OperationsMonitoringModule,
     SupportedAssetsModule,
     TransactionIntentsModule,
     CustomerBalancesModule,

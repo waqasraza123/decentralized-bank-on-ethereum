@@ -5,7 +5,9 @@ import type {
   FailIntentPayload,
   ListIntentsResult,
   RecordBroadcastPayload,
-  SettleIntentPayload
+  SettleIntentPayload,
+  TrackedLedgerReconciliationScanResult,
+  WorkerHeartbeatPayload
 } from "./worker-types";
 
 type ApiEnvelope<T> = {
@@ -248,6 +250,28 @@ export function createInternalWorkerApiClient(runtime: WorkerRuntime) {
       await readResponseData(
         httpClient.post<ApiEnvelope<{ intentId: string }>>(
           `/transaction-intents/internal/worker/withdrawal-requests/${intentId}/fail`,
+          payload
+        ),
+        baseUrl
+      );
+    },
+
+    async reportWorkerHeartbeat(payload: WorkerHeartbeatPayload): Promise<void> {
+      await readResponseData(
+        httpClient.post<ApiEnvelope<{ workerId: string }>>(
+          "/operations/internal/worker/heartbeat",
+          payload
+        ),
+        baseUrl
+      );
+    },
+
+    async triggerLedgerReconciliationScan(
+      payload: Record<string, string | number | undefined>
+    ): Promise<TrackedLedgerReconciliationScanResult> {
+      return readResponseData(
+        httpClient.post<ApiEnvelope<TrackedLedgerReconciliationScanResult>>(
+          "/ledger/internal/worker/reconciliation/scan",
           payload
         ),
         baseUrl

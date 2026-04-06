@@ -6,6 +6,17 @@ This document turns the target production direction into a repo-specific executi
 
 It is intentionally phase-based so each step can be implemented, verified, and committed without mixing foundational architecture work with late-stage product work.
 
+## Current Execution Status
+
+- Phase 1 is materially complete at the repo-boundary level: `apps/admin`, `apps/worker`, `packages/db`, `packages/types`, and `packages/config` now exist.
+- Phase 2 and Phase 3 are materially advanced through the current Prisma domain model, customer-account slices, and auth/account lifecycle work.
+- Phase 6 is materially advanced through the worker runtime and internal worker execution paths.
+- Phase 7 is partially implemented through ledger journals/postings, balance materialization, and reconciliation services.
+- Phase 8 and Phase 9 are materially advanced through the current API and truthful customer web surfaces.
+- Phase 10 has begun through the operator console for review, oversight, hold-release, and export-governance workflows.
+- Phase 11 has begun through worker heartbeat reporting, scheduled reconciliation scan history, and operator-visible runtime health.
+- Phase 12 remains the largest outstanding production gap, and Phase 11 still needs broader alerting, metrics, and incident automation depth.
+
 ## Phase Order
 
 1. Phase 0 — Architecture baseline
@@ -48,15 +59,17 @@ Create the written production baseline that later code changes must follow.
 ## Phase 1 — Monorepo Restructuring
 
 ### Objective
-Add the production boundaries missing from the current repository.
+Strengthen and use the production boundaries already introduced in the repository.
 
-### Planned Outputs
+### Delivered Outputs
 - `apps/admin`
 - `apps/worker`
-- `packages/contracts-sdk`
 - `packages/db`
 - `packages/types`
 - `packages/config`
+
+### Remaining Outputs
+- `packages/contracts-sdk`
 - `packages/security`
 
 ### Rules
@@ -68,6 +81,7 @@ Add the production boundaries missing from the current repository.
 - the repo expresses the intended production boundaries
 - shared config and shared types stop living only inside individual apps
 - Prisma ownership is clearly located
+- the admin and worker boundaries are exercised by real runtime code, not only placeholders
 
 ## Phase 2 — Data Model Redesign
 
@@ -147,14 +161,18 @@ Remove unsafe production control assumptions.
 ### Objective
 Move chain processing into durable async flows.
 
-### Planned Areas
+### Delivered or Materially Advanced Areas
 - worker app
-- queue setup
-- event ingestion
-- transaction intent state machine
+- transaction intent polling/orchestration loop
 - confirmation tracking
 - retry handling
-- replay support
+- synthetic, monitor, and managed execution modes
+
+### Remaining Areas
+- queue setup
+- broader event ingestion
+- fuller replay support
+- stronger operational recovery guarantees
 
 ### Exit Criteria
 - chain processing is async-safe
@@ -166,12 +184,15 @@ Move chain processing into durable async flows.
 ### Objective
 Make balances auditable and operationally repairable.
 
-### Planned Areas
-- double-entry journal
+### Delivered or Materially Advanced Areas
+- double-entry journal foundations
 - balance materialization
-- reconciliation jobs
+- settlement and reconciliation service slices
+
+### Remaining Areas
+- broader reconciliation jobs
 - mismatch reporting
-- operator repair actions
+- richer operator repair actions
 
 ### Exit Criteria
 - balances are ledger-derived
@@ -183,11 +204,16 @@ Make balances auditable and operationally repairable.
 ### Objective
 Replace prototype routes with customer-safe and admin-safe APIs.
 
-### Planned Areas
+### Delivered or Materially Advanced Areas
 - account APIs
 - balance APIs
 - deposit and withdrawal intent APIs
 - product APIs
+- review case APIs
+- oversight incident APIs
+- incident package governance APIs
+
+### Remaining Areas
 - admin APIs
 - idempotency
 - audit emission
@@ -201,13 +227,16 @@ Replace prototype routes with customer-safe and admin-safe APIs.
 ### Objective
 Replace mocked finance UX with truthful customer flows.
 
-### Planned Order
+### Delivered or Materially Advanced Areas
 1. auth and account state
 2. dashboard and balances
 3. deposit and withdrawal flows
 4. product flows
 5. transaction history
+
+### Remaining Areas
 6. security settings
+7. any unfinished placeholder product surfaces
 
 ### Exit Criteria
 - no mocked production finance flows remain
@@ -218,13 +247,16 @@ Replace mocked finance UX with truthful customer flows.
 ### Objective
 Create the internal operating surface required for a professional platform.
 
-### Planned Areas
+### Delivered or Materially Advanced Areas
 - customer search
 - review and hold flows
+- incident actions
+- governed incident package release workflows
+
+### Remaining Areas
 - treasury visibility
 - reconciliation mismatch view
 - audit log view
-- incident actions
 
 ### Exit Criteria
 - operators can manage the system without direct DB access or log diving for routine actions

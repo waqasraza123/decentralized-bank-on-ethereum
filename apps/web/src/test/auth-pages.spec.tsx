@@ -1,12 +1,11 @@
-import type { ReactNode } from "react";
 import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import useAuth from "@/hooks/auth/useAuth";
 import SignIn from "@/pages/auth/SignIn";
 import SignUp from "@/pages/auth/SignUp";
 import { useUserStore } from "@/stores/userStore";
+import { renderWithRouter } from "@/test/render-with-router";
 
 const mockNavigate = vi.fn();
 const mockUseAuth = vi.mocked(useAuth);
@@ -25,10 +24,6 @@ vi.mock("react-router-dom", async () => {
 vi.mock("@/hooks/auth/useAuth", () => ({
   default: vi.fn(),
 }));
-
-function renderWithRouter(element: ReactNode) {
-  return render(<MemoryRouter>{element}</MemoryRouter>);
-}
 
 describe("auth pages", () => {
   beforeEach(() => {

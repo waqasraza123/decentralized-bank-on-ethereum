@@ -1,7 +1,5 @@
-import type { ReactNode } from "react";
 import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   useClaimStakeReward,
@@ -13,6 +11,7 @@ import {
 import CreatePool from "@/pages/CreatePool";
 import Staking from "@/pages/Staking";
 import { useUserStore } from "@/stores/userStore";
+import { renderWithRouter } from "@/test/render-with-router";
 
 const mockUseMyStakingSnapshot = vi.mocked(useMyStakingSnapshot);
 const mockUseStakeDeposit = vi.mocked(useStakeDeposit);
@@ -27,10 +26,6 @@ vi.mock("@/hooks/staking/useMyStakingSnapshot", () => ({
   useClaimStakeReward: vi.fn(),
   useEmergencyStakeWithdrawal: vi.fn()
 }));
-
-function renderWithRouter(element: ReactNode) {
-  return render(<MemoryRouter>{element}</MemoryRouter>);
-}
 
 describe("staking product pages", () => {
   beforeEach(() => {

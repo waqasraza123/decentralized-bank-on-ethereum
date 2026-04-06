@@ -1,20 +1,15 @@
-import type { ReactNode } from "react";
 import { cleanup, render, screen } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useGetUser } from "@/hooks/user/useGetUser";
 import Profile from "@/pages/Profile";
 import { useUserStore } from "@/stores/userStore";
+import { renderWithRouter } from "@/test/render-with-router";
 
 const mockUseGetUser = vi.mocked(useGetUser);
 
 vi.mock("@/hooks/user/useGetUser", () => ({
   useGetUser: vi.fn()
 }));
-
-function renderWithRouter(element: ReactNode) {
-  return render(<MemoryRouter>{element}</MemoryRouter>);
-}
 
 describe("profile page", () => {
   beforeEach(() => {

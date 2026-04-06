@@ -133,6 +133,12 @@ test("synthetic mode records broadcasts and settles them", async () => {
     },
     async failWithdrawalIntent() {
       throw new Error("should not fail withdrawal intent in synthetic mode");
+    },
+    async reportWorkerHeartbeat() {
+      throw new Error("worker heartbeat reporting is handled outside the orchestrator");
+    },
+    async triggerLedgerReconciliationScan() {
+      throw new Error("reconciliation scan scheduling is handled outside the orchestrator");
     }
   };
 
@@ -147,6 +153,7 @@ test("synthetic mode records broadcasts and settles them", async () => {
       batchLimit: 20,
       requestTimeoutMs: 1000,
       confirmationBlocks: 1,
+      reconciliationScanIntervalMs: 300000,
       rpcUrl: null,
       depositSignerPrivateKey: null
     },
@@ -225,6 +232,12 @@ test("monitor mode confirms and settles broadcast intents with enough confirmati
     },
     async failWithdrawalIntent() {
       throw new Error("no withdrawal intents expected");
+    },
+    async reportWorkerHeartbeat() {
+      throw new Error("worker heartbeat reporting is handled outside the orchestrator");
+    },
+    async triggerLedgerReconciliationScan() {
+      throw new Error("reconciliation scan scheduling is handled outside the orchestrator");
     }
   };
 
@@ -239,6 +252,7 @@ test("monitor mode confirms and settles broadcast intents with enough confirmati
       batchLimit: 20,
       requestTimeoutMs: 1000,
       confirmationBlocks: 2,
+      reconciliationScanIntervalMs: 300000,
       rpcUrl: "https://rpc.example.com",
       depositSignerPrivateKey: null
     },
@@ -310,6 +324,12 @@ test("managed mode broadcasts queued deposits and leaves withdrawals for manual 
     },
     async failWithdrawalIntent() {
       throw new Error("withdrawals should stay queued for manual handling");
+    },
+    async reportWorkerHeartbeat() {
+      throw new Error("worker heartbeat reporting is handled outside the orchestrator");
+    },
+    async triggerLedgerReconciliationScan() {
+      throw new Error("reconciliation scan scheduling is handled outside the orchestrator");
     }
   };
 
@@ -324,6 +344,7 @@ test("managed mode broadcasts queued deposits and leaves withdrawals for manual 
       batchLimit: 20,
       requestTimeoutMs: 1000,
       confirmationBlocks: 2,
+      reconciliationScanIntervalMs: 300000,
       rpcUrl: "https://rpc.example.com",
       depositSignerPrivateKey:
         "0x59c6995e998f97a5a0044966f094538c5f6d4e07f16b8ad8cc7658f0f1b0f9d8"
@@ -409,6 +430,12 @@ test("managed mode permanently fails malformed deposit intents", async () => {
     },
     async failWithdrawalIntent() {
       throw new Error("no withdrawals expected");
+    },
+    async reportWorkerHeartbeat() {
+      throw new Error("worker heartbeat reporting is handled outside the orchestrator");
+    },
+    async triggerLedgerReconciliationScan() {
+      throw new Error("reconciliation scan scheduling is handled outside the orchestrator");
     }
   };
 
@@ -423,6 +450,7 @@ test("managed mode permanently fails malformed deposit intents", async () => {
       batchLimit: 20,
       requestTimeoutMs: 1000,
       confirmationBlocks: 2,
+      reconciliationScanIntervalMs: 300000,
       rpcUrl: "https://rpc.example.com",
       depositSignerPrivateKey:
         "0x59c6995e998f97a5a0044966f094538c5f6d4e07f16b8ad8cc7658f0f1b0f9d8"
