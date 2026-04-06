@@ -294,6 +294,84 @@ export type WorkerRuntimeHealthList = {
   totalCount: number;
 };
 
+export type PlatformAlert = {
+  id: string;
+  dedupeKey: string;
+  category: string;
+  severity: string;
+  status: string;
+  code: string;
+  summary: string;
+  detail: string | null;
+  metadata: JsonValue | null;
+  firstDetectedAt: string;
+  lastDetectedAt: string;
+  resolvedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type PlatformAlertList = {
+  alerts: PlatformAlert[];
+  limit: number;
+  totalCount: number;
+};
+
+export type OperationsStatus = {
+  generatedAt: string;
+  alertSummary: {
+    openCount: number;
+    criticalCount: number;
+    warningCount: number;
+  };
+  workerHealth: {
+    status: "healthy" | "warning" | "critical";
+    staleAfterSeconds: number;
+    totalWorkers: number;
+    healthyWorkers: number;
+    degradedWorkers: number;
+    staleWorkers: number;
+  };
+  queueHealth: {
+    status: "healthy" | "warning" | "critical";
+    queuedDepositCount: number;
+    queuedWithdrawalCount: number;
+    totalQueuedCount: number;
+    agedQueuedCount: number;
+    manualWithdrawalBacklogCount: number;
+    oldestQueuedIntentCreatedAt: string | null;
+  };
+  chainHealth: {
+    status: "healthy" | "warning" | "critical";
+    laggingBroadcastCount: number;
+    criticalLaggingBroadcastCount: number;
+    recentFailedTransactionCount: number;
+    oldestLaggingBroadcastCreatedAt: string | null;
+  };
+  treasuryHealth: {
+    status: "healthy" | "warning" | "critical";
+    managedWorkerCount: number;
+    activeTreasuryWalletCount: number;
+    activeOperationalWalletCount: number;
+    missingManagedWalletCoverage: boolean;
+  };
+  reconciliationHealth: {
+    status: "healthy" | "warning" | "critical";
+    openMismatchCount: number;
+    criticalMismatchCount: number;
+    recentFailedScanCount: number;
+    latestScanStatus: string | null;
+    latestScanStartedAt: string | null;
+  };
+  incidentSafety: {
+    status: "healthy" | "warning" | "critical";
+    openReviewCaseCount: number;
+    openOversightIncidentCount: number;
+    activeRestrictedAccountCount: number;
+  };
+  recentAlerts: PlatformAlert[];
+};
+
 export type LedgerReconciliationWorkspace = {
   mismatch: LedgerReconciliationMismatch;
   currentSnapshot: JsonValue;

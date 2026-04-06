@@ -575,6 +575,28 @@ model WorkerRuntimeHeartbeat {
   @@index([lastReconciliationScanStatus, lastHeartbeatAt])
 }
 
+model PlatformAlert {
+  id              String                @id @default(cuid())
+  dedupeKey       String                @unique
+  category        PlatformAlertCategory
+  severity        PlatformAlertSeverity
+  status          PlatformAlertStatus   @default(open)
+  code            String
+  summary         String
+  detail          String?
+  metadata        Json?
+  firstDetectedAt DateTime              @default(now())
+  lastDetectedAt  DateTime              @default(now())
+  resolvedAt      DateTime?
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+
+  @@index([status, severity, updatedAt])
+  @@index([category, status, updatedAt])
+  @@index([code, status, updatedAt])
+  @@index([lastDetectedAt])
+}
+
 model ReviewCaseEvent {
   id           String              @id @default(cuid())
   reviewCaseId String
@@ -619,6 +641,24 @@ enum WorkerRuntimeIterationStatus {
   running
   succeeded
   failed
+}
+
+enum PlatformAlertCategory {
+  worker
+  reconciliation
+  queue
+  chain
+  treasury
+}
+
+enum PlatformAlertSeverity {
+  warning
+  critical
+}
+
+enum PlatformAlertStatus {
+  open
+  resolved
 }
 
 enum WorkerRuntimeEnvironment {

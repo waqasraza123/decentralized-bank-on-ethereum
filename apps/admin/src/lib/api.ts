@@ -14,9 +14,11 @@ import type {
   LedgerReconciliationScanRunList,
   LedgerReconciliationWorkspace,
   ManualResolutionSummary,
+  OperationsStatus,
   OperatorSession,
   OversightAlertList,
   OversightIncidentList,
+  PlatformAlertList,
   OversightMutationResult,
   OversightNoteMutationResult,
   OversightRestrictionMutationResult,
@@ -186,6 +188,28 @@ export async function listWorkerRuntimeHealth(
   return requestData(session, {
     method: "GET",
     url: "/operations/internal/workers/health",
+    params
+  });
+}
+
+export async function getOperationsStatus(
+  session: OperatorSession,
+  params: Record<string, string | number | undefined>
+): Promise<OperationsStatus> {
+  return requestData(session, {
+    method: "GET",
+    url: "/operations/internal/status",
+    params
+  });
+}
+
+export async function listPlatformAlerts(
+  session: OperatorSession,
+  params: Record<string, string | number | undefined>
+): Promise<PlatformAlertList> {
+  return requestData(session, {
+    method: "GET",
+    url: "/operations/internal/alerts",
     params
   });
 }

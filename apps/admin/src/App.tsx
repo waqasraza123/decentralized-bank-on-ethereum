@@ -24,6 +24,7 @@ import {
   dismissOversightIncident,
   dismissReviewCase,
   getAccountHoldSummary,
+  getOperationsStatus,
   getGovernedIncidentPackageExport,
   getIncidentPackage,
   getLedgerReconciliationWorkspace,
@@ -39,6 +40,7 @@ import {
   listOversightIncidents,
   listPendingAccountReleaseReviews,
   listPendingReleases,
+  listPlatformAlerts,
   listReleasedReleases,
   listReviewCases,
   listWorkerRuntimeHealth,
@@ -278,7 +280,8 @@ function AdminConsole() {
       listLedgerReconciliationRuns(operatorSession!, {
         limit: 10
       }),
-    enabled: Boolean(operatorSession)
+    enabled: Boolean(operatorSession),
+    refetchInterval: 30000
   });
 
   const workerRuntimeHealthQuery = useQuery({
@@ -288,7 +291,31 @@ function AdminConsole() {
         limit: 10,
         staleAfterSeconds: 180
       }),
-    enabled: Boolean(operatorSession)
+    enabled: Boolean(operatorSession),
+    refetchInterval: 30000
+  });
+
+  const operationsStatusQuery = useQuery({
+    queryKey: ["operationsStatus", operatorSession?.baseUrl],
+    queryFn: () =>
+      getOperationsStatus(operatorSession!, {
+        staleAfterSeconds: 180,
+        recentAlertLimit: 8
+      }),
+    enabled: Boolean(operatorSession),
+    refetchInterval: 30000
+  });
+
+  const platformAlertsQuery = useQuery({
+    queryKey: ["platformAlerts", operatorSession?.baseUrl],
+    queryFn: () =>
+      listPlatformAlerts(operatorSession!, {
+        limit: 12,
+        staleAfterSeconds: 180,
+        status: "open"
+      }),
+    enabled: Boolean(operatorSession),
+    refetchInterval: 30000
   });
 
   const reviewCasesQuery = useQuery({
@@ -692,6 +719,67 @@ function AdminConsole() {
       <section className="panel">
         <div className="section-heading">
           <div>
+            <p className="section-kicker">Phase 11</p>
+            <h2>Platform health</h2>
+          </div>
+          <p className="section-copy">
+            {operationsStatusQuery.data
+              ? `Generated ${formatDateTime(operationsStatusQuery.data.generatedAt)}`
+              : "Aggregated worker, queue, chain, treasury, and reconciliation health."}
+          </p>
+        </div>
+
+        {operationsStatusQuery.isLoading ? <p>Loading operations status...</p> : null}
+
+        {operationsStatusQuery.data ? (
+          <div className="metrics-grid">
+            <HealthStatusCard
+              label="Workers"
+              status={operationsStatusQuery.data.workerHealth.status}
+              detail={`${operationsStatusQuery.data.workerHealth.healthyWorkers}/${operationsStatusQuery.data.workerHealth.totalWorkers} healthy`}
+            />
+            <HealthStatusCard
+              label="Queues"
+              status={operationsStatusQuery.data.queueHealth.status}
+              detail={`${operationsStatusQuery.data.queueHealth.totalQueuedCount} queued`}
+            />
+            <HealthStatusCard
+              label="Chain"
+              status={operationsStatusQuery.data.chainHealth.status}
+              detail={`${operationsStatusQuery.data.chainHealth.laggingBroadcastCount} lagging broadcasts`}
+            />
+            <HealthStatusCard
+              label="Treasury"
+              status={operationsStatusQuery.data.treasuryHealth.status}
+              detail={`${operationsStatusQuery.data.treasuryHealth.activeTreasuryWalletCount} treasury / ${operationsStatusQuery.data.treasuryHealth.activeOperationalWalletCount} operational`}
+            />
+            <HealthStatusCard
+              label="Reconciliation"
+              status={operationsStatusQuery.data.reconciliationHealth.status}
+              detail={`${operationsStatusQuery.data.reconciliationHealth.openMismatchCount} open mismatches`}
+            />
+            <HealthStatusCard
+              label="Incident safety"
+              status={operationsStatusQuery.data.incidentSafety.status}
+              detail={`${operationsStatusQuery.data.incidentSafety.openReviewCaseCount} review cases`}
+            />
+            <MetricCard
+              label="Open alerts"
+              value={operationsStatusQuery.data.alertSummary.openCount}
+              detail={`${operationsStatusQuery.data.alertSummary.criticalCount} critical / ${operationsStatusQuery.data.alertSummary.warningCount} warning`}
+            />
+            <MetricCard
+              label="Restricted accounts"
+              value={operationsStatusQuery.data.incidentSafety.activeRestrictedAccountCount}
+              detail="Accounts under active restriction"
+            />
+          </div>
+        ) : null}
+      </section>
+
+      <section className="panel">
+        <div className="section-heading">
+          <div>
             <p className="section-kicker">Queue Snapshot</p>
             <h2>What needs attention</h2>
           </div>
@@ -1075,6 +1163,49 @@ function AdminConsole() {
         <section className="panel">
           <div className="section-heading compact">
             <div>
+              <p className="section-kicker">Platform Alerts</p>
+              <h2>Open operational alerts</h2>
+            </div>
+          </div>
+
+          <div className="list-stack">
+            {platformAlertsQuery.isLoading ? <p>Loading platform alerts...</p> : null}
+            {platformAlertsQuery.data?.alerts.map((alert) => {
+              const runbookPath =
+                alert.metadata &&
+                typeof alert.metadata === "object" &&
+                !Array.isArray(alert.metadata) &&
+                typeof alert.metadata.runbookPath === "string"
+                  ? alert.metadata.runbookPath
+                  : null;
+
+              return (
+                <article className="list-card" key={alert.id}>
+                  <div className="list-card-topline">
+                    <strong>{toTitleCase(alert.category)}</strong>
+                    <span className={`status-pill ${alert.severity}`}>
+                      {toTitleCase(alert.severity)}
+                    </span>
+                  </div>
+                  <p>{alert.summary}</p>
+                  <p className="muted">
+                    Code {alert.code} | Last detected {formatDateTime(alert.lastDetectedAt)}
+                  </p>
+                  {alert.detail ? <p className="muted">{alert.detail}</p> : null}
+                  {runbookPath ? <p className="muted">Runbook {runbookPath}</p> : null}
+                </article>
+              );
+            })}
+            {platformAlertsQuery.data &&
+            platformAlertsQuery.data.alerts.length === 0 ? (
+              <p>No open platform alerts.</p>
+            ) : null}
+          </div>
+        </section>
+
+        <section className="panel">
+          <div className="section-heading compact">
+            <div>
               <p className="section-kicker">Worker Health</p>
               <h2>Worker runtime status</h2>
             </div>
@@ -1101,6 +1232,24 @@ function AdminConsole() {
                 <p className="muted">
                   Latest scan {toTitleCase(worker.lastReconciliationScanStatus)} | Run{" "}
                   {worker.lastReconciliationScanRunId ?? "None"}
+                </p>
+                <p className="muted">
+                  Queued deposits{" "}
+                  {typeof worker.latestIterationMetrics === "object" &&
+                  worker.latestIterationMetrics &&
+                  !Array.isArray(worker.latestIterationMetrics) &&
+                  typeof worker.latestIterationMetrics.queuedDepositCount ===
+                    "number"
+                    ? worker.latestIterationMetrics.queuedDepositCount
+                    : 0}{" "}
+                  | Manual withdrawals{" "}
+                  {typeof worker.latestIterationMetrics === "object" &&
+                  worker.latestIterationMetrics &&
+                  !Array.isArray(worker.latestIterationMetrics) &&
+                  typeof worker.latestIterationMetrics
+                    .manualWithdrawalBacklogCount === "number"
+                    ? worker.latestIterationMetrics.manualWithdrawalBacklogCount
+                    : 0}
                 </p>
               </article>
             ))}
@@ -2287,6 +2436,20 @@ function MetricCard(props: { label: string; value: number; detail: string }) {
     <article className="metric-card">
       <span>{props.label}</span>
       <strong>{formatCount(props.value)}</strong>
+      <p>{props.detail}</p>
+    </article>
+  );
+}
+
+function HealthStatusCard(props: {
+  label: string;
+  status: "healthy" | "warning" | "critical";
+  detail: string;
+}) {
+  return (
+    <article className="metric-card">
+      <span>{props.label}</span>
+      <strong>{toTitleCase(props.status)}</strong>
       <p>{props.detail}</p>
     </article>
   );
