@@ -14,8 +14,8 @@ It is intentionally phase-based so each step can be implemented, verified, and c
 - Phase 7 is partially implemented through ledger journals/postings, balance materialization, and reconciliation services.
 - Phase 8 and Phase 9 are materially advanced through the current API and truthful customer web surfaces.
 - Phase 10 has begun through the operator console for review, oversight, hold-release, and export-governance workflows.
-- Phase 11 has begun through worker heartbeat reporting, scheduled reconciliation scan history, and operator-visible runtime health.
-- Phase 12 remains the largest outstanding production gap, and Phase 11 still needs broader alerting, metrics, and incident automation depth.
+- Phase 11 is materially advanced through worker heartbeat reporting, scheduled reconciliation scan history, durable platform alerts, and operator-visible runtime health.
+- Phase 12 has begun through the repo-specific threat model, secret handling review, role review, restore and rollback drills, and launch checklist, but release proof remains outstanding.
 
 ## Phase Order
 

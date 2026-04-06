@@ -593,10 +593,15 @@ export function loadWorkerRuntimeConfig(
 export function loadSharedLoginBootstrapRuntimeConfig(
   env: RuntimeEnvShape = getNodeRuntimeEnv()
 ): SharedLoginBootstrapRuntimeConfig {
+  const environment = parseApiRuntimeEnvironment(
+    readOptionalRuntimeEnv(env, "NODE_ENV")
+  );
   const configuredEnabled = readOptionalRuntimeEnv(env, "SHARED_LOGIN_ENABLED");
   const enabled = configuredEnabled
     ? parseBoolean(configuredEnabled, "SHARED_LOGIN_ENABLED")
-    : DEFAULT_SHARED_LOGIN_ENABLED;
+    : environment === "production"
+      ? false
+      : DEFAULT_SHARED_LOGIN_ENABLED;
 
   const email =
     readOptionalRuntimeEnv(env, "SHARED_LOGIN_EMAIL") ?? DEFAULT_SHARED_LOGIN_EMAIL;
@@ -622,6 +627,20 @@ export function loadSharedLoginBootstrapRuntimeConfig(
       lastName,
       supabaseUserId
     };
+  }
+
+  if (environment === "production") {
+    if (email === DEFAULT_SHARED_LOGIN_EMAIL) {
+      throw new Error(
+        "SHARED_LOGIN_EMAIL must be explicitly overridden when shared login bootstrap is enabled in production."
+      );
+    }
+
+    if (password === DEFAULT_SHARED_LOGIN_PASSWORD) {
+      throw new Error(
+        "SHARED_LOGIN_PASSWORD must be explicitly overridden when shared login bootstrap is enabled in production."
+      );
+    }
   }
 
   if (password.length < 8) {
