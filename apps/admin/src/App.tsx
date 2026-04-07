@@ -13,11 +13,14 @@ import {
   type FormEvent
 } from "react";
 import {
+  acknowledgePlatformAlert,
   addOversightIncidentNote,
   addReviewCaseNote,
+  assignPlatformAlertOwner,
   applyAccountRestriction,
   applyManualResolution,
   approveRelease,
+  clearPlatformAlertSuppression,
   createIncidentPackageReleaseRequest,
   decideAccountRelease,
   dismissLedgerReconciliationMismatch,
@@ -58,6 +61,7 @@ import {
   routeCriticalPlatformAlerts,
   routePlatformAlertToReviewCase,
   scanLedgerReconciliation,
+  suppressPlatformAlert,
   startOversightIncident,
   startReviewCase
 } from "./lib/api";
@@ -1586,8 +1590,113 @@ function AdminConsole() {
                   {alert.routingNote ? (
                     <p className="muted">Routing note {alert.routingNote}</p>
                   ) : null}
+                  <p className="muted">
+                    Owner{" "}
+                    {alert.ownerOperatorId
+                      ? `${alert.ownerOperatorId}${
+                          alert.ownerAssignedAt
+                            ? ` since ${formatDateTime(alert.ownerAssignedAt)}`
+                            : ""
+                        }`
+                      : "unassigned"}
+                  </p>
+                  <p className="muted">
+                    Acknowledgement{" "}
+                    {alert.isAcknowledged
+                      ? `acknowledged${
+                          alert.acknowledgedAt
+                            ? ` ${formatDateTime(alert.acknowledgedAt)}`
+                            : ""
+                        }${alert.acknowledgedByOperatorId ? ` by ${alert.acknowledgedByOperatorId}` : ""}`
+                      : "pending"}
+                  </p>
+                  <p className="muted">
+                    Suppression{" "}
+                    {alert.hasActiveSuppression && alert.suppressedUntil
+                      ? `active until ${formatDateTime(alert.suppressedUntil)}${
+                          alert.suppressedByOperatorId
+                            ? ` by ${alert.suppressedByOperatorId}`
+                            : ""
+                        }`
+                      : "inactive"}
+                  </p>
                   {runbookPath ? <p className="muted">Runbook {runbookPath}</p> : null}
                   <div className="action-grid">
+                    <button
+                      className="button"
+                      disabled={!operatorSession || pendingAction !== null}
+                      onClick={() =>
+                        executeAction(
+                          `claim-platform-alert-${alert.id}`,
+                          "Platform alert owner assigned.",
+                          async () => {
+                            await assignPlatformAlertOwner(
+                              operatorSession!,
+                              alert.id,
+                              operatorSession!.operatorId
+                            );
+                          }
+                        )
+                      }
+                      type="button"
+                    >
+                      Claim owner
+                    </button>
+                    <button
+                      className="button"
+                      disabled={!operatorSession || pendingAction !== null}
+                      onClick={() =>
+                        executeAction(
+                          `ack-platform-alert-${alert.id}`,
+                          "Platform alert acknowledged.",
+                          async () => {
+                            await acknowledgePlatformAlert(operatorSession!, alert.id);
+                          }
+                        )
+                      }
+                      type="button"
+                    >
+                      Acknowledge
+                    </button>
+                    <button
+                      className="button"
+                      disabled={!operatorSession || pendingAction !== null}
+                      onClick={() =>
+                        executeAction(
+                          `suppress-platform-alert-${alert.id}`,
+                          "Platform alert suppressed for one hour.",
+                          async () => {
+                            await suppressPlatformAlert(
+                              operatorSession!,
+                              alert.id,
+                              new Date(Date.now() + 60 * 60 * 1000).toISOString()
+                            );
+                          }
+                        )
+                      }
+                      type="button"
+                    >
+                      Suppress 1h
+                    </button>
+                    <button
+                      className="button"
+                      disabled={!operatorSession || pendingAction !== null}
+                      onClick={() =>
+                        executeAction(
+                          `clear-platform-alert-suppression-${alert.id}`,
+                          "Platform alert suppression cleared.",
+                          async () => {
+                            await clearPlatformAlertSuppression(
+                              operatorSession!,
+                              alert.id
+                            );
+                          }
+                        )
+                      }
+                      type="button"
+                    >
+                      Clear suppression
+                    </button>
                     <button
                       className="button primary"
                       disabled={!operatorSession || pendingAction !== null}

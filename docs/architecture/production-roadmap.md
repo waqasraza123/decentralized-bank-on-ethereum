@@ -14,14 +14,14 @@ It is intentionally phase-based so each step can be implemented, verified, and c
 - Phase 7 is partially implemented through ledger journals/postings, balance materialization, and reconciliation services.
 - Phase 8 and Phase 9 are materially advanced through the current API and truthful customer web surfaces.
 - Phase 10 is materially complete at the operator-visibility level through the console for review, oversight, hold-release, reconciliation mismatch, governed export, audit-log, and treasury visibility workflows.
-- Phase 11 is materially advanced through worker heartbeat reporting, scheduled reconciliation scan history, durable platform alerts, operator-visible runtime health, structured API request logging with request correlation IDs, an internal Prometheus-style metrics surface spanning API requests and worker execution, and alert-routing automation that opens manual-intervention review cases from platform alerts.
+- Phase 11 is materially advanced through worker heartbeat reporting, scheduled reconciliation scan history, durable platform alerts, operator-visible runtime health, structured API request logging with request correlation IDs, an internal Prometheus-style metrics surface spanning API requests and worker execution, alert-routing automation that opens manual-intervention review cases from platform alerts, and durable alert ownership, acknowledgement, and suppression controls.
 - Phase 12 has begun through the repo-specific threat model, secret handling review, role review, restore and rollback drills, and launch checklist, but release proof remains outstanding.
 
 Current active execution frontier:
 - Phase 11 hardening
 
 Immediate next execution step:
-- add explicit alert ownership, acknowledgement, and suppression policy on top of routed platform alerts
+- add external alert delivery targets and category-specific escalation automation on top of governed platform alerts
 
 ## Phase Order
 

@@ -1,4 +1,9 @@
-import { ConflictException, Injectable, NotFoundException } from "@nestjs/common";
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException
+} from "@nestjs/common";
 import { loadProductChainRuntimeConfig } from "@stealth-trails-bank/config/api";
 import {
   AccountLifecycleStatus,
@@ -82,6 +87,18 @@ type PlatformAlertProjection = {
   routedAt: string | null;
   routedByOperatorId: string | null;
   routingNote: string | null;
+  ownerOperatorId: string | null;
+  ownerAssignedAt: string | null;
+  ownerAssignedByOperatorId: string | null;
+  ownershipNote: string | null;
+  acknowledgedAt: string | null;
+  acknowledgedByOperatorId: string | null;
+  acknowledgementNote: string | null;
+  suppressedUntil: string | null;
+  suppressedByOperatorId: string | null;
+  suppressionNote: string | null;
+  isAcknowledged: boolean;
+  hasActiveSuppression: boolean;
   code: string;
   summary: string;
   detail: string | null;
@@ -119,6 +136,11 @@ type RouteCriticalPlatformAlertsResult = {
   limit: number;
   remainingUnroutedCriticalAlertCount: number;
   staleAfterSeconds: number;
+};
+
+type PlatformAlertGovernanceMutationResult = {
+  alert: PlatformAlertProjection;
+  stateReused: boolean;
 };
 
 type OperationsSectionStatus = "healthy" | "warning" | "critical";
@@ -347,6 +369,11 @@ export class OperationsMonitoringService {
   private mapPlatformAlertProjection(
     record: PlatformAlertRecord
   ): PlatformAlertProjection {
+    const now = Date.now();
+    const hasActiveSuppression =
+      record.suppressedUntil !== null &&
+      record.suppressedUntil.getTime() > now;
+
     return {
       id: record.id,
       dedupeKey: record.dedupeKey,
@@ -359,6 +386,18 @@ export class OperationsMonitoringService {
       routedAt: record.routedAt?.toISOString() ?? null,
       routedByOperatorId: record.routedByOperatorId ?? null,
       routingNote: record.routingNote ?? null,
+      ownerOperatorId: record.ownerOperatorId ?? null,
+      ownerAssignedAt: record.ownerAssignedAt?.toISOString() ?? null,
+      ownerAssignedByOperatorId: record.ownerAssignedByOperatorId ?? null,
+      ownershipNote: record.ownershipNote ?? null,
+      acknowledgedAt: record.acknowledgedAt?.toISOString() ?? null,
+      acknowledgedByOperatorId: record.acknowledgedByOperatorId ?? null,
+      acknowledgementNote: record.acknowledgementNote ?? null,
+      suppressedUntil: record.suppressedUntil?.toISOString() ?? null,
+      suppressedByOperatorId: record.suppressedByOperatorId ?? null,
+      suppressionNote: record.suppressionNote ?? null,
+      isAcknowledged: record.acknowledgedAt !== null,
+      hasActiveSuppression,
       code: record.code,
       summary: record.summary,
       detail: record.detail ?? null,
@@ -404,6 +443,20 @@ export class OperationsMonitoringService {
       reasonCode: reviewCase.reasonCode ?? null,
       assignedOperatorId: reviewCase.assignedOperatorId ?? null
     };
+  }
+
+  private ensureOpenPlatformAlert(
+    alert: PlatformAlertRecord | null
+  ): PlatformAlertRecord {
+    if (!alert) {
+      throw new NotFoundException("Platform alert not found.");
+    }
+
+    if (alert.status !== PlatformAlertStatus.open) {
+      throw new ConflictException("Platform alert is already resolved.");
+    }
+
+    return alert;
   }
 
   private summarizeWorkerHealth(
@@ -663,6 +716,16 @@ export class OperationsMonitoringService {
             routedAt: null,
             routedByOperatorId: null,
             routingNote: null,
+            ownerOperatorId: null,
+            ownerAssignedAt: null,
+            ownerAssignedByOperatorId: null,
+            ownershipNote: null,
+            acknowledgedAt: null,
+            acknowledgedByOperatorId: null,
+            acknowledgementNote: null,
+            suppressedUntil: null,
+            suppressedByOperatorId: null,
+            suppressionNote: null,
             code: candidate.code,
             summary: candidate.summary,
             detail: candidate.detail ?? null,
@@ -699,7 +762,17 @@ export class OperationsMonitoringService {
           routingTargetId: reopened ? null : undefined,
           routedAt: reopened ? null : undefined,
           routedByOperatorId: reopened ? null : undefined,
-          routingNote: reopened ? null : undefined
+          routingNote: reopened ? null : undefined,
+          ownerOperatorId: reopened ? null : undefined,
+          ownerAssignedAt: reopened ? null : undefined,
+          ownerAssignedByOperatorId: reopened ? null : undefined,
+          ownershipNote: reopened ? null : undefined,
+          acknowledgedAt: reopened ? null : undefined,
+          acknowledgedByOperatorId: reopened ? null : undefined,
+          acknowledgementNote: reopened ? null : undefined,
+          suppressedUntil: reopened ? null : undefined,
+          suppressedByOperatorId: reopened ? null : undefined,
+          suppressionNote: reopened ? null : undefined
         }
       });
     }
@@ -1265,6 +1338,34 @@ export class OperationsMonitoringService {
       where.routingStatus = query.routingStatus as PlatformAlertRoutingStatus;
     }
 
+    if (query.ownerOperatorId?.trim()) {
+      where.ownerOperatorId = query.ownerOperatorId.trim();
+    }
+
+    if (query.acknowledged) {
+      where.acknowledgedAt =
+        query.acknowledged === "true" ? { not: null } : null;
+    }
+
+    if (query.suppressed) {
+      if (query.suppressed === "true") {
+        where.suppressedUntil = {
+          gt: new Date()
+        };
+      } else {
+        where.OR = [
+          {
+            suppressedUntil: null
+          },
+          {
+            suppressedUntil: {
+              lte: new Date()
+            }
+          }
+        ];
+      }
+    }
+
     const alerts = await this.prismaService.platformAlert.findMany({
       where,
       orderBy: [
@@ -1292,6 +1393,240 @@ export class OperationsMonitoringService {
     };
   }
 
+  async assignPlatformAlertOwner(
+    alertId: string,
+    operatorId: string,
+    ownerOperatorId: string,
+    note?: string
+  ): Promise<PlatformAlertGovernanceMutationResult> {
+    const trimmedOwnerOperatorId = ownerOperatorId.trim();
+    const ownershipNote = note?.trim() ? note.trim() : null;
+
+    if (trimmedOwnerOperatorId.length === 0) {
+      throw new BadRequestException("Owner operator id is required.");
+    }
+
+    const alert = this.ensureOpenPlatformAlert(
+      await this.prismaService.platformAlert.findUnique({
+        where: {
+          id: alertId
+        }
+      })
+    );
+    const stateReused =
+      alert.ownerOperatorId === trimmedOwnerOperatorId &&
+      (alert.ownershipNote ?? null) === ownershipNote;
+
+    if (stateReused) {
+      return {
+        alert: this.mapPlatformAlertProjection(alert),
+        stateReused: true
+      };
+    }
+
+    const updatedAlert = await this.prismaService.platformAlert.update({
+      where: {
+        id: alert.id
+      },
+      data: {
+        ownerOperatorId: trimmedOwnerOperatorId,
+        ownerAssignedAt: new Date(),
+        ownerAssignedByOperatorId: operatorId,
+        ownershipNote
+      }
+    });
+
+    await this.prismaService.auditEvent.create({
+      data: {
+        customerId: null,
+        actorType: "operator",
+        actorId: operatorId,
+        action: "platform_alert.owner_assigned",
+        targetType: "PlatformAlert",
+        targetId: alert.id,
+        metadata: {
+          previousOwnerOperatorId: alert.ownerOperatorId ?? null,
+          ownerOperatorId: trimmedOwnerOperatorId,
+          ownershipNote
+        } as Prisma.InputJsonValue
+      }
+    });
+
+    return {
+      alert: this.mapPlatformAlertProjection(updatedAlert),
+      stateReused: false
+    };
+  }
+
+  async acknowledgePlatformAlert(
+    alertId: string,
+    operatorId: string,
+    note?: string
+  ): Promise<PlatformAlertGovernanceMutationResult> {
+    const acknowledgementNote = note?.trim() ? note.trim() : null;
+    const alert = this.ensureOpenPlatformAlert(
+      await this.prismaService.platformAlert.findUnique({
+        where: {
+          id: alertId
+        }
+      })
+    );
+
+    if (alert.acknowledgedAt) {
+      return {
+        alert: this.mapPlatformAlertProjection(alert),
+        stateReused: true
+      };
+    }
+
+    const updatedAlert = await this.prismaService.platformAlert.update({
+      where: {
+        id: alert.id
+      },
+      data: {
+        acknowledgedAt: new Date(),
+        acknowledgedByOperatorId: operatorId,
+        acknowledgementNote
+      }
+    });
+
+    await this.prismaService.auditEvent.create({
+      data: {
+        customerId: null,
+        actorType: "operator",
+        actorId: operatorId,
+        action: "platform_alert.acknowledged",
+        targetType: "PlatformAlert",
+        targetId: alert.id,
+        metadata: {
+          acknowledgementNote
+        } as Prisma.InputJsonValue
+      }
+    });
+
+    return {
+      alert: this.mapPlatformAlertProjection(updatedAlert),
+      stateReused: false
+    };
+  }
+
+  async suppressPlatformAlert(
+    alertId: string,
+    operatorId: string,
+    suppressedUntil: Date,
+    note?: string
+  ): Promise<PlatformAlertGovernanceMutationResult> {
+    if (suppressedUntil.getTime() <= Date.now()) {
+      throw new BadRequestException(
+        "Suppressed-until must be in the future."
+      );
+    }
+
+    const suppressionNote = note?.trim() ? note.trim() : null;
+    const alert = this.ensureOpenPlatformAlert(
+      await this.prismaService.platformAlert.findUnique({
+        where: {
+          id: alertId
+        }
+      })
+    );
+    const stateReused =
+      alert.suppressedUntil?.toISOString() === suppressedUntil.toISOString() &&
+      (alert.suppressionNote ?? null) === suppressionNote;
+
+    if (stateReused) {
+      return {
+        alert: this.mapPlatformAlertProjection(alert),
+        stateReused: true
+      };
+    }
+
+    const updatedAlert = await this.prismaService.platformAlert.update({
+      where: {
+        id: alert.id
+      },
+      data: {
+        suppressedUntil,
+        suppressedByOperatorId: operatorId,
+        suppressionNote
+      }
+    });
+
+    await this.prismaService.auditEvent.create({
+      data: {
+        customerId: null,
+        actorType: "operator",
+        actorId: operatorId,
+        action: "platform_alert.suppressed",
+        targetType: "PlatformAlert",
+        targetId: alert.id,
+        metadata: {
+          previousSuppressedUntil: alert.suppressedUntil?.toISOString() ?? null,
+          suppressedUntil: suppressedUntil.toISOString(),
+          suppressionNote
+        } as Prisma.InputJsonValue
+      }
+    });
+
+    return {
+      alert: this.mapPlatformAlertProjection(updatedAlert),
+      stateReused: false
+    };
+  }
+
+  async clearPlatformAlertSuppression(
+    alertId: string,
+    operatorId: string,
+    note?: string
+  ): Promise<PlatformAlertGovernanceMutationResult> {
+    const suppressionNote = note?.trim() ? note.trim() : null;
+    const alert = this.ensureOpenPlatformAlert(
+      await this.prismaService.platformAlert.findUnique({
+        where: {
+          id: alertId
+        }
+      })
+    );
+
+    if (!alert.suppressedUntil || alert.suppressedUntil.getTime() <= Date.now()) {
+      return {
+        alert: this.mapPlatformAlertProjection(alert),
+        stateReused: true
+      };
+    }
+
+    const updatedAlert = await this.prismaService.platformAlert.update({
+      where: {
+        id: alert.id
+      },
+      data: {
+        suppressedUntil: null,
+        suppressedByOperatorId: null,
+        suppressionNote
+      }
+    });
+
+    await this.prismaService.auditEvent.create({
+      data: {
+        customerId: null,
+        actorType: "operator",
+        actorId: operatorId,
+        action: "platform_alert.suppression_cleared",
+        targetType: "PlatformAlert",
+        targetId: alert.id,
+        metadata: {
+          previousSuppressedUntil: alert.suppressedUntil.toISOString(),
+          suppressionNote
+        } as Prisma.InputJsonValue
+      }
+    });
+
+    return {
+      alert: this.mapPlatformAlertProjection(updatedAlert),
+      stateReused: false
+    };
+  }
+
   async routePlatformAlertToReviewCase(
     alertId: string,
     operatorId: string,
@@ -1300,19 +1635,13 @@ export class OperationsMonitoringService {
     const routeNote = dto.note?.trim() ? dto.note.trim() : null;
 
     return this.prismaService.$transaction(async (transaction) => {
-      const alert = await transaction.platformAlert.findUnique({
-        where: {
-          id: alertId
-        }
-      });
-
-      if (!alert) {
-        throw new NotFoundException("Platform alert not found.");
-      }
-
-      if (alert.status !== PlatformAlertStatus.open) {
-        throw new ConflictException("Platform alert is already resolved.");
-      }
+      const alert = this.ensureOpenPlatformAlert(
+        await transaction.platformAlert.findUnique({
+          where: {
+            id: alertId
+          }
+        })
+      );
 
       const reviewCaseResult = await this.reviewCasesService.openOrReuseReviewCase(
         transaction,

@@ -51,6 +51,6 @@ Use these metrics to:
 
 ## Next step
 
-After this metrics baseline and routed-alert automation:
-1. document escalation targets and ownership for each critical alert class
-2. add acknowledgement and suppression policy so recurring alert noise stays operator-safe
+After this metrics baseline, routed-alert automation, and alert governance controls:
+1. deliver alert classes into external paging or notification targets
+2. automate escalation policy by alert category and severity

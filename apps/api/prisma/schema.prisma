@@ -576,29 +576,42 @@ model WorkerRuntimeHeartbeat {
 }
 
 model PlatformAlert {
-  id                String                         @id @default(cuid())
-  dedupeKey         String                         @unique
-  category          PlatformAlertCategory
-  severity          PlatformAlertSeverity
-  status            PlatformAlertStatus            @default(open)
-  routingStatus     PlatformAlertRoutingStatus     @default(unrouted)
-  routingTargetType PlatformAlertRoutingTargetType?
-  routingTargetId   String?
-  routedAt          DateTime?
-  routedByOperatorId String?
-  routingNote       String?
-  code              String
-  summary           String
-  detail            String?
-  metadata          Json?
-  firstDetectedAt   DateTime                       @default(now())
-  lastDetectedAt    DateTime                       @default(now())
-  resolvedAt        DateTime?
-  createdAt         DateTime                       @default(now())
-  updatedAt         DateTime                       @updatedAt
+  id                       String                         @id @default(cuid())
+  dedupeKey                String                         @unique
+  category                 PlatformAlertCategory
+  severity                 PlatformAlertSeverity
+  status                   PlatformAlertStatus            @default(open)
+  routingStatus            PlatformAlertRoutingStatus     @default(unrouted)
+  routingTargetType        PlatformAlertRoutingTargetType?
+  routingTargetId          String?
+  routedAt                 DateTime?
+  routedByOperatorId       String?
+  routingNote              String?
+  ownerOperatorId          String?
+  ownerAssignedAt          DateTime?
+  ownerAssignedByOperatorId String?
+  ownershipNote            String?
+  acknowledgedAt           DateTime?
+  acknowledgedByOperatorId String?
+  acknowledgementNote      String?
+  suppressedUntil          DateTime?
+  suppressedByOperatorId   String?
+  suppressionNote          String?
+  code                     String
+  summary                  String
+  detail                   String?
+  metadata                 Json?
+  firstDetectedAt          DateTime                       @default(now())
+  lastDetectedAt           DateTime                       @default(now())
+  resolvedAt               DateTime?
+  createdAt                DateTime                       @default(now())
+  updatedAt                DateTime                       @updatedAt
 
   @@index([status, severity, updatedAt])
   @@index([status, routingStatus, updatedAt])
+  @@index([status, ownerOperatorId, updatedAt])
+  @@index([status, acknowledgedAt, updatedAt])
+  @@index([status, suppressedUntil, updatedAt])
   @@index([category, status, updatedAt])
   @@index([code, status, updatedAt])
   @@index([lastDetectedAt])

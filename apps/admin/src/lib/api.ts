@@ -21,6 +21,7 @@ import type {
   OversightAlertList,
   OversightIncidentList,
   PlatformAlertList,
+  PlatformAlertGovernanceMutationResult,
   PlatformAlertRouteResult,
   OversightMutationResult,
   OversightNoteMutationResult,
@@ -264,6 +265,62 @@ export async function routeCriticalPlatformAlerts(
     method: "POST",
     url: "/operations/internal/alerts/route-critical",
     data: payload
+  });
+}
+
+export async function assignPlatformAlertOwner(
+  session: OperatorSession,
+  alertId: string,
+  ownerOperatorId: string,
+  note?: string
+): Promise<PlatformAlertGovernanceMutationResult> {
+  return requestData(session, {
+    method: "POST",
+    url: `/operations/internal/alerts/${alertId}/assign-owner`,
+    data: {
+      ownerOperatorId,
+      ...(note ? { note } : {})
+    }
+  });
+}
+
+export async function acknowledgePlatformAlert(
+  session: OperatorSession,
+  alertId: string,
+  note?: string
+): Promise<PlatformAlertGovernanceMutationResult> {
+  return requestData(session, {
+    method: "POST",
+    url: `/operations/internal/alerts/${alertId}/acknowledge`,
+    data: note ? { note } : {}
+  });
+}
+
+export async function suppressPlatformAlert(
+  session: OperatorSession,
+  alertId: string,
+  suppressedUntil: string,
+  note?: string
+): Promise<PlatformAlertGovernanceMutationResult> {
+  return requestData(session, {
+    method: "POST",
+    url: `/operations/internal/alerts/${alertId}/suppress`,
+    data: {
+      suppressedUntil,
+      ...(note ? { note } : {})
+    }
+  });
+}
+
+export async function clearPlatformAlertSuppression(
+  session: OperatorSession,
+  alertId: string,
+  note?: string
+): Promise<PlatformAlertGovernanceMutationResult> {
+  return requestData(session, {
+    method: "POST",
+    url: `/operations/internal/alerts/${alertId}/clear-suppression`,
+    data: note ? { note } : {}
   });
 }
 

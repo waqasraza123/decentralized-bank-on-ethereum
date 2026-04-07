@@ -342,6 +342,18 @@ export type PlatformAlert = {
   routedAt: string | null;
   routedByOperatorId: string | null;
   routingNote: string | null;
+  ownerOperatorId: string | null;
+  ownerAssignedAt: string | null;
+  ownerAssignedByOperatorId: string | null;
+  ownershipNote: string | null;
+  acknowledgedAt: string | null;
+  acknowledgedByOperatorId: string | null;
+  acknowledgementNote: string | null;
+  suppressedUntil: string | null;
+  suppressedByOperatorId: string | null;
+  suppressionNote: string | null;
+  isAcknowledged: boolean;
+  hasActiveSuppression: boolean;
   code: string;
   summary: string;
   detail: string | null;
@@ -377,6 +389,11 @@ export type CriticalPlatformAlertRoutingResult = {
   limit: number;
   remainingUnroutedCriticalAlertCount: number;
   staleAfterSeconds: number;
+};
+
+export type PlatformAlertGovernanceMutationResult = {
+  alert: PlatformAlert;
+  stateReused: boolean;
 };
 
 export type TreasuryOverview = {

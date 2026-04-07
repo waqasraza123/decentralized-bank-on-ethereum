@@ -3,6 +3,7 @@ import {
   IsIn,
   IsInt,
   IsOptional,
+  IsString,
   Max,
   Min
 } from "class-validator";
@@ -37,4 +38,16 @@ export class ListPlatformAlertsDto {
   @IsOptional()
   @IsIn(["unrouted", "routed"])
   routingStatus?: "unrouted" | "routed";
+
+  @IsOptional()
+  @IsString()
+  ownerOperatorId?: string;
+
+  @IsOptional()
+  @IsIn(["true", "false"])
+  acknowledged?: "true" | "false";
+
+  @IsOptional()
+  @IsIn(["true", "false"])
+  suppressed?: "true" | "false";
 }

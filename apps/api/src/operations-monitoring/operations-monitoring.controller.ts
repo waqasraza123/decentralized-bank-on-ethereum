@@ -13,12 +13,16 @@ import {
 import { InternalOperatorApiKeyGuard } from "../auth/guards/internal-operator-api-key.guard";
 import { ApiRequestMetricsService } from "../logging/api-request-metrics.service";
 import { CustomJsonResponse } from "../types/CustomJsonResponse";
+import { AcknowledgePlatformAlertDto } from "./dto/acknowledge-platform-alert.dto";
+import { AssignPlatformAlertOwnerDto } from "./dto/assign-platform-alert-owner.dto";
+import { ClearPlatformAlertSuppressionDto } from "./dto/clear-platform-alert-suppression.dto";
 import { GetOperationsMetricsDto } from "./dto/get-operations-metrics.dto";
 import { GetOperationsStatusDto } from "./dto/get-operations-status.dto";
 import { ListPlatformAlertsDto } from "./dto/list-platform-alerts.dto";
 import { ListWorkerRuntimeHealthDto } from "./dto/list-worker-runtime-health.dto";
 import { RouteCriticalPlatformAlertsDto } from "./dto/route-critical-platform-alerts.dto";
 import { RoutePlatformAlertToReviewCaseDto } from "./dto/route-platform-alert-to-review-case.dto";
+import { SuppressPlatformAlertDto } from "./dto/suppress-platform-alert.dto";
 import { OperationsMonitoringService } from "./operations-monitoring.service";
 
 type InternalOperatorRequest = {
@@ -103,6 +107,118 @@ export class OperationsMonitoringController {
         result.routedAlerts.length > 0
           ? "Critical platform alerts routed successfully."
           : "No unrouted critical platform alerts required routing.",
+      data: result
+    };
+  }
+
+  @Post("alerts/:alertId/assign-owner")
+  async assignPlatformAlertOwner(
+    @Param("alertId") alertId: string,
+    @Body(
+      new ValidationPipe({
+        whitelist: true,
+        forbidNonWhitelisted: true
+      })
+    )
+    dto: AssignPlatformAlertOwnerDto,
+    @Request() request: InternalOperatorRequest
+  ): Promise<CustomJsonResponse> {
+    const result = await this.operationsMonitoringService.assignPlatformAlertOwner(
+      alertId,
+      request.internalOperator.operatorId,
+      dto.ownerOperatorId,
+      dto.note
+    );
+
+    return {
+      status: "success",
+      message: result.stateReused
+        ? "Platform alert owner assignment already matched the requested state."
+        : "Platform alert owner assigned successfully.",
+      data: result
+    };
+  }
+
+  @Post("alerts/:alertId/acknowledge")
+  async acknowledgePlatformAlert(
+    @Param("alertId") alertId: string,
+    @Body(
+      new ValidationPipe({
+        whitelist: true,
+        forbidNonWhitelisted: true
+      })
+    )
+    dto: AcknowledgePlatformAlertDto,
+    @Request() request: InternalOperatorRequest
+  ): Promise<CustomJsonResponse> {
+    const result = await this.operationsMonitoringService.acknowledgePlatformAlert(
+      alertId,
+      request.internalOperator.operatorId,
+      dto.note
+    );
+
+    return {
+      status: "success",
+      message: result.stateReused
+        ? "Platform alert was already acknowledged."
+        : "Platform alert acknowledged successfully.",
+      data: result
+    };
+  }
+
+  @Post("alerts/:alertId/suppress")
+  async suppressPlatformAlert(
+    @Param("alertId") alertId: string,
+    @Body(
+      new ValidationPipe({
+        transform: true,
+        whitelist: true,
+        forbidNonWhitelisted: true
+      })
+    )
+    dto: SuppressPlatformAlertDto,
+    @Request() request: InternalOperatorRequest
+  ): Promise<CustomJsonResponse> {
+    const result = await this.operationsMonitoringService.suppressPlatformAlert(
+      alertId,
+      request.internalOperator.operatorId,
+      dto.suppressedUntil,
+      dto.note
+    );
+
+    return {
+      status: "success",
+      message: result.stateReused
+        ? "Platform alert suppression already matched the requested state."
+        : "Platform alert suppressed successfully.",
+      data: result
+    };
+  }
+
+  @Post("alerts/:alertId/clear-suppression")
+  async clearPlatformAlertSuppression(
+    @Param("alertId") alertId: string,
+    @Body(
+      new ValidationPipe({
+        whitelist: true,
+        forbidNonWhitelisted: true
+      })
+    )
+    dto: ClearPlatformAlertSuppressionDto,
+    @Request() request: InternalOperatorRequest
+  ): Promise<CustomJsonResponse> {
+    const result =
+      await this.operationsMonitoringService.clearPlatformAlertSuppression(
+        alertId,
+        request.internalOperator.operatorId,
+        dto.note
+      );
+
+    return {
+      status: "success",
+      message: result.stateReused
+        ? "Platform alert did not have active suppression."
+        : "Platform alert suppression cleared successfully.",
       data: result
     };
   }

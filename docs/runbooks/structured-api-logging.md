@@ -53,5 +53,5 @@ Use structured API logs to:
 ## Next observability step
 
 After this logging baseline:
-1. attach ownership and escalation targets to the routed metrics and platform alerts
-2. add acknowledgement and suppression policy on top of the routed alert surface
+1. deliver governed alert classes into external paging or notification targets
+2. automate category-specific escalation policy on top of the routed alert surface

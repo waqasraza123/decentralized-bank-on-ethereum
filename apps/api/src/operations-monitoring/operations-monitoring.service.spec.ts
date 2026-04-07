@@ -69,6 +69,16 @@ function buildPlatformAlertRecord(
     routedAt: null,
     routedByOperatorId: null,
     routingNote: null,
+    ownerOperatorId: null,
+    ownerAssignedAt: null,
+    ownerAssignedByOperatorId: null,
+    ownershipNote: null,
+    acknowledgedAt: null,
+    acknowledgedByOperatorId: null,
+    acknowledgementNote: null,
+    suppressedUntil: null,
+    suppressedByOperatorId: null,
+    suppressionNote: null,
     code: "worker_runtime_degraded",
     summary: "Worker worker_1 is degraded.",
     detail: "Iteration status is failed.",
@@ -129,9 +139,13 @@ function createService() {
     customerAccount: {
       count: jest.fn()
     },
+    auditEvent: {
+      create: jest.fn()
+    },
     platformAlert: {
       create: jest.fn(),
       update: jest.fn(),
+      findUnique: jest.fn(),
       findMany: jest.fn(),
       updateMany: jest.fn(),
       count: jest.fn()
@@ -440,6 +454,134 @@ describe("OperationsMonitoringService", () => {
     expect(result).toContain('category="worker"');
   });
 
+  it("assigns an owner to an open platform alert", async () => {
+    const { service, prismaService } = createService();
+    const openAlert = buildPlatformAlertRecord();
+    const updatedAlert = buildPlatformAlertRecord({
+      ownerOperatorId: "ops_1",
+      ownerAssignedAt: new Date("2026-04-06T10:05:00.000Z"),
+      ownerAssignedByOperatorId: "ops_2",
+      ownershipNote: "Taking primary ownership."
+    });
+
+    (prismaService.platformAlert.findUnique as jest.Mock).mockResolvedValue(openAlert);
+    (prismaService.platformAlert.update as jest.Mock).mockResolvedValue(updatedAlert);
+
+    const result = await service.assignPlatformAlertOwner(
+      openAlert.id,
+      "ops_2",
+      "ops_1",
+      "Taking primary ownership."
+    );
+
+    expect(prismaService.platformAlert.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          ownerOperatorId: "ops_1",
+          ownerAssignedByOperatorId: "ops_2"
+        })
+      })
+    );
+    expect(prismaService.auditEvent.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          action: "platform_alert.owner_assigned",
+          targetId: openAlert.id
+        })
+      })
+    );
+    expect(result.alert.ownerOperatorId).toBe("ops_1");
+    expect(result.stateReused).toBe(false);
+  });
+
+  it("acknowledges an open platform alert once", async () => {
+    const { service, prismaService } = createService();
+    const openAlert = buildPlatformAlertRecord();
+    const updatedAlert = buildPlatformAlertRecord({
+      acknowledgedAt: new Date("2026-04-06T10:06:00.000Z"),
+      acknowledgedByOperatorId: "ops_1",
+      acknowledgementNote: "Investigating now."
+    });
+
+    (prismaService.platformAlert.findUnique as jest.Mock).mockResolvedValue(openAlert);
+    (prismaService.platformAlert.update as jest.Mock).mockResolvedValue(updatedAlert);
+
+    const result = await service.acknowledgePlatformAlert(
+      openAlert.id,
+      "ops_1",
+      "Investigating now."
+    );
+
+    expect(prismaService.platformAlert.update).toHaveBeenCalled();
+    expect(prismaService.auditEvent.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          action: "platform_alert.acknowledged",
+          targetId: openAlert.id
+        })
+      })
+    );
+    expect(result.alert.isAcknowledged).toBe(true);
+    expect(result.stateReused).toBe(false);
+  });
+
+  it("suppresses and clears suppression for an open platform alert", async () => {
+    const { service, prismaService } = createService();
+    const openAlert = buildPlatformAlertRecord();
+    const suppressedUntil = new Date("2026-04-06T11:00:00.000Z");
+    const suppressedAlert = buildPlatformAlertRecord({
+      suppressedUntil,
+      suppressedByOperatorId: "ops_1",
+      suppressionNote: "Known maintenance window."
+    });
+    const unsuppressedAlert = buildPlatformAlertRecord({
+      suppressedUntil: null,
+      suppressedByOperatorId: null,
+      suppressionNote: "Suppression cleared after maintenance."
+    });
+
+    jest
+      .spyOn(Date, "now")
+      .mockReturnValue(new Date("2026-04-06T10:00:00.000Z").getTime());
+    (prismaService.platformAlert.findUnique as jest.Mock)
+      .mockResolvedValueOnce(openAlert)
+      .mockResolvedValueOnce(suppressedAlert);
+    (prismaService.platformAlert.update as jest.Mock)
+      .mockResolvedValueOnce(suppressedAlert)
+      .mockResolvedValueOnce(unsuppressedAlert);
+
+    const suppressedResult = await service.suppressPlatformAlert(
+      openAlert.id,
+      "ops_1",
+      suppressedUntil,
+      "Known maintenance window."
+    );
+    const clearedResult = await service.clearPlatformAlertSuppression(
+      openAlert.id,
+      "ops_1",
+      "Suppression cleared after maintenance."
+    );
+
+    expect(prismaService.auditEvent.create).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        data: expect.objectContaining({
+          action: "platform_alert.suppressed"
+        })
+      })
+    );
+    expect(prismaService.auditEvent.create).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        data: expect.objectContaining({
+          action: "platform_alert.suppression_cleared"
+        })
+      })
+    );
+    expect(suppressedResult.alert.hasActiveSuppression).toBe(true);
+    expect(clearedResult.alert.hasActiveSuppression).toBe(false);
+  });
+
   it("routes an open platform alert into a manual intervention review case", async () => {
     const { service, prismaService, reviewCasesService, transactionClient } =
       createService();
@@ -555,6 +697,18 @@ describe("OperationsMonitoringService", () => {
           routedAt: "2026-04-06T10:05:00.000Z",
           routedByOperatorId: "ops_1",
           routingNote: null,
+          ownerOperatorId: null,
+          ownerAssignedAt: null,
+          ownerAssignedByOperatorId: null,
+          ownershipNote: null,
+          acknowledgedAt: null,
+          acknowledgedByOperatorId: null,
+          acknowledgementNote: null,
+          suppressedUntil: null,
+          suppressedByOperatorId: null,
+          suppressionNote: null,
+          isAcknowledged: false,
+          hasActiveSuppression: false,
           code: "worker_runtime_degraded",
           summary: "Worker worker_1 is degraded.",
           detail: "Iteration status is failed.",
