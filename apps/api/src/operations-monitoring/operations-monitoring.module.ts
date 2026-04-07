@@ -7,6 +7,7 @@ import { ReviewCasesModule } from "../review-cases/review-cases.module";
 import { OperationsMonitoringController } from "./operations-monitoring.controller";
 import { OperationsMonitoringService } from "./operations-monitoring.service";
 import { OperationsMonitoringWorkerController } from "./operations-monitoring-worker.controller";
+import { PlatformAlertDeliveryService } from "./platform-alert-delivery.service";
 
 @Module({
   imports: [ReviewCasesModule],
@@ -16,6 +17,7 @@ import { OperationsMonitoringWorkerController } from "./operations-monitoring-wo
   ],
   providers: [
     OperationsMonitoringService,
+    PlatformAlertDeliveryService,
     ApiRequestMetricsService,
     PrismaService,
     InternalOperatorApiKeyGuard,

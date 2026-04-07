@@ -20,6 +20,7 @@ import { GetOperationsMetricsDto } from "./dto/get-operations-metrics.dto";
 import { GetOperationsStatusDto } from "./dto/get-operations-status.dto";
 import { ListPlatformAlertsDto } from "./dto/list-platform-alerts.dto";
 import { ListWorkerRuntimeHealthDto } from "./dto/list-worker-runtime-health.dto";
+import { RetryPlatformAlertDeliveriesDto } from "./dto/retry-platform-alert-deliveries.dto";
 import { RouteCriticalPlatformAlertsDto } from "./dto/route-critical-platform-alerts.dto";
 import { RoutePlatformAlertToReviewCaseDto } from "./dto/route-platform-alert-to-review-case.dto";
 import { SuppressPlatformAlertDto } from "./dto/suppress-platform-alert.dto";
@@ -219,6 +220,34 @@ export class OperationsMonitoringController {
       message: result.stateReused
         ? "Platform alert did not have active suppression."
         : "Platform alert suppression cleared successfully.",
+      data: result
+    };
+  }
+
+  @Post("alerts/:alertId/retry-deliveries")
+  async retryPlatformAlertDeliveries(
+    @Param("alertId") alertId: string,
+    @Body(
+      new ValidationPipe({
+        whitelist: true,
+        forbidNonWhitelisted: true
+      })
+    )
+    dto: RetryPlatformAlertDeliveriesDto,
+    @Request() request: InternalOperatorRequest
+  ): Promise<CustomJsonResponse> {
+    const result = await this.operationsMonitoringService.retryFailedPlatformAlertDeliveries(
+      alertId,
+      request.internalOperator.operatorId,
+      dto.note
+    );
+
+    return {
+      status: "success",
+      message:
+        result.retriedDeliveryCount > 0
+          ? "Failed platform alert deliveries queued for retry."
+          : "No failed platform alert deliveries required retry.",
       data: result
     };
   }

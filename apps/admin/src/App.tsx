@@ -58,6 +58,7 @@ import {
   resolveOversightIncident,
   resolveReviewCase,
   rejectRelease,
+  retryPlatformAlertDeliveries,
   routeCriticalPlatformAlerts,
   routePlatformAlertToReviewCase,
   scanLedgerReconciliation,
@@ -1620,6 +1621,23 @@ function AdminConsole() {
                         }`
                       : "inactive"}
                   </p>
+                  <p className="muted">
+                    External delivery{" "}
+                    {alert.deliverySummary.totalCount > 0
+                      ? `${alert.deliverySummary.lastStatus ?? "pending"}${
+                          alert.deliverySummary.lastTargetName
+                            ? ` via ${alert.deliverySummary.lastTargetName}`
+                            : ""
+                        } | failed ${alert.deliverySummary.failedCount} | pending ${
+                          alert.deliverySummary.pendingCount
+                        }`
+                      : "no matching targets configured"}
+                  </p>
+                  {alert.deliverySummary.lastErrorMessage ? (
+                    <p className="muted">
+                      Delivery error {alert.deliverySummary.lastErrorMessage}
+                    </p>
+                  ) : null}
                   {runbookPath ? <p className="muted">Runbook {runbookPath}</p> : null}
                   <div className="action-grid">
                     <button
@@ -1696,6 +1714,25 @@ function AdminConsole() {
                       type="button"
                     >
                       Clear suppression
+                    </button>
+                    <button
+                      className="button"
+                      disabled={!operatorSession || pendingAction !== null}
+                      onClick={() =>
+                        executeAction(
+                          `retry-platform-alert-deliveries-${alert.id}`,
+                          "Failed platform alert deliveries queued for retry.",
+                          async () => {
+                            await retryPlatformAlertDeliveries(
+                              operatorSession!,
+                              alert.id
+                            );
+                          }
+                        )
+                      }
+                      type="button"
+                    >
+                      Retry deliveries
                     </button>
                     <button
                       className="button primary"

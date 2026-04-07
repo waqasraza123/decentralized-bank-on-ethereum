@@ -53,5 +53,5 @@ Use structured API logs to:
 ## Next observability step
 
 After this logging baseline:
-1. deliver governed alert classes into external paging or notification targets
-2. automate category-specific escalation policy on top of the routed alert surface
+1. add secondary/failover escalation policy for governed alert delivery targets
+2. automate richer category-specific downstream incident behavior on top of the routed alert surface

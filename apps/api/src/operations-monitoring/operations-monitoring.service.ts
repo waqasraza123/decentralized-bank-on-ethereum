@@ -13,6 +13,8 @@ import {
   LedgerReconciliationScanRunStatus,
   OversightIncidentStatus,
   PlatformAlertCategory,
+  PlatformAlertDeliveryEventType,
+  PlatformAlertDeliveryStatus,
   PlatformAlertRoutingStatus,
   PlatformAlertRoutingTargetType,
   PlatformAlertSeverity,
@@ -31,6 +33,7 @@ import {
 import { ApiRequestMetricsService } from "../logging/api-request-metrics.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { ReviewCasesService } from "../review-cases/review-cases.service";
+import { PlatformAlertDeliveryService } from "./platform-alert-delivery.service";
 import { GetOperationsMetricsDto } from "./dto/get-operations-metrics.dto";
 import { GetOperationsStatusDto } from "./dto/get-operations-status.dto";
 import { ListPlatformAlertsDto } from "./dto/list-platform-alerts.dto";
@@ -41,6 +44,7 @@ import { RoutePlatformAlertToReviewCaseDto } from "./dto/route-platform-alert-to
 
 type WorkerRuntimeHeartbeatRecord = Prisma.WorkerRuntimeHeartbeatGetPayload<{}>;
 type PlatformAlertRecord = Prisma.PlatformAlertGetPayload<{}>;
+type PlatformAlertDeliveryRecord = Prisma.PlatformAlertDeliveryGetPayload<{}>;
 
 type WorkerRuntimeHealthProjection = {
   workerId: string;
@@ -99,6 +103,15 @@ type PlatformAlertProjection = {
   suppressionNote: string | null;
   isAcknowledged: boolean;
   hasActiveSuppression: boolean;
+  deliverySummary: {
+    totalCount: number;
+    pendingCount: number;
+    failedCount: number;
+    lastAttemptedAt: string | null;
+    lastStatus: PlatformAlertDeliveryStatus | null;
+    lastTargetName: string | null;
+    lastErrorMessage: string | null;
+  };
   code: string;
   summary: string;
   detail: string | null;
@@ -309,7 +322,8 @@ export class OperationsMonitoringService {
 
   constructor(
     private readonly prismaService: PrismaService,
-    private readonly reviewCasesService: ReviewCasesService
+    private readonly reviewCasesService: ReviewCasesService,
+    private readonly platformAlertDeliveryService: PlatformAlertDeliveryService
   ) {
     this.productChainId = loadProductChainRuntimeConfig().productChainId;
   }
@@ -367,7 +381,8 @@ export class OperationsMonitoringService {
   }
 
   private mapPlatformAlertProjection(
-    record: PlatformAlertRecord
+    record: PlatformAlertRecord,
+    deliverySummary?: PlatformAlertProjection["deliverySummary"]
   ): PlatformAlertProjection {
     const now = Date.now();
     const hasActiveSuppression =
@@ -398,6 +413,15 @@ export class OperationsMonitoringService {
       suppressionNote: record.suppressionNote ?? null,
       isAcknowledged: record.acknowledgedAt !== null,
       hasActiveSuppression,
+      deliverySummary: deliverySummary ?? {
+        totalCount: 0,
+        pendingCount: 0,
+        failedCount: 0,
+        lastAttemptedAt: null,
+        lastStatus: null,
+        lastTargetName: null,
+        lastErrorMessage: null
+      },
       code: record.code,
       summary: record.summary,
       detail: record.detail ?? null,
@@ -408,6 +432,82 @@ export class OperationsMonitoringService {
       createdAt: record.createdAt.toISOString(),
       updatedAt: record.updatedAt.toISOString()
     };
+  }
+
+  private buildPlatformAlertDeliveryPayload(alert: PlatformAlertRecord) {
+    return {
+      id: alert.id,
+      dedupeKey: alert.dedupeKey,
+      category: alert.category,
+      severity: alert.severity,
+      status: alert.status,
+      summary: alert.summary,
+      detail: alert.detail ?? null,
+      routingStatus: alert.routingStatus,
+      ownerOperatorId: alert.ownerOperatorId ?? null,
+      acknowledgedAt: alert.acknowledgedAt?.toISOString() ?? null,
+      suppressedUntil: alert.suppressedUntil?.toISOString() ?? null,
+      metadata: alert.metadata ?? null
+    };
+  }
+
+  private buildPlatformAlertDeliverySummary(
+    deliveries: PlatformAlertDeliveryRecord[]
+  ): PlatformAlertProjection["deliverySummary"] {
+    const latestDelivery =
+      deliveries
+        .slice()
+        .sort((left, right) => right.createdAt.getTime() - left.createdAt.getTime())[0] ??
+      null;
+
+    return {
+      totalCount: deliveries.length,
+      pendingCount: deliveries.filter(
+        (delivery) => delivery.status === PlatformAlertDeliveryStatus.pending
+      ).length,
+      failedCount: deliveries.filter(
+        (delivery) => delivery.status === PlatformAlertDeliveryStatus.failed
+      ).length,
+      lastAttemptedAt: latestDelivery?.lastAttemptedAt?.toISOString() ?? null,
+      lastStatus: latestDelivery?.status ?? null,
+      lastTargetName: latestDelivery?.targetName ?? null,
+      lastErrorMessage: latestDelivery?.errorMessage ?? null
+    };
+  }
+
+  private async buildPlatformAlertDeliverySummaryMap(
+    alertIds: string[]
+  ): Promise<Map<string, PlatformAlertProjection["deliverySummary"]>> {
+    if (alertIds.length === 0) {
+      return new Map();
+    }
+
+    const deliveries = await this.prismaService.platformAlertDelivery.findMany({
+      where: {
+        platformAlertId: {
+          in: alertIds
+        }
+      },
+      orderBy: {
+        createdAt: "desc"
+      }
+    });
+    const deliveriesByAlertId = new Map<string, PlatformAlertDeliveryRecord[]>();
+
+    for (const delivery of deliveries) {
+      const current = deliveriesByAlertId.get(delivery.platformAlertId) ?? [];
+      current.push(delivery);
+      deliveriesByAlertId.set(delivery.platformAlertId, current);
+    }
+
+    return new Map(
+      alertIds.map((alertId) => [
+        alertId,
+        this.buildPlatformAlertDeliverySummary(
+          deliveriesByAlertId.get(alertId) ?? []
+        )
+      ])
+    );
   }
 
   private buildPlatformAlertReviewCaseReasonCode(
@@ -457,6 +557,18 @@ export class OperationsMonitoringService {
     }
 
     return alert;
+  }
+
+  private emitPlatformAlertDeliveryEvent(
+    alert: PlatformAlertRecord,
+    eventType: PlatformAlertDeliveryEventType,
+    metadata?: Record<string, unknown>
+  ): void {
+    void this.platformAlertDeliveryService.enqueueAlertEvent({
+      alert: this.buildPlatformAlertDeliveryPayload(alert),
+      eventType,
+      metadata
+    });
   }
 
   private summarizeWorkerHealth(
@@ -704,7 +816,7 @@ export class OperationsMonitoringService {
       const existingAlert = existingAlertsByDedupeKey.get(candidate.dedupeKey);
 
       if (!existingAlert) {
-        await this.prismaService.platformAlert.create({
+        const createdAlert = await this.prismaService.platformAlert.create({
           data: {
             dedupeKey: candidate.dedupeKey,
             category: candidate.category,
@@ -735,12 +847,16 @@ export class OperationsMonitoringService {
             resolvedAt: null
           }
         });
+        void this.platformAlertDeliveryService.enqueueAlertEvent({
+          alert: this.buildPlatformAlertDeliveryPayload(createdAlert),
+          eventType: PlatformAlertDeliveryEventType.opened
+        });
         continue;
       }
 
       const reopened = existingAlert.status === PlatformAlertStatus.resolved;
 
-      await this.prismaService.platformAlert.update({
+      const updatedAlert = await this.prismaService.platformAlert.update({
         where: {
           id: existingAlert.id
         },
@@ -775,6 +891,13 @@ export class OperationsMonitoringService {
           suppressionNote: reopened ? null : undefined
         }
       });
+
+      if (reopened) {
+        void this.platformAlertDeliveryService.enqueueAlertEvent({
+          alert: this.buildPlatformAlertDeliveryPayload(updatedAlert),
+          eventType: PlatformAlertDeliveryEventType.reopened
+        });
+      }
     }
 
     const existingOpenAlerts = await this.prismaService.platformAlert.findMany({
@@ -1291,6 +1414,10 @@ export class OperationsMonitoringService {
         })
       ]);
 
+    const deliverySummaryMap = await this.buildPlatformAlertDeliverySummaryMap(
+      recentAlerts.map((alert) => alert.id)
+    );
+
     return {
       generatedAt: snapshot.generatedAt.toISOString(),
       alertSummary: {
@@ -1305,7 +1432,10 @@ export class OperationsMonitoringService {
       reconciliationHealth: snapshot.reconciliationHealth,
       incidentSafety: snapshot.incidentSafety,
       recentAlerts: recentAlerts.map((alert) =>
-        this.mapPlatformAlertProjection(alert)
+        this.mapPlatformAlertProjection(
+          alert,
+          deliverySummaryMap.get(alert.id)
+        )
       )
     };
   }
@@ -1386,8 +1516,17 @@ export class OperationsMonitoringService {
       where
     });
 
+    const deliverySummaryMap = await this.buildPlatformAlertDeliverySummaryMap(
+      alerts.map((alert) => alert.id)
+    );
+
     return {
-      alerts: alerts.map((alert) => this.mapPlatformAlertProjection(alert)),
+      alerts: alerts.map((alert) =>
+        this.mapPlatformAlertProjection(
+          alert,
+          deliverySummaryMap.get(alert.id)
+        )
+      ),
       limit,
       totalCount
     };
@@ -1452,6 +1591,15 @@ export class OperationsMonitoringService {
       }
     });
 
+    this.emitPlatformAlertDeliveryEvent(
+      updatedAlert,
+      PlatformAlertDeliveryEventType.owner_assigned,
+      {
+        ownerOperatorId: trimmedOwnerOperatorId,
+        ownershipNote
+      }
+    );
+
     return {
       alert: this.mapPlatformAlertProjection(updatedAlert),
       stateReused: false
@@ -1503,6 +1651,14 @@ export class OperationsMonitoringService {
         } as Prisma.InputJsonValue
       }
     });
+
+    this.emitPlatformAlertDeliveryEvent(
+      updatedAlert,
+      PlatformAlertDeliveryEventType.acknowledged,
+      {
+        acknowledgementNote
+      }
+    );
 
     return {
       alert: this.mapPlatformAlertProjection(updatedAlert),
@@ -1568,6 +1724,15 @@ export class OperationsMonitoringService {
       }
     });
 
+    this.emitPlatformAlertDeliveryEvent(
+      updatedAlert,
+      PlatformAlertDeliveryEventType.suppressed,
+      {
+        suppressedUntil: suppressedUntil.toISOString(),
+        suppressionNote
+      }
+    );
+
     return {
       alert: this.mapPlatformAlertProjection(updatedAlert),
       stateReused: false
@@ -1621,9 +1786,58 @@ export class OperationsMonitoringService {
       }
     });
 
+    this.emitPlatformAlertDeliveryEvent(
+      updatedAlert,
+      PlatformAlertDeliveryEventType.suppression_cleared,
+      {
+        previousSuppressedUntil: alert.suppressedUntil.toISOString(),
+        suppressionNote
+      }
+    );
+
     return {
       alert: this.mapPlatformAlertProjection(updatedAlert),
       stateReused: false
+    };
+  }
+
+  async retryFailedPlatformAlertDeliveries(
+    alertId: string,
+    operatorId: string,
+    note?: string
+  ): Promise<{ retriedDeliveryCount: number }> {
+    const alert = await this.prismaService.platformAlert.findUnique({
+      where: {
+        id: alertId
+      }
+    });
+
+    if (!alert) {
+      throw new NotFoundException("Platform alert not found.");
+    }
+
+    const retriedDeliveryCount =
+      await this.platformAlertDeliveryService.retryFailedDeliveriesForAlert(alertId);
+
+    if (retriedDeliveryCount > 0) {
+      await this.prismaService.auditEvent.create({
+        data: {
+          customerId: null,
+          actorType: "operator",
+          actorId: operatorId,
+          action: "platform_alert.delivery_retry_requested",
+          targetType: "PlatformAlert",
+          targetId: alert.id,
+          metadata: {
+            retriedDeliveryCount,
+            note: note?.trim() ? note.trim() : null
+          } as Prisma.InputJsonValue
+        }
+      });
+    }
+
+    return {
+      retriedDeliveryCount
     };
   }
 
@@ -1634,7 +1848,7 @@ export class OperationsMonitoringService {
   ): Promise<RoutePlatformAlertResult> {
     const routeNote = dto.note?.trim() ? dto.note.trim() : null;
 
-    return this.prismaService.$transaction(async (transaction) => {
+    const result = await this.prismaService.$transaction(async (transaction) => {
       const alert = this.ensureOpenPlatformAlert(
         await transaction.platformAlert.findUnique({
           where: {
@@ -1719,6 +1933,54 @@ export class OperationsMonitoringService {
         routingStateReused
       };
     });
+
+    this.emitPlatformAlertDeliveryEvent(
+      {
+        id: result.alert.id,
+        dedupeKey: result.alert.dedupeKey,
+        category: result.alert.category,
+        severity: result.alert.severity,
+        status: result.alert.status,
+        routingStatus: result.alert.routingStatus as PlatformAlertRoutingStatus,
+        routingTargetType: result.alert.routingTargetType,
+        routingTargetId: result.alert.routingTargetId,
+        routedAt: result.alert.routedAt ? new Date(result.alert.routedAt) : null,
+        routedByOperatorId: result.alert.routedByOperatorId,
+        routingNote: result.alert.routingNote,
+        ownerOperatorId: result.alert.ownerOperatorId,
+        ownerAssignedAt: result.alert.ownerAssignedAt
+          ? new Date(result.alert.ownerAssignedAt)
+          : null,
+        ownerAssignedByOperatorId: result.alert.ownerAssignedByOperatorId,
+        ownershipNote: result.alert.ownershipNote,
+        acknowledgedAt: result.alert.acknowledgedAt
+          ? new Date(result.alert.acknowledgedAt)
+          : null,
+        acknowledgedByOperatorId: result.alert.acknowledgedByOperatorId,
+        acknowledgementNote: result.alert.acknowledgementNote,
+        suppressedUntil: result.alert.suppressedUntil
+          ? new Date(result.alert.suppressedUntil)
+          : null,
+        suppressedByOperatorId: result.alert.suppressedByOperatorId,
+        suppressionNote: result.alert.suppressionNote,
+        code: result.alert.code,
+        summary: result.alert.summary,
+        detail: result.alert.detail,
+        metadata: result.alert.metadata,
+        firstDetectedAt: new Date(result.alert.firstDetectedAt),
+        lastDetectedAt: new Date(result.alert.lastDetectedAt),
+        resolvedAt: result.alert.resolvedAt ? new Date(result.alert.resolvedAt) : null,
+        createdAt: new Date(result.alert.createdAt),
+        updatedAt: new Date(result.alert.updatedAt)
+      },
+      PlatformAlertDeliveryEventType.routed_to_review_case,
+      {
+        reviewCaseId: result.reviewCase.id,
+        routingStateReused: result.routingStateReused
+      }
+    );
+
+    return result;
   }
 
   async routeCriticalPlatformAlerts(

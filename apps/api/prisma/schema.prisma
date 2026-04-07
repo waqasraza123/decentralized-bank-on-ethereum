@@ -606,6 +606,7 @@ model PlatformAlert {
   resolvedAt               DateTime?
   createdAt                DateTime                       @default(now())
   updatedAt                DateTime                       @updatedAt
+  deliveries               PlatformAlertDelivery[]
 
   @@index([status, severity, updatedAt])
   @@index([status, routingStatus, updatedAt])
@@ -615,6 +616,28 @@ model PlatformAlert {
   @@index([category, status, updatedAt])
   @@index([code, status, updatedAt])
   @@index([lastDetectedAt])
+}
+
+model PlatformAlertDelivery {
+  id                 String                         @id @default(cuid())
+  platformAlertId    String
+  platformAlert      PlatformAlert                  @relation(fields: [platformAlertId], references: [id])
+  targetName         String
+  targetUrl          String
+  eventType          PlatformAlertDeliveryEventType
+  status             PlatformAlertDeliveryStatus    @default(pending)
+  attemptCount       Int                            @default(0)
+  requestPayload     Json
+  responseStatusCode Int?
+  errorMessage       String?
+  lastAttemptedAt    DateTime?
+  deliveredAt        DateTime?
+  createdAt          DateTime                       @default(now())
+  updatedAt          DateTime                       @updatedAt
+
+  @@index([platformAlertId, createdAt])
+  @@index([status, createdAt])
+  @@index([targetName, status, createdAt])
 }
 
 model ReviewCaseEvent {
@@ -688,6 +711,22 @@ enum PlatformAlertRoutingStatus {
 
 enum PlatformAlertRoutingTargetType {
   review_case
+}
+
+enum PlatformAlertDeliveryEventType {
+  opened
+  reopened
+  routed_to_review_case
+  owner_assigned
+  acknowledged
+  suppressed
+  suppression_cleared
+}
+
+enum PlatformAlertDeliveryStatus {
+  pending
+  succeeded
+  failed
 }
 
 enum WorkerRuntimeEnvironment {

@@ -37,6 +37,7 @@ const DEFAULT_INCIDENT_PACKAGE_RELEASE_APPROVER_ALLOWED_OPERATOR_ROLES = [
   "risk_manager"
 ] as const;
 const DEFAULT_INCIDENT_PACKAGE_RELEASE_APPROVAL_EXPIRY_HOURS = 72;
+const DEFAULT_PLATFORM_ALERT_DELIVERY_REQUEST_TIMEOUT_MS = 5_000;
 const DEFAULT_WORKER_POLL_INTERVAL_MS = 10_000;
 const DEFAULT_WORKER_BATCH_LIMIT = 20;
 const DEFAULT_WORKER_REQUEST_TIMEOUT_MS = 10_000;
@@ -216,6 +217,127 @@ function parseBoolean(value: string, name: string): boolean {
   throw new Error(`${name} must be a boolean value.`);
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function parsePlatformAlertDeliverySeverity(
+  value: unknown,
+  name: string
+): PlatformAlertDeliverySeverity {
+  if (value === "warning" || value === "critical") {
+    return value;
+  }
+
+  throw new Error(`${name} must be "warning" or "critical".`);
+}
+
+function parsePlatformAlertDeliveryCategories(
+  value: unknown,
+  name: string
+): PlatformAlertDeliveryCategory[] {
+  if (!Array.isArray(value) || value.length === 0) {
+    throw new Error(`${name} must be a non-empty array.`);
+  }
+
+  const categories = value.map((entry) => {
+    if (
+      entry === "worker" ||
+      entry === "reconciliation" ||
+      entry === "queue" ||
+      entry === "chain" ||
+      entry === "treasury"
+    ) {
+      return entry;
+    }
+
+    throw new Error(
+      `${name} contains an invalid category. Expected worker, reconciliation, queue, chain, or treasury.`
+    );
+  });
+
+  return Array.from(new Set(categories));
+}
+
+function parsePlatformAlertDeliveryEventTypes(
+  value: unknown,
+  name: string
+): PlatformAlertDeliveryEventType[] {
+  if (!Array.isArray(value) || value.length === 0) {
+    throw new Error(`${name} must be a non-empty array.`);
+  }
+
+  const eventTypes = value.map((entry) => {
+    if (
+      entry === "opened" ||
+      entry === "reopened" ||
+      entry === "routed_to_review_case" ||
+      entry === "owner_assigned" ||
+      entry === "acknowledged" ||
+      entry === "suppressed" ||
+      entry === "suppression_cleared"
+    ) {
+      return entry;
+    }
+
+    throw new Error(`${name} contains an invalid event type.`);
+  });
+
+  return Array.from(new Set(eventTypes));
+}
+
+function parsePlatformAlertDeliveryTargets(
+  value: string,
+  name: string
+): PlatformAlertDeliveryTargetRuntimeConfig[] {
+  let parsedValue: unknown;
+
+  try {
+    parsedValue = JSON.parse(value);
+  } catch {
+    throw new Error(`${name} must be valid JSON.`);
+  }
+
+  if (!Array.isArray(parsedValue)) {
+    throw new Error(`${name} must be a JSON array.`);
+  }
+
+  return parsedValue.map((entry, index) => {
+    if (!isRecord(entry)) {
+      throw new Error(`${name}[${index}] must be an object.`);
+    }
+
+    if (typeof entry.name !== "string" || entry.name.trim().length === 0) {
+      throw new Error(`${name}[${index}].name must be a non-empty string.`);
+    }
+
+    if (typeof entry.url !== "string" || entry.url.trim().length === 0) {
+      throw new Error(`${name}[${index}].url must be a non-empty string.`);
+    }
+
+    return {
+      name: entry.name.trim().toLowerCase(),
+      url: normalizeBaseUrl(entry.url.trim(), `${name}[${index}].url`),
+      bearerToken:
+        typeof entry.bearerToken === "string" && entry.bearerToken.trim().length > 0
+          ? entry.bearerToken.trim()
+          : null,
+      categories: parsePlatformAlertDeliveryCategories(
+        entry.categories,
+        `${name}[${index}].categories`
+      ),
+      minimumSeverity: parsePlatformAlertDeliverySeverity(
+        entry.minimumSeverity,
+        `${name}[${index}].minimumSeverity`
+      ),
+      eventTypes: parsePlatformAlertDeliveryEventTypes(
+        entry.eventTypes,
+        `${name}[${index}].eventTypes`
+      )
+    };
+  });
+}
+
 function resolveWorkerExecutionMode(
   environment: ApiRuntimeEnvironment,
   configuredExecutionMode: string | undefined,
@@ -354,6 +476,38 @@ export type IncidentPackageExportGovernanceRuntimeConfig = {
 export type IncidentPackageReleaseGovernanceRuntimeConfig = {
   readonly incidentPackageReleaseApproverAllowedOperatorRoles: readonly string[];
   readonly incidentPackageReleaseApprovalExpiryHours: number;
+};
+
+export type PlatformAlertDeliverySeverity = "warning" | "critical";
+
+export type PlatformAlertDeliveryCategory =
+  | "worker"
+  | "reconciliation"
+  | "queue"
+  | "chain"
+  | "treasury";
+
+export type PlatformAlertDeliveryEventType =
+  | "opened"
+  | "reopened"
+  | "routed_to_review_case"
+  | "owner_assigned"
+  | "acknowledged"
+  | "suppressed"
+  | "suppression_cleared";
+
+export type PlatformAlertDeliveryTargetRuntimeConfig = {
+  readonly name: string;
+  readonly url: string;
+  readonly bearerToken: string | null;
+  readonly categories: readonly PlatformAlertDeliveryCategory[];
+  readonly minimumSeverity: PlatformAlertDeliverySeverity;
+  readonly eventTypes: readonly PlatformAlertDeliveryEventType[];
+};
+
+export type PlatformAlertDeliveryRuntimeConfig = {
+  readonly requestTimeoutMs: number;
+  readonly targets: readonly PlatformAlertDeliveryTargetRuntimeConfig[];
 };
 
 export function loadDatabaseRuntimeConfig(
@@ -806,5 +960,33 @@ export function loadIncidentPackageReleaseGovernanceRuntimeConfig(
           "INCIDENT_PACKAGE_RELEASE_APPROVAL_EXPIRY_HOURS"
         )
       : DEFAULT_INCIDENT_PACKAGE_RELEASE_APPROVAL_EXPIRY_HOURS
+  };
+}
+
+export function loadPlatformAlertDeliveryRuntimeConfig(
+  env: RuntimeEnvShape = getNodeRuntimeEnv()
+): PlatformAlertDeliveryRuntimeConfig {
+  const configuredTargets = readOptionalRuntimeEnv(
+    env,
+    "PLATFORM_ALERT_DELIVERY_TARGETS_JSON"
+  );
+  const configuredRequestTimeout = readOptionalRuntimeEnv(
+    env,
+    "PLATFORM_ALERT_DELIVERY_REQUEST_TIMEOUT_MS"
+  );
+
+  return {
+    requestTimeoutMs: configuredRequestTimeout
+      ? parsePositiveInteger(
+          configuredRequestTimeout,
+          "PLATFORM_ALERT_DELIVERY_REQUEST_TIMEOUT_MS"
+        )
+      : DEFAULT_PLATFORM_ALERT_DELIVERY_REQUEST_TIMEOUT_MS,
+    targets: configuredTargets
+      ? parsePlatformAlertDeliveryTargets(
+          configuredTargets,
+          "PLATFORM_ALERT_DELIVERY_TARGETS_JSON"
+        )
+      : []
   };
 }

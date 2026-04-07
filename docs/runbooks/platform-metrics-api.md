@@ -51,6 +51,6 @@ Use these metrics to:
 
 ## Next step
 
-After this metrics baseline, routed-alert automation, and alert governance controls:
-1. deliver alert classes into external paging or notification targets
-2. automate escalation policy by alert category and severity
+After this metrics baseline, routed-alert automation, alert governance controls, and external delivery targets:
+1. add secondary/failover escalation policy for critical delivery targets
+2. automate richer downstream incident behavior by alert category

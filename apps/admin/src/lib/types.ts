@@ -354,6 +354,15 @@ export type PlatformAlert = {
   suppressionNote: string | null;
   isAcknowledged: boolean;
   hasActiveSuppression: boolean;
+  deliverySummary: {
+    totalCount: number;
+    pendingCount: number;
+    failedCount: number;
+    lastAttemptedAt: string | null;
+    lastStatus: "pending" | "succeeded" | "failed" | null;
+    lastTargetName: string | null;
+    lastErrorMessage: string | null;
+  };
   code: string;
   summary: string;
   detail: string | null;
@@ -394,6 +403,10 @@ export type CriticalPlatformAlertRoutingResult = {
 export type PlatformAlertGovernanceMutationResult = {
   alert: PlatformAlert;
   stateReused: boolean;
+};
+
+export type RetryPlatformAlertDeliveriesResult = {
+  retriedDeliveryCount: number;
 };
 
 export type TreasuryOverview = {

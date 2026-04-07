@@ -23,6 +23,7 @@ import type {
   PlatformAlertList,
   PlatformAlertGovernanceMutationResult,
   PlatformAlertRouteResult,
+  RetryPlatformAlertDeliveriesResult,
   OversightMutationResult,
   OversightNoteMutationResult,
   OversightRestrictionMutationResult,
@@ -320,6 +321,18 @@ export async function clearPlatformAlertSuppression(
   return requestData(session, {
     method: "POST",
     url: `/operations/internal/alerts/${alertId}/clear-suppression`,
+    data: note ? { note } : {}
+  });
+}
+
+export async function retryPlatformAlertDeliveries(
+  session: OperatorSession,
+  alertId: string,
+  note?: string
+): Promise<RetryPlatformAlertDeliveriesResult> {
+  return requestData(session, {
+    method: "POST",
+    url: `/operations/internal/alerts/${alertId}/retry-deliveries`,
     data: note ? { note } : {}
   });
 }

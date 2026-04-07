@@ -14,6 +14,7 @@ import {
 import { ApiRequestMetricsService } from "../logging/api-request-metrics.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { ReviewCasesService } from "../review-cases/review-cases.service";
+import { PlatformAlertDeliveryService } from "./platform-alert-delivery.service";
 import { OperationsMonitoringService } from "./operations-monitoring.service";
 
 jest.mock("@stealth-trails-bank/config/api", () => ({
@@ -149,17 +150,33 @@ function createService() {
       findMany: jest.fn(),
       updateMany: jest.fn(),
       count: jest.fn()
+    },
+    platformAlertDelivery: {
+      create: jest.fn(),
+      update: jest.fn(),
+      findUnique: jest.fn(),
+      findMany: jest.fn().mockResolvedValue([]),
+      updateMany: jest.fn()
     }
   } as unknown as PrismaService;
   const reviewCasesService = {
     openOrReuseReviewCase: jest.fn()
   } as unknown as ReviewCasesService;
+  const platformAlertDeliveryService = {
+    enqueueAlertEvent: jest.fn().mockResolvedValue(0),
+    retryFailedDeliveriesForAlert: jest.fn().mockResolvedValue(0)
+  } as unknown as PlatformAlertDeliveryService;
 
   return {
     prismaService,
     reviewCasesService,
+    platformAlertDeliveryService,
     transactionClient,
-    service: new OperationsMonitoringService(prismaService, reviewCasesService)
+    service: new OperationsMonitoringService(
+      prismaService,
+      reviewCasesService,
+      platformAlertDeliveryService
+    )
   };
 }
 
@@ -709,6 +726,15 @@ describe("OperationsMonitoringService", () => {
           suppressionNote: null,
           isAcknowledged: false,
           hasActiveSuppression: false,
+          deliverySummary: {
+            totalCount: 0,
+            pendingCount: 0,
+            failedCount: 0,
+            lastAttemptedAt: null,
+            lastStatus: null,
+            lastTargetName: null,
+            lastErrorMessage: null
+          },
           code: "worker_runtime_degraded",
           summary: "Worker worker_1 is degraded.",
           detail: "Iteration status is failed.",

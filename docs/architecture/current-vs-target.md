@@ -220,7 +220,7 @@ The current model is not acceptable for a professional financial platform.
 ### Observability and Reconciliation
 
 #### Current
-The repo now has runbooks, reconciliation services, reporting slices, targeted repair tooling, worker heartbeat persistence, scheduled reconciliation scan history, operator-visible runtime health views, structured API request logging with correlation ids, an internal Prometheus-style metrics surface for API and worker boundaries, alert-routing automation that converts critical platform alerts into manual-intervention review cases, and durable alert ownership, acknowledgement, and suppression controls, but not a full platform-wide observability stack.
+The repo now has runbooks, reconciliation services, reporting slices, targeted repair tooling, worker heartbeat persistence, scheduled reconciliation scan history, operator-visible runtime health views, structured API request logging with correlation ids, an internal Prometheus-style metrics surface for API and worker boundaries, alert-routing automation that converts critical platform alerts into manual-intervention review cases, durable alert ownership/acknowledgement/suppression controls, and runtime-configured external webhook delivery targets with durable delivery attempts and retry support, but not a full platform-wide observability stack.
 
 #### Target
 The system must provide:
@@ -232,10 +232,10 @@ The system must provide:
 - incident runbooks
 
 #### Gap
-The repo is more operable than the original baseline, but external delivery targets, richer category-specific escalation automation, broader incident automation, and deeper reconciliation/reporting depth are still missing.
+The repo is more operable than the original baseline, but richer downstream incident automation, secondary/failover escalation policy, and deeper reconciliation/reporting depth are still missing.
 
 #### Consequence
-Failures are easier to detect, route, and manage internally than before, but external escalation and downstream automation are still weaker than production target state.
+Failures are easier to detect, route, and escalate externally than before, but downstream incident automation and failover escalation are still weaker than production target state.
 
 ## Transformation Strategy
 
