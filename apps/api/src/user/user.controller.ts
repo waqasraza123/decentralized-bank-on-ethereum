@@ -1,20 +1,32 @@
-import { Controller, Get, Param, NotFoundException, UseGuards, Req, UnauthorizedException } from '@nestjs/common';
-import { UserService } from './user.service';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { CustomJsonResponse } from '../types/CustomJsonResponse';
+import {
+  Controller,
+  Get,
+  NotFoundException,
+  Param,
+  Req,
+  UnauthorizedException,
+  UseGuards
+} from "@nestjs/common";
+import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
+import { CustomJsonResponse } from "../types/CustomJsonResponse";
+import { UserService } from "./user.service";
 
-@Controller('user')
+@Controller("user")
 export class UserController {
   constructor(private readonly userService: UserService) {}
 
   @UseGuards(JwtAuthGuard)
-  @Get(':id')
-  async getUserById(@Param('id') id: string, @Req() req: any): Promise<CustomJsonResponse> {
+  @Get(":id")
+  async getUserById(
+    @Param("id") id: string,
+    @Req() req: { user: { id: string } }
+  ): Promise<CustomJsonResponse> {
     const authenticatedUser = req.user;
 
-    console.log(authenticatedUser);
     if (authenticatedUser.id !== id) {
-      throw new UnauthorizedException('You are not authorized to access this user');
+      throw new UnauthorizedException(
+        "You are not authorized to access this user"
+      );
     }
 
     const user = await this.userService.getUserById(id);
@@ -22,9 +34,9 @@ export class UserController {
       throw new NotFoundException(`User with ID ${id} not found`);
     }
     return {
-      status: 'success',
-      message: 'User retreived.',
-      data: user,
+      status: "success",
+      message: "User retreived.",
+      data: user
     };
   }
 }

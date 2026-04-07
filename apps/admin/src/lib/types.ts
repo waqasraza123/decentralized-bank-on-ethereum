@@ -139,6 +139,42 @@ export type AuditTimelineEntry = {
   createdAt: string;
 };
 
+export type AuditEventListEntry = {
+  id: string;
+  actorType: string;
+  actorId: string | null;
+  action: string;
+  targetType: string;
+  targetId: string | null;
+  metadata: JsonValue | null;
+  createdAt: string;
+  customer: {
+    customerId: string;
+    supabaseUserId: string | null;
+    email: string | null;
+    firstName: string | null;
+    lastName: string | null;
+  } | null;
+};
+
+export type AuditEventList = {
+  events: AuditEventListEntry[];
+  limit: number;
+  totalCount: number;
+  filters: {
+    search: string | null;
+    customerId: string | null;
+    email: string | null;
+    actorType: string | null;
+    actorId: string | null;
+    action: string | null;
+    targetType: string | null;
+    targetId: string | null;
+    dateFrom: string | null;
+    dateTo: string | null;
+  };
+};
+
 export type LedgerReconciliationMismatch = {
   id: string;
   mismatchKey: string;
@@ -300,6 +336,12 @@ export type PlatformAlert = {
   category: string;
   severity: string;
   status: string;
+  routingStatus: "unrouted" | "routed";
+  routingTargetType: "review_case" | null;
+  routingTargetId: string | null;
+  routedAt: string | null;
+  routedByOperatorId: string | null;
+  routingNote: string | null;
   code: string;
   summary: string;
   detail: string | null;
@@ -315,6 +357,142 @@ export type PlatformAlertList = {
   alerts: PlatformAlert[];
   limit: number;
   totalCount: number;
+};
+
+export type PlatformAlertRouteResult = {
+  alert: PlatformAlert;
+  reviewCase: {
+    id: string;
+    status: string;
+    type: string;
+    reasonCode: string | null;
+    assignedOperatorId: string | null;
+  };
+  reviewCaseReused: boolean;
+  routingStateReused: boolean;
+};
+
+export type CriticalPlatformAlertRoutingResult = {
+  routedAlerts: PlatformAlertRouteResult[];
+  limit: number;
+  remainingUnroutedCriticalAlertCount: number;
+  staleAfterSeconds: number;
+};
+
+export type TreasuryOverview = {
+  generatedAt: string;
+  coverage: {
+    status: "healthy" | "warning" | "critical";
+    staleAfterSeconds: number;
+    managedWorkerCount: number;
+    degradedManagedWorkerCount: number;
+    staleManagedWorkerCount: number;
+    activeTreasuryWalletCount: number;
+    activeOperationalWalletCount: number;
+    customerLinkedWalletCount: number;
+    missingManagedWalletCoverage: boolean;
+    openTreasuryAlertCount: number;
+  };
+  walletSummary: {
+    totalWalletCount: number;
+    byKind: Array<{
+      kind: string;
+      count: number;
+    }>;
+    byStatus: Array<{
+      status: string;
+      count: number;
+    }>;
+    byCustodyType: Array<{
+      custodyType: string;
+      count: number;
+    }>;
+  };
+  managedWorkers: Array<{
+    workerId: string;
+    healthStatus: "healthy" | "degraded" | "stale";
+    environment: string;
+    lastIterationStatus: string;
+    lastHeartbeatAt: string;
+    consecutiveFailureCount: number;
+    lastErrorCode: string | null;
+    lastErrorMessage: string | null;
+  }>;
+  wallets: Array<{
+    id: string;
+    chainId: number;
+    address: string;
+    kind: string;
+    custodyType: string;
+    status: string;
+    recentIntentCount: number;
+    lastActivityAt: string | null;
+    createdAt: string;
+    updatedAt: string;
+    customerAssignment: {
+      customerAccountId: string;
+      accountStatus: string;
+      email: string | null;
+      supabaseUserId: string | null;
+      firstName: string | null;
+      lastName: string | null;
+    } | null;
+  }>;
+  recentActivity: Array<{
+    transactionIntentId: string;
+    intentType: string;
+    status: string;
+    policyDecision: string;
+    requestedAmount: string;
+    settledAmount: string | null;
+    externalAddress: string | null;
+    createdAt: string;
+    updatedAt: string;
+    asset: {
+      id: string;
+      symbol: string;
+      displayName: string;
+      decimals: number;
+      chainId: number;
+    };
+    sourceWallet: {
+      id: string;
+      address: string;
+      kind: string;
+      custodyType: string;
+      status: string;
+    } | null;
+    destinationWallet: {
+      id: string;
+      address: string;
+      kind: string;
+      custodyType: string;
+      status: string;
+    } | null;
+    latestBlockchainTransaction: {
+      id: string;
+      txHash: string | null;
+      status: string;
+      fromAddress: string | null;
+      toAddress: string | null;
+      createdAt: string;
+      updatedAt: string;
+      confirmedAt: string | null;
+    } | null;
+  }>;
+  recentAlerts: Array<{
+    id: string;
+    dedupeKey: string;
+    severity: string;
+    status: string;
+    code: string;
+    summary: string;
+    detail: string | null;
+    metadata: JsonValue | null;
+    firstDetectedAt: string;
+    lastDetectedAt: string;
+    resolvedAt: string | null;
+  }>;
 };
 
 export type OperationsStatus = {

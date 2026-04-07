@@ -1,13 +1,19 @@
 import {
   LedgerReconciliationScanRunStatus,
   PlatformAlertCategory,
+  PlatformAlertRoutingStatus,
+  PlatformAlertRoutingTargetType,
   PlatformAlertSeverity,
   PlatformAlertStatus,
+  ReviewCaseStatus,
+  ReviewCaseType,
   WorkerRuntimeExecutionMode,
   WorkerRuntimeEnvironment,
   WorkerRuntimeIterationStatus
 } from "@prisma/client";
+import { ApiRequestMetricsService } from "../logging/api-request-metrics.service";
 import { PrismaService } from "../prisma/prisma.service";
+import { ReviewCasesService } from "../review-cases/review-cases.service";
 import { OperationsMonitoringService } from "./operations-monitoring.service";
 
 jest.mock("@stealth-trails-bank/config/api", () => ({
@@ -57,6 +63,12 @@ function buildPlatformAlertRecord(
     category: PlatformAlertCategory.worker,
     severity: PlatformAlertSeverity.warning,
     status: PlatformAlertStatus.open,
+    routingStatus: PlatformAlertRoutingStatus.unrouted,
+    routingTargetType: null,
+    routingTargetId: null,
+    routedAt: null,
+    routedByOperatorId: null,
+    routingNote: null,
     code: "worker_runtime_degraded",
     summary: "Worker worker_1 is degraded.",
     detail: "Iteration status is failed.",
@@ -73,7 +85,19 @@ function buildPlatformAlertRecord(
 }
 
 function createService() {
+  const transactionClient = {
+    platformAlert: {
+      findUnique: jest.fn(),
+      update: jest.fn()
+    },
+    auditEvent: {
+      create: jest.fn()
+    }
+  };
   const prismaService = {
+    $transaction: jest.fn(async (callback: (client: typeof transactionClient) => unknown) =>
+      callback(transactionClient)
+    ),
     workerRuntimeHeartbeat: {
       upsert: jest.fn(),
       findMany: jest.fn()
@@ -106,16 +130,22 @@ function createService() {
       count: jest.fn()
     },
     platformAlert: {
-      upsert: jest.fn(),
+      create: jest.fn(),
+      update: jest.fn(),
       findMany: jest.fn(),
       updateMany: jest.fn(),
       count: jest.fn()
     }
   } as unknown as PrismaService;
+  const reviewCasesService = {
+    openOrReuseReviewCase: jest.fn()
+  } as unknown as ReviewCasesService;
 
   return {
     prismaService,
-    service: new OperationsMonitoringService(prismaService)
+    reviewCasesService,
+    transactionClient,
+    service: new OperationsMonitoringService(prismaService, reviewCasesService)
   };
 }
 
@@ -290,10 +320,11 @@ describe("OperationsMonitoringService", () => {
     (prismaService.reviewCase.count as jest.Mock).mockResolvedValue(14);
     (prismaService.oversightIncident.count as jest.Mock).mockResolvedValue(6);
     (prismaService.customerAccount.count as jest.Mock).mockResolvedValue(5);
-    (prismaService.platformAlert.upsert as jest.Mock).mockResolvedValue(
+    (prismaService.platformAlert.create as jest.Mock).mockResolvedValue(
       buildPlatformAlertRecord()
     );
     (prismaService.platformAlert.findMany as jest.Mock)
+      .mockResolvedValueOnce([])
       .mockResolvedValueOnce([])
       .mockResolvedValueOnce([
         buildPlatformAlertRecord(),
@@ -322,7 +353,7 @@ describe("OperationsMonitoringService", () => {
     expect(result.reconciliationHealth.status).toBe("critical");
     expect(result.treasuryHealth.status).toBe("healthy");
     expect(result.alertSummary.openCount).toBe(2);
-    expect(prismaService.platformAlert.upsert).toHaveBeenCalled();
+    expect(prismaService.platformAlert.create).toHaveBeenCalled();
     expect(prismaService.platformAlert.updateMany).not.toHaveBeenCalled();
   });
 
@@ -335,6 +366,7 @@ describe("OperationsMonitoringService", () => {
 
     mockHealthySnapshotQueries(prismaService);
     (prismaService.platformAlert.findMany as jest.Mock)
+      .mockResolvedValueOnce([])
       .mockResolvedValueOnce([
         {
           dedupeKey: "worker:stale:worker_legacy"
@@ -364,5 +396,195 @@ describe("OperationsMonitoringService", () => {
     );
     expect(result.totalCount).toBe(1);
     expect(result.alerts[0]?.status).toBe("resolved");
+  });
+
+  it("renders Prometheus metrics from request and operations state", async () => {
+    const { service, prismaService } = createService();
+    const requestMetrics = new ApiRequestMetricsService();
+
+    jest.spyOn(Date, "now").mockReturnValue(
+      new Date("2026-04-06T10:00:30.000Z").getTime()
+    );
+    mockHealthySnapshotQueries(prismaService);
+    (prismaService.platformAlert.create as jest.Mock).mockResolvedValue(
+      buildPlatformAlertRecord()
+    );
+    (prismaService.platformAlert.updateMany as jest.Mock).mockResolvedValue({
+      count: 0
+    });
+    (prismaService.platformAlert.findMany as jest.Mock)
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([buildPlatformAlertRecord()]);
+
+    requestMetrics.recordRequestStarted();
+    requestMetrics.recordRequestCompleted({
+      method: "GET",
+      routePath: "/operations/internal/status",
+      statusCode: 200,
+      actorType: "operator",
+      durationMs: 120
+    });
+
+    const result = await service.renderPrometheusMetrics(
+      {
+        staleAfterSeconds: 180
+      },
+      requestMetrics
+    );
+
+    expect(result).toContain("stb_api_http_requests_total");
+    expect(result).toContain("stb_operations_workers_total");
+    expect(result).toContain("stb_platform_alerts_open_total");
+    expect(result).toContain("stb_worker_latest_iteration_metric");
+    expect(result).toContain('category="worker"');
+  });
+
+  it("routes an open platform alert into a manual intervention review case", async () => {
+    const { service, prismaService, reviewCasesService, transactionClient } =
+      createService();
+    const openAlert = buildPlatformAlertRecord({
+      id: "alert_route_1",
+      severity: PlatformAlertSeverity.critical
+    });
+    const routedAlert = buildPlatformAlertRecord({
+      id: "alert_route_1",
+      severity: PlatformAlertSeverity.critical,
+      routingStatus: PlatformAlertRoutingStatus.routed,
+      routingTargetType: PlatformAlertRoutingTargetType.review_case,
+      routingTargetId: "review_case_1",
+      routedAt: new Date("2026-04-06T10:05:00.000Z"),
+      routedByOperatorId: "ops_1",
+      routingNote: "Escalated from critical worker outage."
+    });
+
+    (transactionClient.platformAlert.findUnique as jest.Mock).mockResolvedValue(
+      openAlert
+    );
+    (reviewCasesService.openOrReuseReviewCase as jest.Mock).mockResolvedValue({
+      reviewCase: {
+        id: "review_case_1",
+        status: ReviewCaseStatus.open,
+        type: ReviewCaseType.manual_intervention,
+        reasonCode: "platform_alert:worker:degraded:worker_1",
+        assignedOperatorId: null
+      },
+      reviewCaseReused: false
+    });
+    (transactionClient.platformAlert.update as jest.Mock).mockResolvedValue(
+      routedAlert
+    );
+
+    const result = await service.routePlatformAlertToReviewCase(
+      openAlert.id,
+      "ops_1",
+      {
+        note: "Escalated from critical worker outage."
+      }
+    );
+
+    expect(reviewCasesService.openOrReuseReviewCase).toHaveBeenCalledWith(
+      transactionClient,
+      expect.objectContaining({
+        type: ReviewCaseType.manual_intervention,
+        reasonCode: "platform_alert:worker:degraded:worker_1",
+        actorId: "ops_1"
+      })
+    );
+    expect(transactionClient.platformAlert.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          routingStatus: PlatformAlertRoutingStatus.routed,
+          routingTargetType: PlatformAlertRoutingTargetType.review_case,
+          routingTargetId: "review_case_1"
+        })
+      })
+    );
+    expect(transactionClient.auditEvent.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          action: "platform_alert.routed_to_review_case",
+          targetType: "PlatformAlert",
+          targetId: openAlert.id
+        })
+      })
+    );
+    expect(result.reviewCase.id).toBe("review_case_1");
+    expect(result.alert.routingStatus).toBe("routed");
+    expect(result.routingStateReused).toBe(false);
+  });
+
+  it("routes only unrouted critical alerts in batch", async () => {
+    const { service, prismaService } = createService();
+
+    jest.spyOn(Date, "now").mockReturnValue(
+      new Date("2026-04-06T10:00:30.000Z").getTime()
+    );
+    mockHealthySnapshotQueries(prismaService);
+    (prismaService.platformAlert.findMany as jest.Mock)
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([
+        buildPlatformAlertRecord({
+          id: "alert_batch_1",
+          severity: PlatformAlertSeverity.critical
+        }),
+        buildPlatformAlertRecord({
+          id: "alert_batch_2",
+          dedupeKey: "chain:broadcast-health",
+          category: PlatformAlertCategory.chain,
+          severity: PlatformAlertSeverity.critical,
+          code: "chain_broadcast_confirmation_lag",
+          summary: "Broadcast confirmations are lagging or failing."
+        })
+      ]);
+    (prismaService.platformAlert.count as jest.Mock).mockResolvedValue(1);
+
+    const routeSpy = jest
+      .spyOn(service, "routePlatformAlertToReviewCase")
+      .mockResolvedValue({
+        alert: {
+          id: "alert_batch_1",
+          dedupeKey: "worker:degraded:worker_1",
+          category: PlatformAlertCategory.worker,
+          severity: PlatformAlertSeverity.critical,
+          status: PlatformAlertStatus.open,
+          routingStatus: PlatformAlertRoutingStatus.routed,
+          routingTargetType: PlatformAlertRoutingTargetType.review_case,
+          routingTargetId: "review_case_1",
+          routedAt: "2026-04-06T10:05:00.000Z",
+          routedByOperatorId: "ops_1",
+          routingNote: null,
+          code: "worker_runtime_degraded",
+          summary: "Worker worker_1 is degraded.",
+          detail: "Iteration status is failed.",
+          metadata: {
+            workerId: "worker_1"
+          },
+          firstDetectedAt: "2026-04-06T10:00:00.000Z",
+          lastDetectedAt: "2026-04-06T10:00:00.000Z",
+          resolvedAt: null,
+          createdAt: "2026-04-06T10:00:00.000Z",
+          updatedAt: "2026-04-06T10:05:00.000Z"
+        },
+        reviewCase: {
+          id: "review_case_1",
+          status: ReviewCaseStatus.open,
+          type: ReviewCaseType.manual_intervention,
+          reasonCode: "platform_alert:worker:degraded:worker_1",
+          assignedOperatorId: null
+        },
+        reviewCaseReused: false,
+        routingStateReused: false
+      });
+
+    const result = await service.routeCriticalPlatformAlerts("ops_1", {
+      limit: 2,
+      staleAfterSeconds: 180
+    });
+
+    expect(routeSpy).toHaveBeenCalledTimes(2);
+    expect(result.routedAlerts).toHaveLength(2);
+    expect(result.remainingUnroutedCriticalAlertCount).toBe(1);
   });
 });

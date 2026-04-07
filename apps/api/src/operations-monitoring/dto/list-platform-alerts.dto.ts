@@ -33,4 +33,8 @@ export class ListPlatformAlertsDto {
   @IsOptional()
   @IsIn(["worker", "reconciliation", "queue", "chain", "treasury"])
   category?: "worker" | "reconciliation" | "queue" | "chain" | "treasury";
+
+  @IsOptional()
+  @IsIn(["unrouted", "routed"])
+  routingStatus?: "unrouted" | "routed";
 }

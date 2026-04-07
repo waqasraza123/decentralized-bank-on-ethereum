@@ -182,7 +182,7 @@ Chain processing is less fragile than the earlier baseline, but it still needs s
 ### Admin and Operations
 
 #### Current
-The repository now includes a first internal operator console for review cases, oversight incidents, hold-release reviews, and incident package export governance.
+The repository now includes an internal operator console for review cases, oversight incidents, hold-release reviews, incident package export governance, reconciliation mismatch handling, audit-log inspection, and treasury visibility.
 
 #### Target
 A dedicated internal surface must exist for:
@@ -194,7 +194,7 @@ A dedicated internal surface must exist for:
 - incident actions
 
 #### Gap
-Critical operator loops now have an internal UI, but the full treasury, reconciliation, audit-log, and incident-management operating surface is still incomplete.
+Critical operator loops now have an internal UI, but deeper treasury/governance controls and incident-management automation are still incomplete.
 
 #### Consequence
 Without deeper admin coverage, operators will still fall back to logs, scripts, or direct data inspection for some important workflows.
@@ -220,7 +220,7 @@ The current model is not acceptable for a professional financial platform.
 ### Observability and Reconciliation
 
 #### Current
-The repo now has runbooks, reconciliation services, reporting slices, targeted repair tooling, worker heartbeat persistence, scheduled reconciliation scan history, and operator-visible runtime health views, but not a full platform-wide observability stack.
+The repo now has runbooks, reconciliation services, reporting slices, targeted repair tooling, worker heartbeat persistence, scheduled reconciliation scan history, operator-visible runtime health views, structured API request logging with correlation ids, an internal Prometheus-style metrics surface for API and worker boundaries, and alert-routing automation that converts critical platform alerts into manual-intervention review cases, but not a full platform-wide observability stack.
 
 #### Target
 The system must provide:
@@ -232,10 +232,10 @@ The system must provide:
 - incident runbooks
 
 #### Gap
-The repo is more operable than the original baseline, but structured metrics, alert routing, richer incident automation, and broader reconciliation/reporting depth are still missing.
+The repo is more operable than the original baseline, but explicit alert ownership, acknowledgement/suppression policy, external delivery targets, richer incident automation, and broader reconciliation/reporting depth are still missing.
 
 #### Consequence
-Failures would be harder to detect, classify, and repair safely.
+Failures are easier to detect and route internally than before, but escalation consistency and noise control are still weaker than production target state.
 
 ## Transformation Strategy
 

@@ -23,6 +23,8 @@ import {
   dismissLedgerReconciliationMismatch,
   dismissOversightIncident,
   dismissReviewCase,
+  listAuditEvents,
+  getTreasuryOverview,
   getAccountHoldSummary,
   getOperationsStatus,
   getGovernedIncidentPackageExport,
@@ -53,6 +55,8 @@ import {
   resolveOversightIncident,
   resolveReviewCase,
   rejectRelease,
+  routeCriticalPlatformAlerts,
+  routePlatformAlertToReviewCase,
   scanLedgerReconciliation,
   startOversightIncident,
   startReviewCase
@@ -80,6 +84,17 @@ const operatorRoleOptions = [
   "risk_manager",
   "senior_operator",
   "compliance_lead"
+];
+const auditActorTypeOptions = ["", "customer", "operator", "worker", "system"];
+const auditTargetTypeOptions = [
+  "",
+  "CustomerAccount",
+  "CustomerAccountIncidentPackageRelease",
+  "LedgerReconciliationMismatch",
+  "LedgerReconciliationScanRun",
+  "OversightIncident",
+  "ReviewCase",
+  "TransactionIntent"
 ];
 const exportModes = [
   "internal_full",
@@ -189,6 +204,10 @@ function AdminConsole() {
   );
   const [customerSearch, setCustomerSearch] = useState("");
   const deferredCustomerSearch = useDeferredValue(customerSearch.trim());
+  const [auditSearch, setAuditSearch] = useState("");
+  const deferredAuditSearch = useDeferredValue(auditSearch.trim());
+  const [auditActorType, setAuditActorType] = useState("");
+  const [auditTargetType, setAuditTargetType] = useState("");
 
   const [selectedReviewCaseId, setSelectedReviewCaseId] = useState<string | null>(
     null
@@ -316,6 +335,37 @@ function AdminConsole() {
       }),
     enabled: Boolean(operatorSession),
     refetchInterval: 30000
+  });
+
+  const treasuryOverviewQuery = useQuery({
+    queryKey: ["treasuryOverview", operatorSession?.baseUrl],
+    queryFn: () =>
+      getTreasuryOverview(operatorSession!, {
+        walletLimit: 8,
+        activityLimit: 8,
+        alertLimit: 6,
+        staleAfterSeconds: 180
+      }),
+    enabled: Boolean(operatorSession),
+    refetchInterval: 30000
+  });
+
+  const auditEventsQuery = useQuery({
+    queryKey: [
+      "auditEvents",
+      operatorSession?.baseUrl,
+      deferredAuditSearch,
+      auditActorType,
+      auditTargetType
+    ],
+    queryFn: () =>
+      listAuditEvents(operatorSession!, {
+        limit: 12,
+        search: trimToUndefined(deferredAuditSearch),
+        actorType: trimToUndefined(auditActorType),
+        targetType: trimToUndefined(auditTargetType)
+      }),
+    enabled: Boolean(operatorSession)
   });
 
   const reviewCasesQuery = useQuery({
@@ -607,6 +657,11 @@ function AdminConsole() {
     ) ?? null;
 
   const selectedRelease = selectedReleaseQuery.data?.release ?? null;
+  const unroutedCriticalPlatformAlertCount =
+    platformAlertsQuery.data?.alerts.filter(
+      (alert) =>
+        alert.severity === "critical" && alert.routingStatus === "unrouted"
+    ).length ?? 0;
 
   return (
     <div className="shell">
@@ -845,6 +900,214 @@ function AdminConsole() {
             detail="Spike alerts detected"
           />
         </div>
+      </section>
+
+      <section className="panel">
+        <div className="section-heading">
+          <div>
+            <p className="section-kicker">Treasury</p>
+            <h2>Treasury visibility</h2>
+          </div>
+          <p className="section-copy">
+            {treasuryOverviewQuery.data
+              ? `Generated ${formatDateTime(treasuryOverviewQuery.data.generatedAt)}`
+              : "Operational wallet inventory, managed coverage, recent treasury activity, and treasury alerts."}
+          </p>
+        </div>
+
+        {treasuryOverviewQuery.isLoading ? <p>Loading treasury overview...</p> : null}
+
+        {treasuryOverviewQuery.data ? (
+          <>
+            <div className="metrics-grid">
+              <HealthStatusCard
+                label="Coverage"
+                status={treasuryOverviewQuery.data.coverage.status}
+                detail={`${treasuryOverviewQuery.data.coverage.managedWorkerCount} managed workers`}
+              />
+              <MetricCard
+                label="Treasury wallets"
+                value={treasuryOverviewQuery.data.coverage.activeTreasuryWalletCount}
+                detail="Active treasury wallets"
+              />
+              <MetricCard
+                label="Operational wallets"
+                value={treasuryOverviewQuery.data.coverage.activeOperationalWalletCount}
+                detail="Active operational wallets"
+              />
+              <MetricCard
+                label="Customer-linked wallets"
+                value={treasuryOverviewQuery.data.coverage.customerLinkedWalletCount}
+                detail="Treasury or operational wallets linked to a customer account"
+              />
+              <MetricCard
+                label="Treasury alerts"
+                value={treasuryOverviewQuery.data.coverage.openTreasuryAlertCount}
+                detail="Open treasury-scoped platform alerts"
+              />
+              <MetricCard
+                label="Wallet inventory"
+                value={treasuryOverviewQuery.data.walletSummary.totalWalletCount}
+                detail="Treasury and operational wallets on the product chain"
+              />
+            </div>
+
+            <div className="workspace-grid">
+              <section className="panel">
+                <div className="section-heading compact">
+                  <div>
+                    <p className="section-kicker">Wallet Inventory</p>
+                    <h2>Treasury and operational wallets</h2>
+                  </div>
+                </div>
+                <div className="list-stack">
+                  {treasuryOverviewQuery.data.wallets.map((wallet) => (
+                    <article className="list-card" key={wallet.id}>
+                      <div className="list-card-topline">
+                        <strong>{toTitleCase(wallet.kind)}</strong>
+                        <span className={`status-pill ${wallet.status}`}>
+                          {toTitleCase(wallet.status)}
+                        </span>
+                      </div>
+                      <p>{wallet.address}</p>
+                      <p className="muted">
+                        {toTitleCase(wallet.custodyType)} | {wallet.recentIntentCount} linked
+                        intents
+                      </p>
+                      <p className="muted">
+                        Last activity{" "}
+                        {wallet.lastActivityAt
+                          ? formatDateTime(wallet.lastActivityAt)
+                          : "No linked activity"}
+                      </p>
+                      {wallet.customerAssignment ? (
+                        <p className="muted">
+                          Linked customer {wallet.customerAssignment.email ?? "No email"} |{" "}
+                          {wallet.customerAssignment.customerAccountId}
+                        </p>
+                      ) : null}
+                    </article>
+                  ))}
+                  {treasuryOverviewQuery.data.wallets.length === 0 ? (
+                    <p>No treasury wallets were found on the product chain.</p>
+                  ) : null}
+                </div>
+              </section>
+
+              <section className="panel">
+                <div className="section-heading compact">
+                  <div>
+                    <p className="section-kicker">Recent Activity</p>
+                    <h2>Treasury-linked transaction activity</h2>
+                  </div>
+                </div>
+                <div className="list-stack">
+                  {treasuryOverviewQuery.data.recentActivity.map((activity) => (
+                    <article className="list-card" key={activity.transactionIntentId}>
+                      <div className="list-card-topline">
+                        <strong>{toTitleCase(activity.intentType)}</strong>
+                        <span className={`status-pill ${activity.status}`}>
+                          {toTitleCase(activity.status)}
+                        </span>
+                      </div>
+                      <p>
+                        {activity.asset.symbol} {activity.requestedAmount}
+                        {activity.settledAmount
+                          ? ` | Settled ${activity.settledAmount}`
+                          : ""}
+                      </p>
+                      <p className="muted">
+                        Source {activity.sourceWallet?.address ?? "None"} | Destination{" "}
+                        {activity.destinationWallet?.address ??
+                          activity.externalAddress ??
+                          "None"}
+                      </p>
+                      <p className="muted">
+                        Created {formatDateTime(activity.createdAt)} | Policy{" "}
+                        {toTitleCase(activity.policyDecision)}
+                      </p>
+                      {activity.latestBlockchainTransaction ? (
+                        <p className="muted">
+                          Tx {activity.latestBlockchainTransaction.txHash ?? "Pending hash"} |{" "}
+                          {toTitleCase(activity.latestBlockchainTransaction.status)}
+                        </p>
+                      ) : null}
+                    </article>
+                  ))}
+                  {treasuryOverviewQuery.data.recentActivity.length === 0 ? (
+                    <p>No treasury-linked activity was found in recent intents.</p>
+                  ) : null}
+                </div>
+              </section>
+            </div>
+
+            <div className="workspace-grid">
+              <section className="panel">
+                <div className="section-heading compact">
+                  <div>
+                    <p className="section-kicker">Managed Workers</p>
+                    <h2>Managed execution coverage</h2>
+                  </div>
+                </div>
+                <div className="list-stack">
+                  {treasuryOverviewQuery.data.managedWorkers.map((worker) => (
+                    <article className="list-card" key={worker.workerId}>
+                      <div className="list-card-topline">
+                        <strong>{worker.workerId}</strong>
+                        <span className={`status-pill ${worker.healthStatus}`}>
+                          {toTitleCase(worker.healthStatus)}
+                        </span>
+                      </div>
+                      <p>
+                        {toTitleCase(worker.environment)} | Last heartbeat{" "}
+                        {formatDateTime(worker.lastHeartbeatAt)}
+                      </p>
+                      <p className="muted">
+                        Iteration {toTitleCase(worker.lastIterationStatus)} | Failures{" "}
+                        {worker.consecutiveFailureCount}
+                      </p>
+                      {worker.lastErrorMessage ? (
+                        <p className="muted">{worker.lastErrorMessage}</p>
+                      ) : null}
+                    </article>
+                  ))}
+                  {treasuryOverviewQuery.data.managedWorkers.length === 0 ? (
+                    <p>No managed workers are currently registered.</p>
+                  ) : null}
+                </div>
+              </section>
+
+              <section className="panel">
+                <div className="section-heading compact">
+                  <div>
+                    <p className="section-kicker">Treasury Alerts</p>
+                    <h2>Open treasury alerts</h2>
+                  </div>
+                </div>
+                <div className="list-stack">
+                  {treasuryOverviewQuery.data.recentAlerts.map((alert) => (
+                    <article className="list-card" key={alert.id}>
+                      <div className="list-card-topline">
+                        <strong>{alert.code}</strong>
+                        <span className={`status-pill ${alert.severity}`}>
+                          {toTitleCase(alert.severity)}
+                        </span>
+                      </div>
+                      <p>{alert.summary}</p>
+                      <p className="muted">
+                        Last detected {formatDateTime(alert.lastDetectedAt)}
+                      </p>
+                      {alert.detail ? <p className="muted">{alert.detail}</p> : null}
+                    </article>
+                  ))}
+                  {treasuryOverviewQuery.data.recentAlerts.length === 0 ? (
+                    <p>No open treasury alerts.</p>
+                  ) : null}
+                </div>
+              </section>
+            </div>
+          </>
+        ) : null}
       </section>
 
       <div className="workspace-grid">
@@ -1159,6 +1422,99 @@ function AdminConsole() {
         </section>
       </div>
 
+      <section className="panel">
+        <div className="section-heading">
+          <div>
+            <p className="section-kicker">Audit Trail</p>
+            <h2>Platform audit log</h2>
+          </div>
+          <p className="section-copy">
+            Cross-domain operator, worker, customer, and system events without
+            direct database access.
+          </p>
+        </div>
+
+        <div className="split-form">
+          <label>
+            Search
+            <input
+              value={auditSearch}
+              onChange={(event) => setAuditSearch(event.target.value)}
+              placeholder="Action, actor id, target id, or customer email"
+            />
+          </label>
+          <label>
+            Actor type
+            <select
+              value={auditActorType}
+              onChange={(event) => setAuditActorType(event.target.value)}
+            >
+              {auditActorTypeOptions.map((option) => (
+                <option key={option || "all"} value={option}>
+                  {option ? toTitleCase(option) : "All actors"}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Target type
+            <select
+              value={auditTargetType}
+              onChange={(event) => setAuditTargetType(event.target.value)}
+            >
+              {auditTargetTypeOptions.map((option) => (
+                <option key={option || "all"} value={option}>
+                  {option ? option : "All targets"}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+
+        <div className="list-stack">
+          {auditEventsQuery.isLoading ? <p>Loading audit log...</p> : null}
+          {auditEventsQuery.data?.events.map((event) => {
+            const customerLabel = event.customer
+              ? event.customer.email ??
+                formatName(event.customer.firstName, event.customer.lastName) ??
+                event.customer.supabaseUserId ??
+                event.customer.customerId
+              : "No linked customer";
+            const metadataPreview = event.metadata
+              ? shortenValue(JSON.stringify(event.metadata), 220)
+              : null;
+
+            return (
+              <article className="list-card" key={event.id}>
+                <div className="list-card-topline">
+                  <strong>{event.action}</strong>
+                  <span>{formatDateTime(event.createdAt)}</span>
+                </div>
+                <p>
+                  {event.targetType}
+                  {event.targetId ? ` ${shortenValue(event.targetId, 30)}` : ""}
+                </p>
+                <p className="muted">
+                  Actor {event.actorType}
+                  {event.actorId ? `:${event.actorId}` : ""} | Customer{" "}
+                  {customerLabel}
+                </p>
+                {metadataPreview ? <p className="muted">{metadataPreview}</p> : null}
+                {event.metadata ? (
+                  <details>
+                    <summary>Metadata</summary>
+                    <pre>{JSON.stringify(event.metadata, null, 2)}</pre>
+                  </details>
+                ) : null}
+              </article>
+            );
+          })}
+          {auditEventsQuery.data && auditEventsQuery.data.events.length === 0 ? (
+            <p>No audit events matched the current filters.</p>
+          ) : null}
+        </div>
+      </section>
+
       <div className="workspace-grid">
         <section className="panel">
           <div className="section-heading compact">
@@ -1166,6 +1522,30 @@ function AdminConsole() {
               <p className="section-kicker">Platform Alerts</p>
               <h2>Open operational alerts</h2>
             </div>
+            <button
+              className="button primary"
+              disabled={
+                !operatorSession ||
+                pendingAction !== null ||
+                unroutedCriticalPlatformAlertCount === 0
+              }
+              onClick={() =>
+                executeAction(
+                  "route-critical-platform-alerts",
+                  "Critical platform alerts routed.",
+                  async () => {
+                    const result = await routeCriticalPlatformAlerts(operatorSession!, {
+                      limit: 10,
+                      staleAfterSeconds: 180
+                    });
+                    setSelectedReviewCaseId(result.routedAlerts[0]?.reviewCase.id ?? null);
+                  }
+                )
+              }
+              type="button"
+            >
+              Route critical alerts
+            </button>
           </div>
 
           <div className="list-stack">
@@ -1192,7 +1572,61 @@ function AdminConsole() {
                     Code {alert.code} | Last detected {formatDateTime(alert.lastDetectedAt)}
                   </p>
                   {alert.detail ? <p className="muted">{alert.detail}</p> : null}
+                  <p className="muted">
+                    Routing{" "}
+                    {alert.routingStatus === "routed"
+                      ? `routed${
+                          alert.routedAt
+                            ? ` ${formatDateTime(alert.routedAt)}`
+                            : ""
+                        }${alert.routedByOperatorId ? ` by ${alert.routedByOperatorId}` : ""}`
+                      : "pending"}
+                    {alert.routingTargetId ? ` | Review case ${alert.routingTargetId}` : ""}
+                  </p>
+                  {alert.routingNote ? (
+                    <p className="muted">Routing note {alert.routingNote}</p>
+                  ) : null}
                   {runbookPath ? <p className="muted">Runbook {runbookPath}</p> : null}
+                  <div className="action-grid">
+                    <button
+                      className="button primary"
+                      disabled={!operatorSession || pendingAction !== null}
+                      onClick={() =>
+                        executeAction(
+                          `route-platform-alert-${alert.id}`,
+                          alert.routingStatus === "routed"
+                            ? "Platform alert rerouted to review case."
+                            : "Platform alert routed to review case.",
+                          async () => {
+                            const result = await routePlatformAlertToReviewCase(
+                              operatorSession!,
+                              alert.id
+                            );
+                            setSelectedReviewCaseId(result.reviewCase.id);
+                          }
+                        )
+                      }
+                      type="button"
+                    >
+                      {alert.routingStatus === "routed"
+                        ? "Route again"
+                        : "Route review case"}
+                    </button>
+                    <button
+                      className="button"
+                      disabled={
+                        !alert.routingTargetId || !operatorSession || pendingAction !== null
+                      }
+                      onClick={() => {
+                        startTransition(() => {
+                          setSelectedReviewCaseId(alert.routingTargetId);
+                        });
+                      }}
+                      type="button"
+                    >
+                      Inspect review case
+                    </button>
+                  </div>
                 </article>
               );
             })}

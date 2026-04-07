@@ -3,8 +3,10 @@ import type {
   AccountHoldList,
   AccountHoldSummary,
   AccountReleaseReviewList,
+  AuditEventList,
   ApiResponseEnvelope,
   ApplyManualResolutionResult,
+  CriticalPlatformAlertRoutingResult,
   GovernedIncidentPackageExport,
   IncidentPackageReleaseList,
   IncidentPackageReleaseMutationResult,
@@ -19,6 +21,7 @@ import type {
   OversightAlertList,
   OversightIncidentList,
   PlatformAlertList,
+  PlatformAlertRouteResult,
   OversightMutationResult,
   OversightNoteMutationResult,
   OversightRestrictionMutationResult,
@@ -28,6 +31,7 @@ import type {
   ReviewCaseNoteMutationResult,
   ReviewCaseWorkspace,
   ScanLedgerReconciliationResult,
+  TreasuryOverview,
   WorkerRuntimeHealthList
 } from "./types";
 
@@ -70,6 +74,28 @@ export async function listReviewCases(
   return requestData(session, {
     method: "GET",
     url: "/review-cases/internal",
+    params
+  });
+}
+
+export async function listAuditEvents(
+  session: OperatorSession,
+  params: Record<string, string | number | undefined>
+): Promise<AuditEventList> {
+  return requestData(session, {
+    method: "GET",
+    url: "/audit-events/internal",
+    params
+  });
+}
+
+export async function getTreasuryOverview(
+  session: OperatorSession,
+  params: Record<string, string | number | undefined>
+): Promise<TreasuryOverview> {
+  return requestData(session, {
+    method: "GET",
+    url: "/treasury/internal/overview",
     params
   });
 }
@@ -211,6 +237,33 @@ export async function listPlatformAlerts(
     method: "GET",
     url: "/operations/internal/alerts",
     params
+  });
+}
+
+export async function routePlatformAlertToReviewCase(
+  session: OperatorSession,
+  alertId: string,
+  note?: string
+): Promise<PlatformAlertRouteResult> {
+  return requestData(session, {
+    method: "POST",
+    url: `/operations/internal/alerts/${alertId}/route-review-case`,
+    data: note ? { note } : {}
+  });
+}
+
+export async function routeCriticalPlatformAlerts(
+  session: OperatorSession,
+  payload: {
+    limit?: number;
+    staleAfterSeconds?: number;
+    note?: string;
+  } = {}
+): Promise<CriticalPlatformAlertRoutingResult> {
+  return requestData(session, {
+    method: "POST",
+    url: "/operations/internal/alerts/route-critical",
+    data: payload
   });
 }
 

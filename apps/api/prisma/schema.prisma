@@ -576,22 +576,29 @@ model WorkerRuntimeHeartbeat {
 }
 
 model PlatformAlert {
-  id              String                @id @default(cuid())
-  dedupeKey       String                @unique
-  category        PlatformAlertCategory
-  severity        PlatformAlertSeverity
-  status          PlatformAlertStatus   @default(open)
-  code            String
-  summary         String
-  detail          String?
-  metadata        Json?
-  firstDetectedAt DateTime              @default(now())
-  lastDetectedAt  DateTime              @default(now())
-  resolvedAt      DateTime?
-  createdAt       DateTime              @default(now())
-  updatedAt       DateTime              @updatedAt
+  id                String                         @id @default(cuid())
+  dedupeKey         String                         @unique
+  category          PlatformAlertCategory
+  severity          PlatformAlertSeverity
+  status            PlatformAlertStatus            @default(open)
+  routingStatus     PlatformAlertRoutingStatus     @default(unrouted)
+  routingTargetType PlatformAlertRoutingTargetType?
+  routingTargetId   String?
+  routedAt          DateTime?
+  routedByOperatorId String?
+  routingNote       String?
+  code              String
+  summary           String
+  detail            String?
+  metadata          Json?
+  firstDetectedAt   DateTime                       @default(now())
+  lastDetectedAt    DateTime                       @default(now())
+  resolvedAt        DateTime?
+  createdAt         DateTime                       @default(now())
+  updatedAt         DateTime                       @updatedAt
 
   @@index([status, severity, updatedAt])
+  @@index([status, routingStatus, updatedAt])
   @@index([category, status, updatedAt])
   @@index([code, status, updatedAt])
   @@index([lastDetectedAt])
@@ -659,6 +666,15 @@ enum PlatformAlertSeverity {
 enum PlatformAlertStatus {
   open
   resolved
+}
+
+enum PlatformAlertRoutingStatus {
+  unrouted
+  routed
+}
+
+enum PlatformAlertRoutingTargetType {
+  review_case
 }
 
 enum WorkerRuntimeEnvironment {

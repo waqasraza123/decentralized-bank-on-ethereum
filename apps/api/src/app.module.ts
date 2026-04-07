@@ -1,4 +1,5 @@
 import { Module } from "@nestjs/common";
+import { AuditEventsModule } from "./audit-events/audit-events.module";
 import { AuthModule } from "./auth/auth.module";
 import { CustomerAccountIncidentPackageModule } from "./customer-account-incident-package/customer-account-incident-package.module";
 import { CustomerAccountOperationsModule } from "./customer-account-operations/customer-account-operations.module";
@@ -12,10 +13,12 @@ import { ReviewCasesModule } from "./review-cases/review-cases.module";
 import { StakingPoolModule } from "./staking/staking.module";
 import { SupportedAssetsModule } from "./supported-assets/supported-assets.module";
 import { TransactionIntentsModule } from "./transaction-intents/transaction-intents.module";
+import { TreasuryModule } from "./treasury/treasury.module";
 import { UserModule } from "./user/user.module";
 
 @Module({
   imports: [
+    AuditEventsModule,
     AuthModule,
     UserModule,
     PoolsModule,
@@ -24,6 +27,7 @@ import { UserModule } from "./user/user.module";
     LedgerReconciliationModule,
     OperationsMonitoringModule,
     SupportedAssetsModule,
+    TreasuryModule,
     TransactionIntentsModule,
     CustomerBalancesModule,
     ReviewCasesModule,

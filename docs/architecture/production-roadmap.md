@@ -13,9 +13,15 @@ It is intentionally phase-based so each step can be implemented, verified, and c
 - Phase 6 is materially advanced through the worker runtime and internal worker execution paths.
 - Phase 7 is partially implemented through ledger journals/postings, balance materialization, and reconciliation services.
 - Phase 8 and Phase 9 are materially advanced through the current API and truthful customer web surfaces.
-- Phase 10 has begun through the operator console for review, oversight, hold-release, and export-governance workflows.
-- Phase 11 is materially advanced through worker heartbeat reporting, scheduled reconciliation scan history, durable platform alerts, and operator-visible runtime health.
+- Phase 10 is materially complete at the operator-visibility level through the console for review, oversight, hold-release, reconciliation mismatch, governed export, audit-log, and treasury visibility workflows.
+- Phase 11 is materially advanced through worker heartbeat reporting, scheduled reconciliation scan history, durable platform alerts, operator-visible runtime health, structured API request logging with request correlation IDs, an internal Prometheus-style metrics surface spanning API requests and worker execution, and alert-routing automation that opens manual-intervention review cases from platform alerts.
 - Phase 12 has begun through the repo-specific threat model, secret handling review, role review, restore and rollback drills, and launch checklist, but release proof remains outstanding.
+
+Current active execution frontier:
+- Phase 11 hardening
+
+Immediate next execution step:
+- add explicit alert ownership, acknowledgement, and suppression policy on top of routed platform alerts
 
 ## Phase Order
 
@@ -251,12 +257,13 @@ Create the internal operating surface required for a professional platform.
 - customer search
 - review and hold flows
 - incident actions
+- reconciliation mismatch review and repair
 - governed incident package release workflows
+- audit log inspection
+- treasury visibility
 
 ### Remaining Areas
-- treasury visibility
-- reconciliation mismatch view
-- audit log view
+- none currently identified in the admin visibility surface
 
 ### Exit Criteria
 - operators can manage the system without direct DB access or log diving for routine actions
