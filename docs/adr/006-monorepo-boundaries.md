@@ -8,9 +8,14 @@
 The current monorepo contains:
 - `apps/web`
 - `apps/api`
+- `apps/admin`
+- `apps/worker`
 - `packages/contracts`
+- `packages/config`
+- `packages/db`
+- `packages/types`
 
-That structure is sufficient for a prototype, but it is not sufficient for the target production system.
+That structure was sufficient for a prototype, but it was not sufficient for the target production system.
 
 The repository needs clearer boundaries so that:
 - customer UI

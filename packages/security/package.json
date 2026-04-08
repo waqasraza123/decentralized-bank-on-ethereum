@@ -1,0 +1,31 @@
+{
+  "name": "@stealth-trails-bank/security",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Shared security helpers for Stealth Trails Bank",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "exports": {
+    ".": {
+      "types": "./src/headers.ts",
+      "import": "./src/headers.ts",
+      "require": "./dist/index.js"
+    },
+    "./node": {
+      "types": "./dist/node.d.ts",
+      "import": "./dist/node.js",
+      "require": "./dist/node.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "clean": "rm -rf dist"
+  },
+  "devDependencies": {
+    "@types/node": "^22.5.5",
+    "typescript": "^5.7.3"
+  }
+}

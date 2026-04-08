@@ -1,3 +1,8 @@
+import {
+  createErc20TransferContract,
+  createJsonRpcProvider,
+  parseAssetAmount
+} from "@stealth-trails-bank/contracts-sdk";
 import { ethers } from "ethers";
 import type { WorkerRuntime } from "./worker-runtime";
 import type {
@@ -6,10 +11,6 @@ import type {
   ManagedExecutionFailure,
   WorkerIntentProjection
 } from "./worker-types";
-
-const ERC20_TRANSFER_ABI = [
-  "function transfer(address to, uint256 amount) returns (bool)"
-] as const;
 
 type ManagedDepositTransferPlan =
   | {
@@ -58,10 +59,7 @@ export function buildManagedDepositTransferPlan(
   let amount: ethers.BigNumber;
 
   try {
-    amount = ethers.utils.parseUnits(
-      intent.requestedAmount,
-      intent.asset.decimals
-    );
+    amount = parseAssetAmount(intent.requestedAmount, intent.asset.decimals);
   } catch {
     throw new ManagedExecutionIntentError({
       failureCode: "invalid_requested_amount",
@@ -147,7 +145,7 @@ export function createManagedDepositBroadcaster(
     );
   }
 
-  const provider = new ethers.providers.JsonRpcProvider(runtime.rpcUrl);
+  const provider = createJsonRpcProvider(runtime.rpcUrl);
   const signer = new ethers.Wallet(runtime.depositSignerPrivateKey, provider);
   const signerAddress = signer.address;
 
@@ -170,11 +168,7 @@ export function createManagedDepositBroadcaster(
           };
         }
 
-        const contract = new ethers.Contract(
-          plan.contractAddress,
-          ERC20_TRANSFER_ABI,
-          signer
-        );
+        const contract = createErc20TransferContract(plan.contractAddress, signer);
         const response = await contract.transfer(
           plan.destinationAddress,
           plan.amount

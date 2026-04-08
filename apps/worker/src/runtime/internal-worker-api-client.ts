@@ -1,4 +1,5 @@
 import axios, { type AxiosInstance } from "axios";
+import { buildInternalWorkerHeaders } from "@stealth-trails-bank/security";
 import type { WorkerRuntime } from "./worker-runtime";
 import type {
   ConfirmIntentPayload,
@@ -95,10 +96,10 @@ export function createInternalWorkerApiClient(runtime: WorkerRuntime) {
   const httpClient: AxiosInstance = axios.create({
     baseURL: runtime.internalApiBaseUrl,
     timeout: runtime.requestTimeoutMs,
-    headers: {
-      "x-worker-api-key": runtime.internalWorkerApiKey,
-      "x-worker-id": runtime.workerId
-    }
+    headers: buildInternalWorkerHeaders({
+      apiKey: runtime.internalWorkerApiKey,
+      workerId: runtime.workerId
+    })
   });
   const baseUrl = runtime.internalApiBaseUrl;
 

@@ -1,6 +1,6 @@
 import { Injectable } from "@nestjs/common";
+import { formatEthAmount } from "@stealth-trails-bank/contracts-sdk";
 import { PoolStatus, StakingPool } from "@prisma/client";
-import { ethers } from "ethers";
 import { PrismaService } from "../prisma/prisma.service";
 
 @Injectable()
@@ -8,7 +8,7 @@ export class PoolsService {
     constructor(private readonly prismaService: PrismaService) { }
 
     private formatStoredAmountToEth(value: bigint): string {
-        return ethers.utils.formatEther(value.toString());
+        return formatEthAmount(value.toString());
     }
 
     async getPools(status?: string): Promise<any[]> {

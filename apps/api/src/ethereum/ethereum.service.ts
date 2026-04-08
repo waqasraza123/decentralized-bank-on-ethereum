@@ -1,12 +1,11 @@
 import { Injectable, Logger, OnModuleInit } from "@nestjs/common";
 import { loadOptionalBlockchainContractReadRuntimeConfig } from "@stealth-trails-bank/config/api";
+import {
+  createJsonRpcProvider,
+  createStakingEventContract
+} from "@stealth-trails-bank/contracts-sdk";
 import { ethers } from "ethers";
 import { PrismaService } from "../prisma/prisma.service";
-
-const stakingEventAbi = [
-  "event PoolCreated(uint256 poolId, uint256 rewardRate, uint256 externalPoolId)",
-  "event Deposited(address indexed user, uint256 poolId, uint256 amount)"
-];
 
 @Injectable()
 export class EthereumService implements OnModuleInit {
@@ -17,9 +16,7 @@ export class EthereumService implements OnModuleInit {
   constructor(private readonly prismaService: PrismaService) {
     const runtimeConfig = loadOptionalBlockchainContractReadRuntimeConfig();
 
-    this.provider = new ethers.providers.JsonRpcProvider(
-      runtimeConfig.rpcUrl
-    );
+    this.provider = createJsonRpcProvider(runtimeConfig.rpcUrl);
 
     if (!runtimeConfig.stakingContractAddress) {
       if (runtimeConfig.environment === "production") {
@@ -35,9 +32,8 @@ export class EthereumService implements OnModuleInit {
       return;
     }
 
-    this.stakingContract = new ethers.Contract(
+    this.stakingContract = createStakingEventContract(
       runtimeConfig.stakingContractAddress,
-      stakingEventAbi,
       this.provider
     );
   }

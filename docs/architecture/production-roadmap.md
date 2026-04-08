@@ -8,7 +8,7 @@ It is intentionally phase-based so each step can be implemented, verified, and c
 
 ## Current Execution Status
 
-- Phase 1 is materially complete at the repo-boundary level: `apps/admin`, `apps/worker`, `packages/db`, `packages/types`, and `packages/config` now exist.
+- Phase 1 is complete at the repo-boundary level: `apps/admin`, `apps/worker`, `packages/db`, `packages/types`, `packages/config`, `packages/contracts-sdk`, and `packages/security` now exist and are exercised by real runtime code.
 - Phase 2 and Phase 3 are materially advanced through the current Prisma domain model, customer-account slices, and auth/account lifecycle work.
 - Phase 6 is materially advanced through the worker runtime and internal worker execution paths.
 - Phase 7 is partially implemented through ledger journals/postings, balance materialization, and reconciliation services.
@@ -75,8 +75,7 @@ Strengthen and use the production boundaries already introduced in the repositor
 - `packages/config`
 
 ### Remaining Outputs
-- `packages/contracts-sdk`
-- `packages/security`
+- none currently identified at the repo-boundary level
 
 ### Rules
 - additive first

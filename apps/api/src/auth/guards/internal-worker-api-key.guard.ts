@@ -4,8 +4,8 @@ import {
   Injectable,
   UnauthorizedException
 } from "@nestjs/common";
-import { timingSafeEqual } from "node:crypto";
 import { loadInternalWorkerRuntimeConfig } from "@stealth-trails-bank/config/api";
+import { matchesApiKey, readHeaderValue } from "@stealth-trails-bank/security/node";
 
 type InternalWorkerRequest = {
   headers: Record<string, string | string[] | undefined>;
@@ -16,45 +16,10 @@ type InternalWorkerRequest = {
 
 @Injectable()
 export class InternalWorkerApiKeyGuard implements CanActivate {
-  private readHeaderValue(
-    request: InternalWorkerRequest,
-    headerName: string
-  ): string | null {
-    const normalizedHeaderName = headerName.toLowerCase();
-    const headerValue =
-      request.headers[normalizedHeaderName] ?? request.headers[headerName];
-
-    if (typeof headerValue === "string") {
-      const normalizedHeaderValue = headerValue.trim();
-      return normalizedHeaderValue ? normalizedHeaderValue : null;
-    }
-
-    if (Array.isArray(headerValue) && headerValue.length > 0) {
-      const firstHeaderValue = headerValue[0]?.trim() ?? "";
-      return firstHeaderValue ? firstHeaderValue : null;
-    }
-
-    return null;
-  }
-
-  private matchesApiKey(
-    providedApiKey: string,
-    configuredApiKey: string
-  ): boolean {
-    const providedBuffer = Buffer.from(providedApiKey);
-    const configuredBuffer = Buffer.from(configuredApiKey);
-
-    if (providedBuffer.length !== configuredBuffer.length) {
-      return false;
-    }
-
-    return timingSafeEqual(providedBuffer, configuredBuffer);
-  }
-
   canActivate(context: ExecutionContext): boolean {
     const request = context.switchToHttp().getRequest<InternalWorkerRequest>();
-    const providedApiKey = this.readHeaderValue(request, "x-worker-api-key");
-    const workerId = this.readHeaderValue(request, "x-worker-id");
+    const providedApiKey = readHeaderValue(request.headers, "x-worker-api-key");
+    const workerId = readHeaderValue(request.headers, "x-worker-id");
 
     if (!providedApiKey) {
       throw new UnauthorizedException("Missing worker API key.");
@@ -66,7 +31,7 @@ export class InternalWorkerApiKeyGuard implements CanActivate {
 
     const { internalWorkerApiKey } = loadInternalWorkerRuntimeConfig();
 
-    if (!this.matchesApiKey(providedApiKey, internalWorkerApiKey)) {
+    if (!matchesApiKey(providedApiKey, internalWorkerApiKey)) {
       throw new UnauthorizedException("Invalid worker API key.");
     }
 

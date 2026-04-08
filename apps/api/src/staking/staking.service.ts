@@ -7,6 +7,14 @@ import {
 } from "@nestjs/common";
 import { loadOptionalBlockchainContractWriteRuntimeConfig } from "@stealth-trails-bank/config/api";
 import {
+  createJsonRpcProvider,
+  createStakingReadContract,
+  createStakingWriteContract,
+  createStakingWriteWallet,
+  formatEthAmount,
+  parseEthAmount
+} from "@stealth-trails-bank/contracts-sdk";
+import {
   AccountLifecycleStatus,
   PoolStatus,
   WalletCustodyType,
@@ -14,7 +22,6 @@ import {
 } from "@prisma/client";
 import { randomUUID } from "node:crypto";
 import { ethers } from "ethers";
-import stakingAbi from "../abis/staking.abi.json";
 import {
   AuthService,
   type CustomerAccountProjection,
@@ -92,7 +99,7 @@ export class StakingService {
   ) {
     const runtimeConfig = loadOptionalBlockchainContractWriteRuntimeConfig();
 
-    this.provider = new ethers.providers.JsonRpcProvider(runtimeConfig.rpcUrl);
+    this.provider = createJsonRpcProvider(runtimeConfig.rpcUrl);
 
     if (!runtimeConfig.stakingContractAddress) {
       if (runtimeConfig.environment === "production") {
@@ -110,9 +117,8 @@ export class StakingService {
       return;
     }
 
-    this.readContract = new ethers.Contract(
+    this.readContract = createStakingReadContract(
       runtimeConfig.stakingContractAddress,
-      stakingAbi,
       this.provider
     );
 
@@ -125,13 +131,12 @@ export class StakingService {
       return;
     }
 
-    this.writeWallet = new ethers.Wallet(
+    this.writeWallet = createStakingWriteWallet(
       runtimeConfig.ethereumPrivateKey,
       this.provider
     );
-    this.writeContract = new ethers.Contract(
+    this.writeContract = createStakingWriteContract(
       runtimeConfig.stakingContractAddress,
-      stakingAbi,
       this.writeWallet
     );
   }
@@ -157,16 +162,16 @@ export class StakingService {
   }
 
   private formatWeiToEth(value: ethers.BigNumberish): string {
-    return ethers.utils.formatEther(value);
+    return formatEthAmount(value);
   }
 
   private formatStoredAmountToEth(value: bigint): string {
-    return ethers.utils.formatEther(value.toString());
+    return formatEthAmount(value.toString());
   }
 
   private parseEthAmount(value: string): ethers.BigNumber {
     try {
-      const parsedAmount = ethers.utils.parseEther(value.trim());
+      const parsedAmount = parseEthAmount(value);
 
       if (parsedAmount.lte(0)) {
         throw new Error("Amount must be greater than zero.");

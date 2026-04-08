@@ -17,6 +17,8 @@
   },
   "dependencies": {
     "@stealth-trails-bank/config": "workspace:*",
+    "@stealth-trails-bank/contracts-sdk": "workspace:*",
+    "@stealth-trails-bank/security": "workspace:*",
     "@stealth-trails-bank/types": "workspace:*",
     "axios": "^1.7.9",
     "ethers": "^5.7.2"

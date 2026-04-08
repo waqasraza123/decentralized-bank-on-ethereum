@@ -1,6 +1,6 @@
+import { normalizeEvmAddress } from "@stealth-trails-bank/contracts-sdk";
 import { createStealthTrailsPrismaClient } from "@stealth-trails-bank/db";
 import type { Customer } from "@prisma/client";
-import { ethers } from "ethers";
 
 export type LegacyUserRecord = {
   id: number;
@@ -57,24 +57,16 @@ export function normalizeLegacyWalletAddress(address: string | null): {
   normalizedAddress: string | null;
   reason?: string;
 } {
-  const rawAddress = address?.trim() ?? "";
+  const normalized = normalizeEvmAddress(address);
 
-  if (!rawAddress) {
-    return {
-      normalizedAddress: null
-    };
-  }
-
-  if (!ethers.utils.isAddress(rawAddress)) {
+  if (!normalized.normalizedAddress && normalized.reason) {
     return {
       normalizedAddress: null,
       reason: "Legacy ethereumAddress is not a valid EVM address."
     };
   }
 
-  return {
-    normalizedAddress: ethers.utils.getAddress(rawAddress).toLowerCase()
-  };
+  return normalized;
 }
 
 export function normalizeProjectedWalletAddress(address: string): string {

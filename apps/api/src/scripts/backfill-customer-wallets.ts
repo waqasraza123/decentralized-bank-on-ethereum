@@ -1,4 +1,5 @@
 import { loadDatabaseRuntimeConfig } from "@stealth-trails-bank/config/api";
+import { normalizeEvmAddress } from "@stealth-trails-bank/contracts-sdk";
 import { createStealthTrailsPrismaClient } from "@stealth-trails-bank/db";
 import {
   AccountLifecycleStatus,
@@ -8,7 +9,6 @@ import {
   type Customer,
   type Prisma
 } from "@prisma/client";
-import { ethers } from "ethers";
 
 type ScriptOptions = {
   applyChanges: boolean;
@@ -126,24 +126,16 @@ function normalizeWalletAddress(address: string | null): {
   normalizedAddress: string | null;
   reason?: string;
 } {
-  const rawAddress = address?.trim() ?? "";
+  const normalized = normalizeEvmAddress(address);
 
-  if (!rawAddress) {
-    return {
-      normalizedAddress: null
-    };
-  }
-
-  if (!ethers.utils.isAddress(rawAddress)) {
+  if (!normalized.normalizedAddress && normalized.reason) {
     return {
       normalizedAddress: null,
       reason: "Legacy ethereumAddress is not a valid EVM address."
     };
   }
 
-  return {
-    normalizedAddress: ethers.utils.getAddress(rawAddress).toLowerCase()
-  };
+  return normalized;
 }
 
 function resolveExistingCustomer(

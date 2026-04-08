@@ -55,7 +55,9 @@ The system still needs broader production coverage in areas such as:
 | `apps/api` | Backend API, workflow orchestration, persistence, and internal operational paths |
 | `apps/worker` | Async worker runtime for internal execution and blockchain monitoring |
 | `packages/config` | Shared runtime config loading and validation |
+| `packages/contracts-sdk` | Shared ABI ownership, chain adapters, and contract integration helpers |
 | `packages/db` | Shared Prisma client access |
+| `packages/security` | Shared header/auth hardening helpers and other reusable security utilities |
 | `packages/types` | Shared TypeScript contracts and types |
 | `packages/contracts` | Hardhat contracts package and contract tests |
 | `docs/` | Architecture, ADRs, runbooks, and operational notes |

@@ -3,6 +3,7 @@ import {
   ReleaseReadinessEnvironment,
   ReleaseReadinessEvidenceType
 } from "@prisma/client";
+import { buildInternalOperatorHeaders } from "@stealth-trails-bank/security";
 
 type ApiEnvelope<T> = {
   status: "success" | "failed";
@@ -172,15 +173,11 @@ function normalizeBaseUrl(baseUrl: string): string {
 function createClient(session: ReleaseReadinessDrillSession): AxiosInstance {
   return axios.create({
     baseURL: normalizeBaseUrl(session.baseUrl),
-    headers: {
-      "x-operator-api-key": session.apiKey.trim(),
-      "x-operator-id": session.operatorId.trim(),
-      ...(session.operatorRole?.trim()
-        ? {
-            "x-operator-role": session.operatorRole.trim().toLowerCase()
-          }
-        : {})
-    },
+    headers: buildInternalOperatorHeaders({
+      apiKey: session.apiKey,
+      operatorId: session.operatorId,
+      operatorRole: session.operatorRole
+    }),
     timeout: 15_000
   });
 }
