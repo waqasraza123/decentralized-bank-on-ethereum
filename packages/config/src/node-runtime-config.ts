@@ -38,6 +38,16 @@ const DEFAULT_INCIDENT_PACKAGE_RELEASE_APPROVER_ALLOWED_OPERATOR_ROLES = [
 ] as const;
 const DEFAULT_INCIDENT_PACKAGE_RELEASE_APPROVAL_EXPIRY_HOURS = 72;
 const DEFAULT_PLATFORM_ALERT_DELIVERY_REQUEST_TIMEOUT_MS = 5_000;
+const DEFAULT_PLATFORM_ALERT_DELIVERY_HEALTH_SLO_LOOKBACK_HOURS = 24;
+const DEFAULT_PLATFORM_ALERT_DELIVERY_HEALTH_SLO_MINIMUM_RECENT_DELIVERIES = 3;
+const DEFAULT_PLATFORM_ALERT_DELIVERY_HEALTH_SLO_WARNING_FAILURE_RATE_PERCENT = 25;
+const DEFAULT_PLATFORM_ALERT_DELIVERY_HEALTH_SLO_CRITICAL_FAILURE_RATE_PERCENT = 50;
+const DEFAULT_PLATFORM_ALERT_DELIVERY_HEALTH_SLO_WARNING_PENDING_COUNT = 2;
+const DEFAULT_PLATFORM_ALERT_DELIVERY_HEALTH_SLO_CRITICAL_PENDING_COUNT = 5;
+const DEFAULT_PLATFORM_ALERT_DELIVERY_HEALTH_SLO_WARNING_AVERAGE_LATENCY_MS = 15_000;
+const DEFAULT_PLATFORM_ALERT_DELIVERY_HEALTH_SLO_CRITICAL_AVERAGE_LATENCY_MS = 60_000;
+const DEFAULT_PLATFORM_ALERT_DELIVERY_HEALTH_SLO_WARNING_CONSECUTIVE_FAILURES = 2;
+const DEFAULT_PLATFORM_ALERT_DELIVERY_HEALTH_SLO_CRITICAL_CONSECUTIVE_FAILURES = 3;
 const DEFAULT_PLATFORM_ALERT_REESCALATION_UNACKNOWLEDGED_SECONDS = 900;
 const DEFAULT_PLATFORM_ALERT_REESCALATION_UNOWNED_SECONDS = 600;
 const DEFAULT_PLATFORM_ALERT_REESCALATION_REPEAT_SECONDS = 1800;
@@ -81,6 +91,29 @@ function parsePositiveInteger(value: string, name: string): number {
   }
 
   return parsedValue;
+}
+
+function parsePositiveIntegerLike(value: unknown, name: string): number {
+  if (!Number.isInteger(value) || Number(value) <= 0) {
+    throw new Error(`${name} must be a positive integer.`);
+  }
+
+  return Number(value);
+}
+
+function parseIntegerInRange(
+  value: unknown,
+  name: string,
+  minimum: number,
+  maximum: number
+): number {
+  if (!Number.isInteger(value) || Number(value) < minimum || Number(value) > maximum) {
+    throw new Error(
+      `${name} must be an integer between ${minimum} and ${maximum}.`
+    );
+  }
+
+  return Number(value);
 }
 
 function parseApiRuntimeEnvironment(
@@ -265,13 +298,14 @@ function parsePlatformAlertDeliveryCategories(
       entry === "reconciliation" ||
       entry === "queue" ||
       entry === "chain" ||
-      entry === "treasury"
+      entry === "treasury" ||
+      entry === "operations"
     ) {
       return entry;
     }
 
     throw new Error(
-      `${name} contains an invalid category. Expected worker, reconciliation, queue, chain, or treasury.`
+      `${name} contains an invalid category. Expected worker, reconciliation, queue, chain, treasury, or operations.`
     );
   });
 
@@ -646,7 +680,8 @@ export type PlatformAlertDeliveryCategory =
   | "reconciliation"
   | "queue"
   | "chain"
-  | "treasury";
+  | "treasury"
+  | "operations";
 
 export type PlatformAlertDeliveryEventType =
   | "opened"
@@ -676,6 +711,19 @@ export type PlatformAlertDeliveryRuntimeConfig = {
 
 export type PlatformAlertDeliveryMode = "direct" | "failover_only";
 
+export type PlatformAlertDeliveryHealthSloRuntimeConfig = {
+  readonly lookbackHours: number;
+  readonly minimumRecentDeliveries: number;
+  readonly warningFailureRatePercent: number;
+  readonly criticalFailureRatePercent: number;
+  readonly warningPendingCount: number;
+  readonly criticalPendingCount: number;
+  readonly warningAverageDeliveryLatencyMs: number;
+  readonly criticalAverageDeliveryLatencyMs: number;
+  readonly warningConsecutiveFailures: number;
+  readonly criticalConsecutiveFailures: number;
+};
+
 export type PlatformAlertAutomationPolicyRuntimeConfig = {
   readonly name: string;
   readonly categories: readonly PlatformAlertDeliveryCategory[];
@@ -693,6 +741,135 @@ export type PlatformAlertReEscalationRuntimeConfig = {
   readonly unownedCriticalAlertThresholdSeconds: number;
   readonly repeatIntervalSeconds: number;
 };
+
+function parsePlatformAlertDeliveryHealthSloConfig(
+  value: string,
+  name: string
+): PlatformAlertDeliveryHealthSloRuntimeConfig {
+  let parsedValue: unknown;
+
+  try {
+    parsedValue = JSON.parse(value);
+  } catch {
+    throw new Error(`${name} must be valid JSON.`);
+  }
+
+  if (!isRecord(parsedValue)) {
+    throw new Error(`${name} must be a JSON object.`);
+  }
+
+  const lookbackHours =
+    parsedValue.lookbackHours === undefined
+      ? DEFAULT_PLATFORM_ALERT_DELIVERY_HEALTH_SLO_LOOKBACK_HOURS
+      : parsePositiveIntegerLike(
+          parsedValue.lookbackHours,
+          `${name}.lookbackHours`
+        );
+  const minimumRecentDeliveries =
+    parsedValue.minimumRecentDeliveries === undefined
+      ? DEFAULT_PLATFORM_ALERT_DELIVERY_HEALTH_SLO_MINIMUM_RECENT_DELIVERIES
+      : parsePositiveIntegerLike(
+          parsedValue.minimumRecentDeliveries,
+          `${name}.minimumRecentDeliveries`
+        );
+  const warningFailureRatePercent =
+    parsedValue.warningFailureRatePercent === undefined
+      ? DEFAULT_PLATFORM_ALERT_DELIVERY_HEALTH_SLO_WARNING_FAILURE_RATE_PERCENT
+      : parseIntegerInRange(
+          parsedValue.warningFailureRatePercent,
+          `${name}.warningFailureRatePercent`,
+          1,
+          100
+        );
+  const criticalFailureRatePercent =
+    parsedValue.criticalFailureRatePercent === undefined
+      ? DEFAULT_PLATFORM_ALERT_DELIVERY_HEALTH_SLO_CRITICAL_FAILURE_RATE_PERCENT
+      : parseIntegerInRange(
+          parsedValue.criticalFailureRatePercent,
+          `${name}.criticalFailureRatePercent`,
+          1,
+          100
+        );
+  const warningPendingCount =
+    parsedValue.warningPendingCount === undefined
+      ? DEFAULT_PLATFORM_ALERT_DELIVERY_HEALTH_SLO_WARNING_PENDING_COUNT
+      : parsePositiveIntegerLike(
+          parsedValue.warningPendingCount,
+          `${name}.warningPendingCount`
+        );
+  const criticalPendingCount =
+    parsedValue.criticalPendingCount === undefined
+      ? DEFAULT_PLATFORM_ALERT_DELIVERY_HEALTH_SLO_CRITICAL_PENDING_COUNT
+      : parsePositiveIntegerLike(
+          parsedValue.criticalPendingCount,
+          `${name}.criticalPendingCount`
+        );
+  const warningAverageDeliveryLatencyMs =
+    parsedValue.warningAverageDeliveryLatencyMs === undefined
+      ? DEFAULT_PLATFORM_ALERT_DELIVERY_HEALTH_SLO_WARNING_AVERAGE_LATENCY_MS
+      : parsePositiveIntegerLike(
+          parsedValue.warningAverageDeliveryLatencyMs,
+          `${name}.warningAverageDeliveryLatencyMs`
+        );
+  const criticalAverageDeliveryLatencyMs =
+    parsedValue.criticalAverageDeliveryLatencyMs === undefined
+      ? DEFAULT_PLATFORM_ALERT_DELIVERY_HEALTH_SLO_CRITICAL_AVERAGE_LATENCY_MS
+      : parsePositiveIntegerLike(
+          parsedValue.criticalAverageDeliveryLatencyMs,
+          `${name}.criticalAverageDeliveryLatencyMs`
+        );
+  const warningConsecutiveFailures =
+    parsedValue.warningConsecutiveFailures === undefined
+      ? DEFAULT_PLATFORM_ALERT_DELIVERY_HEALTH_SLO_WARNING_CONSECUTIVE_FAILURES
+      : parsePositiveIntegerLike(
+          parsedValue.warningConsecutiveFailures,
+          `${name}.warningConsecutiveFailures`
+        );
+  const criticalConsecutiveFailures =
+    parsedValue.criticalConsecutiveFailures === undefined
+      ? DEFAULT_PLATFORM_ALERT_DELIVERY_HEALTH_SLO_CRITICAL_CONSECUTIVE_FAILURES
+      : parsePositiveIntegerLike(
+          parsedValue.criticalConsecutiveFailures,
+          `${name}.criticalConsecutiveFailures`
+        );
+
+  if (warningFailureRatePercent > criticalFailureRatePercent) {
+    throw new Error(
+      `${name}.warningFailureRatePercent must be less than or equal to ${name}.criticalFailureRatePercent.`
+    );
+  }
+
+  if (warningPendingCount > criticalPendingCount) {
+    throw new Error(
+      `${name}.warningPendingCount must be less than or equal to ${name}.criticalPendingCount.`
+    );
+  }
+
+  if (warningAverageDeliveryLatencyMs > criticalAverageDeliveryLatencyMs) {
+    throw new Error(
+      `${name}.warningAverageDeliveryLatencyMs must be less than or equal to ${name}.criticalAverageDeliveryLatencyMs.`
+    );
+  }
+
+  if (warningConsecutiveFailures > criticalConsecutiveFailures) {
+    throw new Error(
+      `${name}.warningConsecutiveFailures must be less than or equal to ${name}.criticalConsecutiveFailures.`
+    );
+  }
+
+  return {
+    lookbackHours,
+    minimumRecentDeliveries,
+    warningFailureRatePercent,
+    criticalFailureRatePercent,
+    warningPendingCount,
+    criticalPendingCount,
+    warningAverageDeliveryLatencyMs,
+    criticalAverageDeliveryLatencyMs,
+    warningConsecutiveFailures,
+    criticalConsecutiveFailures
+  };
+}
 
 export function loadDatabaseRuntimeConfig(
   env: RuntimeEnvShape = getNodeRuntimeEnv()
@@ -1198,6 +1375,42 @@ export function loadPlatformAlertAutomationRuntimeConfig(
         )
       : []
   };
+}
+
+export function loadPlatformAlertDeliveryHealthSloRuntimeConfig(
+  env: RuntimeEnvShape = getNodeRuntimeEnv()
+): PlatformAlertDeliveryHealthSloRuntimeConfig {
+  const configuredSlo = readOptionalRuntimeEnv(
+    env,
+    "PLATFORM_ALERT_DELIVERY_HEALTH_SLO_JSON"
+  );
+
+  return configuredSlo
+    ? parsePlatformAlertDeliveryHealthSloConfig(
+        configuredSlo,
+        "PLATFORM_ALERT_DELIVERY_HEALTH_SLO_JSON"
+      )
+    : {
+        lookbackHours: DEFAULT_PLATFORM_ALERT_DELIVERY_HEALTH_SLO_LOOKBACK_HOURS,
+        minimumRecentDeliveries:
+          DEFAULT_PLATFORM_ALERT_DELIVERY_HEALTH_SLO_MINIMUM_RECENT_DELIVERIES,
+        warningFailureRatePercent:
+          DEFAULT_PLATFORM_ALERT_DELIVERY_HEALTH_SLO_WARNING_FAILURE_RATE_PERCENT,
+        criticalFailureRatePercent:
+          DEFAULT_PLATFORM_ALERT_DELIVERY_HEALTH_SLO_CRITICAL_FAILURE_RATE_PERCENT,
+        warningPendingCount:
+          DEFAULT_PLATFORM_ALERT_DELIVERY_HEALTH_SLO_WARNING_PENDING_COUNT,
+        criticalPendingCount:
+          DEFAULT_PLATFORM_ALERT_DELIVERY_HEALTH_SLO_CRITICAL_PENDING_COUNT,
+        warningAverageDeliveryLatencyMs:
+          DEFAULT_PLATFORM_ALERT_DELIVERY_HEALTH_SLO_WARNING_AVERAGE_LATENCY_MS,
+        criticalAverageDeliveryLatencyMs:
+          DEFAULT_PLATFORM_ALERT_DELIVERY_HEALTH_SLO_CRITICAL_AVERAGE_LATENCY_MS,
+        warningConsecutiveFailures:
+          DEFAULT_PLATFORM_ALERT_DELIVERY_HEALTH_SLO_WARNING_CONSECUTIVE_FAILURES,
+        criticalConsecutiveFailures:
+          DEFAULT_PLATFORM_ALERT_DELIVERY_HEALTH_SLO_CRITICAL_CONSECUTIVE_FAILURES
+      };
 }
 
 export function loadPlatformAlertReEscalationRuntimeConfig(

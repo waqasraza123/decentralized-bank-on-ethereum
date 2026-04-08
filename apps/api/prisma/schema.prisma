@@ -699,6 +699,7 @@ enum PlatformAlertCategory {
   queue
   chain
   treasury
+  operations
 }
 
 enum PlatformAlertSeverity {

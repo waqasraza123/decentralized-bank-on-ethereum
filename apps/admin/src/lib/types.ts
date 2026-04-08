@@ -432,8 +432,11 @@ export type PlatformAlertDeliveryTargetHealth = {
   lastDeliveredAt: string | null;
   lastFailureAt: string | null;
   lastErrorMessage: string | null;
+  recentFailureRatePercent: number | null;
+  consecutiveFailureCount: number;
   averageDeliveryLatencyMs: number | null;
   maxDeliveryLatencyMs: number | null;
+  sloBreaches: string[];
 };
 
 export type PlatformAlertDeliveryTargetHealthList = {

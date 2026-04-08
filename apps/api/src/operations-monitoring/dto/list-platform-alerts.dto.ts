@@ -32,8 +32,14 @@ export class ListPlatformAlertsDto {
   severity?: "warning" | "critical";
 
   @IsOptional()
-  @IsIn(["worker", "reconciliation", "queue", "chain", "treasury"])
-  category?: "worker" | "reconciliation" | "queue" | "chain" | "treasury";
+  @IsIn(["worker", "reconciliation", "queue", "chain", "treasury", "operations"])
+  category?:
+    | "worker"
+    | "reconciliation"
+    | "queue"
+    | "chain"
+    | "treasury"
+    | "operations";
 
   @IsOptional()
   @IsIn(["unrouted", "routed"])

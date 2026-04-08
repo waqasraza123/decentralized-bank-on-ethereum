@@ -794,7 +794,9 @@ function AdminConsole() {
             <h2>Delivery target health</h2>
           </div>
           <p className="section-copy">
-            External alert delivery posture over the last 24 hours.
+            {platformAlertTargetHealthQuery.data
+              ? `External alert delivery posture over the last ${platformAlertTargetHealthQuery.data.lookbackHours} hours.`
+              : "External alert delivery posture over the configured SLO window."}
           </p>
         </div>
 
@@ -823,6 +825,11 @@ function AdminConsole() {
                   Deliveries {target.recentDeliveryCount} total | succeeded{" "}
                   {target.recentSucceededCount} | failed {target.recentFailedCount} |
                   pending {target.pendingDeliveryCount}
+                  {" | "}failure rate{" "}
+                  {target.recentFailureRatePercent !== null
+                    ? `${target.recentFailureRatePercent}%`
+                    : "n/a"}
+                  {" | "}consecutive failures {target.consecutiveFailureCount}
                 </p>
                 <p className="muted">
                   Latency avg{" "}
@@ -849,6 +856,11 @@ function AdminConsole() {
                 </p>
                 {target.lastErrorMessage ? (
                   <p className="muted">Latest error {target.lastErrorMessage}</p>
+                ) : null}
+                {target.sloBreaches.length > 0 ? (
+                  <p className="muted">
+                    SLO breaches {target.sloBreaches.join(" | ")}
+                  </p>
                 ) : null}
               </article>
             ))}

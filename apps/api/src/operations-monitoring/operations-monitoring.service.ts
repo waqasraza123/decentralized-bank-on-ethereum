@@ -7,10 +7,12 @@ import {
 import {
   loadPlatformAlertAutomationRuntimeConfig,
   loadPlatformAlertDeliveryRuntimeConfig,
+  loadPlatformAlertDeliveryHealthSloRuntimeConfig,
   loadPlatformAlertReEscalationRuntimeConfig,
   loadProductChainRuntimeConfig,
   type PlatformAlertAutomationPolicyRuntimeConfig,
   type PlatformAlertDeliveryRuntimeConfig,
+  type PlatformAlertDeliveryHealthSloRuntimeConfig,
   type PlatformAlertDeliveryTargetRuntimeConfig,
   type PlatformAlertReEscalationRuntimeConfig
 } from "@stealth-trails-bank/config/api";
@@ -225,8 +227,11 @@ type PlatformAlertDeliveryTargetHealthProjection = {
   lastDeliveredAt: string | null;
   lastFailureAt: string | null;
   lastErrorMessage: string | null;
+  recentFailureRatePercent: number | null;
+  consecutiveFailureCount: number;
   averageDeliveryLatencyMs: number | null;
   maxDeliveryLatencyMs: number | null;
+  sloBreaches: string[];
 };
 
 type PlatformAlertDeliveryTargetHealthListResult = {
@@ -308,6 +313,7 @@ type OperationsSnapshot = {
   treasuryHealth: OperationsStatusResult["treasuryHealth"];
   reconciliationHealth: OperationsStatusResult["reconciliationHealth"];
   incidentSafety: OperationsStatusResult["incidentSafety"];
+  deliveryTargetHealth: PlatformAlertDeliveryTargetHealthListResult;
   alertCandidates: PlatformAlertCandidate[];
 };
 
@@ -336,7 +342,6 @@ const CHAIN_FAILED_CRITICAL_COUNT = 5;
 const INCIDENT_REVIEW_WARNING_COUNT = 10;
 const INCIDENT_OVERSIGHT_WARNING_COUNT = 5;
 const INCIDENT_RESTRICTED_WARNING_COUNT = 5;
-const DEFAULT_PLATFORM_ALERT_TARGET_HEALTH_LOOKBACK_HOURS = 24;
 const DEFAULT_CRITICAL_PLATFORM_ALERT_REESCALATION_LIMIT = 25;
 const WORKER_ITERATION_METRIC_KEYS = [
   "queuedDepositCount",
@@ -415,6 +420,7 @@ export class OperationsMonitoringService {
   private readonly productChainId: number;
   private readonly platformAlertAutomationPolicies: readonly PlatformAlertAutomationPolicyRuntimeConfig[];
   private readonly platformAlertDeliveryRuntimeConfig: PlatformAlertDeliveryRuntimeConfig;
+  private readonly platformAlertDeliveryHealthSloRuntimeConfig: PlatformAlertDeliveryHealthSloRuntimeConfig;
   private readonly platformAlertReEscalationRuntimeConfig: PlatformAlertReEscalationRuntimeConfig;
 
   constructor(
@@ -427,6 +433,8 @@ export class OperationsMonitoringService {
       loadPlatformAlertAutomationRuntimeConfig().policies;
     this.platformAlertDeliveryRuntimeConfig =
       loadPlatformAlertDeliveryRuntimeConfig();
+    this.platformAlertDeliveryHealthSloRuntimeConfig =
+      loadPlatformAlertDeliveryHealthSloRuntimeConfig();
     this.platformAlertReEscalationRuntimeConfig =
       loadPlatformAlertReEscalationRuntimeConfig();
   }
@@ -950,19 +958,110 @@ export class OperationsMonitoringService {
       successfulLatencyValues.length > 0
         ? Math.max(...successfulLatencyValues)
         : null;
+    const recentFailureRatePercent =
+      deliveries.length > 0
+        ? Math.round((recentFailedDeliveries.length / deliveries.length) * 1000) / 10
+        : null;
+    const attemptedDeliveries = deliveries.filter(
+      (delivery) => delivery.lastAttemptedAt !== null
+    );
+    let consecutiveFailureCount = 0;
 
+    for (const delivery of attemptedDeliveries) {
+      if (delivery.status !== PlatformAlertDeliveryStatus.failed) {
+        break;
+      }
+
+      consecutiveFailureCount += 1;
+    }
+
+    const sloBreaches: string[] = [];
     let healthStatus: PlatformAlertDeliveryTargetHealthStatus = "healthy";
 
     if (
-      recentFailedDeliveries.length > 0 &&
-      recentSucceededDeliveries.length === 0 &&
-      (!lastDeliveredDelivery ||
-        (lastFailedDelivery?.createdAt.getTime() ?? 0) >=
-          lastDeliveredDelivery.createdAt.getTime())
+      pendingDeliveryCount >=
+      this.platformAlertDeliveryHealthSloRuntimeConfig.criticalPendingCount
     ) {
       healthStatus = "critical";
-    } else if (pendingDeliveryCount > 0 || recentFailedDeliveries.length > 0) {
+      sloBreaches.push(
+        `Pending delivery backlog ${pendingDeliveryCount} exceeds the critical threshold ${this.platformAlertDeliveryHealthSloRuntimeConfig.criticalPendingCount}.`
+      );
+    } else if (
+      pendingDeliveryCount >=
+      this.platformAlertDeliveryHealthSloRuntimeConfig.warningPendingCount
+    ) {
       healthStatus = "warning";
+      sloBreaches.push(
+        `Pending delivery backlog ${pendingDeliveryCount} exceeds the warning threshold ${this.platformAlertDeliveryHealthSloRuntimeConfig.warningPendingCount}.`
+      );
+    }
+
+    if (
+      consecutiveFailureCount >=
+      this.platformAlertDeliveryHealthSloRuntimeConfig.criticalConsecutiveFailures
+    ) {
+      healthStatus = "critical";
+      sloBreaches.push(
+        `Consecutive failed deliveries ${consecutiveFailureCount} exceed the critical threshold ${this.platformAlertDeliveryHealthSloRuntimeConfig.criticalConsecutiveFailures}.`
+      );
+    } else if (
+      consecutiveFailureCount >=
+      this.platformAlertDeliveryHealthSloRuntimeConfig.warningConsecutiveFailures
+    ) {
+      healthStatus = healthStatus === "critical" ? "critical" : "warning";
+      sloBreaches.push(
+        `Consecutive failed deliveries ${consecutiveFailureCount} exceed the warning threshold ${this.platformAlertDeliveryHealthSloRuntimeConfig.warningConsecutiveFailures}.`
+      );
+    }
+
+    if (
+      recentFailureRatePercent !== null &&
+      deliveries.length >=
+        this.platformAlertDeliveryHealthSloRuntimeConfig.minimumRecentDeliveries
+    ) {
+      if (
+        recentFailureRatePercent >=
+        this.platformAlertDeliveryHealthSloRuntimeConfig.criticalFailureRatePercent
+      ) {
+        healthStatus = "critical";
+        sloBreaches.push(
+          `Recent failure rate ${recentFailureRatePercent}% exceeds the critical threshold ${this.platformAlertDeliveryHealthSloRuntimeConfig.criticalFailureRatePercent}% over ${deliveries.length} deliveries.`
+        );
+      } else if (
+        recentFailureRatePercent >=
+        this.platformAlertDeliveryHealthSloRuntimeConfig.warningFailureRatePercent
+      ) {
+        healthStatus = healthStatus === "critical" ? "critical" : "warning";
+        sloBreaches.push(
+          `Recent failure rate ${recentFailureRatePercent}% exceeds the warning threshold ${this.platformAlertDeliveryHealthSloRuntimeConfig.warningFailureRatePercent}% over ${deliveries.length} deliveries.`
+        );
+      }
+    }
+
+    if (
+      averageDeliveryLatencyMs !== null &&
+      recentSucceededDeliveries.length >=
+        this.platformAlertDeliveryHealthSloRuntimeConfig.minimumRecentDeliveries
+    ) {
+      if (
+        averageDeliveryLatencyMs >=
+        this.platformAlertDeliveryHealthSloRuntimeConfig
+          .criticalAverageDeliveryLatencyMs
+      ) {
+        healthStatus = "critical";
+        sloBreaches.push(
+          `Average delivery latency ${averageDeliveryLatencyMs}ms exceeds the critical threshold ${this.platformAlertDeliveryHealthSloRuntimeConfig.criticalAverageDeliveryLatencyMs}ms.`
+        );
+      } else if (
+        averageDeliveryLatencyMs >=
+        this.platformAlertDeliveryHealthSloRuntimeConfig
+          .warningAverageDeliveryLatencyMs
+      ) {
+        healthStatus = healthStatus === "critical" ? "critical" : "warning";
+        sloBreaches.push(
+          `Average delivery latency ${averageDeliveryLatencyMs}ms exceeds the warning threshold ${this.platformAlertDeliveryHealthSloRuntimeConfig.warningAverageDeliveryLatencyMs}ms.`
+        );
+      }
     }
 
     return {
@@ -987,8 +1086,92 @@ export class OperationsMonitoringService {
       lastDeliveredAt: lastDeliveredDelivery?.deliveredAt?.toISOString() ?? null,
       lastFailureAt: lastFailedDelivery?.lastAttemptedAt?.toISOString() ?? null,
       lastErrorMessage: lastFailedDelivery?.errorMessage ?? null,
+      recentFailureRatePercent,
+      consecutiveFailureCount,
       averageDeliveryLatencyMs,
-      maxDeliveryLatencyMs
+      maxDeliveryLatencyMs,
+      sloBreaches
+    };
+  }
+
+  private async listPlatformAlertDeliveryTargetHealthInternal(
+    lookbackHours: number
+  ): Promise<PlatformAlertDeliveryTargetHealthListResult> {
+    const lookbackSince = buildPastDate(lookbackHours);
+    const targets = [...this.platformAlertDeliveryRuntimeConfig.targets];
+
+    if (targets.length === 0) {
+      return {
+        generatedAt: new Date().toISOString(),
+        lookbackHours,
+        summary: {
+          totalTargetCount: 0,
+          healthyTargetCount: 0,
+          warningTargetCount: 0,
+          criticalTargetCount: 0
+        },
+        targets: []
+      };
+    }
+
+    const recentDeliveries = await this.prismaService.platformAlertDelivery.findMany({
+      where: {
+        targetName: {
+          in: targets.map((target) => target.name)
+        },
+        OR: [
+          {
+            createdAt: {
+              gte: lookbackSince
+            }
+          },
+          {
+            status: PlatformAlertDeliveryStatus.pending
+          }
+        ]
+      },
+      orderBy: [
+        {
+          lastAttemptedAt: "desc"
+        },
+        {
+          createdAt: "desc"
+        }
+      ]
+    });
+    const deliveriesByTargetName = new Map<string, PlatformAlertDeliveryRecord[]>();
+
+    for (const delivery of recentDeliveries) {
+      const current = deliveriesByTargetName.get(delivery.targetName) ?? [];
+      current.push(delivery);
+      deliveriesByTargetName.set(delivery.targetName, current);
+    }
+
+    const projectedTargets = targets
+      .map((target) =>
+        this.summarizePlatformAlertDeliveryTargetHealth(
+          target,
+          deliveriesByTargetName.get(target.name) ?? []
+        )
+      )
+      .sort((left, right) => left.targetName.localeCompare(right.targetName));
+
+    return {
+      generatedAt: new Date().toISOString(),
+      lookbackHours,
+      summary: {
+        totalTargetCount: projectedTargets.length,
+        healthyTargetCount: projectedTargets.filter(
+          (target) => target.healthStatus === "healthy"
+        ).length,
+        warningTargetCount: projectedTargets.filter(
+          (target) => target.healthStatus === "warning"
+        ).length,
+        criticalTargetCount: projectedTargets.filter(
+          (target) => target.healthStatus === "critical"
+        ).length
+      },
+      targets: projectedTargets
     };
   }
 
@@ -1100,6 +1283,7 @@ export class OperationsMonitoringService {
     chainHealth: OperationsStatusResult["chainHealth"];
     treasuryHealth: OperationsStatusResult["treasuryHealth"];
     reconciliationHealth: OperationsStatusResult["reconciliationHealth"];
+    deliveryTargetHealth: PlatformAlertDeliveryTargetHealthListResult;
   }): PlatformAlertCandidate[] {
     const alertCandidates: PlatformAlertCandidate[] = [];
 
@@ -1278,6 +1462,46 @@ export class OperationsMonitoringService {
             snapshot.treasuryHealth.activeOperationalWalletCount,
           chainId: this.productChainId
         }
+      });
+    }
+
+    for (const target of snapshot.deliveryTargetHealth.targets) {
+      if (target.healthStatus === "healthy") {
+        continue;
+      }
+
+      alertCandidates.push({
+        dedupeKey: `operations:alert-delivery-target:${target.targetName}`,
+        category: PlatformAlertCategory.operations,
+        severity:
+          target.healthStatus === "critical"
+            ? PlatformAlertSeverity.critical
+            : PlatformAlertSeverity.warning,
+        code: "platform_alert_delivery_target_degraded",
+        summary: `Platform alert delivery target ${target.targetName} is degraded.`,
+        detail:
+          target.sloBreaches[0] ??
+          `Recent alert delivery health for ${target.targetName} has degraded.`,
+        metadata: {
+          runbookPath: "docs/runbooks/platform-alert-delivery-targets.md",
+          targetName: target.targetName,
+          deliveryMode: target.deliveryMode,
+          lookbackHours: snapshot.deliveryTargetHealth.lookbackHours,
+          recentDeliveryCount: target.recentDeliveryCount,
+          recentSucceededCount: target.recentSucceededCount,
+          recentFailedCount: target.recentFailedCount,
+          pendingDeliveryCount: target.pendingDeliveryCount,
+          recentFailureRatePercent: target.recentFailureRatePercent,
+          consecutiveFailureCount: target.consecutiveFailureCount,
+          averageDeliveryLatencyMs: target.averageDeliveryLatencyMs,
+          maxDeliveryLatencyMs: target.maxDeliveryLatencyMs,
+          highestObservedEscalationLevel: target.highestObservedEscalationLevel,
+          lastAttemptedAt: target.lastAttemptedAt,
+          lastDeliveredAt: target.lastDeliveredAt,
+          lastFailureAt: target.lastFailureAt,
+          lastErrorMessage: target.lastErrorMessage,
+          sloBreaches: target.sloBreaches
+        } as Prisma.InputJsonValue
       });
     }
 
@@ -1471,7 +1695,8 @@ export class OperationsMonitoringService {
       activeOperationalWalletCount,
       openReviewCaseCount,
       openOversightIncidentCount,
-      activeRestrictedAccountCount
+      activeRestrictedAccountCount,
+      deliveryTargetHealth
     ] = await Promise.all([
       this.prismaService.workerRuntimeHeartbeat.findMany({
         orderBy: {
@@ -1616,7 +1841,10 @@ export class OperationsMonitoringService {
         where: {
           status: AccountLifecycleStatus.restricted
         }
-      })
+      }),
+      this.listPlatformAlertDeliveryTargetHealthInternal(
+        this.platformAlertDeliveryHealthSloRuntimeConfig.lookbackHours
+      )
     ]);
 
     const workers = workerRecords.map((record) =>
@@ -1745,13 +1973,15 @@ export class OperationsMonitoringService {
       treasuryHealth,
       reconciliationHealth,
       incidentSafety,
+      deliveryTargetHealth,
       alertCandidates: this.buildAlertCandidates({
         workers,
         workerHealth,
         queueHealth,
         chainHealth,
         treasuryHealth,
-        reconciliationHealth
+        reconciliationHealth,
+        deliveryTargetHealth
       })
     };
   }
@@ -2049,78 +2279,10 @@ export class OperationsMonitoringService {
     query: ListPlatformAlertDeliveryTargetHealthDto
   ): Promise<PlatformAlertDeliveryTargetHealthListResult> {
     const lookbackHours =
-      query.lookbackHours ?? DEFAULT_PLATFORM_ALERT_TARGET_HEALTH_LOOKBACK_HOURS;
-    const lookbackSince = buildPastDate(lookbackHours);
-    const targets = [...this.platformAlertDeliveryRuntimeConfig.targets];
+      query.lookbackHours ??
+      this.platformAlertDeliveryHealthSloRuntimeConfig.lookbackHours;
 
-    if (targets.length === 0) {
-      return {
-        generatedAt: new Date().toISOString(),
-        lookbackHours,
-        summary: {
-          totalTargetCount: 0,
-          healthyTargetCount: 0,
-          warningTargetCount: 0,
-          criticalTargetCount: 0
-        },
-        targets: []
-      };
-    }
-
-    const recentDeliveries = await this.prismaService.platformAlertDelivery.findMany({
-      where: {
-        targetName: {
-          in: targets.map((target) => target.name)
-        },
-        OR: [
-          {
-            createdAt: {
-              gte: lookbackSince
-            }
-          },
-          {
-            status: PlatformAlertDeliveryStatus.pending
-          }
-        ]
-      },
-      orderBy: {
-        createdAt: "desc"
-      }
-    });
-    const deliveriesByTargetName = new Map<string, PlatformAlertDeliveryRecord[]>();
-
-    for (const delivery of recentDeliveries) {
-      const current = deliveriesByTargetName.get(delivery.targetName) ?? [];
-      current.push(delivery);
-      deliveriesByTargetName.set(delivery.targetName, current);
-    }
-
-    const projectedTargets = targets
-      .map((target) =>
-        this.summarizePlatformAlertDeliveryTargetHealth(
-          target,
-          deliveriesByTargetName.get(target.name) ?? []
-        )
-      )
-      .sort((left, right) => left.targetName.localeCompare(right.targetName));
-
-    return {
-      generatedAt: new Date().toISOString(),
-      lookbackHours,
-      summary: {
-        totalTargetCount: projectedTargets.length,
-        healthyTargetCount: projectedTargets.filter(
-          (target) => target.healthStatus === "healthy"
-        ).length,
-        warningTargetCount: projectedTargets.filter(
-          (target) => target.healthStatus === "warning"
-        ).length,
-        criticalTargetCount: projectedTargets.filter(
-          (target) => target.healthStatus === "critical"
-        ).length
-      },
-      targets: projectedTargets
-    };
+    return this.listPlatformAlertDeliveryTargetHealthInternal(lookbackHours);
   }
 
   private async reEscalateCriticalPlatformAlertsInternal(
@@ -2775,7 +2937,7 @@ export class OperationsMonitoringService {
 
     const [targetHealth, dueReEscalationCandidates] = await Promise.all([
       this.listPlatformAlertDeliveryTargetHealth({
-        lookbackHours: DEFAULT_PLATFORM_ALERT_TARGET_HEALTH_LOOKBACK_HOURS
+        lookbackHours: this.platformAlertDeliveryHealthSloRuntimeConfig.lookbackHours
       }),
       this.listDueCriticalPlatformAlertReEscalationCandidates()
     ]);
@@ -2960,6 +3122,12 @@ export class OperationsMonitoringService {
       "# TYPE stb_platform_alert_delivery_target_recent_total gauge",
       "# HELP stb_platform_alert_delivery_target_pending_total Current pending platform alert deliveries by target.",
       "# TYPE stb_platform_alert_delivery_target_pending_total gauge",
+      "# HELP stb_platform_alert_delivery_target_health_total Current platform alert delivery targets by evaluated health status.",
+      "# TYPE stb_platform_alert_delivery_target_health_total gauge",
+      "# HELP stb_platform_alert_delivery_target_failure_rate_percent Recent failed delivery percentage by target.",
+      "# TYPE stb_platform_alert_delivery_target_failure_rate_percent gauge",
+      "# HELP stb_platform_alert_delivery_target_consecutive_failures_total Current consecutive failed delivery count by target.",
+      "# TYPE stb_platform_alert_delivery_target_consecutive_failures_total gauge",
       "# HELP stb_platform_alert_delivery_target_latency_ms Recent successful delivery latency by target and aggregation.",
       "# TYPE stb_platform_alert_delivery_target_latency_ms gauge"
     );
@@ -3000,6 +3168,31 @@ export class OperationsMonitoringService {
             target_name: target.targetName,
             delivery_mode: target.deliveryMode,
             health_status: target.healthStatus
+          }
+        ),
+        formatPrometheusLine(
+          "stb_platform_alert_delivery_target_health_total",
+          1,
+          {
+            target_name: target.targetName,
+            delivery_mode: target.deliveryMode,
+            health_status: target.healthStatus
+          }
+        ),
+        formatPrometheusLine(
+          "stb_platform_alert_delivery_target_failure_rate_percent",
+          target.recentFailureRatePercent ?? 0,
+          {
+            target_name: target.targetName,
+            delivery_mode: target.deliveryMode
+          }
+        ),
+        formatPrometheusLine(
+          "stb_platform_alert_delivery_target_consecutive_failures_total",
+          target.consecutiveFailureCount,
+          {
+            target_name: target.targetName,
+            delivery_mode: target.deliveryMode
           }
         ),
         formatPrometheusLine(

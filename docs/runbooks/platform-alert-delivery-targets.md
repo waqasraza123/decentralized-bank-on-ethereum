@@ -9,6 +9,7 @@ Environment variables:
 - `PLATFORM_ALERT_DELIVERY_TARGETS_JSON`
 - `PLATFORM_ALERT_DELIVERY_REQUEST_TIMEOUT_MS`
 - `PLATFORM_ALERT_AUTOMATION_POLICIES_JSON`
+- `PLATFORM_ALERT_DELIVERY_HEALTH_SLO_JSON`
 - `PLATFORM_ALERT_REESCALATION_UNACKNOWLEDGED_SECONDS`
 - `PLATFORM_ALERT_REESCALATION_UNOWNED_SECONDS`
 - `PLATFORM_ALERT_REESCALATION_REPEAT_SECONDS`
@@ -23,7 +24,7 @@ Example:
     "url": "https://ops.example.com/hooks/platform-alerts",
     "bearerToken": "replace-me",
     "deliveryMode": "direct",
-    "categories": ["worker", "queue", "chain", "treasury", "reconciliation"],
+    "categories": ["worker", "queue", "chain", "treasury", "reconciliation", "operations"],
     "minimumSeverity": "critical",
     "eventTypes": ["opened", "reopened", "re_escalated", "routed_to_review_case", "owner_assigned"],
     "failoverTargetNames": ["ops-failover"]
@@ -33,11 +34,28 @@ Example:
     "url": "https://pager.example.com/hooks/platform-alerts",
     "bearerToken": "replace-me-too",
     "deliveryMode": "failover_only",
-    "categories": ["worker", "queue", "chain", "treasury", "reconciliation"],
+    "categories": ["worker", "queue", "chain", "treasury", "reconciliation", "operations"],
     "minimumSeverity": "critical",
     "eventTypes": ["opened", "reopened", "re_escalated", "routed_to_review_case", "owner_assigned"]
   }
 ]
+```
+
+Health SLO example:
+
+```json
+{
+  "lookbackHours": 24,
+  "minimumRecentDeliveries": 3,
+  "warningFailureRatePercent": 25,
+  "criticalFailureRatePercent": 50,
+  "warningPendingCount": 2,
+  "criticalPendingCount": 5,
+  "warningAverageDeliveryLatencyMs": 15000,
+  "criticalAverageDeliveryLatencyMs": 60000,
+  "warningConsecutiveFailures": 2,
+  "criticalConsecutiveFailures": 3
+}
 ```
 
 Automation example:
@@ -66,6 +84,7 @@ Behavior:
 - deliveries are stored durably before send attempts start
 - failed deliveries can be retried from the operator API
 - delivery-target health is exposed through the operations API and admin console with recent success, failure, pending, and latency summaries
+- sustained delivery-target degradation now opens durable `operations` platform alerts when configured failure-rate, backlog, latency, or consecutive-failure SLO thresholds are breached
 
 ## Delivery records
 
@@ -94,6 +113,6 @@ Use external delivery targets to:
 
 ## Next step
 
-After this failover-and-automation baseline:
-1. prove the worker sweep cadence and target-health metrics against staging alert traffic
-2. add SLO-backed alerting on sustained delivery-target degradation
+After this SLO-backed delivery baseline:
+1. prove the worker sweep cadence and delivery-target SLO alerts against staging alert traffic
+2. attach evidence and threshold decisions to the launch checklist before any real launch posture

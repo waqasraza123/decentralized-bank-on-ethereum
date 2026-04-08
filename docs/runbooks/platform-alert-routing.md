@@ -125,6 +125,6 @@ Use routed platform alerts to:
 
 ## Next step
 
-After this routing-and-automation baseline:
-1. add time-based re-escalation for critical alerts that remain unacknowledged or unowned
-2. expose delivery-target health and escalation latency in the operations metrics surface
+After this routing, re-escalation, and delivery-health baseline:
+1. prove the routing, re-escalation, and SLO alerts against staging alert traffic
+2. tune automation and delivery thresholds from evidence instead of defaults

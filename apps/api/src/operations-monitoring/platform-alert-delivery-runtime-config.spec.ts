@@ -1,6 +1,7 @@
 import {
   loadPlatformAlertAutomationRuntimeConfig,
   loadPlatformAlertDeliveryRuntimeConfig,
+  loadPlatformAlertDeliveryHealthSloRuntimeConfig,
   loadPlatformAlertReEscalationRuntimeConfig
 } from "@stealth-trails-bank/config/api";
 
@@ -14,6 +15,7 @@ describe("loadPlatformAlertDeliveryRuntimeConfig", () => {
     delete process.env["PLATFORM_ALERT_DELIVERY_TARGETS_JSON"];
     delete process.env["PLATFORM_ALERT_DELIVERY_REQUEST_TIMEOUT_MS"];
     delete process.env["PLATFORM_ALERT_AUTOMATION_POLICIES_JSON"];
+    delete process.env["PLATFORM_ALERT_DELIVERY_HEALTH_SLO_JSON"];
     delete process.env["PLATFORM_ALERT_REESCALATION_UNACKNOWLEDGED_SECONDS"];
     delete process.env["PLATFORM_ALERT_REESCALATION_UNOWNED_SECONDS"];
     delete process.env["PLATFORM_ALERT_REESCALATION_REPEAT_SECONDS"];
@@ -119,6 +121,47 @@ describe("loadPlatformAlertDeliveryRuntimeConfig", () => {
       unacknowledgedCriticalAlertThresholdSeconds: 1200,
       unownedCriticalAlertThresholdSeconds: 900,
       repeatIntervalSeconds: 2400
+    });
+  });
+
+  it("loads delivery target health SLO defaults and overrides", () => {
+    expect(loadPlatformAlertDeliveryHealthSloRuntimeConfig(process.env)).toEqual({
+      lookbackHours: 24,
+      minimumRecentDeliveries: 3,
+      warningFailureRatePercent: 25,
+      criticalFailureRatePercent: 50,
+      warningPendingCount: 2,
+      criticalPendingCount: 5,
+      warningAverageDeliveryLatencyMs: 15000,
+      criticalAverageDeliveryLatencyMs: 60000,
+      warningConsecutiveFailures: 2,
+      criticalConsecutiveFailures: 3
+    });
+
+    process.env["PLATFORM_ALERT_DELIVERY_HEALTH_SLO_JSON"] = JSON.stringify({
+      lookbackHours: 48,
+      minimumRecentDeliveries: 5,
+      warningFailureRatePercent: 20,
+      criticalFailureRatePercent: 40,
+      warningPendingCount: 3,
+      criticalPendingCount: 6,
+      warningAverageDeliveryLatencyMs: 12000,
+      criticalAverageDeliveryLatencyMs: 45000,
+      warningConsecutiveFailures: 3,
+      criticalConsecutiveFailures: 4
+    });
+
+    expect(loadPlatformAlertDeliveryHealthSloRuntimeConfig(process.env)).toEqual({
+      lookbackHours: 48,
+      minimumRecentDeliveries: 5,
+      warningFailureRatePercent: 20,
+      criticalFailureRatePercent: 40,
+      warningPendingCount: 3,
+      criticalPendingCount: 6,
+      warningAverageDeliveryLatencyMs: 12000,
+      criticalAverageDeliveryLatencyMs: 45000,
+      warningConsecutiveFailures: 3,
+      criticalConsecutiveFailures: 4
     });
   });
 });

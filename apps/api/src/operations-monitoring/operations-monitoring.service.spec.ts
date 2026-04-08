@@ -29,7 +29,14 @@ jest.mock("@stealth-trails-bank/config/api", () => ({
         url: "https://ops.example.com/hooks/platform-alerts",
         bearerToken: "secret-token",
         deliveryMode: "direct",
-        categories: ["worker", "queue", "chain", "treasury", "reconciliation"],
+        categories: [
+          "worker",
+          "queue",
+          "chain",
+          "treasury",
+          "reconciliation",
+          "operations"
+        ],
         minimumSeverity: "critical",
         eventTypes: ["opened", "reopened", "re_escalated", "routed_to_review_case"],
         failoverTargetNames: ["ops-failover"]
@@ -39,7 +46,14 @@ jest.mock("@stealth-trails-bank/config/api", () => ({
         url: "https://pager.example.com/hooks/platform-alerts",
         bearerToken: null,
         deliveryMode: "failover_only",
-        categories: ["worker", "queue", "chain", "treasury", "reconciliation"],
+        categories: [
+          "worker",
+          "queue",
+          "chain",
+          "treasury",
+          "reconciliation",
+          "operations"
+        ],
         minimumSeverity: "critical",
         eventTypes: ["opened", "reopened", "re_escalated", "routed_to_review_case"],
         failoverTargetNames: []
@@ -61,6 +75,18 @@ jest.mock("@stealth-trails-bank/config/api", () => ({
     unacknowledgedCriticalAlertThresholdSeconds: 900,
     unownedCriticalAlertThresholdSeconds: 600,
     repeatIntervalSeconds: 1800
+  }),
+  loadPlatformAlertDeliveryHealthSloRuntimeConfig: () => ({
+    lookbackHours: 24,
+    minimumRecentDeliveries: 3,
+    warningFailureRatePercent: 25,
+    criticalFailureRatePercent: 50,
+    warningPendingCount: 2,
+    criticalPendingCount: 5,
+    warningAverageDeliveryLatencyMs: 15000,
+    criticalAverageDeliveryLatencyMs: 60000,
+    warningConsecutiveFailures: 2,
+    criticalConsecutiveFailures: 3
   })
 }));
 
@@ -538,6 +564,40 @@ describe("OperationsMonitoringService", () => {
         updatedAt: new Date("2026-04-06T10:20:00.000Z")
       },
       {
+        id: "delivery_failed_2",
+        platformAlertId: "alert_1",
+        targetName: "ops-critical",
+        targetUrl: "https://ops.example.com/hooks/platform-alerts",
+        eventType: "reopened",
+        status: "failed",
+        attemptCount: 1,
+        escalationLevel: 0,
+        requestPayload: {},
+        responseStatusCode: 502,
+        errorMessage: "Primary target unavailable",
+        lastAttemptedAt: new Date("2026-04-06T10:15:00.000Z"),
+        deliveredAt: null,
+        createdAt: new Date("2026-04-06T10:14:00.000Z"),
+        updatedAt: new Date("2026-04-06T10:15:00.000Z")
+      },
+      {
+        id: "delivery_failed_3",
+        platformAlertId: "alert_1",
+        targetName: "ops-critical",
+        targetUrl: "https://ops.example.com/hooks/platform-alerts",
+        eventType: "owner_assigned",
+        status: "failed",
+        attemptCount: 1,
+        escalationLevel: 0,
+        requestPayload: {},
+        responseStatusCode: 503,
+        errorMessage: "Primary target unavailable",
+        lastAttemptedAt: new Date("2026-04-06T10:11:00.000Z"),
+        deliveredAt: null,
+        createdAt: new Date("2026-04-06T10:10:30.000Z"),
+        updatedAt: new Date("2026-04-06T10:11:00.000Z")
+      },
+      {
         id: "delivery_success_1",
         platformAlertId: "alert_2",
         targetName: "ops-failover",
@@ -564,8 +624,113 @@ describe("OperationsMonitoringService", () => {
     expect(result.summary.criticalTargetCount).toBe(1);
     expect(result.targets[0]?.targetName).toBe("ops-critical");
     expect(result.targets[0]?.healthStatus).toBe("critical");
+    expect(result.targets[0]?.recentFailureRatePercent).toBe(100);
+    expect(result.targets[0]?.consecutiveFailureCount).toBe(3);
+    expect(result.targets[0]?.sloBreaches.length).toBeGreaterThan(0);
     expect(result.targets[1]?.healthStatus).toBe("healthy");
     expect(result.targets[1]?.averageDeliveryLatencyMs).toBe(10000);
+  });
+
+  it("raises a durable operations alert when delivery target degradation breaches SLOs", async () => {
+    const { service, prismaService } = createService();
+    const degradedDeliveryAlert = buildPlatformAlertRecord({
+      id: "alert_operations_1",
+      dedupeKey: "operations:alert-delivery-target:ops-critical",
+      category: PlatformAlertCategory.operations,
+      severity: PlatformAlertSeverity.critical,
+      code: "platform_alert_delivery_target_degraded",
+      summary: "Platform alert delivery target ops-critical is degraded.",
+      detail:
+        "Recent failure rate 100% exceeds the critical threshold 50% over 3 deliveries."
+    });
+
+    jest.spyOn(Date, "now").mockReturnValue(
+      new Date("2026-04-06T10:30:00.000Z").getTime()
+    );
+    mockHealthySnapshotQueries(prismaService);
+    (prismaService.platformAlertDelivery.findMany as jest.Mock).mockResolvedValue([
+      {
+        id: "delivery_failed_1",
+        platformAlertId: "alert_operations_1",
+        targetName: "ops-critical",
+        targetUrl: "https://ops.example.com/hooks/platform-alerts",
+        eventType: "opened",
+        status: "failed",
+        attemptCount: 1,
+        escalationLevel: 0,
+        requestPayload: {},
+        responseStatusCode: 500,
+        errorMessage: "Target unavailable",
+        lastAttemptedAt: new Date("2026-04-06T10:25:00.000Z"),
+        deliveredAt: null,
+        createdAt: new Date("2026-04-06T10:24:00.000Z"),
+        updatedAt: new Date("2026-04-06T10:25:00.000Z")
+      },
+      {
+        id: "delivery_failed_2",
+        platformAlertId: "alert_operations_1",
+        targetName: "ops-critical",
+        targetUrl: "https://ops.example.com/hooks/platform-alerts",
+        eventType: "reopened",
+        status: "failed",
+        attemptCount: 1,
+        escalationLevel: 0,
+        requestPayload: {},
+        responseStatusCode: 502,
+        errorMessage: "Target unavailable",
+        lastAttemptedAt: new Date("2026-04-06T10:20:00.000Z"),
+        deliveredAt: null,
+        createdAt: new Date("2026-04-06T10:19:00.000Z"),
+        updatedAt: new Date("2026-04-06T10:20:00.000Z")
+      },
+      {
+        id: "delivery_failed_3",
+        platformAlertId: "alert_operations_1",
+        targetName: "ops-critical",
+        targetUrl: "https://ops.example.com/hooks/platform-alerts",
+        eventType: "re_escalated",
+        status: "failed",
+        attemptCount: 1,
+        escalationLevel: 0,
+        requestPayload: {},
+        responseStatusCode: 503,
+        errorMessage: "Target unavailable",
+        lastAttemptedAt: new Date("2026-04-06T10:15:00.000Z"),
+        deliveredAt: null,
+        createdAt: new Date("2026-04-06T10:14:00.000Z"),
+        updatedAt: new Date("2026-04-06T10:15:00.000Z")
+      }
+    ]);
+    (prismaService.platformAlert.create as jest.Mock).mockResolvedValue(
+      degradedDeliveryAlert
+    );
+    (prismaService.platformAlert.findMany as jest.Mock)
+      .mockResolvedValue([degradedDeliveryAlert])
+      .mockResolvedValueOnce([]);
+    (prismaService.platformAlert.count as jest.Mock)
+      .mockResolvedValueOnce(1)
+      .mockResolvedValueOnce(1)
+      .mockResolvedValueOnce(0);
+
+    const result = await service.getOperationsStatus({
+      recentAlertLimit: 8,
+      staleAfterSeconds: 180
+    });
+
+    expect(prismaService.platformAlert.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          dedupeKey: "operations:alert-delivery-target:ops-critical",
+          category: PlatformAlertCategory.operations,
+          severity: PlatformAlertSeverity.critical,
+          code: "platform_alert_delivery_target_degraded"
+        })
+      })
+    );
+    expect(result.recentAlerts[0]?.category).toBe("operations");
+    expect(result.recentAlerts[0]?.code).toBe(
+      "platform_alert_delivery_target_degraded"
+    );
   });
 
   it("re-escalates overdue critical alerts for the worker sweep", async () => {
