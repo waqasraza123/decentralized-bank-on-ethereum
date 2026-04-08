@@ -1,28 +1,28 @@
 CREATE TYPE "IncidentPackageExportMode" AS ENUM (
-  internal_full,
-  redaction_ready,
-  compliance_focused
+  'internal_full',
+  'redaction_ready',
+  'compliance_focused'
 );
 
 CREATE TYPE "IncidentPackageReleaseTarget" AS ENUM (
-  internal_casefile,
-  compliance_handoff,
-  regulator_response,
-  external_counsel
+  'internal_casefile',
+  'compliance_handoff',
+  'regulator_response',
+  'external_counsel'
 );
 
 CREATE TYPE "CustomerAccountIncidentPackageReleaseStatus" AS ENUM (
-  pending_approval,
-  approved,
-  rejected,
-  released,
-  expired
+  'pending_approval',
+  'approved',
+  'rejected',
+  'released',
+  'expired'
 );
 
 CREATE TABLE "CustomerAccountIncidentPackageRelease" (
   "id" TEXT NOT NULL,
   "customerAccountId" TEXT NOT NULL,
-  "status" "CustomerAccountIncidentPackageReleaseStatus" NOT NULL DEFAULT pending_approval,
+  "status" "CustomerAccountIncidentPackageReleaseStatus" NOT NULL DEFAULT 'pending_approval',
   "exportMode" "IncidentPackageExportMode" NOT NULL,
   "releaseTarget" "IncidentPackageReleaseTarget" NOT NULL,
   "releaseReasonCode" TEXT NOT NULL,

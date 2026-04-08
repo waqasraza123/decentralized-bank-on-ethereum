@@ -139,6 +139,14 @@ pnpm --filter @stealth-trails-bank/api prisma:migrate
 pnpm dev
 ~~~
 
+`pnpm dev` now runs a repo-owned preflight first. It fails fast if the worker is pointed at the wrong local API URL or if your local API database is behind the checked-in Prisma migrations.
+
+If that preflight blocks startup, the usual recovery path is:
+
+~~~bash
+pnpm --filter @stealth-trails-bank/api prisma:deploy
+~~~
+
 ## Common commands
 
 Run these from the repository root unless noted otherwise.
@@ -148,6 +156,7 @@ Run these from the repository root unless noted otherwise.
 | Command | Purpose |
 |---------|---------|
 | `pnpm dev` | Start repo development tasks |
+| `pnpm dev:preflight` | Validate local dev wiring and Prisma migration state before startup |
 | `pnpm build` | Build workspace packages that define a build script |
 | `pnpm test` | Run workspace tests |
 | `pnpm lint` | Run lint tasks where defined |
@@ -161,6 +170,7 @@ pnpm --filter @stealth-trails-bank/web dev
 pnpm --filter @stealth-trails-bank/api start:dev
 pnpm --filter @stealth-trails-bank/api prisma:generate
 pnpm --filter @stealth-trails-bank/api prisma:migrate
+pnpm --filter @stealth-trails-bank/api prisma:deploy
 ~~~
 
 ## Documentation map

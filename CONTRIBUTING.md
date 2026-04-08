@@ -126,6 +126,25 @@ pnpm --filter @stealth-trails-bank/api test
 
 If your change is bounded, run at least the focused tests around that area.
 
+## Local development guard
+
+Root development startup is guarded too:
+
+~~~bash
+pnpm dev
+~~~
+
+That command now runs a repo-owned preflight before Turbo starts. The preflight blocks startup if:
+
+- the worker points at the wrong local API base URL
+- the API database has pending checked-in Prisma migrations
+
+If the database is behind, apply migrations first:
+
+~~~bash
+pnpm --filter @stealth-trails-bank/api prisma:deploy
+~~~
+
 ## Push guard
 
 This repo includes a versioned pre-push guard so broken builds or failing tests do not get pushed.

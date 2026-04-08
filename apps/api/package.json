@@ -11,6 +11,7 @@
     "build": "nest build",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
+    "prisma:deploy": "prisma migrate deploy",
     "prisma:studio": "prisma studio",
     "backfill:customer-accounts": "ts-node src/scripts/backfill-customer-accounts.ts",
     "backfill:customer-wallets": "ts-node src/scripts/backfill-customer-wallets.ts",

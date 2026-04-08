@@ -3,7 +3,8 @@
   "private": true,
   "packageManager": "pnpm@9.15.0",
   "scripts": {
-    "dev": "turbo dev",
+    "dev": "./scripts/dev.sh",
+    "dev:preflight": "node ./scripts/preflight-dev.mjs",
     "build": "turbo build",
     "lint": "turbo lint",
     "test": "turbo test",
