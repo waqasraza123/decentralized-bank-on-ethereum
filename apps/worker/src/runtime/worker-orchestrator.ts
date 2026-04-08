@@ -56,7 +56,8 @@ function createEmptyIterationMetrics(): WorkerIterationMetrics {
     withdrawalSettledCount: 0,
     depositFailedCount: 0,
     withdrawalFailedCount: 0,
-    manualWithdrawalBacklogCount: 0
+    manualWithdrawalBacklogCount: 0,
+    reEscalatedCriticalAlertCount: 0
   };
 }
 

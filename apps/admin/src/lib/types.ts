@@ -359,8 +359,10 @@ export type PlatformAlert = {
     pendingCount: number;
     failedCount: number;
     escalatedCount: number;
+    reEscalationCount: number;
     highestEscalationLevel: number;
     lastAttemptedAt: string | null;
+    lastEventType: string | null;
     lastStatus: "pending" | "succeeded" | "failed" | null;
     lastTargetName: string | null;
     lastEscalatedFromTargetName: string | null;
@@ -410,6 +412,40 @@ export type PlatformAlertGovernanceMutationResult = {
 
 export type RetryPlatformAlertDeliveriesResult = {
   retriedDeliveryCount: number;
+};
+
+export type PlatformAlertDeliveryTargetHealth = {
+  targetName: string;
+  targetUrl: string;
+  deliveryMode: "direct" | "failover_only";
+  healthStatus: "healthy" | "warning" | "critical";
+  categories: string[];
+  minimumSeverity: "warning" | "critical";
+  eventTypes: string[];
+  failoverTargetNames: string[];
+  recentDeliveryCount: number;
+  recentSucceededCount: number;
+  recentFailedCount: number;
+  pendingDeliveryCount: number;
+  highestObservedEscalationLevel: number;
+  lastAttemptedAt: string | null;
+  lastDeliveredAt: string | null;
+  lastFailureAt: string | null;
+  lastErrorMessage: string | null;
+  averageDeliveryLatencyMs: number | null;
+  maxDeliveryLatencyMs: number | null;
+};
+
+export type PlatformAlertDeliveryTargetHealthList = {
+  generatedAt: string;
+  lookbackHours: number;
+  summary: {
+    totalTargetCount: number;
+    healthyTargetCount: number;
+    warningTargetCount: number;
+    criticalTargetCount: number;
+  };
+  targets: PlatformAlertDeliveryTargetHealth[];
 };
 
 export type TreasuryOverview = {

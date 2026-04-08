@@ -21,6 +21,31 @@ jest.mock("@stealth-trails-bank/config/api", () => ({
   loadProductChainRuntimeConfig: () => ({
     productChainId: 8453
   }),
+  loadPlatformAlertDeliveryRuntimeConfig: () => ({
+    requestTimeoutMs: 5000,
+    targets: [
+      {
+        name: "ops-critical",
+        url: "https://ops.example.com/hooks/platform-alerts",
+        bearerToken: "secret-token",
+        deliveryMode: "direct",
+        categories: ["worker", "queue", "chain", "treasury", "reconciliation"],
+        minimumSeverity: "critical",
+        eventTypes: ["opened", "reopened", "re_escalated", "routed_to_review_case"],
+        failoverTargetNames: ["ops-failover"]
+      },
+      {
+        name: "ops-failover",
+        url: "https://pager.example.com/hooks/platform-alerts",
+        bearerToken: null,
+        deliveryMode: "failover_only",
+        categories: ["worker", "queue", "chain", "treasury", "reconciliation"],
+        minimumSeverity: "critical",
+        eventTypes: ["opened", "reopened", "re_escalated", "routed_to_review_case"],
+        failoverTargetNames: []
+      }
+    ]
+  }),
   loadPlatformAlertAutomationRuntimeConfig: () => ({
     policies: [
       {
@@ -31,6 +56,11 @@ jest.mock("@stealth-trails-bank/config/api", () => ({
         routeNote: "Escalate worker outages immediately."
       }
     ]
+  }),
+  loadPlatformAlertReEscalationRuntimeConfig: () => ({
+    unacknowledgedCriticalAlertThresholdSeconds: 900,
+    unownedCriticalAlertThresholdSeconds: 600,
+    repeatIntervalSeconds: 1800
   })
 }));
 
@@ -152,7 +182,8 @@ function createService() {
       count: jest.fn()
     },
     auditEvent: {
-      create: jest.fn()
+      create: jest.fn(),
+      findMany: jest.fn().mockResolvedValue([])
     },
     platformAlert: {
       create: jest.fn(),
@@ -457,7 +488,8 @@ describe("OperationsMonitoringService", () => {
     (prismaService.platformAlert.findMany as jest.Mock)
       .mockResolvedValueOnce([])
       .mockResolvedValueOnce([])
-      .mockResolvedValueOnce([buildPlatformAlertRecord()]);
+      .mockResolvedValueOnce([buildPlatformAlertRecord()])
+      .mockResolvedValueOnce([]);
 
     requestMetrics.recordRequestStarted();
     requestMetrics.recordRequestCompleted({
@@ -478,8 +510,111 @@ describe("OperationsMonitoringService", () => {
     expect(result).toContain("stb_api_http_requests_total");
     expect(result).toContain("stb_operations_workers_total");
     expect(result).toContain("stb_platform_alerts_open_total");
+    expect(result).toContain("stb_platform_alert_reescalation_due_total");
+    expect(result).toContain("stb_platform_alert_delivery_target_latency_ms");
     expect(result).toContain("stb_worker_latest_iteration_metric");
     expect(result).toContain('category="worker"');
+  });
+
+  it("reports platform alert delivery target health from recent deliveries", async () => {
+    const { service, prismaService } = createService();
+
+    (prismaService.platformAlertDelivery.findMany as jest.Mock).mockResolvedValue([
+      {
+        id: "delivery_failed_1",
+        platformAlertId: "alert_1",
+        targetName: "ops-critical",
+        targetUrl: "https://ops.example.com/hooks/platform-alerts",
+        eventType: "re_escalated",
+        status: "failed",
+        attemptCount: 1,
+        escalationLevel: 0,
+        requestPayload: {},
+        responseStatusCode: 500,
+        errorMessage: "Primary target unavailable",
+        lastAttemptedAt: new Date("2026-04-06T10:20:00.000Z"),
+        deliveredAt: null,
+        createdAt: new Date("2026-04-06T10:19:00.000Z"),
+        updatedAt: new Date("2026-04-06T10:20:00.000Z")
+      },
+      {
+        id: "delivery_success_1",
+        platformAlertId: "alert_2",
+        targetName: "ops-failover",
+        targetUrl: "https://pager.example.com/hooks/platform-alerts",
+        eventType: "opened",
+        status: "succeeded",
+        attemptCount: 1,
+        escalationLevel: 1,
+        requestPayload: {},
+        responseStatusCode: 202,
+        errorMessage: null,
+        lastAttemptedAt: new Date("2026-04-06T10:10:10.000Z"),
+        deliveredAt: new Date("2026-04-06T10:10:10.000Z"),
+        createdAt: new Date("2026-04-06T10:10:00.000Z"),
+        updatedAt: new Date("2026-04-06T10:10:10.000Z")
+      }
+    ]);
+
+    const result = await service.listPlatformAlertDeliveryTargetHealth({
+      lookbackHours: 24
+    });
+
+    expect(result.summary.totalTargetCount).toBe(2);
+    expect(result.summary.criticalTargetCount).toBe(1);
+    expect(result.targets[0]?.targetName).toBe("ops-critical");
+    expect(result.targets[0]?.healthStatus).toBe("critical");
+    expect(result.targets[1]?.healthStatus).toBe("healthy");
+    expect(result.targets[1]?.averageDeliveryLatencyMs).toBe(10000);
+  });
+
+  it("re-escalates overdue critical alerts for the worker sweep", async () => {
+    const { service, prismaService, platformAlertDeliveryService } = createService();
+    const overdueAlert = buildPlatformAlertRecord({
+      id: "alert_reescalate_1",
+      dedupeKey: "worker:stale:worker_1",
+      severity: PlatformAlertSeverity.critical,
+      firstDetectedAt: new Date("2026-04-06T10:00:00.000Z"),
+      createdAt: new Date("2026-04-06T10:00:00.000Z")
+    });
+
+    jest.spyOn(Date, "now").mockReturnValue(
+      new Date("2026-04-06T10:30:00.000Z").getTime()
+    );
+    (prismaService.platformAlert.findMany as jest.Mock).mockResolvedValue([
+      overdueAlert
+    ]);
+    (prismaService.platformAlertDelivery.findMany as jest.Mock).mockResolvedValue([]);
+    (prismaService.auditEvent.findMany as jest.Mock).mockResolvedValue([]);
+    (platformAlertDeliveryService.enqueueAlertEvent as jest.Mock).mockResolvedValue(1);
+
+    const result = await service.reEscalateCriticalPlatformAlertsFromWorker(
+      "worker_1",
+      {
+        limit: 10
+      }
+    );
+
+    expect(platformAlertDeliveryService.enqueueAlertEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventType: "re_escalated",
+        metadata: expect.objectContaining({
+          reasons: ["unacknowledged", "unowned"]
+        })
+      })
+    );
+    expect(prismaService.auditEvent.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          action: "platform_alert.re_escalated",
+          actorType: "worker",
+          actorId: "worker_1",
+          targetId: overdueAlert.id
+        })
+      })
+    );
+    expect(result.reEscalatedAlertCount).toBe(1);
+    expect(result.reEscalatedAlerts[0]?.alertId).toBe(overdueAlert.id);
   });
 
   it("assigns an owner to an open platform alert", async () => {
@@ -865,8 +1000,10 @@ describe("OperationsMonitoringService", () => {
             pendingCount: 0,
             failedCount: 0,
             escalatedCount: 0,
+            reEscalationCount: 0,
             highestEscalationLevel: 0,
             lastAttemptedAt: null,
+            lastEventType: null,
             lastStatus: null,
             lastTargetName: null,
             lastEscalatedFromTargetName: null,

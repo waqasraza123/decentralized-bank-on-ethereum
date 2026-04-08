@@ -7,7 +7,10 @@
     "build": "turbo build",
     "lint": "turbo lint",
     "test": "turbo test",
-    "compile": "turbo run compile"
+    "compile": "turbo run compile",
+    "verify:push": "./scripts/verify-push.sh",
+    "safe-push": "./scripts/safe-push.sh",
+    "setup:hooks": "git config core.hooksPath .githooks"
   },
   "devDependencies": {
     "turbo": "^2.4.4"

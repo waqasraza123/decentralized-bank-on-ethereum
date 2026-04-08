@@ -17,6 +17,7 @@ test("internal worker api client wraps unavailable upstream errors", async () =>
     requestTimeoutMs: 250,
     confirmationBlocks: 1,
     reconciliationScanIntervalMs: 300000,
+    platformAlertReEscalationIntervalMs: 300000,
     rpcUrl: null,
     depositSignerPrivateKey: null
   });

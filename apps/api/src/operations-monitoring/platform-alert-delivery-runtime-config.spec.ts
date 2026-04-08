@@ -1,6 +1,7 @@
 import {
   loadPlatformAlertAutomationRuntimeConfig,
-  loadPlatformAlertDeliveryRuntimeConfig
+  loadPlatformAlertDeliveryRuntimeConfig,
+  loadPlatformAlertReEscalationRuntimeConfig
 } from "@stealth-trails-bank/config/api";
 
 describe("loadPlatformAlertDeliveryRuntimeConfig", () => {
@@ -13,6 +14,9 @@ describe("loadPlatformAlertDeliveryRuntimeConfig", () => {
     delete process.env["PLATFORM_ALERT_DELIVERY_TARGETS_JSON"];
     delete process.env["PLATFORM_ALERT_DELIVERY_REQUEST_TIMEOUT_MS"];
     delete process.env["PLATFORM_ALERT_AUTOMATION_POLICIES_JSON"];
+    delete process.env["PLATFORM_ALERT_REESCALATION_UNACKNOWLEDGED_SECONDS"];
+    delete process.env["PLATFORM_ALERT_REESCALATION_UNOWNED_SECONDS"];
+    delete process.env["PLATFORM_ALERT_REESCALATION_REPEAT_SECONDS"];
   });
 
   afterAll(() => {
@@ -36,7 +40,7 @@ describe("loadPlatformAlertDeliveryRuntimeConfig", () => {
         deliveryMode: "direct",
         categories: ["worker", "queue"],
         minimumSeverity: "critical",
-        eventTypes: ["opened", "reopened", "owner_assigned"],
+        eventTypes: ["opened", "reopened", "owner_assigned", "re_escalated"],
         failoverTargetNames: ["ops-failover"]
       },
       {
@@ -45,7 +49,7 @@ describe("loadPlatformAlertDeliveryRuntimeConfig", () => {
         deliveryMode: "failover_only",
         categories: ["worker", "queue"],
         minimumSeverity: "critical",
-        eventTypes: ["opened", "reopened", "owner_assigned"]
+        eventTypes: ["opened", "reopened", "owner_assigned", "re_escalated"]
       }
     ]);
 
@@ -60,7 +64,7 @@ describe("loadPlatformAlertDeliveryRuntimeConfig", () => {
         deliveryMode: "direct",
         categories: ["worker", "queue"],
         minimumSeverity: "critical",
-        eventTypes: ["opened", "reopened", "owner_assigned"],
+        eventTypes: ["opened", "reopened", "owner_assigned", "re_escalated"],
         failoverTargetNames: ["ops-failover"]
       },
       {
@@ -70,7 +74,7 @@ describe("loadPlatformAlertDeliveryRuntimeConfig", () => {
         deliveryMode: "failover_only",
         categories: ["worker", "queue"],
         minimumSeverity: "critical",
-        eventTypes: ["opened", "reopened", "owner_assigned"],
+        eventTypes: ["opened", "reopened", "owner_assigned", "re_escalated"],
         failoverTargetNames: []
       }
     ]);
@@ -98,5 +102,23 @@ describe("loadPlatformAlertDeliveryRuntimeConfig", () => {
         routeNote: "Escalate worker outages immediately."
       }
     ]);
+  });
+
+  it("loads re-escalation timing defaults and overrides", () => {
+    expect(loadPlatformAlertReEscalationRuntimeConfig(process.env)).toEqual({
+      unacknowledgedCriticalAlertThresholdSeconds: 900,
+      unownedCriticalAlertThresholdSeconds: 600,
+      repeatIntervalSeconds: 1800
+    });
+
+    process.env["PLATFORM_ALERT_REESCALATION_UNACKNOWLEDGED_SECONDS"] = "1200";
+    process.env["PLATFORM_ALERT_REESCALATION_UNOWNED_SECONDS"] = "900";
+    process.env["PLATFORM_ALERT_REESCALATION_REPEAT_SECONDS"] = "2400";
+
+    expect(loadPlatformAlertReEscalationRuntimeConfig(process.env)).toEqual({
+      unacknowledgedCriticalAlertThresholdSeconds: 1200,
+      unownedCriticalAlertThresholdSeconds: 900,
+      repeatIntervalSeconds: 2400
+    });
   });
 });

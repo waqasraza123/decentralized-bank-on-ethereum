@@ -726,6 +726,7 @@ enum PlatformAlertDeliveryEventType {
   routed_to_review_case
   owner_assigned
   acknowledged
+  re_escalated
   suppressed
   suppression_cleared
 }

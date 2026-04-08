@@ -9,6 +9,10 @@ Environment variables:
 - `PLATFORM_ALERT_DELIVERY_TARGETS_JSON`
 - `PLATFORM_ALERT_DELIVERY_REQUEST_TIMEOUT_MS`
 - `PLATFORM_ALERT_AUTOMATION_POLICIES_JSON`
+- `PLATFORM_ALERT_REESCALATION_UNACKNOWLEDGED_SECONDS`
+- `PLATFORM_ALERT_REESCALATION_UNOWNED_SECONDS`
+- `PLATFORM_ALERT_REESCALATION_REPEAT_SECONDS`
+- `WORKER_PLATFORM_ALERT_REESCALATION_INTERVAL_MS`
 
 Example:
 
@@ -21,7 +25,7 @@ Example:
     "deliveryMode": "direct",
     "categories": ["worker", "queue", "chain", "treasury", "reconciliation"],
     "minimumSeverity": "critical",
-    "eventTypes": ["opened", "reopened", "routed_to_review_case", "owner_assigned"],
+    "eventTypes": ["opened", "reopened", "re_escalated", "routed_to_review_case", "owner_assigned"],
     "failoverTargetNames": ["ops-failover"]
   },
   {
@@ -31,7 +35,7 @@ Example:
     "deliveryMode": "failover_only",
     "categories": ["worker", "queue", "chain", "treasury", "reconciliation"],
     "minimumSeverity": "critical",
-    "eventTypes": ["opened", "reopened", "routed_to_review_case", "owner_assigned"]
+    "eventTypes": ["opened", "reopened", "re_escalated", "routed_to_review_case", "owner_assigned"]
   }
 ]
 ```
@@ -58,8 +62,10 @@ Behavior:
 - direct targets can name failover-only targets that are created only after a failed delivery attempt
 - failover deliveries keep escalation level and parent-delivery ancestry in the durable record
 - category-specific automation policies can auto-route matching alerts into review cases without a manual console action
+- overdue critical alerts are re-escalated on a worker-driven timer when they remain unacknowledged or unowned
 - deliveries are stored durably before send attempts start
 - failed deliveries can be retried from the operator API
+- delivery-target health is exposed through the operations API and admin console with recent success, failure, pending, and latency summaries
 
 ## Delivery records
 
@@ -74,6 +80,8 @@ Each matched delivery becomes a durable `PlatformAlertDelivery` record with:
 - final status
 - latest response status or error message
 
+Timed follow-up also emits a durable `platform_alert.re_escalated` audit event so repeat intervals remain enforced even when no external targets are currently configured.
+
 ## Operational use
 
 Use external delivery targets to:
@@ -87,5 +95,5 @@ Use external delivery targets to:
 ## Next step
 
 After this failover-and-automation baseline:
-1. add time-based re-escalation when critical alerts remain unacknowledged or unowned
-2. expose delivery-target health and escalation latency as explicit platform metrics
+1. prove the worker sweep cadence and target-health metrics against staging alert traffic
+2. add SLO-backed alerting on sustained delivery-target degradation

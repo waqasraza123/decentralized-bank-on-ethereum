@@ -45,6 +45,7 @@ import {
   listOversightIncidents,
   listPendingAccountReleaseReviews,
   listPendingReleases,
+  listPlatformAlertDeliveryTargetHealth,
   listPlatformAlerts,
   listReleasedReleases,
   listReviewCases,
@@ -337,6 +338,16 @@ function AdminConsole() {
         limit: 12,
         staleAfterSeconds: 180,
         status: "open"
+      }),
+    enabled: Boolean(operatorSession),
+    refetchInterval: 30000
+  });
+
+  const platformAlertTargetHealthQuery = useQuery({
+    queryKey: ["platformAlertTargetHealth", operatorSession?.baseUrl],
+    queryFn: () =>
+      listPlatformAlertDeliveryTargetHealth(operatorSession!, {
+        lookbackHours: 24
       }),
     enabled: Boolean(operatorSession),
     refetchInterval: 30000
@@ -774,6 +785,78 @@ function AdminConsole() {
             </button>
           </div>
         </form>
+      </section>
+
+      <section className="panel">
+        <div className="section-heading">
+          <div>
+            <p className="section-kicker">Alert Delivery</p>
+            <h2>Delivery target health</h2>
+          </div>
+          <p className="section-copy">
+            External alert delivery posture over the last 24 hours.
+          </p>
+        </div>
+
+        {platformAlertTargetHealthQuery.isLoading ? (
+          <p>Loading delivery target health...</p>
+        ) : null}
+
+        {platformAlertTargetHealthQuery.data ? (
+          <div className="list-stack">
+            {platformAlertTargetHealthQuery.data.targets.map((target) => (
+              <article className="list-card" key={target.targetName}>
+                <div className="list-card-topline">
+                  <strong>{target.targetName}</strong>
+                  <span className={`status-pill ${target.healthStatus}`}>
+                    {toTitleCase(target.healthStatus)}
+                  </span>
+                </div>
+                <p className="muted">
+                  {target.deliveryMode === "failover_only"
+                    ? "Failover-only delivery target"
+                    : "Direct delivery target"}
+                  {" | "}
+                  {shortenValue(target.targetUrl, 72)}
+                </p>
+                <p className="muted">
+                  Deliveries {target.recentDeliveryCount} total | succeeded{" "}
+                  {target.recentSucceededCount} | failed {target.recentFailedCount} |
+                  pending {target.pendingDeliveryCount}
+                </p>
+                <p className="muted">
+                  Latency avg{" "}
+                  {target.averageDeliveryLatencyMs !== null
+                    ? formatDuration(target.averageDeliveryLatencyMs)
+                    : "n/a"}
+                  {" | "}max{" "}
+                  {target.maxDeliveryLatencyMs !== null
+                    ? formatDuration(target.maxDeliveryLatencyMs)
+                    : "n/a"}
+                  {" | "}highest escalation level {target.highestObservedEscalationLevel}
+                </p>
+                <p className="muted">
+                  Last delivered{" "}
+                  {target.lastDeliveredAt ? formatDateTime(target.lastDeliveredAt) : "n/a"}
+                  {" | "}last failure{" "}
+                  {target.lastFailureAt ? formatDateTime(target.lastFailureAt) : "n/a"}
+                </p>
+                <p className="muted">
+                  Events {target.eventTypes.join(", ")}
+                  {target.failoverTargetNames.length > 0
+                    ? ` | Fails over to ${target.failoverTargetNames.join(", ")}`
+                    : ""}
+                </p>
+                {target.lastErrorMessage ? (
+                  <p className="muted">Latest error {target.lastErrorMessage}</p>
+                ) : null}
+              </article>
+            ))}
+            {platformAlertTargetHealthQuery.data.targets.length === 0 ? (
+              <p>No delivery targets configured.</p>
+            ) : null}
+          </div>
+        ) : null}
       </section>
 
       <section className="panel">
@@ -1628,13 +1711,17 @@ function AdminConsole() {
                   <p className="muted">
                     External delivery{" "}
                     {alert.deliverySummary.totalCount > 0
-                      ? `${alert.deliverySummary.lastStatus ?? "pending"}${
+                      ? `${alert.deliverySummary.lastEventType ?? "opened"} ${
+                          alert.deliverySummary.lastStatus ?? "pending"
+                        }${
                           alert.deliverySummary.lastTargetName
                             ? ` via ${alert.deliverySummary.lastTargetName}`
                             : ""
                         } | failed ${alert.deliverySummary.failedCount} | pending ${
                           alert.deliverySummary.pendingCount
-                        } | escalated ${alert.deliverySummary.escalatedCount} | highest level ${
+                        } | failover escalations ${alert.deliverySummary.escalatedCount} | re-escalations ${
+                          alert.deliverySummary.reEscalationCount
+                        } | highest level ${
                           alert.deliverySummary.highestEscalationLevel
                         }`
                       : "no matching targets configured"}

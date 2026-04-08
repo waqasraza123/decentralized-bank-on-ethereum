@@ -139,6 +139,9 @@ test("synthetic mode records broadcasts and settles them", async () => {
     },
     async triggerLedgerReconciliationScan() {
       throw new Error("reconciliation scan scheduling is handled outside the orchestrator");
+    },
+    async triggerCriticalAlertReEscalationSweep() {
+      throw new Error("platform alert re-escalation is handled outside the orchestrator");
     }
   };
 
@@ -154,6 +157,7 @@ test("synthetic mode records broadcasts and settles them", async () => {
       requestTimeoutMs: 1000,
       confirmationBlocks: 1,
       reconciliationScanIntervalMs: 300000,
+      platformAlertReEscalationIntervalMs: 300000,
       rpcUrl: null,
       depositSignerPrivateKey: null
     },
@@ -238,6 +242,9 @@ test("monitor mode confirms and settles broadcast intents with enough confirmati
     },
     async triggerLedgerReconciliationScan() {
       throw new Error("reconciliation scan scheduling is handled outside the orchestrator");
+    },
+    async triggerCriticalAlertReEscalationSweep() {
+      throw new Error("platform alert re-escalation is handled outside the orchestrator");
     }
   };
 
@@ -253,6 +260,7 @@ test("monitor mode confirms and settles broadcast intents with enough confirmati
       requestTimeoutMs: 1000,
       confirmationBlocks: 2,
       reconciliationScanIntervalMs: 300000,
+      platformAlertReEscalationIntervalMs: 300000,
       rpcUrl: "https://rpc.example.com",
       depositSignerPrivateKey: null
     },
@@ -330,6 +338,9 @@ test("managed mode broadcasts queued deposits and leaves withdrawals for manual 
     },
     async triggerLedgerReconciliationScan() {
       throw new Error("reconciliation scan scheduling is handled outside the orchestrator");
+    },
+    async triggerCriticalAlertReEscalationSweep() {
+      throw new Error("platform alert re-escalation is handled outside the orchestrator");
     }
   };
 
@@ -345,6 +356,7 @@ test("managed mode broadcasts queued deposits and leaves withdrawals for manual 
       requestTimeoutMs: 1000,
       confirmationBlocks: 2,
       reconciliationScanIntervalMs: 300000,
+      platformAlertReEscalationIntervalMs: 300000,
       rpcUrl: "https://rpc.example.com",
       depositSignerPrivateKey:
         "0x59c6995e998f97a5a0044966f094538c5f6d4e07f16b8ad8cc7658f0f1b0f9d8"
@@ -436,6 +448,9 @@ test("managed mode permanently fails malformed deposit intents", async () => {
     },
     async triggerLedgerReconciliationScan() {
       throw new Error("reconciliation scan scheduling is handled outside the orchestrator");
+    },
+    async triggerCriticalAlertReEscalationSweep() {
+      throw new Error("platform alert re-escalation is handled outside the orchestrator");
     }
   };
 
@@ -451,6 +466,7 @@ test("managed mode permanently fails malformed deposit intents", async () => {
       requestTimeoutMs: 1000,
       confirmationBlocks: 2,
       reconciliationScanIntervalMs: 300000,
+      platformAlertReEscalationIntervalMs: 300000,
       rpcUrl: "https://rpc.example.com",
       depositSignerPrivateKey:
         "0x59c6995e998f97a5a0044966f094538c5f6d4e07f16b8ad8cc7658f0f1b0f9d8"

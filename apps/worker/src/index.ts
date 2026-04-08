@@ -99,6 +99,7 @@ export async function startWorkerRuntime(): Promise<void> {
 
   let shutdownRequested = false;
   let lastReconciliationScanAttemptedAt = 0;
+  let lastPlatformAlertReEscalationAttemptedAt = 0;
   let lastReconciliationScanResult: TrackedLedgerReconciliationScanResult | null =
     null;
   let lastReconciliationScanFailure: {
@@ -164,7 +165,9 @@ export async function startWorkerRuntime(): Promise<void> {
           pollIntervalMs: runtime.pollIntervalMs,
           batchLimit: runtime.batchLimit,
           confirmationBlocks: runtime.confirmationBlocks,
-          reconciliationScanIntervalMs: runtime.reconciliationScanIntervalMs
+          reconciliationScanIntervalMs: runtime.reconciliationScanIntervalMs,
+          platformAlertReEscalationIntervalMs:
+            runtime.platformAlertReEscalationIntervalMs
         }
       }
     });
@@ -205,6 +208,31 @@ export async function startWorkerRuntime(): Promise<void> {
         }
       }
 
+      if (
+        now - lastPlatformAlertReEscalationAttemptedAt >=
+        runtime.platformAlertReEscalationIntervalMs
+      ) {
+        lastPlatformAlertReEscalationAttemptedAt = now;
+
+        try {
+          const reEscalationResult =
+            await internalApiClient.triggerCriticalAlertReEscalationSweep({});
+          iterationMetrics.reEscalatedCriticalAlertCount =
+            reEscalationResult.reEscalatedAlertCount;
+          logger.info("scheduled_platform_alert_reescalation_completed", {
+            evaluatedAlertCount: reEscalationResult.evaluatedAlertCount,
+            reEscalatedAlertCount: reEscalationResult.reEscalatedAlertCount,
+            skippedPendingDeliveryCount:
+              reEscalationResult.skippedPendingDeliveryCount,
+            remainingDueAlertCount: reEscalationResult.remainingDueAlertCount
+          });
+        } catch (error) {
+          logger.error("scheduled_platform_alert_reescalation_failed", {
+            error
+          });
+        }
+      }
+
       const iterationCompletedAt = new Date();
 
       await safeReportWorkerHeartbeat({
@@ -236,7 +264,9 @@ export async function startWorkerRuntime(): Promise<void> {
             pollIntervalMs: runtime.pollIntervalMs,
             batchLimit: runtime.batchLimit,
             confirmationBlocks: runtime.confirmationBlocks,
-            reconciliationScanIntervalMs: runtime.reconciliationScanIntervalMs
+            reconciliationScanIntervalMs: runtime.reconciliationScanIntervalMs,
+            platformAlertReEscalationIntervalMs:
+              runtime.platformAlertReEscalationIntervalMs
           },
           latestIterationMetrics: iterationMetrics,
           lastIterationDurationMs:
@@ -277,7 +307,9 @@ export async function startWorkerRuntime(): Promise<void> {
             pollIntervalMs: runtime.pollIntervalMs,
             batchLimit: runtime.batchLimit,
             confirmationBlocks: runtime.confirmationBlocks,
-            reconciliationScanIntervalMs: runtime.reconciliationScanIntervalMs
+            reconciliationScanIntervalMs: runtime.reconciliationScanIntervalMs,
+            platformAlertReEscalationIntervalMs:
+              runtime.platformAlertReEscalationIntervalMs
           },
           latestIterationMetrics: iterationMetrics ?? undefined,
           lastIterationDurationMs: Date.now() - iterationStartedAt.getTime()

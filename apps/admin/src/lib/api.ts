@@ -20,6 +20,7 @@ import type {
   OperatorSession,
   OversightAlertList,
   OversightIncidentList,
+  PlatformAlertDeliveryTargetHealthList,
   PlatformAlertList,
   PlatformAlertGovernanceMutationResult,
   PlatformAlertRouteResult,
@@ -238,6 +239,17 @@ export async function listPlatformAlerts(
   return requestData(session, {
     method: "GET",
     url: "/operations/internal/alerts",
+    params
+  });
+}
+
+export async function listPlatformAlertDeliveryTargetHealth(
+  session: OperatorSession,
+  params: Record<string, string | number | undefined>
+): Promise<PlatformAlertDeliveryTargetHealthList> {
+  return requestData(session, {
+    method: "GET",
+    url: "/operations/internal/alerts/delivery-target-health",
     params
   });
 }

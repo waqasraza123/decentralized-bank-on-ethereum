@@ -126,6 +126,26 @@ pnpm --filter @stealth-trails-bank/api test
 
 If your change is bounded, run at least the focused tests around that area.
 
+## Push guard
+
+This repo includes a versioned pre-push guard so broken builds do not get pushed.
+
+Enable it once per clone:
+
+~~~bash
+pnpm setup:hooks
+~~~
+
+After that, normal `git push` runs the repo's push verification automatically.
+
+If you want one explicit command that works well from terminal-driven AI tools too, use:
+
+~~~bash
+pnpm safe-push
+~~~
+
+That command runs the same verification and only pushes if it passes.
+
 ## Documentation
 
 Update docs when you change:

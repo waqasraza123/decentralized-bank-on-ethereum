@@ -18,8 +18,10 @@ import { AssignPlatformAlertOwnerDto } from "./dto/assign-platform-alert-owner.d
 import { ClearPlatformAlertSuppressionDto } from "./dto/clear-platform-alert-suppression.dto";
 import { GetOperationsMetricsDto } from "./dto/get-operations-metrics.dto";
 import { GetOperationsStatusDto } from "./dto/get-operations-status.dto";
+import { ListPlatformAlertDeliveryTargetHealthDto } from "./dto/list-platform-alert-delivery-target-health.dto";
 import { ListPlatformAlertsDto } from "./dto/list-platform-alerts.dto";
 import { ListWorkerRuntimeHealthDto } from "./dto/list-worker-runtime-health.dto";
+import { ReEscalateCriticalPlatformAlertsDto } from "./dto/re-escalate-critical-platform-alerts.dto";
 import { RetryPlatformAlertDeliveriesDto } from "./dto/retry-platform-alert-deliveries.dto";
 import { RouteCriticalPlatformAlertsDto } from "./dto/route-critical-platform-alerts.dto";
 import { RoutePlatformAlertToReviewCaseDto } from "./dto/route-platform-alert-to-review-case.dto";
@@ -85,6 +87,29 @@ export class OperationsMonitoringController {
     };
   }
 
+  @Get("alerts/delivery-target-health")
+  async listPlatformAlertDeliveryTargetHealth(
+    @Query(
+      new ValidationPipe({
+        transform: true,
+        whitelist: true,
+        forbidNonWhitelisted: true
+      })
+    )
+    query: ListPlatformAlertDeliveryTargetHealthDto
+  ): Promise<CustomJsonResponse> {
+    const result =
+      await this.operationsMonitoringService.listPlatformAlertDeliveryTargetHealth(
+        query
+      );
+
+    return {
+      status: "success",
+      message: "Platform alert delivery target health retrieved successfully.",
+      data: result
+    };
+  }
+
   @Post("alerts/route-critical")
   async routeCriticalPlatformAlerts(
     @Body(
@@ -108,6 +133,34 @@ export class OperationsMonitoringController {
         result.routedAlerts.length > 0
           ? "Critical platform alerts routed successfully."
           : "No unrouted critical platform alerts required routing.",
+      data: result
+    };
+  }
+
+  @Post("alerts/re-escalate-critical")
+  async reEscalateCriticalPlatformAlerts(
+    @Body(
+      new ValidationPipe({
+        transform: true,
+        whitelist: true,
+        forbidNonWhitelisted: true
+      })
+    )
+    dto: ReEscalateCriticalPlatformAlertsDto,
+    @Request() request: InternalOperatorRequest
+  ): Promise<CustomJsonResponse> {
+    const result =
+      await this.operationsMonitoringService.reEscalateCriticalPlatformAlerts(
+        request.internalOperator.operatorId,
+        dto
+      );
+
+    return {
+      status: "success",
+      message:
+        result.reEscalatedAlertCount > 0
+          ? "Overdue critical platform alerts re-escalated successfully."
+          : "No overdue critical platform alerts required re-escalation.",
       data: result
     };
   }

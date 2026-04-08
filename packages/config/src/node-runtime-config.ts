@@ -38,10 +38,14 @@ const DEFAULT_INCIDENT_PACKAGE_RELEASE_APPROVER_ALLOWED_OPERATOR_ROLES = [
 ] as const;
 const DEFAULT_INCIDENT_PACKAGE_RELEASE_APPROVAL_EXPIRY_HOURS = 72;
 const DEFAULT_PLATFORM_ALERT_DELIVERY_REQUEST_TIMEOUT_MS = 5_000;
+const DEFAULT_PLATFORM_ALERT_REESCALATION_UNACKNOWLEDGED_SECONDS = 900;
+const DEFAULT_PLATFORM_ALERT_REESCALATION_UNOWNED_SECONDS = 600;
+const DEFAULT_PLATFORM_ALERT_REESCALATION_REPEAT_SECONDS = 1800;
 const DEFAULT_WORKER_POLL_INTERVAL_MS = 10_000;
 const DEFAULT_WORKER_BATCH_LIMIT = 20;
 const DEFAULT_WORKER_REQUEST_TIMEOUT_MS = 10_000;
 const DEFAULT_WORKER_CONFIRMATION_BLOCKS = 1;
+const DEFAULT_WORKER_PLATFORM_ALERT_REESCALATION_INTERVAL_MS = 300_000;
 const DEFAULT_LOCAL_WORKER_ID = "worker-local-1";
 const DEFAULT_LOCAL_INTERNAL_API_BASE_URL = "http://localhost:9001";
 const DEFAULT_LOCAL_INTERNAL_WORKER_API_KEY = "local-dev-worker-key";
@@ -289,6 +293,7 @@ function parsePlatformAlertDeliveryEventTypes(
       entry === "routed_to_review_case" ||
       entry === "owner_assigned" ||
       entry === "acknowledged" ||
+      entry === "re_escalated" ||
       entry === "suppressed" ||
       entry === "suppression_cleared"
     ) {
@@ -592,6 +597,7 @@ export type WorkerRuntimeConfig = {
   readonly requestTimeoutMs: number;
   readonly confirmationBlocks: number;
   readonly reconciliationScanIntervalMs: number;
+  readonly platformAlertReEscalationIntervalMs: number;
   readonly rpcUrl: string | null;
   readonly depositSignerPrivateKey: string | null;
 };
@@ -648,6 +654,7 @@ export type PlatformAlertDeliveryEventType =
   | "routed_to_review_case"
   | "owner_assigned"
   | "acknowledged"
+  | "re_escalated"
   | "suppressed"
   | "suppression_cleared";
 
@@ -679,6 +686,12 @@ export type PlatformAlertAutomationPolicyRuntimeConfig = {
 
 export type PlatformAlertAutomationRuntimeConfig = {
   readonly policies: readonly PlatformAlertAutomationPolicyRuntimeConfig[];
+};
+
+export type PlatformAlertReEscalationRuntimeConfig = {
+  readonly unacknowledgedCriticalAlertThresholdSeconds: number;
+  readonly unownedCriticalAlertThresholdSeconds: number;
+  readonly repeatIntervalSeconds: number;
 };
 
 export function loadDatabaseRuntimeConfig(
@@ -909,6 +922,13 @@ export function loadWorkerRuntimeConfig(
       readOptionalRuntimeEnv(env, "WORKER_RECONCILIATION_SCAN_INTERVAL_MS") ??
         "300000",
       "WORKER_RECONCILIATION_SCAN_INTERVAL_MS"
+    ),
+    platformAlertReEscalationIntervalMs: parsePositiveInteger(
+      readOptionalRuntimeEnv(
+        env,
+        "WORKER_PLATFORM_ALERT_REESCALATION_INTERVAL_MS"
+      ) ?? String(DEFAULT_WORKER_PLATFORM_ALERT_REESCALATION_INTERVAL_MS),
+      "WORKER_PLATFORM_ALERT_REESCALATION_INTERVAL_MS"
     ),
     rpcUrl: rpcUrl ?? null,
     depositSignerPrivateKey: depositSignerPrivateKey ?? null
@@ -1177,5 +1197,29 @@ export function loadPlatformAlertAutomationRuntimeConfig(
           "PLATFORM_ALERT_AUTOMATION_POLICIES_JSON"
         )
       : []
+  };
+}
+
+export function loadPlatformAlertReEscalationRuntimeConfig(
+  env: RuntimeEnvShape = getNodeRuntimeEnv()
+): PlatformAlertReEscalationRuntimeConfig {
+  return {
+    unacknowledgedCriticalAlertThresholdSeconds: parsePositiveInteger(
+      readOptionalRuntimeEnv(
+        env,
+        "PLATFORM_ALERT_REESCALATION_UNACKNOWLEDGED_SECONDS"
+      ) ?? String(DEFAULT_PLATFORM_ALERT_REESCALATION_UNACKNOWLEDGED_SECONDS),
+      "PLATFORM_ALERT_REESCALATION_UNACKNOWLEDGED_SECONDS"
+    ),
+    unownedCriticalAlertThresholdSeconds: parsePositiveInteger(
+      readOptionalRuntimeEnv(env, "PLATFORM_ALERT_REESCALATION_UNOWNED_SECONDS") ??
+        String(DEFAULT_PLATFORM_ALERT_REESCALATION_UNOWNED_SECONDS),
+      "PLATFORM_ALERT_REESCALATION_UNOWNED_SECONDS"
+    ),
+    repeatIntervalSeconds: parsePositiveInteger(
+      readOptionalRuntimeEnv(env, "PLATFORM_ALERT_REESCALATION_REPEAT_SECONDS") ??
+        String(DEFAULT_PLATFORM_ALERT_REESCALATION_REPEAT_SECONDS),
+      "PLATFORM_ALERT_REESCALATION_REPEAT_SECONDS"
+    )
   };
 }

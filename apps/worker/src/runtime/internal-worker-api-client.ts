@@ -2,6 +2,7 @@ import axios, { type AxiosInstance } from "axios";
 import type { WorkerRuntime } from "./worker-runtime";
 import type {
   ConfirmIntentPayload,
+  CriticalAlertReEscalationSweepResult,
   FailIntentPayload,
   ListIntentsResult,
   RecordBroadcastPayload,
@@ -272,6 +273,18 @@ export function createInternalWorkerApiClient(runtime: WorkerRuntime) {
       return readResponseData(
         httpClient.post<ApiEnvelope<TrackedLedgerReconciliationScanResult>>(
           "/ledger/internal/worker/reconciliation/scan",
+          payload
+        ),
+        baseUrl
+      );
+    },
+
+    async triggerCriticalAlertReEscalationSweep(
+      payload: Record<string, string | number | undefined> = {}
+    ): Promise<CriticalAlertReEscalationSweepResult> {
+      return readResponseData(
+        httpClient.post<ApiEnvelope<CriticalAlertReEscalationSweepResult>>(
+          "/operations/internal/worker/alerts/re-escalate-critical",
           payload
         ),
         baseUrl

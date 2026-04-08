@@ -8,6 +8,7 @@ import {
 } from "@nestjs/common";
 import { InternalWorkerApiKeyGuard } from "../auth/guards/internal-worker-api-key.guard";
 import { CustomJsonResponse } from "../types/CustomJsonResponse";
+import { ReEscalateCriticalPlatformAlertsDto } from "./dto/re-escalate-critical-platform-alerts.dto";
 import { ReportWorkerRuntimeHeartbeatDto } from "./dto/report-worker-runtime-heartbeat.dto";
 import { OperationsMonitoringService } from "./operations-monitoring.service";
 
@@ -45,6 +46,34 @@ export class OperationsMonitoringWorkerController {
     return {
       status: "success",
       message: "Worker heartbeat recorded successfully.",
+      data: result
+    };
+  }
+
+  @Post("alerts/re-escalate-critical")
+  async reEscalateCriticalPlatformAlerts(
+    @Body(
+      new ValidationPipe({
+        transform: true,
+        whitelist: true,
+        forbidNonWhitelisted: true
+      })
+    )
+    dto: ReEscalateCriticalPlatformAlertsDto,
+    @Request() request: InternalWorkerRequest
+  ): Promise<CustomJsonResponse> {
+    const result =
+      await this.operationsMonitoringService.reEscalateCriticalPlatformAlertsFromWorker(
+        request.internalWorker.workerId,
+        dto
+      );
+
+    return {
+      status: "success",
+      message:
+        result.reEscalatedAlertCount > 0
+          ? "Overdue critical platform alerts re-escalated successfully."
+          : "No overdue critical platform alerts required re-escalation.",
       data: result
     };
   }

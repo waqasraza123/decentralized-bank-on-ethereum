@@ -105,6 +105,23 @@ export type WorkerIterationMetrics = {
   depositFailedCount: number;
   withdrawalFailedCount: number;
   manualWithdrawalBacklogCount: number;
+  reEscalatedCriticalAlertCount: number;
+};
+
+export type CriticalAlertReEscalationSweepResult = {
+  evaluatedAlertCount: number;
+  reEscalatedAlertCount: number;
+  skippedPendingDeliveryCount: number;
+  remainingDueAlertCount: number;
+  limit: number;
+  reEscalatedAlerts: Array<{
+    alertId: string;
+    dedupeKey: string;
+    reasons: Array<"unacknowledged" | "unowned">;
+    dueAt: string;
+    lastReEscalatedAt: string | null;
+    queuedDeliveryCount: number;
+  }>;
 };
 
 export type TrackedLedgerReconciliationScanRun = {
