@@ -16,6 +16,7 @@ import {
 } from "@stealth-trails-bank/contracts-sdk";
 import {
   AccountLifecycleStatus,
+  Prisma,
   PoolStatus,
   WalletCustodyType,
   WalletStatus
@@ -85,6 +86,12 @@ type CustomerStakingSnapshot = {
   pools: CustomerStakingPoolSnapshot[];
 };
 
+type StakingAuditActor = {
+  actorType: "customer" | "operator";
+  actorId: string;
+  actorRole?: string | null;
+};
+
 @Injectable()
 export class StakingService {
   private readonly logger = new Logger(StakingService.name);
@@ -139,6 +146,48 @@ export class StakingService {
       runtimeConfig.stakingContractAddress,
       this.writeWallet
     );
+  }
+
+  private describeError(error: unknown): string {
+    if (error instanceof Error && error.message.trim()) {
+      return error.message;
+    }
+
+    return "Unknown staking execution error.";
+  }
+
+  private async writeAuditEvent(input: {
+    customerId: string | null;
+    actor: StakingAuditActor;
+    action: string;
+    targetType: string;
+    targetId?: string | number | null;
+    metadata?: Record<string, unknown>;
+  }): Promise<void> {
+    try {
+      await this.prismaService.auditEvent.create({
+        data: {
+          customerId: input.customerId,
+          actorType: input.actor.actorType,
+          actorId: input.actor.actorId,
+          action: input.action,
+          targetType: input.targetType,
+          targetId:
+            input.targetId === null || typeof input.targetId === "undefined"
+              ? null
+              : String(input.targetId),
+          metadata: {
+            ...(input.metadata ?? {}),
+            actorRole: input.actor.actorRole ?? null
+          } as Prisma.InputJsonValue
+        }
+      });
+    } catch (error) {
+      this.logger.error(
+        `Failed to write staking audit event "${input.action}".`,
+        error instanceof Error ? error.stack : undefined
+      );
+    }
   }
 
   private requireReadContract(): ethers.Contract {
@@ -402,8 +451,17 @@ export class StakingService {
     });
   }
 
-  async createPool(rewardRate: number): Promise<CustomJsonResponse> {
+  async createPool(
+    rewardRate: number,
+    operatorId: string,
+    operatorRole?: string
+  ): Promise<CustomJsonResponse> {
     const writeContract = this.requireWriteContract();
+    const actor: StakingAuditActor = {
+      actorType: "operator",
+      actorId: operatorId,
+      actorRole: operatorRole ?? null
+    };
 
     try {
       const stakingPool = await this.prismaService.stakingPool.create({
@@ -418,6 +476,20 @@ export class StakingService {
       const transaction = await writeContract.createPool(rewardRate, stakingPool.id);
       const receipt = await transaction.wait();
 
+      await this.writeAuditEvent({
+        customerId: null,
+        actor,
+        action: "staking.pool.created",
+        targetType: "StakingPool",
+        targetId: stakingPool.id,
+        metadata: {
+          rewardRate,
+          poolStatus: stakingPool.poolStatus,
+          blockchainPoolId: stakingPool.blockchainPoolId,
+          transactionHash: receipt.transactionHash
+        }
+      });
+
       return {
         status: "success",
         message: "Pool created successfully.",
@@ -427,6 +499,17 @@ export class StakingService {
         }
       };
     } catch (error) {
+      await this.writeAuditEvent({
+        customerId: null,
+        actor,
+        action: "staking.pool.create_failed",
+        targetType: "StakingPool",
+        targetId: null,
+        metadata: {
+          rewardRate,
+          errorMessage: this.describeError(error)
+        }
+      });
       this.logger.error("Failed to create staking pool.", error);
       return {
         status: "failed",
@@ -513,6 +596,10 @@ export class StakingService {
     supabaseUserId: string
   ): Promise<CustomJsonResponse> {
     const context = await this.getCustomerStakingContext(supabaseUserId);
+    const actor: StakingAuditActor = {
+      actorType: "customer",
+      actorId: supabaseUserId
+    };
     const execution = this.resolveExecutionCapability(context);
 
     if (!execution.available) {
@@ -537,6 +624,23 @@ export class StakingService {
       parsedAmount
     );
 
+    await this.writeAuditEvent({
+      customerId: context.customer.id,
+      actor,
+      action: "staking.deposit.requested",
+      targetType: "PoolDeposit",
+      targetId: depositRecord.id,
+      metadata: {
+        customerAccountId: context.customerAccount.id,
+        walletId: context.wallet.id,
+        walletAddress: context.wallet.address,
+        stakingPoolId: pool.id,
+        blockchainPoolId: pool.blockchainPoolId,
+        requestedAmount: parsedAmount.toString(),
+        status: "pending"
+      }
+    });
+
     try {
       const transaction = await writeContract.deposit(
         pool.blockchainPoolId,
@@ -550,6 +654,24 @@ export class StakingService {
         data: {
           transactionHash: receipt.transactionHash,
           status: "completed"
+        }
+      });
+
+      await this.writeAuditEvent({
+        customerId: context.customer.id,
+        actor,
+        action: "staking.deposit.completed",
+        targetType: "PoolDeposit",
+        targetId: depositRecord.id,
+        metadata: {
+          customerAccountId: context.customerAccount.id,
+          walletId: context.wallet.id,
+          walletAddress: context.wallet.address,
+          stakingPoolId: pool.id,
+          blockchainPoolId: pool.blockchainPoolId,
+          requestedAmount: parsedAmount.toString(),
+          status: "completed",
+          transactionHash: receipt.transactionHash
         }
       });
 
@@ -568,6 +690,24 @@ export class StakingService {
         }
       });
 
+      await this.writeAuditEvent({
+        customerId: context.customer.id,
+        actor,
+        action: "staking.deposit.failed",
+        targetType: "PoolDeposit",
+        targetId: depositRecord.id,
+        metadata: {
+          customerAccountId: context.customerAccount.id,
+          walletId: context.wallet.id,
+          walletAddress: context.wallet.address,
+          stakingPoolId: pool.id,
+          blockchainPoolId: pool.blockchainPoolId,
+          requestedAmount: parsedAmount.toString(),
+          status: "failed",
+          errorMessage: this.describeError(error)
+        }
+      });
+
       this.logger.error("Failed to execute staking deposit.", error);
       return {
         status: "failed",
@@ -582,6 +722,10 @@ export class StakingService {
     supabaseUserId: string
   ): Promise<CustomJsonResponse> {
     const context = await this.getCustomerStakingContext(supabaseUserId);
+    const actor: StakingAuditActor = {
+      actorType: "customer",
+      actorId: supabaseUserId
+    };
     const execution = this.resolveExecutionCapability(context);
 
     if (!execution.available) {
@@ -615,6 +759,24 @@ export class StakingService {
       parsedAmount
     );
 
+    await this.writeAuditEvent({
+      customerId: context.customer.id,
+      actor,
+      action: "staking.withdrawal.requested",
+      targetType: "PoolWithdrawal",
+      targetId: withdrawalRecord.id,
+      metadata: {
+        customerAccountId: context.customerAccount.id,
+        walletId: context.wallet.id,
+        walletAddress: context.wallet.address,
+        stakingPoolId: pool.id,
+        blockchainPoolId: pool.blockchainPoolId,
+        requestedAmount: parsedAmount.toString(),
+        status: "pending",
+        emergency: false
+      }
+    });
+
     try {
       const transaction = await writeContract.withdraw(
         pool.blockchainPoolId,
@@ -627,6 +789,25 @@ export class StakingService {
         data: {
           transactionHash: receipt.transactionHash,
           status: "completed"
+        }
+      });
+
+      await this.writeAuditEvent({
+        customerId: context.customer.id,
+        actor,
+        action: "staking.withdrawal.completed",
+        targetType: "PoolWithdrawal",
+        targetId: withdrawalRecord.id,
+        metadata: {
+          customerAccountId: context.customerAccount.id,
+          walletId: context.wallet.id,
+          walletAddress: context.wallet.address,
+          stakingPoolId: pool.id,
+          blockchainPoolId: pool.blockchainPoolId,
+          requestedAmount: parsedAmount.toString(),
+          status: "completed",
+          emergency: false,
+          transactionHash: receipt.transactionHash
         }
       });
 
@@ -645,6 +826,25 @@ export class StakingService {
         }
       });
 
+      await this.writeAuditEvent({
+        customerId: context.customer.id,
+        actor,
+        action: "staking.withdrawal.failed",
+        targetType: "PoolWithdrawal",
+        targetId: withdrawalRecord.id,
+        metadata: {
+          customerAccountId: context.customerAccount.id,
+          walletId: context.wallet.id,
+          walletAddress: context.wallet.address,
+          stakingPoolId: pool.id,
+          blockchainPoolId: pool.blockchainPoolId,
+          requestedAmount: parsedAmount.toString(),
+          status: "failed",
+          emergency: false,
+          errorMessage: this.describeError(error)
+        }
+      });
+
       this.logger.error("Failed to execute staking withdrawal.", error);
       return {
         status: "failed",
@@ -658,6 +858,10 @@ export class StakingService {
     supabaseUserId: string
   ): Promise<CustomJsonResponse> {
     const context = await this.getCustomerStakingContext(supabaseUserId);
+    const actor: StakingAuditActor = {
+      actorType: "customer",
+      actorId: supabaseUserId
+    };
     const execution = this.resolveExecutionCapability(context);
 
     if (!execution.available) {
@@ -683,6 +887,23 @@ export class StakingService {
       );
       const receipt = await transaction.wait();
 
+      await this.writeAuditEvent({
+        customerId: context.customer.id,
+        actor,
+        action: "staking.reward_claim.completed",
+        targetType: "StakingPool",
+        targetId: pool.id,
+        metadata: {
+          customerAccountId: context.customerAccount.id,
+          walletId: context.wallet.id,
+          walletAddress: context.wallet.address,
+          stakingPoolId: pool.id,
+          blockchainPoolId: pool.blockchainPoolId,
+          pendingReward: pendingReward.toString(),
+          transactionHash: receipt.transactionHash
+        }
+      });
+
       return {
         status: "success",
         message: "Stake reward claimed successfully.",
@@ -691,6 +912,22 @@ export class StakingService {
         }
       };
     } catch (error) {
+      await this.writeAuditEvent({
+        customerId: context.customer.id,
+        actor,
+        action: "staking.reward_claim.failed",
+        targetType: "StakingPool",
+        targetId: pool.id,
+        metadata: {
+          customerAccountId: context.customerAccount.id,
+          walletId: context.wallet.id,
+          walletAddress: context.wallet.address,
+          stakingPoolId: pool.id,
+          blockchainPoolId: pool.blockchainPoolId,
+          pendingReward: pendingReward.toString(),
+          errorMessage: this.describeError(error)
+        }
+      });
       this.logger.error("Failed to claim staking reward.", error);
       return {
         status: "failed",
@@ -704,6 +941,10 @@ export class StakingService {
     supabaseUserId: string
   ): Promise<CustomJsonResponse> {
     const context = await this.getCustomerStakingContext(supabaseUserId);
+    const actor: StakingAuditActor = {
+      actorType: "customer",
+      actorId: supabaseUserId
+    };
     const execution = this.resolveExecutionCapability(context);
 
     if (!execution.available) {
@@ -734,6 +975,24 @@ export class StakingService {
       stakedBalance
     );
 
+    await this.writeAuditEvent({
+      customerId: context.customer.id,
+      actor,
+      action: "staking.emergency_withdrawal.requested",
+      targetType: "PoolWithdrawal",
+      targetId: withdrawalRecord.id,
+      metadata: {
+        customerAccountId: context.customerAccount.id,
+        walletId: context.wallet.id,
+        walletAddress: context.wallet.address,
+        stakingPoolId: pool.id,
+        blockchainPoolId: pool.blockchainPoolId,
+        requestedAmount: stakedBalance.toString(),
+        status: "pending",
+        emergency: true
+      }
+    });
+
     try {
       const transaction = await this.requireWriteContract().emergencyWithdraw(
         pool.blockchainPoolId
@@ -745,6 +1004,25 @@ export class StakingService {
         data: {
           transactionHash: receipt.transactionHash,
           status: "completed"
+        }
+      });
+
+      await this.writeAuditEvent({
+        customerId: context.customer.id,
+        actor,
+        action: "staking.emergency_withdrawal.completed",
+        targetType: "PoolWithdrawal",
+        targetId: withdrawalRecord.id,
+        metadata: {
+          customerAccountId: context.customerAccount.id,
+          walletId: context.wallet.id,
+          walletAddress: context.wallet.address,
+          stakingPoolId: pool.id,
+          blockchainPoolId: pool.blockchainPoolId,
+          requestedAmount: stakedBalance.toString(),
+          status: "completed",
+          emergency: true,
+          transactionHash: receipt.transactionHash
         }
       });
 
@@ -760,6 +1038,25 @@ export class StakingService {
         where: { id: withdrawalRecord.id },
         data: {
           status: "failed"
+        }
+      });
+
+      await this.writeAuditEvent({
+        customerId: context.customer.id,
+        actor,
+        action: "staking.emergency_withdrawal.failed",
+        targetType: "PoolWithdrawal",
+        targetId: withdrawalRecord.id,
+        metadata: {
+          customerAccountId: context.customerAccount.id,
+          walletId: context.wallet.id,
+          walletAddress: context.wallet.address,
+          stakingPoolId: pool.id,
+          blockchainPoolId: pool.blockchainPoolId,
+          requestedAmount: stakedBalance.toString(),
+          status: "failed",
+          emergency: true,
+          errorMessage: this.describeError(error)
         }
       });
 

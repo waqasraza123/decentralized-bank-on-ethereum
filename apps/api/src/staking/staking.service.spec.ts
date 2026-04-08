@@ -21,6 +21,20 @@ const mockWriteWallet = {
   address: "0x9999000011112222333344445555666677778888"
 };
 
+const parseEtherMock = jest.fn();
+
+function createBigNumber(value: string | bigint | number) {
+  const normalizedValue = BigInt(value);
+
+  return {
+    toString: () => normalizedValue.toString(),
+    lte: (other: string | bigint | number | { toString(): string }) =>
+      normalizedValue <= BigInt(String(other)),
+    lt: (other: string | bigint | number | { toString(): string }) =>
+      normalizedValue < BigInt(String(other))
+  };
+}
+
 function formatWeiToEthString(value: unknown): string {
   const normalizedValue = BigInt(String(value));
   const whole = normalizedValue / 1000000000000000000n;
@@ -52,7 +66,7 @@ jest.mock("ethers", () => ({
       ),
     utils: {
       formatEther: (value: unknown) => formatWeiToEthString(value),
-      parseEther: jest.fn()
+      parseEther: parseEtherMock
     }
   }
 }));
@@ -63,6 +77,7 @@ describe("StakingService", () => {
   function createService() {
     const prismaService = {
       stakingPool: {
+        create: jest.fn(),
         findMany: jest.fn(),
         findUnique: jest.fn()
       },
@@ -73,6 +88,9 @@ describe("StakingService", () => {
       poolWithdrawal: {
         create: jest.fn(),
         update: jest.fn()
+      },
+      auditEvent: {
+        create: jest.fn()
       }
     };
 
@@ -96,7 +114,60 @@ describe("StakingService", () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    parseEtherMock.mockImplementation((value: string) => {
+      const [wholeText, fractionText = ""] = value.trim().split(".");
+      const normalizedFraction = `${fractionText}000000000000000000`.slice(0, 18);
+      const wei =
+        BigInt(wholeText || "0") * 1000000000000000000n +
+        BigInt(normalizedFraction || "0");
+      return createBigNumber(wei);
+    });
   });
+
+  function mockExecutableCustomer(authService: {
+    getCustomerAccountProjectionBySupabaseUserId: jest.Mock;
+    getCustomerWalletProjectionBySupabaseUserId: jest.Mock;
+    getUserFromDatabaseById: jest.Mock;
+  }) {
+    authService.getCustomerAccountProjectionBySupabaseUserId.mockResolvedValue({
+      customer: {
+        id: "customer_1",
+        supabaseUserId: "supabase_1",
+        email: "amina@example.com",
+        firstName: "Amina",
+        lastName: "Rahman",
+        createdAt: new Date("2026-04-05T10:00:00.000Z"),
+        updatedAt: new Date("2026-04-05T11:00:00.000Z")
+      },
+      customerAccount: {
+        id: "account_1",
+        status: "active",
+        activatedAt: new Date("2026-04-05T10:00:00.000Z"),
+        restrictedAt: null,
+        frozenAt: null,
+        closedAt: null,
+        createdAt: new Date("2026-04-05T10:00:00.000Z"),
+        updatedAt: new Date("2026-04-05T11:00:00.000Z")
+      }
+    });
+    authService.getCustomerWalletProjectionBySupabaseUserId.mockResolvedValue({
+      wallet: {
+        id: "wallet_1",
+        customerAccountId: "account_1",
+        chainId: 8453,
+        address: mockWriteWallet.address,
+        kind: "embedded",
+        custodyType: "platform_managed",
+        status: "active",
+        createdAt: new Date("2026-04-05T10:00:00.000Z"),
+        updatedAt: new Date("2026-04-05T11:00:00.000Z")
+      }
+    });
+    authService.getUserFromDatabaseById.mockResolvedValue({
+      id: 1,
+      ethereumAddress: mockWriteWallet.address
+    });
+  }
 
   it("returns live staking positions while keeping execution disabled on signer mismatch", async () => {
     const { service, prismaService, authService } = createService();
@@ -231,5 +302,166 @@ describe("StakingService", () => {
     });
     expect(prismaService.poolDeposit.create).not.toHaveBeenCalled();
     expect(mockWriteContract.deposit).not.toHaveBeenCalled();
+  });
+
+  it("writes an audit event when an operator creates a staking pool", async () => {
+    const { service, prismaService } = createService();
+
+    prismaService.stakingPool.create.mockResolvedValue({
+      id: 17,
+      blockchainPoolId: null,
+      rewardRate: 12,
+      totalStakedAmount: 0n,
+      totalRewardsPaid: 0n,
+      poolStatus: "paused"
+    });
+    prismaService.auditEvent.create.mockResolvedValue({});
+    mockWriteContract.createPool.mockResolvedValue({
+      wait: jest.fn().mockResolvedValue({
+        transactionHash: "0xpoolhash"
+      })
+    });
+
+    const result = await service.createPool(12, "ops_1", "treasury");
+
+    expect(result).toEqual({
+      status: "success",
+      message: "Pool created successfully.",
+      data: {
+        poolId: 17,
+        transactionHash: "0xpoolhash"
+      }
+    });
+    expect(prismaService.auditEvent.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        customerId: null,
+        actorType: "operator",
+        actorId: "ops_1",
+        action: "staking.pool.created",
+        targetType: "StakingPool",
+        targetId: "17",
+        metadata: expect.objectContaining({
+          rewardRate: 12,
+          transactionHash: "0xpoolhash",
+          actorRole: "treasury"
+        })
+      })
+    });
+  });
+
+  it("writes requested and completed audit events for a successful deposit", async () => {
+    const { service, prismaService, authService } = createService();
+
+    mockExecutableCustomer(authService);
+    prismaService.stakingPool.findUnique.mockResolvedValue({
+      id: 11,
+      blockchainPoolId: 101,
+      rewardRate: 5,
+      totalStakedAmount: 0n,
+      totalRewardsPaid: 0n,
+      poolStatus: "active"
+    });
+    prismaService.poolDeposit.create.mockResolvedValue({ id: 33 });
+    prismaService.poolDeposit.update.mockResolvedValue({});
+    prismaService.auditEvent.create.mockResolvedValue({});
+    mockWriteContract.deposit.mockResolvedValue({
+      wait: jest.fn().mockResolvedValue({
+        transactionHash: "0xdeposithash"
+      })
+    });
+
+    const result = await service.deposit(11, "1.25", "supabase_1");
+
+    expect(result).toEqual({
+      status: "success",
+      message: "Stake deposit executed successfully.",
+      data: {
+        transactionHash: "0xdeposithash"
+      }
+    });
+    expect(prismaService.auditEvent.create).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        data: expect.objectContaining({
+          action: "staking.deposit.requested",
+          targetType: "PoolDeposit",
+          targetId: "33"
+        })
+      })
+    );
+    expect(prismaService.auditEvent.create).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        data: expect.objectContaining({
+          action: "staking.deposit.completed",
+          targetType: "PoolDeposit",
+          targetId: "33",
+          metadata: expect.objectContaining({
+            transactionHash: "0xdeposithash",
+            status: "completed"
+          })
+        })
+      })
+    );
+  });
+
+  it("writes requested and failed audit events for a failed withdrawal", async () => {
+    const { service, prismaService, authService } = createService();
+
+    mockExecutableCustomer(authService);
+    prismaService.stakingPool.findUnique.mockResolvedValue({
+      id: 11,
+      blockchainPoolId: 101,
+      rewardRate: 5,
+      totalStakedAmount: 0n,
+      totalRewardsPaid: 0n,
+      poolStatus: "active"
+    });
+    prismaService.poolWithdrawal.create.mockResolvedValue({ id: 44 });
+    prismaService.poolWithdrawal.update.mockResolvedValue({});
+    prismaService.auditEvent.create.mockResolvedValue({});
+    mockReadContract.getStakedBalance.mockResolvedValue(
+      createBigNumber("2000000000000000000")
+    );
+    mockReadContract.getPendingReward.mockResolvedValue(createBigNumber("0"));
+    mockWriteContract.withdraw.mockRejectedValue(new Error("rpc down"));
+
+    const result = await service.withdraw(11, "1.25", "supabase_1");
+
+    expect(result).toEqual({
+      status: "failed",
+      message: "Failed to execute stake withdrawal."
+    });
+    expect(prismaService.poolWithdrawal.update).toHaveBeenCalledWith({
+      where: { id: 44 },
+      data: {
+        status: "failed"
+      }
+    });
+    expect(prismaService.auditEvent.create).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        data: expect.objectContaining({
+          action: "staking.withdrawal.requested",
+          targetType: "PoolWithdrawal",
+          targetId: "44"
+        })
+      })
+    );
+    expect(prismaService.auditEvent.create).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        data: expect.objectContaining({
+          action: "staking.withdrawal.failed",
+          targetType: "PoolWithdrawal",
+          targetId: "44",
+          metadata: expect.objectContaining({
+            errorMessage: "rpc down",
+            status: "failed",
+            emergency: false
+          })
+        })
+      })
+    );
   });
 });

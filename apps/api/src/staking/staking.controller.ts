@@ -21,6 +21,13 @@ type AuthenticatedRequest = {
   };
 };
 
+type InternalOperatorRequest = {
+  internalOperator: {
+    operatorId: string;
+    operatorRole?: string;
+  };
+};
+
 const createPoolSchema = Joi.object({
   rewardRate: Joi.number().positive().required(),
 });
@@ -43,9 +50,14 @@ export class StakingController {
   @UseGuards(InternalOperatorApiKeyGuard)
   @Post("create-pool")
   async createPool(
+    @Req() request: InternalOperatorRequest,
     @Body(new JoiPipe(createPoolSchema)) body: { rewardRate: number }
   ) {
-    return this.stakingService.createPool(body.rewardRate);
+    return this.stakingService.createPool(
+      body.rewardRate,
+      request.internalOperator.operatorId,
+      request.internalOperator.operatorRole
+    );
   }
 
   @UseGuards(JwtAuthGuard)
