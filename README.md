@@ -162,6 +162,7 @@ Run these from the repository root unless noted otherwise.
 | `pnpm lint` | Run lint tasks where defined |
 | `pnpm compile` | Run compile tasks where defined |
 | `pnpm release:readiness:probe -- --help` | Run a Phase 12 drill probe and optionally record evidence |
+| `pnpm release:readiness:verify -- --help` | Run Phase 12 automated proof suites or manual review attestations |
 | `pnpm safe-push` | Run the repo push guard (`build` + `test`) and push only if it passes |
 
 ### Package-scoped examples
@@ -188,7 +189,7 @@ Use the runbooks when operating or verifying implemented flows:
 - wallet projection and repair runbooks under `docs/runbooks/`
 - deposit intent request, operator review, and execution runbooks
 - manual review and audit summary runbooks
-- release readiness evidence, launch approval, and rollback drill runbooks
+- release readiness evidence, release-candidate verification, launch approval, and rollback drill runbooks
 
 ## Engineering standards for this repo
 

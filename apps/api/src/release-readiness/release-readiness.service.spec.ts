@@ -70,8 +70,8 @@ function buildApprovalRecord(
       generatedAt: "2026-04-08T12:00:00.000Z",
       overallStatus: "healthy",
       summary: {
-        requiredCheckCount: 5,
-        passedCheckCount: 5,
+        requiredCheckCount: 10,
+        passedCheckCount: 10,
         failedCheckCount: 0,
         pendingCheckCount: 0
       },
@@ -93,6 +93,63 @@ function buildApprovalRecord(
     updatedAt: new Date("2026-04-08T12:00:00.000Z"),
     ...overrides
   };
+}
+
+function buildPassedRequiredEvidenceRecords() {
+  return [
+    buildEvidenceRecord({
+      evidenceType: ReleaseReadinessEvidenceType.platform_alert_delivery_slo
+    }),
+    buildEvidenceRecord({
+      id: "evidence_2",
+      evidenceType: ReleaseReadinessEvidenceType.critical_alert_reescalation
+    }),
+    buildEvidenceRecord({
+      id: "evidence_3",
+      evidenceType: ReleaseReadinessEvidenceType.database_restore_drill,
+      runbookPath: "docs/runbooks/restore-and-rollback-drills.md"
+    }),
+    buildEvidenceRecord({
+      id: "evidence_4",
+      evidenceType: ReleaseReadinessEvidenceType.api_rollback_drill,
+      runbookPath: "docs/runbooks/restore-and-rollback-drills.md"
+    }),
+    buildEvidenceRecord({
+      id: "evidence_5",
+      evidenceType: ReleaseReadinessEvidenceType.worker_rollback_drill,
+      runbookPath: "docs/runbooks/restore-and-rollback-drills.md"
+    }),
+    buildEvidenceRecord({
+      id: "evidence_6",
+      evidenceType: "contract_invariant_suite",
+      environment: "ci",
+      runbookPath: "docs/runbooks/release-candidate-verification.md"
+    }),
+    buildEvidenceRecord({
+      id: "evidence_7",
+      evidenceType: "backend_integration_suite",
+      environment: "ci",
+      runbookPath: "docs/runbooks/release-candidate-verification.md"
+    }),
+    buildEvidenceRecord({
+      id: "evidence_8",
+      evidenceType: "end_to_end_finance_flows",
+      environment: "ci",
+      runbookPath: "docs/runbooks/release-candidate-verification.md"
+    }),
+    buildEvidenceRecord({
+      id: "evidence_9",
+      evidenceType: "secret_handling_review",
+      environment: ReleaseReadinessEnvironment.production_like,
+      runbookPath: "docs/security/secret-handling-review.md"
+    }),
+    buildEvidenceRecord({
+      id: "evidence_10",
+      evidenceType: "role_review",
+      environment: ReleaseReadinessEnvironment.production_like,
+      runbookPath: "docs/security/role-review.md"
+    })
+  ];
 }
 
 function createService() {
@@ -269,10 +326,10 @@ describe("ReleaseReadinessService", () => {
     const result = await service.getSummary();
 
     expect(result.overallStatus).toBe("critical");
-    expect(result.summary.requiredCheckCount).toBe(5);
+    expect(result.summary.requiredCheckCount).toBe(10);
     expect(result.summary.passedCheckCount).toBe(2);
     expect(result.summary.failedCheckCount).toBe(1);
-    expect(result.summary.pendingCheckCount).toBe(2);
+    expect(result.summary.pendingCheckCount).toBe(7);
     expect(
       result.requiredChecks.find(
         (check) =>
@@ -289,27 +346,7 @@ describe("ReleaseReadinessService", () => {
       null
     );
     (prismaService.releaseReadinessEvidence.findMany as jest.Mock)
-      .mockResolvedValueOnce([
-        buildEvidenceRecord({
-          evidenceType: ReleaseReadinessEvidenceType.platform_alert_delivery_slo
-        }),
-        buildEvidenceRecord({
-          id: "evidence_2",
-          evidenceType: ReleaseReadinessEvidenceType.critical_alert_reescalation
-        }),
-        buildEvidenceRecord({
-          id: "evidence_3",
-          evidenceType: ReleaseReadinessEvidenceType.database_restore_drill
-        }),
-        buildEvidenceRecord({
-          id: "evidence_4",
-          evidenceType: ReleaseReadinessEvidenceType.api_rollback_drill
-        }),
-        buildEvidenceRecord({
-          id: "evidence_5",
-          evidenceType: ReleaseReadinessEvidenceType.worker_rollback_drill
-        })
-      ])
+      .mockResolvedValueOnce(buildPassedRequiredEvidenceRecords())
       .mockResolvedValueOnce([buildEvidenceRecord()]);
     (
       transactionClient.releaseReadinessApproval.create as jest.Mock
@@ -383,27 +420,7 @@ describe("ReleaseReadinessService", () => {
       buildApprovalRecord()
     );
     (prismaService.releaseReadinessEvidence.findMany as jest.Mock)
-      .mockResolvedValueOnce([
-        buildEvidenceRecord({
-          evidenceType: ReleaseReadinessEvidenceType.platform_alert_delivery_slo
-        }),
-        buildEvidenceRecord({
-          id: "evidence_2",
-          evidenceType: ReleaseReadinessEvidenceType.critical_alert_reescalation
-        }),
-        buildEvidenceRecord({
-          id: "evidence_3",
-          evidenceType: ReleaseReadinessEvidenceType.database_restore_drill
-        }),
-        buildEvidenceRecord({
-          id: "evidence_4",
-          evidenceType: ReleaseReadinessEvidenceType.api_rollback_drill
-        }),
-        buildEvidenceRecord({
-          id: "evidence_5",
-          evidenceType: ReleaseReadinessEvidenceType.worker_rollback_drill
-        })
-      ])
+      .mockResolvedValueOnce(buildPassedRequiredEvidenceRecords())
       .mockResolvedValueOnce([buildEvidenceRecord()]);
     (
       transactionClient.releaseReadinessApproval.update as jest.Mock

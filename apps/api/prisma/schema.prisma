@@ -897,9 +897,16 @@ enum ReleaseReadinessEvidenceType {
   database_restore_drill
   api_rollback_drill
   worker_rollback_drill
+  contract_invariant_suite
+  backend_integration_suite
+  end_to_end_finance_flows
+  secret_handling_review
+  role_review
 }
 
 enum ReleaseReadinessEnvironment {
+  development
+  ci
   staging
   production_like
   production

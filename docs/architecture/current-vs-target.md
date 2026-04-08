@@ -232,7 +232,7 @@ The system must provide:
 - incident runbooks
 
 #### Gap
-The repo is more operable than the original baseline, and it now has a durable release-readiness evidence workflow, a governed launch-approval gate, and an executable drill runner for recording and reviewing staging or production-like alerting and rollback proof, but actual staged proof for the new alert-delivery SLO controls, broader reconciliation depth, and broader release-proof coverage are still missing.
+The repo is more operable than the original baseline, and it now has a durable release-readiness evidence workflow, a governed launch-approval gate, an executable drill runner for staged alerting and rollback proof, and a repo-owned verifier for contract invariants, backend integration, end-to-end finance flows, and manual launch attestations, but actual staged proof for the new alert-delivery SLO controls, broader reconciliation depth, and the final launch evidence set are still missing.
 
 #### Consequence
 Failures are easier to detect, route, auto-triage, and escalate externally than before, but release confidence still depends too heavily on proving the new controls against production-like traffic and disaster-recovery evidence instead of only code-level implementation.

@@ -137,12 +137,12 @@ Residual risk:
 2. store API, worker, JWT, database, and signer secrets in an external secret manager
 3. rotate internal operator and worker keys before launch
 4. prove restore and rollback drills against current production-like data
-5. complete end-to-end finance flow verification against release infrastructure
+5. run the repo-owned Phase 12 verification suite and record contract, integration, and end-to-end finance proof for the candidate
 6. complete role review and confirm no privileged workflow depends on an unapproved role mapping
 
 ## Launch blockers from this threat model
 
 - no evidence of completed restore drill
 - no evidence of rotated launch secrets
-- no Phase 12 end-to-end finance flow proof yet
-- no contract invariant suite proving the legacy contract path is safe for any production use
+- no staging or production-like role review evidence yet
+- no governed evidence proving the repo-owned verification suite was run for the current release candidate

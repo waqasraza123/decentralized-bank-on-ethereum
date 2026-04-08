@@ -23,6 +23,7 @@
 
 - operator roster reviewed
 - operator role assignments reviewed
+- role review evidence recorded in release-readiness evidence
 - incident package release approvers reviewed
 - account-hold apply and release roles reviewed
 
@@ -46,6 +47,7 @@
 - customer sign-up or approved auth flow verified
 - deposit request flow verified
 - withdrawal request flow verified
+- end-to-end finance flow evidence recorded in release-readiness evidence
 - operator review workflow verified
 - oversight hold workflow verified
 - incident package release workflow verified
@@ -54,7 +56,8 @@
 ## Contract and chain proof
 
 - contract deployment addresses recorded
-- contract tests and invariants passed for the release artifact
+- contract invariant suite evidence recorded in release-readiness evidence
+- backend integration suite evidence recorded in release-readiness evidence
 - RPC endpoint and chain id verified against launch environment
 - managed signer wallet funding and ownership posture verified
 
@@ -62,6 +65,7 @@
 
 - launch blocker list reviewed
 - unresolved risks documented and accepted
+- secret handling review evidence recorded in release-readiness evidence
 - rollback owner on call
 - operator owner on call
 - worker owner on call

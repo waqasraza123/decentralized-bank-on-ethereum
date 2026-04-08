@@ -183,6 +183,14 @@ pnpm release:readiness:probe -- --help
 
 That command can validate a specific drill profile and optionally record the result directly into release-readiness evidence.
 
+For repo-owned verification suites and manual launch attestations, use:
+
+~~~bash
+pnpm release:readiness:verify -- --help
+~~~
+
+That command runs the automated contract, backend integration, and end-to-end finance proofs, and it can also record manual secret-handling or role-review evidence through the same release-readiness workflow.
+
 ## Documentation
 
 Update docs when you change:

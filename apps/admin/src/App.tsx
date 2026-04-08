@@ -127,9 +127,21 @@ const releaseReadinessEvidenceTypeOptions = [
   "critical_alert_reescalation",
   "database_restore_drill",
   "api_rollback_drill",
-  "worker_rollback_drill"
+  "worker_rollback_drill",
+  "contract_invariant_suite",
+  "backend_integration_suite",
+  "end_to_end_finance_flows",
+  "secret_handling_review",
+  "role_review"
 ] as const;
 const releaseReadinessEnvironmentOptions = [
+  "development",
+  "ci",
+  "staging",
+  "production_like",
+  "production"
+] as const;
+const releaseReadinessApprovalEnvironmentOptions = [
   "staging",
   "production_like",
   "production"
@@ -183,7 +195,7 @@ type ReleaseReadinessDraft = {
 
 type ReleaseReadinessApprovalDraft = {
   releaseIdentifier: string;
-  environment: (typeof releaseReadinessEnvironmentOptions)[number];
+  environment: (typeof releaseReadinessApprovalEnvironmentOptions)[number];
   rollbackReleaseIdentifier: string;
   summary: string;
   requestNote: string;
@@ -1292,7 +1304,7 @@ function AdminConsole() {
                 <div className="section-heading compact">
                   <div>
                     <p className="section-kicker">Record Evidence</p>
-                    <h2>Attach staging or production-like proof</h2>
+                    <h2>Attach governed release proof</h2>
                   </div>
                 </div>
 
@@ -1326,7 +1338,7 @@ function AdminConsole() {
                         }))
                       }
                     >
-                      {releaseReadinessEnvironmentOptions.map((option) => (
+                      {releaseReadinessApprovalEnvironmentOptions.map((option) => (
                         <option key={option} value={option}>
                           {toTitleCase(option)}
                         </option>

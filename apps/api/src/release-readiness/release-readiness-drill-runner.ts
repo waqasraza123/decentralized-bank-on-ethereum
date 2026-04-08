@@ -1,5 +1,8 @@
 import axios, { type AxiosInstance } from "axios";
-import { ReleaseReadinessEvidenceType } from "@prisma/client";
+import {
+  ReleaseReadinessEnvironment,
+  ReleaseReadinessEvidenceType
+} from "@prisma/client";
 
 type ApiEnvelope<T> = {
   status: "success" | "failed";
@@ -703,7 +706,7 @@ export async function recordReleaseReadinessEvidence(
   session: ReleaseReadinessDrillSession,
   payload: {
     evidenceType: ReleaseReadinessEvidenceType;
-    environment: "staging" | "production_like" | "production";
+    environment: ReleaseReadinessEnvironment;
     status: "passed" | "failed";
     summary: string;
     note?: string;

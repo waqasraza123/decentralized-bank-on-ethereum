@@ -8,16 +8,28 @@ import {
   IsString,
   MaxLength
 } from "class-validator";
+import type {
+  ReleaseReadinessEnvironment,
+  ReleaseReadinessEvidenceStatus,
+  ReleaseReadinessEvidenceType
+} from "@prisma/client";
 
 export const releaseReadinessEvidenceTypes = [
   "platform_alert_delivery_slo",
   "critical_alert_reescalation",
   "database_restore_drill",
   "api_rollback_drill",
-  "worker_rollback_drill"
+  "worker_rollback_drill",
+  "contract_invariant_suite",
+  "backend_integration_suite",
+  "end_to_end_finance_flows",
+  "secret_handling_review",
+  "role_review"
 ] as const;
 
 export const releaseReadinessEnvironments = [
+  "development",
+  "ci",
   "staging",
   "production_like",
   "production"
@@ -28,15 +40,6 @@ export const releaseReadinessEvidenceStatuses = [
   "passed",
   "failed"
 ] as const;
-
-export type ReleaseReadinessEvidenceType =
-  (typeof releaseReadinessEvidenceTypes)[number];
-
-export type ReleaseReadinessEnvironment =
-  (typeof releaseReadinessEnvironments)[number];
-
-export type ReleaseReadinessEvidenceStatus =
-  (typeof releaseReadinessEvidenceStatuses)[number];
 
 export class CreateReleaseReadinessEvidenceDto {
   @IsIn(releaseReadinessEvidenceTypes)
