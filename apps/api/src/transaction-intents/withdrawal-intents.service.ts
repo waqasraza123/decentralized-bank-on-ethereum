@@ -4,7 +4,10 @@ import {
   Injectable,
   NotFoundException
 } from "@nestjs/common";
-import { loadProductChainRuntimeConfig } from "@stealth-trails-bank/config/api";
+import {
+  loadProductChainRuntimeConfig,
+  loadSensitiveOperatorActionPolicyRuntimeConfig
+} from "@stealth-trails-bank/config/api";
 import { utils as ethersUtils } from "ethers";
 import {
   AccountLifecycleStatus,
@@ -16,6 +19,7 @@ import {
   TransactionIntentType,
   WalletStatus
 } from "@prisma/client";
+import { assertOperatorRoleAuthorized } from "../auth/internal-operator-role-policy";
 import { LedgerService } from "../ledger/ledger.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { ConfirmWithdrawalIntentDto } from "./dto/confirm-withdrawal-intent.dto";
@@ -228,6 +232,7 @@ type SettleConfirmedWithdrawalIntentResult = {
 type WithdrawalTransitionActor = {
   actorType: "worker" | "operator";
   actorId: string;
+  actorRole: string | null;
   reconciliationReplay: boolean;
   replayReason: string | null;
 };
@@ -235,12 +240,38 @@ type WithdrawalTransitionActor = {
 @Injectable()
 export class WithdrawalIntentsService {
   private readonly productChainId: number;
+  private readonly transactionIntentDecisionAllowedOperatorRoles: readonly string[];
+  private readonly custodyOperationAllowedOperatorRoles: readonly string[];
 
   constructor(
     private readonly prismaService: PrismaService,
     private readonly ledgerService: LedgerService
   ) {
     this.productChainId = loadProductChainRuntimeConfig().productChainId;
+    const sensitiveActionPolicyConfig =
+      loadSensitiveOperatorActionPolicyRuntimeConfig();
+    this.transactionIntentDecisionAllowedOperatorRoles = [
+      ...sensitiveActionPolicyConfig.transactionIntentDecisionAllowedOperatorRoles
+    ];
+    this.custodyOperationAllowedOperatorRoles = [
+      ...sensitiveActionPolicyConfig.custodyOperationAllowedOperatorRoles
+    ];
+  }
+
+  private assertCanDecideTransactionIntent(operatorRole?: string): string {
+    return assertOperatorRoleAuthorized(
+      operatorRole,
+      this.transactionIntentDecisionAllowedOperatorRoles,
+      "Operator role is not authorized to approve or deny transaction intents."
+    );
+  }
+
+  private assertCanOperateCustody(operatorRole?: string): string {
+    return assertOperatorRoleAuthorized(
+      operatorRole,
+      this.custodyOperationAllowedOperatorRoles,
+      "Operator role is not authorized to execute manual custody actions."
+    );
   }
 
   private resolveExecutionChannel(
@@ -922,8 +953,12 @@ export class WithdrawalIntentsService {
   async decideWithdrawalIntent(
     intentId: string,
     operatorId: string,
-    dto: DecideWithdrawalIntentDto
+    dto: DecideWithdrawalIntentDto,
+    operatorRole?: string
   ): Promise<DecideWithdrawalIntentResult> {
+    const normalizedOperatorRole =
+      this.assertCanDecideTransactionIntent(operatorRole);
+
     if (dto.decision === "denied" && !dto.denialReason?.trim()) {
       throw new BadRequestException(
         "Denial reason is required for denied decisions."
@@ -1002,6 +1037,7 @@ export class WithdrawalIntentsService {
               newStatus,
               previousPolicyDecision: existingIntent.policyDecision,
               newPolicyDecision,
+              operatorRole: normalizedOperatorRole,
               note: dto.note?.trim() ?? null,
               denialReason:
                 dto.decision === "denied" ? dto.denialReason?.trim() ?? null : null,
@@ -1154,8 +1190,10 @@ export class WithdrawalIntentsService {
   async queueApprovedWithdrawalIntent(
     intentId: string,
     operatorId: string,
-    dto: QueueApprovedWithdrawalIntentDto
+    dto: QueueApprovedWithdrawalIntentDto,
+    operatorRole?: string
   ): Promise<QueueApprovedWithdrawalIntentResult> {
+    const normalizedOperatorRole = this.assertCanOperateCustody(operatorRole);
     const existingIntent = await this.findWithdrawalIntentForReview(intentId);
 
     if (!existingIntent) {
@@ -1209,6 +1247,7 @@ export class WithdrawalIntentsService {
               newStatus: TransactionIntentStatus.queued,
               previousPolicyDecision: existingIntent.policyDecision,
               newPolicyDecision: existingIntent.policyDecision,
+              operatorRole: normalizedOperatorRole,
               note: dto.note?.trim() ?? null
             }
           }
@@ -1362,6 +1401,7 @@ export class WithdrawalIntentsService {
     return this.recordWithdrawalBroadcastWithActor(intentId, dto, {
       actorType: "worker",
       actorId: workerId,
+      actorRole: null,
       reconciliationReplay: false,
       replayReason: null
     });
@@ -1370,11 +1410,15 @@ export class WithdrawalIntentsService {
   async recordWithdrawalBroadcastByOperator(
     intentId: string,
     operatorId: string,
-    dto: RecordWithdrawalBroadcastDto
+    dto: RecordWithdrawalBroadcastDto,
+    operatorRole?: string
   ): Promise<RecordWithdrawalBroadcastResult> {
+    const normalizedOperatorRole = this.assertCanOperateCustody(operatorRole);
+
     return this.recordWithdrawalBroadcastWithActor(intentId, dto, {
       actorType: "operator",
       actorId: operatorId,
+      actorRole: normalizedOperatorRole,
       reconciliationReplay: false,
       replayReason: null
     });
@@ -1558,6 +1602,7 @@ export class WithdrawalIntentsService {
               toAddress: normalizedToAddress,
               previousStatus: currentIntent.status,
               newStatus: TransactionIntentStatus.broadcast,
+              operatorRole: actor.actorRole,
               executionChannel: this.resolveExecutionChannel(actor),
               reconciliationReplay: actor.reconciliationReplay,
               replayReason: actor.replayReason
@@ -1641,6 +1686,7 @@ export class WithdrawalIntentsService {
     return this.failWithdrawalIntentExecutionWithActor(intentId, dto, {
       actorType: "worker",
       actorId: workerId,
+      actorRole: null,
       reconciliationReplay: false,
       replayReason: null
     });
@@ -1649,11 +1695,15 @@ export class WithdrawalIntentsService {
   async failWithdrawalIntentExecutionByOperator(
     intentId: string,
     operatorId: string,
-    dto: FailWithdrawalIntentExecutionDto
+    dto: FailWithdrawalIntentExecutionDto,
+    operatorRole?: string
   ): Promise<FailWithdrawalIntentExecutionResult> {
+    const normalizedOperatorRole = this.assertCanOperateCustody(operatorRole);
+
     return this.failWithdrawalIntentExecutionWithActor(intentId, dto, {
       actorType: "operator",
       actorId: operatorId,
+      actorRole: normalizedOperatorRole,
       reconciliationReplay: false,
       replayReason: null
     });
@@ -1873,6 +1923,7 @@ export class WithdrawalIntentsService {
               newStatus: TransactionIntentStatus.failed,
               failureCode,
               failureReason,
+              operatorRole: actor.actorRole,
               availableBalance: balanceTransition.availableBalance,
               pendingBalance: balanceTransition.pendingBalance,
               executionChannel: this.resolveExecutionChannel(actor),
@@ -2110,6 +2161,7 @@ export class WithdrawalIntentsService {
     return this.confirmWithdrawalIntentWithActor(intentId, null, note, {
       actorType: "operator",
       actorId: operatorId,
+      actorRole: null,
       reconciliationReplay: true,
       replayReason: "withdrawal_settlement_reconciliation"
     });
@@ -2123,6 +2175,7 @@ export class WithdrawalIntentsService {
     return this.settleConfirmedWithdrawalIntentWithActor(intentId, note, {
       actorType: "operator",
       actorId: operatorId,
+      actorRole: null,
       reconciliationReplay: true,
       replayReason: "withdrawal_settlement_reconciliation"
     });
@@ -2131,8 +2184,11 @@ export class WithdrawalIntentsService {
   async confirmWithdrawalIntentByOperator(
     intentId: string,
     operatorId: string,
-    dto: ConfirmWithdrawalIntentDto
+    dto: ConfirmWithdrawalIntentDto,
+    operatorRole?: string
   ): Promise<ConfirmWithdrawalIntentResult> {
+    const normalizedOperatorRole = this.assertCanOperateCustody(operatorRole);
+
     return this.confirmWithdrawalIntentWithActor(
       intentId,
       dto.txHash?.trim() ?? null,
@@ -2140,6 +2196,7 @@ export class WithdrawalIntentsService {
       {
         actorType: "operator",
         actorId: operatorId,
+        actorRole: normalizedOperatorRole,
         reconciliationReplay: false,
         replayReason: null
       }
@@ -2159,6 +2216,7 @@ export class WithdrawalIntentsService {
       {
         actorType: "worker",
         actorId: workerId,
+        actorRole: null,
         reconciliationReplay: false,
         replayReason: null
       }
@@ -2329,6 +2387,7 @@ export class WithdrawalIntentsService {
               txHash: currentLatestBlockchainTransaction.txHash,
               previousStatus: currentIntent.status,
               newStatus: TransactionIntentStatus.confirmed,
+              operatorRole: actor.actorRole,
               executionChannel: this.resolveExecutionChannel(actor),
               note,
               reconciliationReplay: actor.reconciliationReplay,
@@ -2416,6 +2475,7 @@ export class WithdrawalIntentsService {
       {
         actorType: "worker",
         actorId: workerId,
+        actorRole: null,
         reconciliationReplay: false,
         replayReason: null
       }
@@ -2425,14 +2485,18 @@ export class WithdrawalIntentsService {
   async settleConfirmedWithdrawalIntentByOperator(
     intentId: string,
     operatorId: string,
-    dto: SettleConfirmedWithdrawalIntentDto
+    dto: SettleConfirmedWithdrawalIntentDto,
+    operatorRole?: string
   ): Promise<SettleConfirmedWithdrawalIntentResult> {
+    const normalizedOperatorRole = this.assertCanOperateCustody(operatorRole);
+
     return this.settleConfirmedWithdrawalIntentWithActor(
       intentId,
       dto.note?.trim() ?? null,
       {
         actorType: "operator",
         actorId: operatorId,
+        actorRole: normalizedOperatorRole,
         reconciliationReplay: false,
         replayReason: null
       }
@@ -2606,6 +2670,7 @@ export class WithdrawalIntentsService {
               creditLedgerAccountId: ledgerResult.creditLedgerAccountId,
               availableBalance: ledgerResult.availableBalance,
               pendingBalance: ledgerResult.pendingBalance,
+              operatorRole: actor.actorRole,
               executionChannel: this.resolveExecutionChannel(actor),
               note,
               reconciliationReplay: actor.reconciliationReplay,

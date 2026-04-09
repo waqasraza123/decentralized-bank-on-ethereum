@@ -15,6 +15,8 @@ import {
   Wallet
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { useLocale } from "@/i18n/use-locale";
+import { useT } from "@/i18n/use-t";
 import { useGetUser } from "@/hooks/user/useGetUser";
 import {
   formatAccountStatusLabel,
@@ -26,6 +28,8 @@ import { formatDateLabel } from "@/lib/customer-finance";
 import { useUserStore } from "@/stores/userStore";
 
 const Profile = () => {
+  const t = useT();
+  const { locale } = useLocale();
   const navigate = useNavigate();
   const userFromStore = useUserStore((state) => state.user);
   const clearUser = useUserStore((state) => state.clearUser);
@@ -50,9 +54,9 @@ const Profile = () => {
     [userFromStore?.firstName, userFromStore?.lastName]
       .filter(Boolean)
       .join(" ") ||
-    "Customer";
+    t("profile.customerFallback");
   const lifecycleEntries = profile
-    ? getAccountLifecycleEntries(profile)
+    ? getAccountLifecycleEntries(profile, locale)
     : [];
 
   return (
@@ -80,29 +84,29 @@ const Profile = () => {
                   variant="outline"
                   className={profile ? getAccountStatusBadgeTone(profile.accountStatus) : undefined}
                 >
-                  {formatAccountStatusLabel(profile?.accountStatus)}
+                  {formatAccountStatusLabel(profile?.accountStatus, locale)}
                 </Badge>
               </div>
               <p className="text-sm text-muted-foreground">{fullName}</p>
               <p className="text-sm text-muted-foreground">
-                {profile?.email ?? userFromStore?.email ?? "No profile email loaded."}
+                {profile?.email ?? userFromStore?.email ?? t("profile.notLoadedEmail")}
               </p>
             </div>
           </div>
           <Button variant="destructive" onClick={handleLogout}>
             <LogOut className="mr-2 h-4 w-4" />
-            Sign Out
+            {t("profile.signOut")}
           </Button>
         </div>
 
         {profileQuery.isError || !profile ? (
           <Alert variant="destructive">
             <ShieldAlert className="h-4 w-4" />
-            <AlertTitle>Failed to load customer profile</AlertTitle>
+            <AlertTitle>{t("profile.loadErrorTitle")}</AlertTitle>
             <AlertDescription>
               {profileQuery.error instanceof Error
                 ? profileQuery.error.message
-                : "The customer profile projection could not be loaded."}
+                : t("profile.loadErrorDescription")}
             </AlertDescription>
           </Alert>
         ) : (
@@ -129,7 +133,7 @@ const Profile = () => {
                 <CardContent className="space-y-5">
                   <div className="rounded-xl border border-border/70 bg-white/70 p-4">
                     <p className="text-sm text-muted-foreground">
-                      {getAccountStatusSummary(profile.accountStatus)}
+                  {getAccountStatusSummary(profile.accountStatus, locale)}
                     </p>
                   </div>
                   <div className="grid gap-4 sm:grid-cols-2">
@@ -138,7 +142,7 @@ const Profile = () => {
                         Customer ID
                       </p>
                       <p className="mt-2 font-medium text-foreground">
-                        {profile.customerId ?? "Not provisioned"}
+                  {profile.customerId ?? t("profile.notProvisioned")}
                       </p>
                     </div>
                     <div className="rounded-xl border p-4">
@@ -167,7 +171,7 @@ const Profile = () => {
                             {entry.label}
                           </p>
                           <p className="mt-2 font-medium text-foreground">
-                            {entry.value ? formatDateLabel(entry.value) : "Not recorded"}
+                            {entry.value ? formatDateLabel(entry.value, locale) : t("profile.notRecorded")}
                           </p>
                         </div>
                       ))}

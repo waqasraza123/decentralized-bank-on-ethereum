@@ -10,6 +10,22 @@ import { TransactionIntentsService } from "./transaction-intents.service";
 jest.mock("@stealth-trails-bank/config/api", () => ({
   loadProductChainRuntimeConfig: () => ({
     productChainId: 8453
+  }),
+  loadSensitiveOperatorActionPolicyRuntimeConfig: () => ({
+    transactionIntentDecisionAllowedOperatorRoles: [
+      "operations_admin",
+      "risk_manager"
+    ],
+    custodyOperationAllowedOperatorRoles: [
+      "operations_admin",
+      "senior_operator",
+      "treasury"
+    ],
+    stakingGovernanceAllowedOperatorRoles: [
+      "treasury",
+      "risk_manager",
+      "compliance_lead"
+    ]
   })
 }));
 

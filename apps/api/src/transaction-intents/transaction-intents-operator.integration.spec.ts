@@ -4,6 +4,22 @@ jest.mock("@stealth-trails-bank/config/api", () => ({
   }),
   loadProductChainRuntimeConfig: () => ({
     productChainId: 8453
+  }),
+  loadSensitiveOperatorActionPolicyRuntimeConfig: () => ({
+    transactionIntentDecisionAllowedOperatorRoles: [
+      "operations_admin",
+      "risk_manager"
+    ],
+    custodyOperationAllowedOperatorRoles: [
+      "operations_admin",
+      "senior_operator",
+      "treasury"
+    ],
+    stakingGovernanceAllowedOperatorRoles: [
+      "treasury",
+      "risk_manager",
+      "compliance_lead"
+    ]
   })
 }));
 
@@ -199,7 +215,8 @@ describe("TransactionIntentsInternalController integration", () => {
     const response = await request(app.getHttpServer())
       .get("/transaction-intents/internal/deposit-requests/pending?limit=10")
       .set("x-operator-api-key", "test-operator-key")
-      .set("x-operator-id", "ops_1");
+      .set("x-operator-id", "ops_1")
+      .set("x-operator-role", "operations_admin");
 
     expect(response.status).toBe(200);
     expect(response.body.status).toBe("success");
@@ -209,11 +226,28 @@ describe("TransactionIntentsInternalController integration", () => {
     expect(response.body.data.intents[0].customer.email).toBe("ada@example.com");
   });
 
+  it("rejects deposit decisions from an unauthorized operator role", async () => {
+    const response = await request(app.getHttpServer())
+      .post("/transaction-intents/internal/deposit-requests/intent_1/decision")
+      .set("x-operator-api-key", "test-operator-key")
+      .set("x-operator-id", "ops_1")
+      .set("x-operator-role", "junior_operator")
+      .send({
+        decision: "approved"
+      });
+
+    expect(response.status).toBe(403);
+    expect(response.body.message).toBe(
+      "Operator role is not authorized to approve or deny transaction intents."
+    );
+  });
+
   it("approves a pending deposit intent and records operator audit metadata", async () => {
     const response = await request(app.getHttpServer())
       .post("/transaction-intents/internal/deposit-requests/intent_1/decision")
       .set("x-operator-api-key", "test-operator-key")
       .set("x-operator-id", "ops_1")
+      .set("x-operator-role", "operations_admin")
       .send({
         decision: "approved",
         note: "Risk review complete."
@@ -246,6 +280,7 @@ describe("TransactionIntentsInternalController integration", () => {
       .post("/transaction-intents/internal/deposit-requests/intent_1/queue")
       .set("x-operator-api-key", "test-operator-key")
       .set("x-operator-id", "ops_1")
+      .set("x-operator-role", "operations_admin")
       .send({
         note: "Ready for worker pickup."
       });
@@ -262,6 +297,7 @@ describe("TransactionIntentsInternalController integration", () => {
       .post("/transaction-intents/internal/deposit-requests/intent_1/queue")
       .set("x-operator-api-key", "test-operator-key")
       .set("x-operator-id", "ops_1")
+      .set("x-operator-role", "operations_admin")
       .send({});
 
     expect(secondResponse.status).toBe(201);
@@ -286,6 +322,7 @@ describe("TransactionIntentsInternalController integration", () => {
       .post("/transaction-intents/internal/deposit-requests/intent_1/broadcast")
       .set("x-operator-api-key", "test-operator-key")
       .set("x-operator-id", "ops_1")
+      .set("x-operator-role", "operations_admin")
       .send({
         txHash: `0x${"1".repeat(64)}`,
         fromAddress: "0x0000000000000000000000000000000000000def",

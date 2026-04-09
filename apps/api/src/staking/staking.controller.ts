@@ -13,6 +13,7 @@ import { JoiPipe } from "nestjs-joi";
 import { InternalOperatorApiKeyGuard } from "../auth/guards/internal-operator-api-key.guard";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { CustomJsonResponse } from "../types/CustomJsonResponse";
+import { StakingPoolGovernanceService } from "./staking-pool-governance.service";
 import { StakingService } from "./staking.service";
 
 type AuthenticatedRequest = {
@@ -45,7 +46,10 @@ const poolIdSchema = Joi.object({
 
 @Controller("staking")
 export class StakingController {
-  constructor(private readonly stakingService: StakingService) {}
+  constructor(
+    private readonly stakingService: StakingService,
+    private readonly stakingPoolGovernanceService: StakingPoolGovernanceService
+  ) {}
 
   @UseGuards(InternalOperatorApiKeyGuard)
   @Post("create-pool")
@@ -53,11 +57,20 @@ export class StakingController {
     @Req() request: InternalOperatorRequest,
     @Body(new JoiPipe(createPoolSchema)) body: { rewardRate: number }
   ) {
-    return this.stakingService.createPool(
-      body.rewardRate,
+    const result = await this.stakingPoolGovernanceService.createRequest(
+      {
+        rewardRate: body.rewardRate
+      },
       request.internalOperator.operatorId,
       request.internalOperator.operatorRole
     );
+
+    return {
+      status: "success",
+      message:
+        "Staking pool governance request created successfully. Approval and execution are required before the pool exists on chain.",
+      data: result
+    };
   }
 
   @UseGuards(JwtAuthGuard)

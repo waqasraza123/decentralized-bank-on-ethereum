@@ -3,12 +3,13 @@ import { Link, useNavigate } from "react-router-dom";
 import { ChevronDown, KeyRound } from "lucide-react";
 import { AuthShell } from "@/components/auth/AuthShell";
 import {
-  authCredibilityChips,
-  signInCopy,
+  getAuthCredibilityChips,
+  getSignInCopy,
 } from "@/components/auth/auth-content";
 import { LoadingButton } from "@/components/ui/loading-button";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { useT } from "@/i18n/use-t";
 import useAuth from "@/hooks/auth/useAuth";
 import { toast } from "@/components/ui/use-toast";
 import { useUserStore } from "@/stores/userStore";
@@ -20,6 +21,9 @@ const sharedLoginCredentials = {
 
 const SignIn = () => {
   const { login, loading, error } = useAuth();
+  const t = useT();
+  const signInCopy = getSignInCopy(t);
+  const authCredibilityChips = getAuthCredibilityChips(t);
   const [formData, setFormData] = useState({
     email: "",
     password: "",
@@ -41,14 +45,14 @@ const SignIn = () => {
     try {
       await login(formData);
       toast({
-        title: "Login successful!",
-        description: "Welcome back to your account!",
+        title: t("auth.signIn.successTitle"),
+        description: t("auth.signIn.successDescription"),
       });
       navigate("/");
     } catch {
       toast({
-        title: "Login failed",
-        description: error || "An error occurred during login. Please try again.",
+        title: t("auth.signIn.errorTitle"),
+        description: error || t("auth.signIn.errorDescription"),
       });
     }
   };
@@ -70,12 +74,12 @@ const SignIn = () => {
       chips={authCredibilityChips}
       footer={
         <p className="text-center">
-          Don't have an account?{" "}
+          {t("auth.signIn.footerPrefix")}{" "}
           <Link
             to="/auth/sign-up"
             className="font-semibold text-auth-form-accent transition-colors hover:text-[hsl(var(--auth-form-foreground))]"
           >
-            Create one now
+            {t("auth.signIn.footerLink")}
           </Link>
         </p>
       }
@@ -86,7 +90,7 @@ const SignIn = () => {
             htmlFor="email"
             className="text-sm font-medium text-auth-form-foreground"
           >
-            Email address
+            {t("auth.signIn.emailLabel")}
           </label>
           <Input
             id="email"
@@ -95,7 +99,7 @@ const SignIn = () => {
             autoComplete="email"
             required
             className="auth-input"
-            placeholder="you@example.com"
+            placeholder={t("auth.signIn.emailPlaceholder")}
             value={formData.email}
             onChange={handleChange}
             aria-invalid={Boolean(error)}
@@ -108,10 +112,10 @@ const SignIn = () => {
               htmlFor="password"
               className="text-sm font-medium text-auth-form-foreground"
             >
-              Password
+              {t("auth.signIn.passwordLabel")}
             </label>
             <span className="text-xs text-auth-form-muted">
-              Password manager friendly
+              {t("auth.signIn.passwordHint")}
             </span>
           </div>
           <Input
@@ -121,7 +125,7 @@ const SignIn = () => {
             autoComplete="current-password"
             required
             className="auth-input"
-            placeholder="Enter your password"
+            placeholder={t("auth.signIn.passwordPlaceholder")}
             value={formData.password}
             onChange={handleChange}
             aria-invalid={Boolean(error)}
@@ -142,7 +146,7 @@ const SignIn = () => {
           className="h-12 w-full rounded-2xl bg-[hsl(var(--auth-form-foreground))] text-base font-semibold text-[hsl(var(--auth-form-background))] shadow-[0_18px_45px_rgba(8,17,28,0.18)] transition-opacity hover:bg-[hsl(var(--auth-form-foreground))] hover:opacity-95"
           loading={loading}
         >
-          Sign in securely
+          {t("auth.signIn.submit")}
         </LoadingButton>
       </form>
 
@@ -159,10 +163,10 @@ const SignIn = () => {
             </div>
             <div>
               <p className="text-sm font-semibold text-auth-form-foreground">
-                Use shared demo access
+                {t("auth.signIn.demoTitle")}
               </p>
               <p className="mt-1 text-sm text-auth-form-muted">
-                Reveal a local demonstration account without crowding the primary login flow.
+                {t("auth.signIn.demoDescription")}
               </p>
             </div>
           </div>
@@ -175,12 +179,14 @@ const SignIn = () => {
 
         {showSharedAccess ? (
           <div className="mt-4 rounded-2xl border border-[rgba(18,115,103,0.18)] bg-[rgba(255,255,255,0.72)] p-4 text-sm">
-            <p className="font-medium text-auth-form-foreground">Shared system access</p>
+            <p className="font-medium text-auth-form-foreground">
+              {t("auth.signIn.demoPanelTitle")}
+            </p>
             <p className="mt-2 text-auth-form-muted">
-              Email: <span className="font-semibold text-auth-form-foreground">admin@gmail.com</span>
+              {t("auth.signIn.emailLabel")}: <span className="font-semibold text-auth-form-foreground">admin@gmail.com</span>
             </p>
             <p className="text-auth-form-muted">
-              Password: <span className="font-semibold text-auth-form-foreground">P@ssw0rd</span>
+              {t("auth.signIn.passwordLabel")}: <span className="font-semibold text-auth-form-foreground">P@ssw0rd</span>
             </p>
             <Button
               type="button"
@@ -188,7 +194,7 @@ const SignIn = () => {
               className="mt-4 h-11 w-full rounded-2xl border-black/10 bg-white/80 font-semibold text-auth-form-foreground hover:bg-[hsl(var(--auth-form-accent))] hover:text-[hsl(var(--auth-form-background))]"
               onClick={useSharedLogin}
             >
-              Fill demo credentials
+              {t("auth.signIn.demoButton")}
             </Button>
           </div>
         ) : null}

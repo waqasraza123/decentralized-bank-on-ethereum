@@ -1,4 +1,8 @@
 import { loadWebRuntimeConfig } from "@stealth-trails-bank/config/web";
+import { LanguageSwitcher } from "@/components/LanguageSwitcher";
+import { AdminI18nProvider } from "@/i18n/provider";
+import { useLocale } from "@/i18n/use-locale";
+import { useT } from "@/i18n/use-t";
 import {
   QueryClient,
   QueryClientProvider,
@@ -261,13 +265,17 @@ function saveStoredSession(session: SessionDraft): void {
 
 function App() {
   return (
-    <QueryClientProvider client={queryClient}>
-      <AdminConsole />
-    </QueryClientProvider>
+    <AdminI18nProvider>
+      <QueryClientProvider client={queryClient}>
+        <AdminConsole />
+      </QueryClientProvider>
+    </AdminI18nProvider>
   );
 }
 
 function AdminConsole() {
+  const t = useT();
+  const { locale } = useLocale();
   const queryClient = useQueryClient();
   const [flash, setFlash] = useState<FlashState | null>(null);
   const [pendingAction, setPendingAction] = useState<string | null>(null);
@@ -1020,26 +1028,26 @@ function AdminConsole() {
     <div className="shell">
       <header className="hero">
         <div>
-          <p className="eyebrow">Stealth Trails Bank</p>
-          <h1>Operator Console</h1>
+          <p className="eyebrow">{t("hero.eyebrow")}</p>
+          <h1>{t("hero.title")}</h1>
           <p className="hero-copy">
-            Internal review queues, oversight incidents, account holds, and
-            governed incident package release workflows in one surface.
+            {t("hero.description")}
           </p>
         </div>
         <div className="hero-status">
+          <LanguageSwitcher />
           <span className={`status-pill ${isSessionReady ? "ok" : "warn"}`}>
-            {isSessionReady ? "Operator session active" : "Credentials required"}
+            {isSessionReady ? t("hero.sessionActive") : t("hero.credentialsRequired")}
           </span>
           <span className="hero-meta">
-            Base URL: {savedSession.baseUrl || runtimeConfig.serverUrl}
+            {t("hero.baseUrl")}: {savedSession.baseUrl || runtimeConfig.serverUrl}
           </span>
         </div>
       </header>
 
       {flash ? (
         <section className={`flash ${flash.tone}`}>
-          <strong>{flash.tone === "success" ? "Updated." : "Blocked."}</strong>
+          <strong>{flash.tone === "success" ? t("flash.updated") : t("flash.blocked")}</strong>
           <span>{flash.message}</span>
         </section>
       ) : null}
@@ -1047,20 +1055,19 @@ function AdminConsole() {
       <section className="panel panel-accent">
         <div className="section-heading">
           <div>
-            <p className="section-kicker">Operator Credentials</p>
-            <h2>Local session</h2>
+            <p className="section-kicker">{t("credentials.kicker")}</p>
+            <h2>{t("credentials.title")}</h2>
           </div>
           <p className="section-copy">
-            The internal API guard requires `x-operator-api-key`,
-            `x-operator-id`, and optionally `x-operator-role`. This console stores
-            those values only in local browser storage.
+            {t("credentials.description")}
           </p>
         </div>
 
         <form className="credentials-grid" onSubmit={handleSaveSession}>
           <label>
-            API Base URL
+            {t("credentials.apiBaseUrl")}
             <input
+              data-ltr
               value={sessionDraft.baseUrl}
               onChange={(event) =>
                 setSessionDraft((current) => ({
@@ -1072,8 +1079,9 @@ function AdminConsole() {
             />
           </label>
           <label>
-            Operator ID
+            {t("credentials.operatorId")}
             <input
+              data-ltr
               value={sessionDraft.operatorId}
               onChange={(event) =>
                 setSessionDraft((current) => ({
@@ -1085,7 +1093,7 @@ function AdminConsole() {
             />
           </label>
           <label>
-            Operator Role
+            {t("credentials.operatorRole")}
             <select
               value={sessionDraft.operatorRole}
               onChange={(event) =>
@@ -1097,14 +1105,22 @@ function AdminConsole() {
             >
               {operatorRoleOptions.map((role) => (
                 <option key={role} value={role}>
-                  {toTitleCase(role)}
+                  {locale === "ar"
+                    ? ({
+                        operations_admin: "مسؤول العمليات",
+                        risk_manager: "مدير المخاطر",
+                        senior_operator: "مشغل أول",
+                        compliance_lead: "قائد الامتثال"
+                      }[role] ?? toTitleCase(role))
+                    : toTitleCase(role)}
                 </option>
               ))}
             </select>
           </label>
           <label>
-            Operator API Key
+            {t("credentials.operatorApiKey")}
             <input
+              data-ltr
               type="password"
               value={sessionDraft.apiKey}
               onChange={(event) =>
@@ -1118,7 +1134,7 @@ function AdminConsole() {
           </label>
           <div className="credentials-actions">
             <button className="button primary" type="submit">
-              Save Session
+              {t("credentials.saveSession")}
             </button>
           </div>
         </form>
@@ -1127,8 +1143,8 @@ function AdminConsole() {
       <section className="panel">
         <div className="section-heading">
           <div>
-            <p className="section-kicker">Alert Delivery</p>
-            <h2>Delivery target health</h2>
+            <p className="section-kicker">{t("sections.alertDelivery")}</p>
+            <h2>{t("sections.deliveryTargetHealth")}</h2>
           </div>
           <p className="section-copy">
             {platformAlertTargetHealthQuery.data
@@ -1212,7 +1228,7 @@ function AdminConsole() {
         <div className="section-heading">
           <div>
             <p className="section-kicker">Phase 12</p>
-            <h2>Release readiness evidence</h2>
+            <h2>{t("sections.releaseReadinessEvidence")}</h2>
           </div>
           <p className="section-copy">
             {releaseReadinessSummaryQuery.data
@@ -1888,7 +1904,7 @@ function AdminConsole() {
         <div className="section-heading">
           <div>
             <p className="section-kicker">Phase 11</p>
-            <h2>Platform health</h2>
+            <h2>{t("sections.platformHealth")}</h2>
           </div>
           <p className="section-copy">
             {operationsStatusQuery.data
@@ -2019,7 +2035,7 @@ function AdminConsole() {
         <div className="section-heading">
           <div>
             <p className="section-kicker">Treasury</p>
-            <h2>Treasury visibility</h2>
+            <h2>{t("sections.treasuryVisibility")}</h2>
           </div>
           <p className="section-copy">
             {treasuryOverviewQuery.data
@@ -2228,7 +2244,7 @@ function AdminConsole() {
           <div className="section-heading compact">
             <div>
               <p className="section-kicker">Ledger Repair</p>
-              <h2>Ledger reconciliation</h2>
+              <h2>{t("sections.ledgerReconciliation")}</h2>
             </div>
           </div>
 
@@ -2539,7 +2555,7 @@ function AdminConsole() {
         <div className="section-heading">
           <div>
             <p className="section-kicker">Audit Trail</p>
-            <h2>Platform audit log</h2>
+            <h2>{t("sections.platformAuditLog")}</h2>
           </div>
           <p className="section-copy">
             Cross-domain operator, worker, customer, and system events without
@@ -2657,7 +2673,7 @@ function AdminConsole() {
               }
               type="button"
             >
-              Route critical alerts
+              {t("sections.routeCriticalAlerts")}
             </button>
           </div>
 

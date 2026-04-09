@@ -73,7 +73,8 @@ export class WithdrawalIntentsInternalController {
     const result = await this.withdrawalIntentsService.decideWithdrawalIntent(
       intentId,
       request.internalOperator.operatorId,
-      dto
+      dto,
+      request.internalOperator.operatorRole
     );
 
     return {
@@ -123,7 +124,8 @@ export class WithdrawalIntentsInternalController {
       await this.withdrawalIntentsService.queueApprovedWithdrawalIntent(
         intentId,
         request.internalOperator.operatorId,
-        dto
+        dto,
+        request.internalOperator.operatorRole
       );
 
     return {
@@ -193,7 +195,8 @@ export class WithdrawalIntentsInternalController {
       await this.withdrawalIntentsService.recordWithdrawalBroadcastByOperator(
         intentId,
         request.internalOperator.operatorId,
-        dto
+        dto,
+        request.internalOperator.operatorRole
       );
 
     return {
@@ -221,7 +224,8 @@ export class WithdrawalIntentsInternalController {
       await this.withdrawalIntentsService.failWithdrawalIntentExecutionByOperator(
         intentId,
         request.internalOperator.operatorId,
-        dto
+        dto,
+        request.internalOperator.operatorRole
       );
 
     return {
@@ -249,7 +253,8 @@ export class WithdrawalIntentsInternalController {
       await this.withdrawalIntentsService.confirmWithdrawalIntentByOperator(
         intentId,
         request.internalOperator.operatorId,
-        dto
+        dto,
+        request.internalOperator.operatorRole
       );
 
     return {
@@ -277,7 +282,8 @@ export class WithdrawalIntentsInternalController {
       await this.withdrawalIntentsService.settleConfirmedWithdrawalIntentByOperator(
         intentId,
         request.internalOperator.operatorId,
-        dto
+        dto,
+        request.internalOperator.operatorRole
       );
 
     return {

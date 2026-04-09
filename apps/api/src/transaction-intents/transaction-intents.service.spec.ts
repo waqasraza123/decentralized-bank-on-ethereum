@@ -15,6 +15,22 @@ import { TransactionIntentsService } from "./transaction-intents.service";
 jest.mock("@stealth-trails-bank/config/api", () => ({
   loadProductChainRuntimeConfig: () => ({
     productChainId: 8453
+  }),
+  loadSensitiveOperatorActionPolicyRuntimeConfig: () => ({
+    transactionIntentDecisionAllowedOperatorRoles: [
+      "operations_admin",
+      "risk_manager"
+    ],
+    custodyOperationAllowedOperatorRoles: [
+      "operations_admin",
+      "senior_operator",
+      "treasury"
+    ],
+    stakingGovernanceAllowedOperatorRoles: [
+      "treasury",
+      "risk_manager",
+      "compliance_lead"
+    ]
   })
 }));
 
@@ -404,10 +420,15 @@ describe("TransactionIntentsService", () => {
       id: "audit_approve_1"
     });
 
-    const result = await service.decideDepositIntent("intent_1", "ops_1", {
-      decision: "approved",
-      note: "Looks good."
-    });
+    const result = await service.decideDepositIntent(
+      "intent_1",
+      "ops_1",
+      {
+        decision: "approved",
+        note: "Looks good."
+      },
+      "operations_admin"
+    );
 
     expect(result.decision).toBe("approved");
     expect(result.intent.status).toBe(TransactionIntentStatus.approved);
@@ -435,10 +456,15 @@ describe("TransactionIntentsService", () => {
       id: "audit_deny_1"
     });
 
-    const result = await service.decideDepositIntent("intent_1", "ops_1", {
-      decision: "denied",
-      denialReason: "Proof of funds missing."
-    });
+    const result = await service.decideDepositIntent(
+      "intent_1",
+      "ops_1",
+      {
+        decision: "denied",
+        denialReason: "Proof of funds missing."
+      },
+      "risk_manager"
+    );
 
     expect(result.decision).toBe("denied");
     expect(result.intent.status).toBe(TransactionIntentStatus.failed);
@@ -489,7 +515,8 @@ describe("TransactionIntentsService", () => {
     const result = await service.queueApprovedDepositIntent(
       "intent_1",
       "ops_1",
-      { note: "Send to worker." }
+      { note: "Send to worker." },
+      "operations_admin"
     );
 
     expect(result.queueReused).toBe(false);
@@ -509,7 +536,8 @@ describe("TransactionIntentsService", () => {
     const result = await service.queueApprovedDepositIntent(
       "intent_1",
       "ops_1",
-      {}
+      {},
+      "operations_admin"
     );
 
     expect(result.queueReused).toBe(true);
@@ -623,7 +651,8 @@ describe("TransactionIntentsService", () => {
           "0x1111111111111111111111111111111111111111111111111111111111111111",
         fromAddress: "0x0000000000000000000000000000000000000def",
         toAddress: "0x0000000000000000000000000000000000000abc"
-      }
+      },
+      "operations_admin"
     );
 
     expect(transactionClient.auditEvent.create).toHaveBeenCalledWith(
@@ -744,8 +773,25 @@ describe("TransactionIntentsService", () => {
     await expect(
       service.decideDepositIntent("intent_1", "ops_1", {
         decision: "approved"
-      })
+      }, "operations_admin")
     ).rejects.toBeInstanceOf(ConflictException);
+  });
+
+  it("rejects deposit decisions from an unauthorized operator role", async () => {
+    const { service } = createService();
+
+    await expect(
+      service.decideDepositIntent(
+        "intent_1",
+        "ops_1",
+        {
+          decision: "approved"
+        },
+        "junior_operator"
+      )
+    ).rejects.toThrow(
+      "Operator role is not authorized to approve or deny transaction intents."
+    );
   });
 
   it("fails when the authenticated user does not have a customer account projection", async () => {

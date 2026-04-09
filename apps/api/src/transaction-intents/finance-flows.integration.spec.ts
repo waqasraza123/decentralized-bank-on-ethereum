@@ -7,6 +7,22 @@ jest.mock("@stealth-trails-bank/config/api", () => ({
   }),
   loadProductChainRuntimeConfig: () => ({
     productChainId: 8453
+  }),
+  loadSensitiveOperatorActionPolicyRuntimeConfig: () => ({
+    transactionIntentDecisionAllowedOperatorRoles: [
+      "operations_admin",
+      "risk_manager"
+    ],
+    custodyOperationAllowedOperatorRoles: [
+      "operations_admin",
+      "senior_operator",
+      "treasury"
+    ],
+    stakingGovernanceAllowedOperatorRoles: [
+      "treasury",
+      "risk_manager",
+      "compliance_lead"
+    ]
   })
 }));
 
@@ -36,7 +52,8 @@ describe("Finance flows integration", () => {
 
   const operatorHeaders = {
     "x-operator-api-key": "test-operator-key",
-    "x-operator-id": "ops_1"
+    "x-operator-id": "ops_1",
+    "x-operator-role": "operations_admin"
   };
   const workerHeaders = {
     "x-worker-api-key": "test-worker-key",

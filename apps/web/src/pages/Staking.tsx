@@ -14,6 +14,8 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { useLocale } from "@/i18n/use-locale";
+import { useT } from "@/i18n/use-t";
 import { useToast } from "@/hooks/use-toast";
 import {
   type CustomerStakingPoolSnapshot,
@@ -32,6 +34,8 @@ import {
 import { useUserStore } from "@/stores/userStore";
 
 const Staking = () => {
+  const t = useT();
+  const { locale } = useLocale();
   const [selectedPoolId, setSelectedPoolId] = useState<number | null>(null);
   const [depositAmount, setDepositAmount] = useState("");
   const [withdrawAmount, setWithdrawAmount] = useState("");
@@ -49,7 +53,7 @@ const Staking = () => {
   const executionEnabled = snapshot?.execution.available ?? false;
   const executionMessage =
     snapshot?.execution.message ??
-    "Customer staking execution availability is loading.";
+    t("staking.executionLoading");
   const executionPending =
     depositMutation.isPending ||
     withdrawalMutation.isPending ||
@@ -60,8 +64,8 @@ const Staking = () => {
     if (!isPositiveDecimalString(depositAmount)) {
       toast({
         variant: "destructive",
-        title: "Invalid stake amount",
-        description: "Enter a positive ETH amount to stake."
+        title: t("staking.invalidDepositTitle"),
+        description: t("staking.invalidDepositDescription")
       });
       return;
     }
@@ -73,14 +77,14 @@ const Staking = () => {
       });
       setDepositAmount("");
       toast({
-        title: "Stake deposit submitted",
-        description: `Transaction hash: ${result.transactionHash}`
+        title: t("staking.depositSuccessTitle"),
+        description: t("staking.txHashPrefix", { hash: result.transactionHash })
       });
     } catch (error) {
       toast({
         variant: "destructive",
-        title: "Stake deposit failed",
-        description: error instanceof Error ? error.message : "Request failed."
+        title: t("staking.depositErrorTitle"),
+        description: error instanceof Error ? error.message : t("staking.requestFailed")
       });
     }
   }
@@ -89,8 +93,8 @@ const Staking = () => {
     if (!isPositiveDecimalString(withdrawAmount)) {
       toast({
         variant: "destructive",
-        title: "Invalid withdrawal amount",
-        description: "Enter a positive ETH amount to withdraw."
+        title: t("staking.invalidWithdrawTitle"),
+        description: t("staking.invalidWithdrawDescription")
       });
       return;
     }
@@ -102,14 +106,14 @@ const Staking = () => {
       });
       setWithdrawAmount("");
       toast({
-        title: "Stake withdrawal submitted",
-        description: `Transaction hash: ${result.transactionHash}`
+        title: t("staking.withdrawSuccessTitle"),
+        description: t("staking.txHashPrefix", { hash: result.transactionHash })
       });
     } catch (error) {
       toast({
         variant: "destructive",
-        title: "Stake withdrawal failed",
-        description: error instanceof Error ? error.message : "Request failed."
+        title: t("staking.withdrawErrorTitle"),
+        description: error instanceof Error ? error.message : t("staking.requestFailed")
       });
     }
   }
@@ -120,14 +124,14 @@ const Staking = () => {
         poolId: pool.id
       });
       toast({
-        title: "Reward claim submitted",
-        description: `Transaction hash: ${result.transactionHash}`
+        title: t("staking.claimSuccessTitle"),
+        description: t("staking.txHashPrefix", { hash: result.transactionHash })
       });
     } catch (error) {
       toast({
         variant: "destructive",
-        title: "Reward claim failed",
-        description: error instanceof Error ? error.message : "Request failed."
+        title: t("staking.claimErrorTitle"),
+        description: error instanceof Error ? error.message : t("staking.requestFailed")
       });
     }
   }
@@ -138,14 +142,14 @@ const Staking = () => {
         poolId: pool.id
       });
       toast({
-        title: "Emergency withdrawal submitted",
-        description: `Transaction hash: ${result.transactionHash}`
+        title: t("staking.emergencySuccessTitle"),
+        description: t("staking.txHashPrefix", { hash: result.transactionHash })
       });
     } catch (error) {
       toast({
         variant: "destructive",
-        title: "Emergency withdrawal failed",
-        description: error instanceof Error ? error.message : "Request failed."
+        title: t("staking.emergencyErrorTitle"),
+        description: error instanceof Error ? error.message : t("staking.requestFailed")
       });
     }
   }
@@ -155,10 +159,10 @@ const Staking = () => {
       <div className="space-y-8">
         <div className="flex items-center justify-between">
           <h1 className="text-3xl font-semibold text-foreground">
-            Ethereum Staking
+            {t("staking.title")}
           </h1>
           <Button asChild variant="outline">
-            <Link to="/create-pool">Pool Governance</Link>
+            <Link to="/create-pool">{t("staking.governance")}</Link>
           </Button>
         </div>
 
@@ -172,8 +176,8 @@ const Staking = () => {
           <ShieldAlert className="h-4 w-4" />
           <AlertTitle>
             {executionEnabled
-              ? "Customer staking execution is enabled"
-              : "Customer staking execution remains policy-gated"}
+              ? t("staking.executionEnabled")
+              : t("staking.executionPolicyGated")}
           </AlertTitle>
           <AlertDescription>{executionMessage}</AlertDescription>
         </Alert>
@@ -182,14 +186,14 @@ const Staking = () => {
           <Card className="border-red-200 bg-red-50 p-4 text-sm text-red-700">
             {stakingQuery.error instanceof Error
               ? stakingQuery.error.message
-              : "Failed to load staking snapshot."}
+              : t("staking.snapshotError")}
           </Card>
         ) : null}
 
         {snapshot && !snapshot.readModel.available ? (
           <Alert className="border-slate-200 bg-slate-50">
             <Database className="h-4 w-4" />
-            <AlertTitle>Live position reads are limited</AlertTitle>
+            <AlertTitle>{t("staking.readModelLimitedTitle")}</AlertTitle>
             <AlertDescription>{snapshot.readModel.message}</AlertDescription>
           </Alert>
         ) : null}
@@ -197,7 +201,7 @@ const Staking = () => {
         <StakingStats pools={pools} />
 
         <Card className="glass-card p-6">
-          <h2 className="mb-4 text-xl font-semibold">Available Validator Pools</h2>
+          <h2 className="mb-4 text-xl font-semibold">{t("staking.availablePools")}</h2>
           {stakingQuery.isLoading ? (
             <div className="space-y-4">
               {Array.from({ length: 3 }).map((_, index) => (
@@ -221,7 +225,7 @@ const Staking = () => {
             </div>
           ) : (
             <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
-              No staking pools are currently listed for customer review.
+              {t("staking.noPools")}
             </div>
           )}
         </Card>
@@ -231,10 +235,10 @@ const Staking = () => {
             <div className="flex flex-wrap items-center justify-between gap-4">
               <div>
                 <h2 className="text-xl font-semibold">
-                  Pool #{selectedPool.id} Overview
+                  {t("staking.selectedPoolTitle", { id: selectedPool.id })}
                 </h2>
                 <p className="text-sm text-muted-foreground">
-                  Live product registry detail for the selected pool.
+                  {t("staking.selectedPoolDescription")}
                 </p>
               </div>
               <div className="rounded-full bg-slate-100 px-3 py-1 text-sm font-medium text-slate-700">
@@ -252,13 +256,13 @@ const Staking = () => {
               <div className="rounded-lg border p-4">
                 <p className="text-sm text-muted-foreground">Total Staked</p>
                 <p className="mt-2 text-2xl font-semibold">
-                  {formatTokenAmount(selectedPool.totalStakedAmount, 4)} ETH
+                  {formatTokenAmount(selectedPool.totalStakedAmount, locale, 4)} ETH
                 </p>
               </div>
               <div className="rounded-lg border p-4">
                 <p className="text-sm text-muted-foreground">Rewards Paid</p>
                 <p className="mt-2 text-2xl font-semibold">
-                  {formatTokenAmount(selectedPool.totalRewardsPaid, 4)} ETH
+                  {formatTokenAmount(selectedPool.totalRewardsPaid, locale, 4)} ETH
                 </p>
               </div>
               <div className="rounded-lg border p-4">
@@ -276,8 +280,8 @@ const Staking = () => {
                   Registry Timeline
                 </div>
                 <div className="mt-3 space-y-2 text-sm text-muted-foreground">
-                  <p>Created {formatDateLabel(selectedPool.createdAt)}</p>
-                  <p>Updated {formatDateLabel(selectedPool.updatedAt)}</p>
+                  <p>Created {formatDateLabel(selectedPool.createdAt, locale)}</p>
+                  <p>Updated {formatDateLabel(selectedPool.updatedAt, locale)}</p>
                 </div>
               </div>
 
@@ -287,7 +291,7 @@ const Staking = () => {
                   Managed Customer Context
                 </div>
                 <div className="mt-3 space-y-2 text-sm text-muted-foreground">
-                  <p>Managed wallet: {formatShortAddress(snapshot?.walletAddress ?? user?.ethereumAddress)}</p>
+                  <p>Managed wallet: {formatShortAddress(snapshot?.walletAddress ?? user?.ethereumAddress, t("shared.notAvailable"))}</p>
                   <p>
                     Account status: {snapshot?.accountStatus ?? "unknown"}.
                   </p>
@@ -306,13 +310,13 @@ const Staking = () => {
                   <div>
                     <p className="text-sm text-muted-foreground">Staked Balance</p>
                     <p className="mt-1 text-2xl font-semibold">
-                      {formatTokenAmount(selectedPool.position.stakedBalance, 4)} ETH
+                      {formatTokenAmount(selectedPool.position.stakedBalance, locale, 4)} ETH
                     </p>
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground">Pending Reward</p>
                     <p className="mt-1 text-2xl font-semibold">
-                      {formatTokenAmount(selectedPool.position.pendingReward, 4)} ETH
+                      {formatTokenAmount(selectedPool.position.pendingReward, locale, 4)} ETH
                     </p>
                   </div>
                 </div>

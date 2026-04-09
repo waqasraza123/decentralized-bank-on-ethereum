@@ -26,6 +26,7 @@ import { TransactionIntentsService } from "./transaction-intents.service";
 type InternalOperatorRequest = {
   internalOperator: {
     operatorId: string;
+    operatorRole?: string;
   };
 };
 
@@ -72,7 +73,8 @@ export class TransactionIntentsInternalController {
     const result = await this.transactionIntentsService.decideDepositIntent(
       intentId,
       request.internalOperator.operatorId,
-      dto
+      dto,
+      request.internalOperator.operatorRole
     );
 
     return {
@@ -122,7 +124,8 @@ export class TransactionIntentsInternalController {
       await this.transactionIntentsService.queueApprovedDepositIntent(
         intentId,
         request.internalOperator.operatorId,
-        dto
+        dto,
+        request.internalOperator.operatorRole
       );
 
     return {
@@ -192,7 +195,8 @@ export class TransactionIntentsInternalController {
       await this.transactionIntentsService.recordDepositBroadcastByOperator(
         intentId,
         request.internalOperator.operatorId,
-        dto
+        dto,
+        request.internalOperator.operatorRole
       );
 
     return {
@@ -220,7 +224,8 @@ export class TransactionIntentsInternalController {
       await this.transactionIntentsService.failDepositIntentExecutionByOperator(
         intentId,
         request.internalOperator.operatorId,
-        dto
+        dto,
+        request.internalOperator.operatorRole
       );
 
     return {
@@ -248,7 +253,8 @@ export class TransactionIntentsInternalController {
       await this.transactionIntentsService.confirmDepositIntentByOperator(
         intentId,
         request.internalOperator.operatorId,
-        dto
+        dto,
+        request.internalOperator.operatorRole
       );
 
     return {
@@ -276,7 +282,8 @@ export class TransactionIntentsInternalController {
       await this.transactionIntentsService.settleConfirmedDepositIntentByOperator(
         intentId,
         request.internalOperator.operatorId,
-        dto
+        dto,
+        request.internalOperator.operatorRole
       );
 
     return {

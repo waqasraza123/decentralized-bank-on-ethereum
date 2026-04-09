@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { Badge } from "@/components/ui/badge";
+import { useT } from "@/i18n/use-t";
 
 interface TransactionFilterProps {
   onFilterChange: (filters: FilterState) => void;
@@ -57,6 +58,7 @@ export const TransactionFilter = ({
   typeOptions = defaultTypeOptions,
   statusOptions = defaultStatusOptions,
 }: TransactionFilterProps) => {
+  const t = useT();
   const [search, setSearch] = useState("");
   const [types, setTypes] = useState<string[]>([]);
   const [statuses, setStatuses] = useState<string[]>([]);
@@ -67,15 +69,15 @@ export const TransactionFilter = ({
     const active: string[] = [];
 
     if (types.length > 0) {
-      active.push("Type");
+      active.push(t("transactionFilter.filterType"));
     }
 
     if (statuses.length > 0) {
-      active.push("Status");
+      active.push(t("transactionFilter.filterStatus"));
     }
 
     if (dateRange.from || dateRange.to) {
-      active.push("Date");
+      active.push(t("transactionFilter.filterDate"));
     }
 
     setActiveFilters(active);
@@ -124,13 +126,13 @@ export const TransactionFilter = ({
   };
 
   const clearFilter = (filter: string) => {
-    if (filter === "Type") {
+    if (filter === t("transactionFilter.filterType")) {
       setTypes([]);
       updateFilters({ search, types: [], statuses, dateRange });
-    } else if (filter === "Status") {
+    } else if (filter === t("transactionFilter.filterStatus")) {
       setStatuses([]);
       updateFilters({ search, types, statuses: [], dateRange });
-    } else if (filter === "Date") {
+    } else if (filter === t("transactionFilter.filterDate")) {
       setDateRange(emptyDateRange);
       updateFilters({ search, types, statuses, dateRange: emptyDateRange });
     }
@@ -155,7 +157,7 @@ export const TransactionFilter = ({
         <div className="relative flex-grow">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
-            placeholder="Search transactions..."
+            placeholder={t("transactionFilter.searchPlaceholder")}
             value={search}
             onChange={handleSearchChange}
             className="pl-10"
@@ -166,11 +168,11 @@ export const TransactionFilter = ({
           <DropdownMenuTrigger asChild>
             <Button variant="outline" size="sm" className="flex items-center gap-1">
               <Filter className="h-4 w-4" />
-              Type
+              {t("transactionFilter.type")}
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-48">
-            <DropdownMenuLabel>Transaction Type</DropdownMenuLabel>
+            <DropdownMenuLabel>{t("transactionFilter.transactionType")}</DropdownMenuLabel>
             <DropdownMenuSeparator />
             {typeOptions.map((type) => (
               <DropdownMenuCheckboxItem
@@ -188,11 +190,11 @@ export const TransactionFilter = ({
           <DropdownMenuTrigger asChild>
             <Button variant="outline" size="sm" className="flex items-center gap-1">
               <Filter className="h-4 w-4" />
-              Status
+              {t("transactionFilter.status")}
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-48">
-            <DropdownMenuLabel>Transaction Status</DropdownMenuLabel>
+            <DropdownMenuLabel>{t("transactionFilter.transactionStatus")}</DropdownMenuLabel>
             <DropdownMenuSeparator />
             {statusOptions.map((status) => (
               <DropdownMenuCheckboxItem
@@ -210,7 +212,7 @@ export const TransactionFilter = ({
           <PopoverTrigger asChild>
             <Button variant="outline" size="sm" className="flex items-center gap-1">
               <CalendarIcon className="h-4 w-4" />
-              Date Range
+              {t("transactionFilter.dateRange")}
               {dateRange.from && (
                 <span className="hidden md:inline-flex">: {format(dateRange.from, "MMM d")}</span>
               )}
@@ -238,7 +240,7 @@ export const TransactionFilter = ({
             onClick={clearAllFilters}
             className="text-red-500 hover:bg-red-100 hover:text-red-700"
           >
-            Clear all
+            {t("transactionFilter.clearAll")}
           </Button>
         )}
       </div>

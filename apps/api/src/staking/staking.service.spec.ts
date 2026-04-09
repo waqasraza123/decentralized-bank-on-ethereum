@@ -50,6 +50,22 @@ jest.mock("@stealth-trails-bank/config/api", () => ({
     stakingContractAddress: "0x0000000000000000000000000000000000000abc",
     ethereumPrivateKey:
       "0x1234567890123456789012345678901234567890123456789012345678901234"
+  }),
+  loadSensitiveOperatorActionPolicyRuntimeConfig: () => ({
+    transactionIntentDecisionAllowedOperatorRoles: [
+      "operations_admin",
+      "risk_manager"
+    ],
+    custodyOperationAllowedOperatorRoles: [
+      "operations_admin",
+      "senior_operator",
+      "treasury"
+    ],
+    stakingGovernanceAllowedOperatorRoles: [
+      "treasury",
+      "risk_manager",
+      "compliance_lead"
+    ]
   })
 }));
 
@@ -78,6 +94,7 @@ describe("StakingService", () => {
     const prismaService = {
       stakingPool: {
         create: jest.fn(),
+        update: jest.fn(),
         findMany: jest.fn(),
         findUnique: jest.fn()
       },
@@ -304,12 +321,20 @@ describe("StakingService", () => {
     expect(mockWriteContract.deposit).not.toHaveBeenCalled();
   });
 
-  it("writes an audit event when an operator creates a staking pool", async () => {
+  it("writes an audit event when governed pool creation executes", async () => {
     const { service, prismaService } = createService();
 
     prismaService.stakingPool.create.mockResolvedValue({
       id: 17,
       blockchainPoolId: null,
+      rewardRate: 12,
+      totalStakedAmount: 0n,
+      totalRewardsPaid: 0n,
+      poolStatus: "paused"
+    });
+    prismaService.stakingPool.update.mockResolvedValue({
+      id: 17,
+      blockchainPoolId: 17,
       rewardRate: 12,
       totalStakedAmount: 0n,
       totalRewardsPaid: 0n,
@@ -322,27 +347,80 @@ describe("StakingService", () => {
       })
     });
 
-    const result = await service.createPool(12, "ops_1", "treasury");
+    const result = await service.executeGovernedPoolCreation({
+      rewardRate: 12,
+      operatorId: "ops_1",
+      operatorRole: "treasury"
+    });
 
     expect(result).toEqual({
-      status: "success",
-      message: "Pool created successfully.",
-      data: {
-        poolId: 17,
-        transactionHash: "0xpoolhash"
-      }
+      success: true,
+      poolId: 17,
+      blockchainPoolId: 17,
+      transactionHash: "0xpoolhash",
+      poolStatus: "paused"
     });
+    expect(mockWriteContract.createPool).toHaveBeenCalledWith(12, 17);
     expect(prismaService.auditEvent.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         customerId: null,
         actorType: "operator",
         actorId: "ops_1",
-        action: "staking.pool.created",
+        action: "staking.pool.executed",
         targetType: "StakingPool",
         targetId: "17",
         metadata: expect.objectContaining({
           rewardRate: 12,
+          blockchainPoolId: 17,
           transactionHash: "0xpoolhash",
+          actorRole: "treasury"
+        })
+      })
+    });
+  });
+
+  it("returns retryable failure details when governed pool creation fails", async () => {
+    const { service, prismaService } = createService();
+
+    prismaService.stakingPool.create.mockResolvedValue({
+      id: 17,
+      blockchainPoolId: null,
+      rewardRate: 12,
+      totalStakedAmount: 0n,
+      totalRewardsPaid: 0n,
+      poolStatus: "paused"
+    });
+    prismaService.stakingPool.update.mockResolvedValue({
+      id: 17,
+      blockchainPoolId: 17,
+      rewardRate: 12,
+      totalStakedAmount: 0n,
+      totalRewardsPaid: 0n,
+      poolStatus: "paused"
+    });
+    prismaService.auditEvent.create.mockResolvedValue({});
+    mockWriteContract.createPool.mockRejectedValue(new Error("rpc down"));
+
+    const result = await service.executeGovernedPoolCreation({
+      rewardRate: 12,
+      operatorId: "ops_1",
+      operatorRole: "treasury"
+    });
+
+    expect(result).toEqual({
+      success: false,
+      poolId: 17,
+      blockchainPoolId: 17,
+      transactionHash: null,
+      errorMessage: "rpc down"
+    });
+    expect(prismaService.auditEvent.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        action: "staking.pool.execution_failed",
+        targetId: "17",
+        metadata: expect.objectContaining({
+          blockchainPoolId: 17,
+          errorMessage: "rpc down",
           actorRole: "treasury"
         })
       })

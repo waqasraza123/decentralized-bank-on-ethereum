@@ -23,6 +23,7 @@ import {
   isEthereumAddress,
   isPositiveDecimalString
 } from "@/lib/customer-finance";
+import { useLocale } from "@/i18n/use-locale";
 import { AlertTriangle, ArrowDownRight } from "lucide-react";
 
 type WithdrawCardProps = {
@@ -44,6 +45,7 @@ const WithdrawCard = ({
   assetsErrorMessage,
   balancesErrorMessage
 }: WithdrawCardProps) => {
+  const { locale } = useLocale();
   const createWithdrawalIntent = useCreateWithdrawalIntent();
   const [selectedAssetSymbol, setSelectedAssetSymbol] = useState("");
   const [withdrawAddress, setWithdrawAddress] = useState("");
@@ -118,7 +120,8 @@ const WithdrawCard = ({
     if (compareDecimalStrings(normalizedAmount, availableBalance) === 1) {
       setFormError(
         `Requested amount exceeds the available balance of ${formatTokenAmount(
-          availableBalance
+          availableBalance,
+          locale
         )} ${selectedAssetSymbol}.`
       );
       return;
@@ -150,7 +153,8 @@ const WithdrawCard = ({
           ? "Withdrawal request reused"
           : "Withdrawal request created",
         description: `${formatTokenAmount(
-          result.intent.requestedAmount
+          result.intent.requestedAmount,
+          locale
         )} ${result.intent.asset.symbol} has moved into managed pending review.`
       });
     } catch (error) {
@@ -219,7 +223,8 @@ const WithdrawCard = ({
                 {isBalancesLoading
                   ? "Loading..."
                   : `${formatTokenAmount(
-                      selectedBalance?.availableBalance ?? "0"
+                      selectedBalance?.availableBalance ?? "0",
+                      locale
                     )} ${selectedAssetSymbol || ""}`.trim()}
               </span>
               {" · "}
@@ -228,7 +233,8 @@ const WithdrawCard = ({
                 {isBalancesLoading
                   ? "Loading..."
                   : `${formatTokenAmount(
-                      selectedBalance?.pendingBalance ?? "0"
+                      selectedBalance?.pendingBalance ?? "0",
+                      locale
                     )} ${selectedAssetSymbol || ""}`.trim()}
               </span>
             </div>
@@ -304,7 +310,7 @@ const WithdrawCard = ({
               </span>
             </div>
             <p className="mt-2 text-muted-foreground">
-              {formatTokenAmount(latestRequest.intent.requestedAmount)}{" "}
+              {formatTokenAmount(latestRequest.intent.requestedAmount, locale)}{" "}
               {latestRequest.intent.asset.symbol} to{" "}
               {latestRequest.intent.externalAddress ?? "N/A"}
             </p>

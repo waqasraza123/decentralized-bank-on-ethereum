@@ -2,6 +2,7 @@ import { Card } from "@/components/ui/card";
 import { Link } from "react-router-dom";
 import { TransactionItem } from "./TransactionItem";
 import { Button } from "@/components/ui/button";
+import { useT } from "@/i18n/use-t";
 
 interface Transaction {
   id: string;
@@ -9,6 +10,7 @@ interface Transaction {
   amount: string;
   date: string;
   status: string;
+  statusLabel?: string;
   address?: string;
 }
 
@@ -25,17 +27,19 @@ export const RecentTransactions = ({
   errorMessage,
   emptyMessage = "No recent transactions yet."
 }: RecentTransactionsProps) => {
+  const t = useT();
+
   return (
     <Card className="glass-card p-6">
       <div className="mb-6 flex items-center justify-between gap-4">
-        <h2 className="text-xl font-semibold">Recent Transactions</h2>
+        <h2 className="text-xl font-semibold">{t("dashboard.recentTransactions")}</h2>
         <Button asChild variant="outline" size="sm">
-          <Link to="/transactions">View all</Link>
+          <Link to="/transactions">{t("dashboard.viewAll")}</Link>
         </Button>
       </div>
       {isLoading ? (
         <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
-          Loading recent transactions...
+          {t("transactions.loading")}
         </div>
       ) : errorMessage ? (
         <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">

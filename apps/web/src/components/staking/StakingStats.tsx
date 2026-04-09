@@ -1,6 +1,8 @@
 import { Card } from "@/components/ui/card";
 import { ArrowUpRight, Timer, ArrowDownRight } from "lucide-react";
 import { CustomerStakingPoolSnapshot } from "@/hooks/staking/useMyStakingSnapshot";
+import { useLocale } from "@/i18n/use-locale";
+import { useT } from "@/i18n/use-t";
 import { formatTokenAmount } from "@/lib/customer-finance";
 
 type StakingStatsProps = {
@@ -13,6 +15,8 @@ function sumDecimalStrings(values: string[]): string {
 }
 
 export const StakingStats = ({ pools }: StakingStatsProps) => {
+  const { locale } = useLocale();
+  const t = useT();
   const totalStaked = sumDecimalStrings(pools.map((pool) => pool.totalStakedAmount));
   const totalRewardsPaid = sumDecimalStrings(
     pools.map((pool) => pool.totalRewardsPaid)
@@ -31,11 +35,11 @@ export const StakingStats = ({ pools }: StakingStatsProps) => {
       <Card className="glass-card p-6">
         <div className="flex items-center justify-between">
           <div className="space-y-1">
-            <p className="text-sm text-muted-foreground">Total ETH Staked</p>
+            <p className="text-sm text-muted-foreground">{t("staking.stats.totalStaked")}</p>
             <h3 className="text-2xl font-semibold">
-              {formatTokenAmount(totalStaked, 4)} ETH
+              {formatTokenAmount(totalStaked, locale, 4)} ETH
             </h3>
-            <p className="text-sm text-mint-600">Across the live pool registry</p>
+            <p className="text-sm text-mint-600">{t("staking.stats.totalStakedDetail")}</p>
           </div>
           <div className="rounded-full bg-mint-100 p-2">
             <ArrowUpRight className="h-5 w-5 text-mint-700" />
@@ -46,10 +50,12 @@ export const StakingStats = ({ pools }: StakingStatsProps) => {
       <Card className="glass-card p-6">
         <div className="flex items-center justify-between">
           <div className="space-y-1">
-            <p className="text-sm text-muted-foreground">Average Pool APR</p>
+            <p className="text-sm text-muted-foreground">{t("staking.stats.averageApr")}</p>
             <h3 className="text-2xl font-semibold">{averageApr}%</h3>
             <p className="text-sm text-mint-600">
-              {activePoolCount} active pool{activePoolCount === 1 ? "" : "s"}
+              {activePoolCount === 1
+                ? t("staking.stats.activePools", { count: activePoolCount })
+                : t("staking.stats.activePoolsPlural", { count: activePoolCount })}
             </p>
           </div>
           <div className="rounded-full bg-mint-100 p-2">
@@ -61,11 +67,11 @@ export const StakingStats = ({ pools }: StakingStatsProps) => {
       <Card className="glass-card p-6">
         <div className="flex items-center justify-between">
           <div className="space-y-1">
-            <p className="text-sm text-muted-foreground">Rewards Paid</p>
+            <p className="text-sm text-muted-foreground">{t("staking.stats.rewardsPaid")}</p>
             <h3 className="text-2xl font-semibold">
-              {formatTokenAmount(totalRewardsPaid, 4)} ETH
+              {formatTokenAmount(totalRewardsPaid, locale, 4)} ETH
             </h3>
-            <p className="text-sm text-mint-600">Recorded against listed pools</p>
+            <p className="text-sm text-mint-600">{t("staking.stats.rewardsPaidDetail")}</p>
           </div>
           <div className="rounded-full bg-mint-100 p-2">
             <ArrowDownRight className="h-5 w-5 text-mint-700" />

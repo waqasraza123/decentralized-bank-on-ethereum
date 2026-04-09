@@ -1,7 +1,9 @@
 import { Building2, Landmark, ShieldCheck } from "lucide-react";
 import { ReactNode } from "react";
+import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { Logo } from "@/components/ui/logo";
 import { cn } from "@/lib/utils";
+import { useT } from "@/i18n/use-t";
 
 type AuthShellProps = {
   formEyebrow: string;
@@ -99,16 +101,21 @@ export function AuthShell({
   footer,
   className,
 }: AuthShellProps) {
+  const t = useT();
+
   return (
     <div className="auth-shell-bg min-h-screen">
       <div className="mx-auto grid min-h-screen max-w-[1500px] lg:grid-cols-[minmax(0,1.08fr)_minmax(460px,560px)]">
         <section className="relative overflow-hidden px-5 pb-8 pt-6 sm:px-8 lg:px-10 lg:py-10">
           <div className="absolute inset-0 auth-ledger-grid opacity-20" />
           <div className="relative z-10 flex h-full flex-col rounded-[2rem] border border-white/10 bg-[linear-gradient(180deg,rgba(15,24,38,0.9),rgba(11,18,29,0.94))] px-6 py-6 shadow-[0_40px_120px_rgba(4,10,20,0.45)] sm:px-8 sm:py-8 lg:px-10 lg:py-10">
-            <div className="flex items-center justify-between gap-6">
+            <div className="flex flex-wrap items-center justify-between gap-6">
               <Logo size="lg" tone="light" className="shrink-0" />
-              <div className="hidden rounded-full border border-[rgba(255,255,255,0.12)] bg-white/5 px-4 py-2 text-[0.68rem] font-medium uppercase tracking-[0.24em] text-[rgba(255,255,255,0.64)] sm:block">
-                Managed Ethereum rails
+              <div className="flex items-center gap-3">
+                <div className="hidden rounded-full border border-[rgba(255,255,255,0.12)] bg-white/5 px-4 py-2 text-[0.68rem] font-medium uppercase tracking-[0.24em] text-[rgba(255,255,255,0.64)] sm:block">
+                  {t("auth.managedRails")}
+                </div>
+                <LanguageSwitcher tone="light" />
               </div>
             </div>
 

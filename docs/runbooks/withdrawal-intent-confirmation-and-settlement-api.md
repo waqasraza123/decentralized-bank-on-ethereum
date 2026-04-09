@@ -16,12 +16,21 @@ and introduces:
 - ledger-backed balance reduction
 - pending balance reduction on settlement
 
-## Worker authentication
+## Internal authentication
+
+Operator fallback endpoints require:
+
+- `x-operator-api-key`
+- `x-operator-id`
+- `x-operator-role`
 
 Worker endpoints require:
 
 - `x-worker-api-key`
 - `x-worker-id`
+
+Manual operator fallback on withdrawal confirm and settle is restricted by
+`CUSTODY_OPERATION_ALLOWED_OPERATOR_ROLES`.
 
 ## List broadcast withdrawal intents
 

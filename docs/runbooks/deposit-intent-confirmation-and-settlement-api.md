@@ -29,11 +29,15 @@ Operator fallback endpoints require:
 
 - `x-operator-api-key`
 - `x-operator-id`
+- `x-operator-role`
 
 Worker endpoints require:
 
 - `x-worker-api-key`
 - `x-worker-id`
+
+Manual operator fallback on deposit confirm and settle is restricted by
+`CUSTODY_OPERATION_ALLOWED_OPERATOR_ROLES`.
 
 ## List broadcast deposit intents
 

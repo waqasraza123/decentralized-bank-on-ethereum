@@ -41,6 +41,30 @@ const DEFAULT_RELEASE_READINESS_APPROVAL_ALLOWED_OPERATOR_ROLES = [
   "compliance_lead",
   "risk_manager"
 ] as const;
+const DEFAULT_TRANSACTION_INTENT_DECISION_ALLOWED_OPERATOR_ROLES = [
+  "operations_admin",
+  "risk_manager"
+] as const;
+const DEFAULT_CUSTODY_OPERATION_ALLOWED_OPERATOR_ROLES = [
+  "operations_admin",
+  "senior_operator",
+  "treasury"
+] as const;
+const DEFAULT_STAKING_GOVERNANCE_ALLOWED_OPERATOR_ROLES = [
+  "treasury",
+  "risk_manager",
+  "compliance_lead"
+] as const;
+const DEFAULT_STAKING_POOL_GOVERNANCE_REQUEST_ALLOWED_OPERATOR_ROLES = [
+  ...DEFAULT_STAKING_GOVERNANCE_ALLOWED_OPERATOR_ROLES
+] as const;
+const DEFAULT_STAKING_POOL_GOVERNANCE_APPROVER_ALLOWED_OPERATOR_ROLES = [
+  "risk_manager",
+  "compliance_lead"
+] as const;
+const DEFAULT_STAKING_POOL_GOVERNANCE_EXECUTOR_ALLOWED_OPERATOR_ROLES = [
+  "treasury"
+] as const;
 const DEFAULT_PLATFORM_ALERT_DELIVERY_REQUEST_TIMEOUT_MS = 5_000;
 const DEFAULT_PLATFORM_ALERT_DELIVERY_HEALTH_SLO_LOOKBACK_HOURS = 24;
 const DEFAULT_PLATFORM_ALERT_DELIVERY_HEALTH_SLO_MINIMUM_RECENT_DELIVERIES = 3;
@@ -681,6 +705,18 @@ export type IncidentPackageReleaseGovernanceRuntimeConfig = {
 
 export type ReleaseReadinessApprovalRuntimeConfig = {
   readonly releaseReadinessApprovalAllowedOperatorRoles: readonly string[];
+};
+
+export type StakingPoolGovernanceRuntimeConfig = {
+  readonly stakingPoolGovernanceRequestAllowedOperatorRoles: readonly string[];
+  readonly stakingPoolGovernanceApproverAllowedOperatorRoles: readonly string[];
+  readonly stakingPoolGovernanceExecutorAllowedOperatorRoles: readonly string[];
+};
+
+export type SensitiveOperatorActionPolicyRuntimeConfig = {
+  readonly transactionIntentDecisionAllowedOperatorRoles: readonly string[];
+  readonly custodyOperationAllowedOperatorRoles: readonly string[];
+  readonly stakingGovernanceAllowedOperatorRoles: readonly string[];
 };
 
 export type PlatformAlertDeliverySeverity = "warning" | "critical";
@@ -1361,6 +1397,95 @@ export function loadReleaseReadinessApprovalRuntimeConfig(
           "RELEASE_READINESS_APPROVAL_ALLOWED_OPERATOR_ROLES"
         )
       : [...DEFAULT_RELEASE_READINESS_APPROVAL_ALLOWED_OPERATOR_ROLES]
+  };
+}
+
+export function loadStakingPoolGovernanceRuntimeConfig(
+  env: RuntimeEnvShape = getNodeRuntimeEnv()
+): StakingPoolGovernanceRuntimeConfig {
+  const configuredLegacyGovernanceRoles = readOptionalRuntimeEnv(
+    env,
+    "STAKING_GOVERNANCE_ALLOWED_OPERATOR_ROLES"
+  );
+  const configuredRequestRoles = readOptionalRuntimeEnv(
+    env,
+    "STAKING_POOL_GOVERNANCE_REQUEST_ALLOWED_OPERATOR_ROLES"
+  );
+  const configuredApproverRoles = readOptionalRuntimeEnv(
+    env,
+    "STAKING_POOL_GOVERNANCE_APPROVER_ALLOWED_OPERATOR_ROLES"
+  );
+  const configuredExecutorRoles = readOptionalRuntimeEnv(
+    env,
+    "STAKING_POOL_GOVERNANCE_EXECUTOR_ALLOWED_OPERATOR_ROLES"
+  );
+
+  const legacyGovernanceRoles = configuredLegacyGovernanceRoles
+    ? parseCommaSeparatedValues(
+        configuredLegacyGovernanceRoles,
+        "STAKING_GOVERNANCE_ALLOWED_OPERATOR_ROLES"
+      )
+    : null;
+
+  return {
+    stakingPoolGovernanceRequestAllowedOperatorRoles: configuredRequestRoles
+      ? parseCommaSeparatedValues(
+          configuredRequestRoles,
+          "STAKING_POOL_GOVERNANCE_REQUEST_ALLOWED_OPERATOR_ROLES"
+        )
+      : legacyGovernanceRoles ??
+        [...DEFAULT_STAKING_POOL_GOVERNANCE_REQUEST_ALLOWED_OPERATOR_ROLES],
+    stakingPoolGovernanceApproverAllowedOperatorRoles: configuredApproverRoles
+      ? parseCommaSeparatedValues(
+          configuredApproverRoles,
+          "STAKING_POOL_GOVERNANCE_APPROVER_ALLOWED_OPERATOR_ROLES"
+        )
+      : [...DEFAULT_STAKING_POOL_GOVERNANCE_APPROVER_ALLOWED_OPERATOR_ROLES],
+    stakingPoolGovernanceExecutorAllowedOperatorRoles: configuredExecutorRoles
+      ? parseCommaSeparatedValues(
+          configuredExecutorRoles,
+          "STAKING_POOL_GOVERNANCE_EXECUTOR_ALLOWED_OPERATOR_ROLES"
+        )
+      : [...DEFAULT_STAKING_POOL_GOVERNANCE_EXECUTOR_ALLOWED_OPERATOR_ROLES]
+  };
+}
+
+export function loadSensitiveOperatorActionPolicyRuntimeConfig(
+  env: RuntimeEnvShape = getNodeRuntimeEnv()
+): SensitiveOperatorActionPolicyRuntimeConfig {
+  const configuredTransactionIntentDecisionRoles = readOptionalRuntimeEnv(
+    env,
+    "TRANSACTION_INTENT_DECISION_ALLOWED_OPERATOR_ROLES"
+  );
+  const configuredCustodyOperationRoles = readOptionalRuntimeEnv(
+    env,
+    "CUSTODY_OPERATION_ALLOWED_OPERATOR_ROLES"
+  );
+  const configuredStakingGovernanceRoles = readOptionalRuntimeEnv(
+    env,
+    "STAKING_GOVERNANCE_ALLOWED_OPERATOR_ROLES"
+  );
+
+  return {
+    transactionIntentDecisionAllowedOperatorRoles:
+      configuredTransactionIntentDecisionRoles
+        ? parseCommaSeparatedValues(
+            configuredTransactionIntentDecisionRoles,
+            "TRANSACTION_INTENT_DECISION_ALLOWED_OPERATOR_ROLES"
+          )
+        : [...DEFAULT_TRANSACTION_INTENT_DECISION_ALLOWED_OPERATOR_ROLES],
+    custodyOperationAllowedOperatorRoles: configuredCustodyOperationRoles
+      ? parseCommaSeparatedValues(
+          configuredCustodyOperationRoles,
+          "CUSTODY_OPERATION_ALLOWED_OPERATOR_ROLES"
+        )
+      : [...DEFAULT_CUSTODY_OPERATION_ALLOWED_OPERATOR_ROLES],
+    stakingGovernanceAllowedOperatorRoles: configuredStakingGovernanceRoles
+      ? parseCommaSeparatedValues(
+          configuredStakingGovernanceRoles,
+          "STAKING_GOVERNANCE_ALLOWED_OPERATOR_ROLES"
+        )
+      : [...DEFAULT_STAKING_GOVERNANCE_ALLOWED_OPERATOR_ROLES]
   };
 }
 

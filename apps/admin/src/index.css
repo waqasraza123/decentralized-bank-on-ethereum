@@ -1,5 +1,9 @@
 :root {
   color-scheme: light;
+  --font-sans: "Plus Jakarta Sans", sans-serif;
+  --font-display: "Space Grotesk", sans-serif;
+  --font-sans-ar: "IBM Plex Sans Arabic", "Plus Jakarta Sans", sans-serif;
+  --font-display-ar: "Cairo", "IBM Plex Sans Arabic", sans-serif;
   --bg: #f3efe7;
   --panel: rgba(255, 255, 255, 0.82);
   --panel-strong: #ffffff;
@@ -22,6 +26,13 @@
 
 html {
   scroll-behavior: smooth;
+  direction: ltr;
+}
+
+html[data-locale="ar"] {
+  direction: rtl;
+  --font-sans: var(--font-sans-ar);
+  --font-display: var(--font-display-ar);
 }
 
 body {
@@ -32,7 +43,7 @@ body {
     radial-gradient(circle at top right, rgba(201, 139, 37, 0.12), transparent 26rem),
     linear-gradient(180deg, #fbfaf7 0%, var(--bg) 100%);
   color: var(--ink);
-  font-family: "Plus Jakarta Sans", sans-serif;
+  font-family: var(--font-sans);
 }
 
 button,
@@ -75,7 +86,7 @@ button {
 .list-block h3,
 .json-panel h3 {
   margin: 0;
-  font-family: "Space Grotesk", sans-serif;
+  font-family: var(--font-display);
 }
 
 .hero h1 {
@@ -221,7 +232,7 @@ button {
   display: block;
   margin-top: 0.4rem;
   font-size: 2rem;
-  font-family: "Space Grotesk", sans-serif;
+  font-family: var(--font-display);
 }
 
 .metric-card p {
@@ -281,7 +292,7 @@ button {
 
 .list-card {
   padding: 0.95rem;
-  text-align: left;
+  text-align: start;
   transition:
     transform 150ms ease,
     border-color 150ms ease,
@@ -435,10 +446,79 @@ textarea {
   border: none;
   background: transparent;
   padding: 0;
-  text-align: left;
+  text-align: start;
   display: grid;
   gap: 0.2rem;
   color: inherit;
+}
+
+.language-switcher {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.3rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.78);
+  box-shadow: 0 12px 34px rgba(22, 32, 40, 0.08);
+}
+
+.language-switcher__label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding-inline: 0.75rem;
+  color: var(--muted);
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.language-switcher button {
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  min-height: 2.3rem;
+  padding: 0.5rem 0.95rem;
+  border-radius: 999px;
+  font-weight: 700;
+}
+
+.language-switcher button.active {
+  background: var(--ink);
+  color: #fff;
+}
+
+input,
+select,
+textarea,
+.inline-select {
+  text-align: start;
+}
+
+html[dir="rtl"] .hero-status {
+  justify-items: start;
+}
+
+html[dir="rtl"] .credentials-actions {
+  justify-content: flex-start;
+}
+
+html[dir="rtl"] .metric-card,
+html[dir="rtl"] .list-card,
+html[dir="rtl"] .detail-note,
+html[dir="rtl"] .json-panel,
+html[dir="rtl"] .list-block,
+html[dir="rtl"] .summary-grid > div {
+  text-align: start;
+}
+
+html[dir="rtl"] [data-ltr],
+html[dir="rtl"] pre,
+html[dir="rtl"] code {
+  direction: ltr;
+  unicode-bidi: isolate;
 }
 
 .search-field {

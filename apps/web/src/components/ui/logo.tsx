@@ -1,4 +1,5 @@
 import { useId } from "react";
+import { useT } from "@/i18n/use-t";
 import { cn } from "@/lib/utils";
 
 type LogoProps = {
@@ -48,6 +49,7 @@ export const Logo = ({
   showWordmark = true,
 }: LogoProps) => {
   const shadowId = useId();
+  const t = useT();
   const sizing = sizeClasses[size];
   const tones = toneClasses[tone];
 
@@ -113,7 +115,7 @@ export const Logo = ({
             tones.wordmark
           )}
         >
-          Stealth Trails
+          {t("brand.name")}
         </span>
       ) : null}
     </div>

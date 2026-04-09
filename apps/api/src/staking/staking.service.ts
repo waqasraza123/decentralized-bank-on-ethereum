@@ -92,6 +92,29 @@ type StakingAuditActor = {
   actorRole?: string | null;
 };
 
+export type GovernedPoolCreationExecutionInput = {
+  rewardRate: number;
+  operatorId: string;
+  operatorRole?: string;
+  stakingPoolId?: number | null;
+};
+
+export type GovernedPoolCreationExecutionResult =
+  | {
+      success: true;
+      poolId: number;
+      blockchainPoolId: number;
+      transactionHash: string;
+      poolStatus: PoolStatus;
+    }
+  | {
+      success: false;
+      poolId: number;
+      blockchainPoolId: number;
+      transactionHash: string | null;
+      errorMessage: string;
+    };
+
 @Injectable()
 export class StakingService {
   private readonly logger = new Logger(StakingService.name);
@@ -154,6 +177,14 @@ export class StakingService {
     }
 
     return "Unknown staking execution error.";
+  }
+
+  private normalizeOperatorRole(operatorRole?: string): string | null {
+    const normalizedOperatorRole = operatorRole?.trim().toLowerCase() ?? null;
+
+    return normalizedOperatorRole && normalizedOperatorRole.length > 0
+      ? normalizedOperatorRole
+      : null;
   }
 
   private async writeAuditEvent(input: {
@@ -451,69 +482,128 @@ export class StakingService {
     });
   }
 
-  async createPool(
-    rewardRate: number,
-    operatorId: string,
-    operatorRole?: string
-  ): Promise<CustomJsonResponse> {
+  async executeGovernedPoolCreation(
+    input: GovernedPoolCreationExecutionInput
+  ): Promise<GovernedPoolCreationExecutionResult> {
+    const normalizedOperatorRole = this.normalizeOperatorRole(input.operatorRole);
     const writeContract = this.requireWriteContract();
     const actor: StakingAuditActor = {
       actorType: "operator",
-      actorId: operatorId,
-      actorRole: operatorRole ?? null
+      actorId: input.operatorId,
+      actorRole: normalizedOperatorRole
     };
+    let stakingPool = input.stakingPoolId
+      ? await this.prismaService.stakingPool.findUnique({
+          where: {
+            id: input.stakingPoolId
+          }
+        })
+      : null;
 
-    try {
-      const stakingPool = await this.prismaService.stakingPool.create({
+    if (input.stakingPoolId && !stakingPool) {
+      throw new NotFoundException(
+        `Staking pool with ID ${input.stakingPoolId} was not found for governance execution.`
+      );
+    }
+
+    if (stakingPool && stakingPool.rewardRate !== input.rewardRate) {
+      throw new ConflictException(
+        "Governance request reward rate no longer matches the linked staking pool."
+      );
+    }
+
+    if (!stakingPool) {
+      const createdStakingPool = await this.prismaService.stakingPool.create({
         data: {
-          rewardRate,
+          rewardRate: input.rewardRate,
           totalStakedAmount: 0n,
           totalRewardsPaid: 0n,
           poolStatus: PoolStatus.paused
         }
       });
 
-      const transaction = await writeContract.createPool(rewardRate, stakingPool.id);
+      stakingPool = await this.prismaService.stakingPool.update({
+        where: {
+          id: createdStakingPool.id
+        },
+        data: {
+          blockchainPoolId: createdStakingPool.id
+        }
+      });
+    } else if (stakingPool.blockchainPoolId === null) {
+      stakingPool = await this.prismaService.stakingPool.update({
+        where: {
+          id: stakingPool.id
+        },
+        data: {
+          blockchainPoolId: stakingPool.id
+        }
+      });
+    }
+
+    let transactionHash: string | null = null;
+
+    try {
+      const blockchainPoolId = stakingPool.blockchainPoolId as number;
+      const transaction = await writeContract.createPool(
+        input.rewardRate,
+        blockchainPoolId
+      );
+      transactionHash =
+        typeof transaction?.hash === "string" ? transaction.hash : null;
       const receipt = await transaction.wait();
+      transactionHash =
+        typeof receipt?.transactionHash === "string"
+          ? receipt.transactionHash
+          : transactionHash;
 
       await this.writeAuditEvent({
         customerId: null,
         actor,
-        action: "staking.pool.created",
+        action: "staking.pool.executed",
         targetType: "StakingPool",
         targetId: stakingPool.id,
         metadata: {
-          rewardRate,
+          rewardRate: input.rewardRate,
           poolStatus: stakingPool.poolStatus,
           blockchainPoolId: stakingPool.blockchainPoolId,
-          transactionHash: receipt.transactionHash
+          transactionHash
         }
       });
 
       return {
-        status: "success",
-        message: "Pool created successfully.",
-        data: {
-          poolId: stakingPool.id,
-          transactionHash: receipt.transactionHash
-        }
+        success: true,
+        poolId: stakingPool.id,
+        blockchainPoolId,
+        transactionHash: transactionHash ?? "",
+        poolStatus: stakingPool.poolStatus
       };
     } catch (error) {
       await this.writeAuditEvent({
         customerId: null,
         actor,
-        action: "staking.pool.create_failed",
+        action: "staking.pool.execution_failed",
         targetType: "StakingPool",
-        targetId: null,
+        targetId: stakingPool.id,
         metadata: {
-          rewardRate,
+          rewardRate: input.rewardRate,
+          blockchainPoolId: stakingPool.blockchainPoolId,
+          transactionHash,
           errorMessage: this.describeError(error)
         }
       });
-      this.logger.error("Failed to create staking pool.", error);
+
+      this.logger.error(
+        "Failed to execute staking pool creation.",
+        error instanceof Error ? error.stack : undefined
+      );
+
       return {
-        status: "failed",
-        message: "Failed to create staking pool."
+        success: false,
+        poolId: stakingPool.id,
+        blockchainPoolId: stakingPool.blockchainPoolId as number,
+        transactionHash,
+        errorMessage: this.describeError(error)
       };
     }
   }

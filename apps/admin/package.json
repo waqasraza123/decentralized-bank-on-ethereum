@@ -11,9 +11,12 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@fontsource/cairo": "^5.2.7",
+    "@fontsource/ibm-plex-sans-arabic": "^5.2.9",
     "@fontsource/plus-jakarta-sans": "^5.2.8",
     "@fontsource/space-grotesk": "^5.2.10",
     "@stealth-trails-bank/config": "workspace:*",
+    "@stealth-trails-bank/i18n": "workspace:*",
     "@stealth-trails-bank/security": "workspace:*",
     "@tanstack/react-query": "^5.75.1",
     "axios": "^1.7.9",

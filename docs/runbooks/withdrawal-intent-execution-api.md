@@ -23,11 +23,17 @@ Operator endpoints require:
 
 - `x-operator-api-key`
 - `x-operator-id`
+- `x-operator-role` for mutation endpoints
 
 Worker endpoints require:
 
 - `x-worker-api-key`
 - `x-worker-id`
+
+Sensitive operator role policy is runtime-configured:
+
+- `TRANSACTION_INTENT_DECISION_ALLOWED_OPERATOR_ROLES` governs approval and denial
+- `CUSTODY_OPERATION_ALLOWED_OPERATOR_ROLES` governs queueing and manual custody fallback
 
 ## List approved withdrawal intents ready for queueing
 

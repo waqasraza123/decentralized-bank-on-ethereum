@@ -2,17 +2,21 @@ import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { AuthShell } from "@/components/auth/AuthShell";
 import {
-  authCredibilityChips,
-  signUpCopy,
+  getAuthCredibilityChips,
+  getSignUpCopy,
 } from "@/components/auth/auth-content";
 import { LoadingButton } from "@/components/ui/loading-button";
 import { Input } from "@/components/ui/input";
+import { useT } from "@/i18n/use-t";
 import { toast } from "@/components/ui/use-toast";
 import useAuth from "@/hooks/auth/useAuth";
 import { useUserStore } from "@/stores/userStore";
 
 const SignUp = () => {
   const { signup, loading, error } = useAuth();
+  const t = useT();
+  const signUpCopy = getSignUpCopy(t);
+  const authCredibilityChips = getAuthCredibilityChips(t);
   const [formData, setFormData] = useState({
     firstName: "",
     lastName: "",
@@ -31,14 +35,14 @@ const SignUp = () => {
     try {
       await signup(formData);
       toast({
-        title: "Account created",
-        description: "Sign in to continue.",
+        title: t("auth.signUp.successTitle"),
+        description: t("auth.signUp.successDescription"),
       });
       navigate("/auth/sign-in");
     } catch {
       toast({
-        title: "Sign-up failed",
-        description: error || "An error occurred during sign-up. Please try again.",
+        title: t("auth.signUp.errorTitle"),
+        description: error || t("auth.signUp.errorDescription"),
       });
     }
   };
@@ -60,12 +64,12 @@ const SignUp = () => {
       chips={authCredibilityChips}
       footer={
         <p className="text-center">
-          Already have an account?{" "}
+          {t("auth.signUp.footerPrefix")}{" "}
           <Link
             to="/auth/sign-in"
             className="font-semibold text-auth-form-accent transition-colors hover:text-[hsl(var(--auth-form-foreground))]"
           >
-            Sign in
+            {t("auth.signUp.footerLink")}
           </Link>
         </p>
       }
@@ -77,7 +81,7 @@ const SignUp = () => {
               htmlFor="firstName"
               className="text-sm font-medium text-auth-form-foreground"
             >
-              First name
+              {t("auth.signUp.firstNameLabel")}
             </label>
             <Input
               id="firstName"
@@ -86,7 +90,7 @@ const SignUp = () => {
               autoComplete="given-name"
               required
               className="auth-input"
-              placeholder="Amina"
+              placeholder={t("auth.signUp.firstNamePlaceholder")}
               value={formData.firstName}
               onChange={handleChange}
               aria-invalid={Boolean(error)}
@@ -97,7 +101,7 @@ const SignUp = () => {
               htmlFor="lastName"
               className="text-sm font-medium text-auth-form-foreground"
             >
-              Last name
+              {t("auth.signUp.lastNameLabel")}
             </label>
             <Input
               id="lastName"
@@ -106,7 +110,7 @@ const SignUp = () => {
               autoComplete="family-name"
               required
               className="auth-input"
-              placeholder="Rahman"
+              placeholder={t("auth.signUp.lastNamePlaceholder")}
               value={formData.lastName}
               onChange={handleChange}
               aria-invalid={Boolean(error)}
@@ -119,7 +123,7 @@ const SignUp = () => {
             htmlFor="email"
             className="text-sm font-medium text-auth-form-foreground"
           >
-            Email address
+            {t("auth.signUp.emailLabel")}
           </label>
           <Input
             id="email"
@@ -128,7 +132,7 @@ const SignUp = () => {
             autoComplete="email"
             required
             className="auth-input"
-            placeholder="you@example.com"
+            placeholder={t("auth.signUp.emailPlaceholder")}
             value={formData.email}
             onChange={handleChange}
             aria-invalid={Boolean(error)}
@@ -141,9 +145,9 @@ const SignUp = () => {
               htmlFor="password"
               className="text-sm font-medium text-auth-form-foreground"
             >
-              Password
+              {t("auth.signUp.passwordLabel")}
             </label>
-            <span className="text-xs text-auth-form-muted">Store it in a password manager</span>
+            <span className="text-xs text-auth-form-muted">{t("auth.signUp.passwordHint")}</span>
           </div>
           <Input
             id="password"
@@ -152,13 +156,13 @@ const SignUp = () => {
             autoComplete="new-password"
             required
             className="auth-input"
-            placeholder="Create a strong password"
+            placeholder={t("auth.signUp.passwordPlaceholder")}
             value={formData.password}
             onChange={handleChange}
             aria-invalid={Boolean(error)}
           />
           <p className="text-xs leading-6 text-auth-form-muted">
-            Use a strong, unique password for your banking profile. Managed wallet access is attached after account creation.
+            {t("auth.signUp.passwordHelp")}
           </p>
         </div>
 
@@ -176,7 +180,7 @@ const SignUp = () => {
           className="h-12 w-full rounded-2xl bg-[hsl(var(--auth-form-foreground))] text-base font-semibold text-[hsl(var(--auth-form-background))] shadow-[0_18px_45px_rgba(8,17,28,0.18)] transition-opacity hover:bg-[hsl(var(--auth-form-foreground))] hover:opacity-95"
           loading={loading}
         >
-          Create secure account
+          {t("auth.signUp.submit")}
         </LoadingButton>
       </form>
     </AuthShell>

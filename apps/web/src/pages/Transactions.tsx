@@ -2,6 +2,9 @@ import { useState } from "react";
 import { Layout } from "@/components/Layout";
 import { Card } from "@/components/ui/card";
 import { TransactionFilter } from "@/components/transactions/TransactionFilter";
+import { useFormatters } from "@/i18n/use-formatters";
+import { useLocale } from "@/i18n/use-locale";
+import { useT } from "@/i18n/use-t";
 import {
   useMyTransactionHistory,
   type TransactionHistoryIntent,
@@ -9,6 +12,7 @@ import {
 import {
   formatDateLabel,
   formatIntentAmount,
+  formatIntentStatusLabel,
   getIntentStatusBadgeTone,
   normalizeIntentTypeLabel,
   resolveIntentAddress
@@ -27,6 +31,7 @@ type TransactionRow = {
   amount: string;
   date: string;
   status: string;
+  statusLabel: string;
   address: string;
   assetSymbol: string;
   rawDate: Date;
@@ -43,7 +48,8 @@ const emptyFilters: TransactionFilters = {
 };
 
 function mapHistoryToRows(
-  intents: TransactionHistoryIntent[] | undefined
+  intents: TransactionHistoryIntent[] | undefined,
+  locale: "en" | "ar"
 ): TransactionRow[] {
   if (!intents) {
     return [];
@@ -51,24 +57,29 @@ function mapHistoryToRows(
 
   return intents.map((intent) => ({
     id: intent.id,
-    type: normalizeIntentTypeLabel(intent.intentType),
+    type: normalizeIntentTypeLabel(intent.intentType, locale),
     amount: formatIntentAmount(
       intent.settledAmount ?? intent.requestedAmount,
       intent.asset.symbol,
-      intent.intentType
+      intent.intentType,
+      locale
     ),
-    date: formatDateLabel(intent.createdAt),
+    date: formatDateLabel(intent.createdAt, locale),
     rawDate: new Date(intent.createdAt),
     status: intent.status,
+    statusLabel: formatIntentStatusLabel(intent.status, locale),
     address: resolveIntentAddress(intent),
     assetSymbol: intent.asset.symbol,
   }));
 }
 
 const Transactions = () => {
+  const t = useT();
+  const { locale, isRtl } = useLocale();
+  const formatters = useFormatters();
   const [filters, setFilters] = useState<TransactionFilters>(emptyFilters);
   const historyQuery = useMyTransactionHistory(100);
-  const allTransactions = mapHistoryToRows(historyQuery.data?.intents);
+  const allTransactions = mapHistoryToRows(historyQuery.data?.intents, locale);
 
   let filteredTransactions = allTransactions;
 
@@ -91,7 +102,7 @@ const Transactions = () => {
 
   if (filters.statuses.length > 0) {
     filteredTransactions = filteredTransactions.filter((tx) =>
-      filters.statuses.includes(tx.status)
+      filters.statuses.includes(tx.statusLabel)
     );
   }
 
@@ -119,23 +130,26 @@ const Transactions = () => {
   return (
     <Layout>
       <div className="space-y-6">
-        <h1 className="text-3xl font-semibold text-foreground">Transactions</h1>
+        <h1 className="text-3xl font-semibold text-foreground">{t("transactions.title")}</h1>
         
         <Card className="p-4 glass-card">
           <TransactionFilter
             onFilterChange={setFilters}
-            typeOptions={["Deposit", "Withdrawal"]}
+            typeOptions={[
+              normalizeIntentTypeLabel("deposit", locale),
+              normalizeIntentTypeLabel("withdrawal", locale)
+            ]}
             statusOptions={[
-              "requested",
-              "review_required",
-              "approved",
-              "queued",
-              "broadcast",
-              "confirmed",
-              "settled",
-              "failed",
-              "cancelled",
-              "manually_resolved",
+              formatIntentStatusLabel("requested", locale),
+              formatIntentStatusLabel("review_required", locale),
+              formatIntentStatusLabel("approved", locale),
+              formatIntentStatusLabel("queued", locale),
+              formatIntentStatusLabel("broadcast", locale),
+              formatIntentStatusLabel("confirmed", locale),
+              formatIntentStatusLabel("settled", locale),
+              formatIntentStatusLabel("failed", locale),
+              formatIntentStatusLabel("cancelled", locale),
+              formatIntentStatusLabel("manually_resolved", locale),
             ]}
           />
         </Card>
@@ -145,18 +159,18 @@ const Transactions = () => {
             <table className="w-full">
               <thead>
                 <tr className="border-b">
-                  <th className="px-6 py-4 text-left text-sm font-medium text-muted-foreground">Type</th>
-                  <th className="px-6 py-4 text-left text-sm font-medium text-muted-foreground">Amount</th>
-                  <th className="px-6 py-4 text-left text-sm font-medium text-muted-foreground">Date</th>
-                  <th className="px-6 py-4 text-left text-sm font-medium text-muted-foreground">Address</th>
-                  <th className="px-6 py-4 text-left text-sm font-medium text-muted-foreground">Status</th>
+                  <th className="px-6 py-4 [text-align:start] text-sm font-medium text-muted-foreground">{t("transactions.table.type")}</th>
+                  <th className="px-6 py-4 [text-align:start] text-sm font-medium text-muted-foreground">{t("transactions.table.amount")}</th>
+                  <th className="px-6 py-4 [text-align:start] text-sm font-medium text-muted-foreground">{t("transactions.table.date")}</th>
+                  <th className="px-6 py-4 [text-align:start] text-sm font-medium text-muted-foreground">{t("transactions.table.address")}</th>
+                  <th className="px-6 py-4 [text-align:start] text-sm font-medium text-muted-foreground">{t("transactions.table.status")}</th>
                 </tr>
               </thead>
               <tbody>
                 {historyQuery.isLoading ? (
                   <tr>
                     <td colSpan={5} className="px-6 py-8 text-center text-muted-foreground">
-                      Loading transaction history...
+                      {t("transactions.loading")}
                     </td>
                   </tr>
                 ) : historyQuery.isError ? (
@@ -164,7 +178,7 @@ const Transactions = () => {
                     <td colSpan={5} className="px-6 py-8 text-center text-destructive">
                       {historyQuery.error instanceof Error
                         ? historyQuery.error.message
-                        : "Failed to load transaction history."}
+                        : t("transactions.loadError")}
                     </td>
                   </tr>
                 ) : filteredTransactions.length > 0 ? (
@@ -177,14 +191,14 @@ const Transactions = () => {
                         {tx.amount}
                       </td>
                       <td className="px-6 py-4 text-muted-foreground">{tx.date}</td>
-                      <td className="px-6 py-4 font-mono text-sm">{tx.address}</td>
+                      <td className="ltr-content px-6 py-4 font-mono text-sm"><bdi>{tx.address}</bdi></td>
                       <td className="px-6 py-4">
                         <span
                           className={`inline-flex rounded-full px-2 py-1 text-xs font-medium ${getIntentStatusBadgeTone(
                             tx.status
                           )}`}
                         >
-                          {tx.status}
+                          {tx.statusLabel}
                         </span>
                       </td>
                     </tr>
@@ -192,7 +206,7 @@ const Transactions = () => {
                 ) : (
                   <tr>
                     <td colSpan={5} className="px-6 py-8 text-center text-muted-foreground">
-                      No transactions found matching your filters.
+                      {t("transactions.empty")}
                     </td>
                   </tr>
                 )}
@@ -202,8 +216,11 @@ const Transactions = () => {
         </Card>
         
         {filteredTransactions.length > 0 && (
-          <div className="text-sm text-muted-foreground text-right">
-            Showing {filteredTransactions.length} of {allTransactions.length} transactions
+          <div className={isRtl ? "text-left text-sm text-muted-foreground" : "text-right text-sm text-muted-foreground"}>
+            {t("transactions.showingCount", {
+              shown: formatters.count(filteredTransactions.length),
+              total: formatters.count(allTransactions.length)
+            })}
           </div>
         )}
       </div>

@@ -2,6 +2,8 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { CheckCircle2, Timer, AlertCircle, XCircle } from "lucide-react";
+import { useLocale } from "@/i18n/use-locale";
+import { useT } from "@/i18n/use-t";
 import { cn } from "@/lib/utils";
 import { formatTokenAmount } from "@/lib/customer-finance";
 import {
@@ -15,6 +17,9 @@ interface PoolCardProps {
 }
 
 export const PoolCard = ({ pool, onSelect, isSelected }: PoolCardProps) => {
+  const { locale } = useLocale();
+  const t = useT();
+
   const getStatusIcon = (status: CustomerStakingPoolSnapshot["poolStatus"]) => {
     switch (status) {
       case 'active':
@@ -56,7 +61,9 @@ export const PoolCard = ({ pool, onSelect, isSelected }: PoolCardProps) => {
       <div className="flex items-center justify-between">
         <div className="space-y-2">
           <div className="flex items-center space-x-2">
-            <h3 className="font-semibold">Ethereum Pool #{pool.id}</h3>
+            <h3 className="font-semibold">
+              {t("staking.poolCard.title", { id: pool.id })}
+            </h3>
             <Badge variant="outline" className={cn("ml-2", getStatusColor(pool.poolStatus))}>
               <span className="flex items-center gap-1">
                 {getStatusIcon(pool.poolStatus)}
@@ -65,11 +72,11 @@ export const PoolCard = ({ pool, onSelect, isSelected }: PoolCardProps) => {
             </Badge>
           </div>
           <div className="text-sm text-muted-foreground">
-            <p>Validator Reward Rate: {pool.rewardRate}% APR</p>
-            <p>Total ETH Staked: {formatTokenAmount(pool.totalStakedAmount, 4)} ETH</p>
-            <p>Total Rewards Paid: {formatTokenAmount(pool.totalRewardsPaid, 4)} ETH</p>
-            <p>Your Stake: {formatTokenAmount(pool.position.stakedBalance, 4)} ETH</p>
-            <p>Pending Rewards: {formatTokenAmount(pool.position.pendingReward, 4)} ETH</p>
+            <p>{t("staking.poolCard.rewardRate", { value: pool.rewardRate })}</p>
+            <p>{t("staking.poolCard.totalStaked", { value: formatTokenAmount(pool.totalStakedAmount, locale, 4) })}</p>
+            <p>{t("staking.poolCard.rewardsPaid", { value: formatTokenAmount(pool.totalRewardsPaid, locale, 4) })}</p>
+            <p>{t("staking.poolCard.yourStake", { value: formatTokenAmount(pool.position.stakedBalance, locale, 4) })}</p>
+            <p>{t("staking.poolCard.pendingRewards", { value: formatTokenAmount(pool.position.pendingReward, locale, 4) })}</p>
           </div>
         </div>
         <Button
@@ -80,7 +87,7 @@ export const PoolCard = ({ pool, onSelect, isSelected }: PoolCardProps) => {
             onSelect(pool);
           }}
         >
-          View Pool
+          {t("staking.poolCard.viewPool")}
         </Button>
       </div>
     </Card>

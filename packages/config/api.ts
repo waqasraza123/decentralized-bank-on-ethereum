@@ -19,6 +19,8 @@ export {
   loadPlatformAlertReEscalationRuntimeConfig,
   loadProductChainRuntimeConfig,
   loadReleaseReadinessApprovalRuntimeConfig,
+  loadStakingPoolGovernanceRuntimeConfig,
+  loadSensitiveOperatorActionPolicyRuntimeConfig,
   loadSharedLoginBootstrapRuntimeConfig,
   loadWorkerRuntimeConfig,
   type ApiRuntimeEnvironment,
@@ -48,6 +50,8 @@ export {
   type PlatformAlertDeliveryTargetRuntimeConfig,
   type ProductChainRuntimeConfig,
   type ReleaseReadinessApprovalRuntimeConfig,
+  type StakingPoolGovernanceRuntimeConfig,
+  type SensitiveOperatorActionPolicyRuntimeConfig,
   type SharedLoginBootstrapRuntimeConfig,
   type WorkerExecutionMode,
   type WorkerRuntimeConfig

@@ -26,6 +26,7 @@ Operator endpoints require:
 
 - x-operator-api-key
 - x-operator-id
+- x-operator-role for mutation endpoints
 
 Worker endpoints require:
 
@@ -36,6 +37,11 @@ The configured runtime secrets are:
 
 - INTERNAL_OPERATOR_API_KEY
 - INTERNAL_WORKER_API_KEY
+
+Sensitive operator role policy is runtime-configured:
+
+- `TRANSACTION_INTENT_DECISION_ALLOWED_OPERATOR_ROLES` governs approval and denial
+- `CUSTODY_OPERATION_ALLOWED_OPERATOR_ROLES` governs queueing and manual custody fallback
 
 ## List approved deposit intents ready for queueing
 

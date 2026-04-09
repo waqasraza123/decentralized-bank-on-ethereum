@@ -1,4 +1,16 @@
 import axios from "axios";
+import {
+  formatCount as formatLocaleCount,
+  formatDateTimeLabel,
+  readStoredLocale,
+  type SupportedLocale
+} from "@stealth-trails-bank/i18n";
+
+const adminLocaleStorageKey = "stealth-trails-bank.admin.locale";
+
+function getCurrentLocale(): SupportedLocale {
+  return readStoredLocale(adminLocaleStorageKey, "en");
+}
 
 export function readApiErrorMessage(
   error: unknown,
@@ -21,26 +33,16 @@ export function readApiErrorMessage(
 }
 
 export function formatDateTime(value: string | null | undefined): string {
-  if (!value) {
-    return "Not available";
-  }
-
-  const parsed = new Date(value);
-
-  if (Number.isNaN(parsed.getTime())) {
-    return value;
-  }
-
-  return parsed.toLocaleString();
+  return formatDateTimeLabel(value, getCurrentLocale());
 }
 
 export function formatCount(value: number): string {
-  return new Intl.NumberFormat().format(value);
+  return formatLocaleCount(value, getCurrentLocale());
 }
 
 export function formatDuration(durationMs: number | null | undefined): string {
   if (!durationMs || durationMs <= 0) {
-    return "Open";
+    return getCurrentLocale() === "ar" ? "مفتوح" : "Open";
   }
 
   const totalMinutes = Math.floor(durationMs / 60000);
@@ -67,12 +69,16 @@ export function formatDuration(durationMs: number | null | undefined): string {
 export function formatName(firstName?: string | null, lastName?: string | null): string {
   const parts = [firstName?.trim(), lastName?.trim()].filter(Boolean);
 
-  return parts.length > 0 ? parts.join(" ") : "Unnamed subject";
+  return parts.length > 0
+    ? parts.join(" ")
+    : getCurrentLocale() === "ar"
+      ? "عنصر غير مسمى"
+      : "Unnamed subject";
 }
 
 export function shortenValue(value: string | null | undefined, size = 8): string {
   if (!value) {
-    return "Not available";
+    return getCurrentLocale() === "ar" ? "غير متاح" : "Not available";
   }
 
   if (value.length <= size * 2) {
@@ -84,7 +90,7 @@ export function shortenValue(value: string | null | undefined, size = 8): string
 
 export function toTitleCase(value: string | null | undefined): string {
   if (!value) {
-    return "Unknown";
+    return getCurrentLocale() === "ar" ? "غير معروف" : "Unknown";
   }
 
   return value

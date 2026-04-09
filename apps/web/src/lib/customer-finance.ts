@@ -1,33 +1,19 @@
+import {
+  formatDateLabel as formatLocalizedDateLabel,
+  formatDecimalString,
+  type SupportedLocale
+} from "@stealth-trails-bank/i18n";
+
 export type CustomerIntentType = "deposit" | "withdrawal";
 
 const positiveDecimalPattern = /^(?:0|[1-9]\d*)(?:\.\d{1,18})?$/;
 
 export function formatTokenAmount(
   value: string | null | undefined,
+  locale: SupportedLocale = "en",
   maxFractionDigits = 6
 ): string {
-  if (!value) {
-    return "0";
-  }
-
-  const normalizedValue = value.trim();
-
-  if (!normalizedValue) {
-    return "0";
-  }
-
-  const isNegative = normalizedValue.startsWith("-");
-  const unsignedValue = isNegative ? normalizedValue.slice(1) : normalizedValue;
-  const [wholePart, fractionPart = ""] = unsignedValue.split(".");
-  const wholeNumber = wholePart.replace(/\B(?=(\d{3})+(?!\d))/g, ",") || "0";
-  const trimmedFraction = fractionPart
-    .slice(0, maxFractionDigits)
-    .replace(/0+$/, "");
-  const formattedValue = trimmedFraction
-    ? `${wholeNumber}.${trimmedFraction}`
-    : wholeNumber;
-
-  return isNegative ? `-${formattedValue}` : formattedValue;
+  return formatDecimalString(value, locale, maxFractionDigits);
 }
 
 function normalizeDecimalForCompare(value: string) {
@@ -99,21 +85,21 @@ export function isPositiveDecimalString(value: string): boolean {
   return compareDecimalStrings(trimmedValue, "0") === 1;
 }
 
-export function formatDateLabel(value: string): string {
-  return new Date(value).toLocaleDateString(undefined, {
-    year: "numeric",
-    month: "short",
-    day: "numeric"
-  });
+export function formatDateLabel(
+  value: string,
+  locale: SupportedLocale = "en"
+): string {
+  return formatLocalizedDateLabel(value, locale);
 }
 
 export function formatShortAddress(
   value: string | null | undefined,
+  unavailableLabel = "Not available",
   leading = 6,
   trailing = 4
 ): string {
   if (!value) {
-    return "Not available";
+    return unavailableLabel;
   }
 
   if (value.length <= leading + trailing) {
@@ -124,18 +110,24 @@ export function formatShortAddress(
 }
 
 export function normalizeIntentTypeLabel(
-  intentType: CustomerIntentType
+  intentType: CustomerIntentType,
+  locale: SupportedLocale = "en"
 ): string {
+  if (locale === "ar") {
+    return intentType === "deposit" ? "إيداع" : "سحب";
+  }
+
   return intentType === "deposit" ? "Deposit" : "Withdrawal";
 }
 
 export function formatIntentAmount(
   amount: string,
   assetSymbol: string,
-  intentType: CustomerIntentType
+  intentType: CustomerIntentType,
+  locale: SupportedLocale = "en"
 ): string {
   const prefix = intentType === "deposit" ? "+" : "-";
-  return `${prefix}${formatTokenAmount(amount)} ${assetSymbol}`;
+  return `${prefix}${formatTokenAmount(amount, locale)} ${assetSymbol}`;
 }
 
 export function resolveIntentAddress(input: {
@@ -164,6 +156,30 @@ export function resolveIntentAddress(input: {
     input.latestBlockchainTransaction?.toAddress ??
     "N/A"
   );
+}
+
+export function formatIntentStatusLabel(
+  status: string,
+  locale: SupportedLocale = "en"
+): string {
+  if (locale !== "ar") {
+    return status;
+  }
+
+  const labels: Record<string, string> = {
+    requested: "مطلوب",
+    review_required: "يتطلب مراجعة",
+    approved: "معتمد",
+    queued: "في قائمة الانتظار",
+    broadcast: "تم البث",
+    confirmed: "تم التأكيد",
+    settled: "تمت التسوية",
+    failed: "فشل",
+    cancelled: "أُلغي",
+    manually_resolved: "تمت معالجته يدوياً"
+  };
+
+  return labels[status] ?? status;
 }
 
 export function getIntentStatusBadgeTone(status: string): string {

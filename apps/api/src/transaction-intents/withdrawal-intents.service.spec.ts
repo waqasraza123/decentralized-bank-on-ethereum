@@ -275,11 +275,16 @@ describe("WithdrawalIntentsService", () => {
         callback(transaction)
     );
 
-    const result = await service.decideWithdrawalIntent("intent_1", "ops_1", {
-      decision: "denied",
-      denialReason: "Manual review rejected.",
-      note: "Release the reserved balance."
-    });
+    const result = await service.decideWithdrawalIntent(
+      "intent_1",
+      "ops_1",
+      {
+        decision: "denied",
+        denialReason: "Manual review rejected.",
+        note: "Release the reserved balance."
+      },
+      "risk_manager"
+    );
 
     expect(ledgerService.releaseWithdrawalReservation).toHaveBeenCalled();
     expect(result.intent.status).toBe(TransactionIntentStatus.failed);
@@ -403,7 +408,8 @@ describe("WithdrawalIntentsService", () => {
       {
         txHash:
           "0x1111111111111111111111111111111111111111111111111111111111111111"
-      }
+      },
+      "operations_admin"
     );
 
     expect(transaction.auditEvent.create).toHaveBeenCalledWith(
@@ -690,7 +696,8 @@ describe("WithdrawalIntentsService", () => {
         txHash:
           "0x1111111111111111111111111111111111111111111111111111111111111111",
         note: "Custody desk confirmed on-chain inclusion."
-      }
+      },
+      "operations_admin"
     );
 
     expect(transaction.auditEvent.create).toHaveBeenCalledWith(
@@ -736,5 +743,22 @@ describe("WithdrawalIntentsService", () => {
     await expect(
       service.settleConfirmedWithdrawalIntent("intent_1", "worker_1", {})
     ).rejects.toBeInstanceOf(ConflictException);
+  });
+
+  it("rejects withdrawal decisions from an unauthorized operator role", async () => {
+    const { service } = createService();
+
+    await expect(
+      service.decideWithdrawalIntent(
+        "intent_1",
+        "ops_1",
+        {
+          decision: "approved"
+        },
+        "junior_operator"
+      )
+    ).rejects.toThrow(
+      "Operator role is not authorized to approve or deny transaction intents."
+    );
   });
 });

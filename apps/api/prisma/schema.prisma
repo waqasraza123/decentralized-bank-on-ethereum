@@ -230,6 +230,7 @@ model StakingPool {
   updatedAt         DateTime         @updatedAt
   deposits          PoolDeposit[]
   withdrawals       PoolWithdrawal[]
+  governanceRequest StakingPoolGovernanceRequest?
 }
 
 enum AccountLifecycleStatus {
@@ -891,6 +892,14 @@ enum CustomerAccountIncidentPackageReleaseStatus {
   expired
 }
 
+enum StakingPoolGovernanceRequestStatus {
+  pending_approval
+  approved
+  rejected
+  executed
+  execution_failed
+}
+
 enum ReleaseReadinessEvidenceType {
   platform_alert_delivery_slo
   critical_alert_reescalation
@@ -963,6 +972,39 @@ model CustomerAccountIncidentPackageRelease {
   @@index([requestedByOperatorId, requestedAt])
   @@index([approvedByOperatorId, approvedAt])
   @@index([releasedByOperatorId, releasedAt])
+}
+
+model StakingPoolGovernanceRequest {
+  id                     String                            @id @default(cuid())
+  rewardRate             Int
+  status                 StakingPoolGovernanceRequestStatus @default(pending_approval)
+  requestedByOperatorId  String
+  requestedByOperatorRole String?
+  approvedByOperatorId   String?
+  approvedByOperatorRole String?
+  rejectedByOperatorId   String?
+  rejectedByOperatorRole String?
+  executedByOperatorId   String?
+  executedByOperatorRole String?
+  requestNote            String?
+  approvalNote           String?
+  rejectionNote          String?
+  executionNote          String?
+  executionFailureReason String?
+  blockchainTransactionHash String?
+  stakingPoolId          Int?                              @unique
+  stakingPool            StakingPool?                      @relation(fields: [stakingPoolId], references: [id])
+  requestedAt            DateTime                          @default(now())
+  approvedAt             DateTime?
+  rejectedAt             DateTime?
+  executedAt             DateTime?
+  createdAt              DateTime                          @default(now())
+  updatedAt              DateTime                          @updatedAt
+
+  @@index([status, requestedAt])
+  @@index([requestedByOperatorId, requestedAt])
+  @@index([approvedByOperatorId, approvedAt])
+  @@index([executedByOperatorId, executedAt])
 }
 
 model ReleaseReadinessEvidence {

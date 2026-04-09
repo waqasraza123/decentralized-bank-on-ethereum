@@ -1,3 +1,4 @@
+import { type SupportedLocale } from "@stealth-trails-bank/i18n";
 import type {
   AccountLifecycleStatusValue,
   UserProfileProjection
@@ -14,10 +15,25 @@ const accountStatusLabels: Record<AccountLifecycleStatusValue, string> = {
 };
 
 export function formatAccountStatusLabel(
-  status: AccountLifecycleStatusValue | null | undefined
+  status: AccountLifecycleStatusValue | null | undefined,
+  locale: SupportedLocale = "en"
 ): string {
   if (!status) {
-    return "Not Provisioned";
+    return locale === "ar" ? "غير مهيأ" : "Not Provisioned";
+  }
+
+  if (locale === "ar") {
+    const arabicLabels: Record<AccountLifecycleStatusValue, string> = {
+      registered: "مسجل",
+      email_verified: "تم التحقق من البريد",
+      review_required: "تتطلب مراجعة",
+      active: "نشط",
+      restricted: "مقيد",
+      frozen: "مجمّد",
+      closed: "مغلق"
+    };
+
+    return arabicLabels[status];
   }
 
   return accountStatusLabels[status];
@@ -46,10 +62,33 @@ export function getAccountStatusBadgeTone(
 }
 
 export function getAccountStatusSummary(
-  status: AccountLifecycleStatusValue | null | undefined
+  status: AccountLifecycleStatusValue | null | undefined,
+  locale: SupportedLocale = "en"
 ): string {
   if (!status) {
-    return "Customer account lifecycle data has not been provisioned yet.";
+    return locale === "ar"
+      ? "لم تتم تهيئة بيانات دورة حياة حساب العميل بعد."
+      : "Customer account lifecycle data has not been provisioned yet.";
+  }
+
+  if (locale === "ar") {
+    switch (status) {
+      case "active":
+        return "هذا الحساب المُدار نشط ويمكنه استخدام مسارات العميل المعلنة حالياً.";
+      case "email_verified":
+        return "الهوية موجودة، لكن دورة حياة الحساب المُدار لم تصل إلى حالة النشاط الكامل بعد.";
+      case "review_required":
+        return "نشاط العميل مقيّد بمراجعة داخلية إضافية قبل توسيع الوصول إلى المنتج.";
+      case "restricted":
+        return "الحساب خاضع لتقييد وقد تُحجب بعض إجراءات المنتج بموجب السياسة.";
+      case "frozen":
+        return "الحساب مجمّد ويجب اعتبار الإجراءات المالية من جهة العميل غير متاحة.";
+      case "closed":
+        return "الحساب مغلق ولا ينبغي أن يعرض عناصر تحكم نشطة للمنتج.";
+      case "registered":
+      default:
+        return "تم تسجيل الحساب لكنه ما زال يمر عبر دورة حياة الحساب المُدار.";
+    }
   }
 
   switch (status) {
@@ -75,23 +114,24 @@ export function getAccountLifecycleEntries(
   profile: Pick<
     UserProfileProjection,
     "activatedAt" | "restrictedAt" | "frozenAt" | "closedAt"
-  >
+  >,
+  locale: SupportedLocale = "en"
 ) {
   return [
     {
-      label: "Activated",
+      label: locale === "ar" ? "تم التفعيل" : "Activated",
       value: profile.activatedAt
     },
     {
-      label: "Restricted",
+      label: locale === "ar" ? "تم التقييد" : "Restricted",
       value: profile.restrictedAt
     },
     {
-      label: "Frozen",
+      label: locale === "ar" ? "تم التجميد" : "Frozen",
       value: profile.frozenAt
     },
     {
-      label: "Closed",
+      label: locale === "ar" ? "تم الإغلاق" : "Closed",
       value: profile.closedAt
     }
   ].filter((entry) => Boolean(entry.value));

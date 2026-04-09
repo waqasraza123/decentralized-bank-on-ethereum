@@ -3,6 +3,8 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useLocale } from "@/i18n/use-locale";
+import { useT } from "@/i18n/use-t";
 import { useMyBalances } from "@/hooks/balances/useMyBalances";
 import { useMyTransactionHistory } from "@/hooks/transactions/useMyTransactionHistory";
 import { useGetUser } from "@/hooks/user/useGetUser";
@@ -29,6 +31,8 @@ import {
 import { Link } from "react-router-dom";
 
 const Loans = () => {
+  const t = useT();
+  const { locale } = useLocale();
   const user = useUserStore((state) => state.user);
   const profileQuery = useGetUser(user?.supabaseUserId);
   const balancesQuery = useMyBalances();
@@ -48,23 +52,17 @@ const Loans = () => {
       <div className="space-y-8">
         <div className="space-y-2">
           <h1 className="text-3xl font-semibold text-foreground">
-            Loans & Savings
+            {t("loans.title")}
           </h1>
           <p className="text-sm text-muted-foreground">
-            Truthful availability surface for capital products in the managed
-            customer portal.
+            {t("loans.description")}
           </p>
         </div>
 
         <Alert className="border-orange-200 bg-orange-50">
           <ShieldAlert className="h-4 w-4" />
-          <AlertTitle>Customer self-service lending is not enabled</AlertTitle>
-          <AlertDescription>
-            The current customer API exposes balances, account lifecycle, wallet
-            linkage, and ledger history. It does not expose loan origination,
-            repayment schedules, savings products, APYs, or customer application
-            workflows, so the old mocked forms were removed.
-          </AlertDescription>
+          <AlertTitle>{t("loans.alertTitle")}</AlertTitle>
+          <AlertDescription>{t("loans.alertDescription")}</AlertDescription>
         </Alert>
 
         <div className="grid gap-6 xl:grid-cols-3">
@@ -147,7 +145,7 @@ const Loans = () => {
                             {balance.asset.displayName}
                           </p>
                           <p className="mt-1 text-sm text-muted-foreground">
-                            {formatTokenAmount(balance.availableBalance)} {balance.asset.symbol} available
+                            {formatTokenAmount(balance.availableBalance, locale)} {balance.asset.symbol} available
                           </p>
                         </div>
                       ))}
@@ -184,7 +182,7 @@ const Loans = () => {
                       Latest recorded activity
                     </p>
                     <p className="mt-2 text-lg font-semibold text-foreground">
-                      {normalizeIntentTypeLabel(latestIntent.intentType)}
+                      {normalizeIntentTypeLabel(latestIntent.intentType, locale)}
                     </p>
                     <p className="mt-1 text-sm text-muted-foreground">
                       {formatIntentAmount(
@@ -194,7 +192,7 @@ const Loans = () => {
                       )}
                     </p>
                     <p className="mt-1 text-sm text-muted-foreground">
-                      {latestIntent.status} on {formatDateLabel(latestIntent.createdAt)}
+                      {latestIntent.status} on {formatDateLabel(latestIntent.createdAt, locale)}
                     </p>
                   </div>
                   <p className="text-sm text-muted-foreground">
