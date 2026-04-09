@@ -288,7 +288,9 @@ test("authenticated wallet, transactions, and staking flows enforce validation a
   await mockWebApi(page);
 
   await page.goto("/");
-  await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible();
+  await expect(
+    page.getByRole("main").getByRole("heading", { name: "Dashboard" })
+  ).toBeVisible();
 
   await page.goto("/wallet");
   await expect(
@@ -301,9 +303,7 @@ test("authenticated wallet, transactions, and staking flows enforce validation a
   await page.locator("#deposit-amount").fill("abc");
   await page.getByRole("button", { name: "Create Deposit Request" }).click();
   await expect(
-    page.getByText(
-      "Amount must be a positive decimal string with up to 18 decimal places."
-    )
+    page.getByText("Enter a valid positive decimal amount.")
   ).toBeVisible();
 
   await page.locator("#withdraw-asset").selectOption("USDC");
@@ -316,7 +316,7 @@ test("authenticated wallet, transactions, and staking flows enforce validation a
 
   await page.goto("/transactions");
   await expect(page.getByRole("heading", { name: "Transactions" })).toBeVisible();
-  await page.getByPlaceholder("Search transactions...").fill("0fed");
+  await page.getByPlaceholder("Search by reference or address...").fill("0fed");
   await expect(page.getByText("-10 USDC")).toBeVisible();
   await expect(page.getByText("+1.25 ETH")).toHaveCount(0);
   await expect(
@@ -324,10 +324,10 @@ test("authenticated wallet, transactions, and staking flows enforce validation a
   ).toBeVisible();
 
   await page.goto("/staking");
-  await expect(page.getByRole("heading", { name: "Ethereum Staking" })).toBeVisible();
   await expect(
-    page.getByText("Customer staking execution remains policy-gated")
+    page.getByRole("heading", { name: "Yield and infrastructure" })
   ).toBeVisible();
+  await expect(page.getByText("Execution remains policy-gated")).toBeVisible();
   await expect(page.getByRole("button", { name: "Stake ETH" })).toBeDisabled();
   await expect(page.getByRole("button", { name: "Withdraw Stake" })).toBeDisabled();
   await expect(page.getByRole("button", { name: "Claim Rewards" })).toBeDisabled();
