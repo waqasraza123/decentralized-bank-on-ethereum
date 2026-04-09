@@ -7,7 +7,9 @@
   "compilerOptions": {
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@stealth-trails-bank/ui-foundation": ["../../packages/ui-foundation/src/index.ts"],
+      "@stealth-trails-bank/ui-foundation/*": ["../../packages/ui-foundation/*"]
     },
     "noImplicitAny": false,
     "noUnusedParameters": false,

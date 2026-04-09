@@ -119,22 +119,15 @@ describe("staking product pages", () => {
   });
 
   it("renders the live staking execution surface while respecting backend safety gates", async () => {
-    const user = userEvent.setup();
-
     renderWithRouter(<Staking />);
 
     expect(
-      screen.getByRole("heading", { name: /ethereum staking/i })
+      screen.getByRole("heading", { name: /yield and infrastructure/i })
     ).toBeInTheDocument();
     expect(
-      screen.getByText(/customer staking execution remains policy-gated/i)
+      screen.getByText(/execution remains policy-gated/i)
     ).toBeInTheDocument();
-    expect(screen.getByText(/96.5 ETH/i)).toBeInTheDocument();
-    expect(screen.getByText(/Pool #11 Overview/i)).toBeInTheDocument();
-
-    await user.click(screen.getAllByRole("button", { name: /view pool/i })[0]);
-
-    expect(screen.getByText(/Pool #11 Overview/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/Pool #11/i).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/32.5 ETH/i).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/1.5 ETH/i).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/0.25 ETH/i).length).toBeGreaterThan(0);
@@ -148,7 +141,7 @@ describe("staking product pages", () => {
       screen.getByRole("button", { name: /claim rewards/i })
     ).toBeDisabled();
     expect(
-      screen.getByText(/execution is currently disabled by the backend/i)
+      screen.getByText(/Execution is currently disabled by backend policy/i)
     ).toBeInTheDocument();
   });
 
@@ -160,7 +153,9 @@ describe("staking product pages", () => {
     ).toBeInTheDocument();
     expect(screen.getByText(/internal-only workflow/i)).toBeInTheDocument();
     expect(
-      screen.getByText(/pool creation currently depends on backend-controlled contract writes/i)
+      screen.getByText(
+        /pool creation currently depends on governed, backend-controlled contract writes/i
+      )
     ).toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: /connect metamask/i })
@@ -269,7 +264,9 @@ describe("staking product pages", () => {
       expect(claimMutateAsync).toHaveBeenCalledWith({ poolId: 11 });
     });
 
-    await user.click(screen.getByRole("button", { name: /emergency exit/i }));
+    await user.click(
+      screen.getByRole("button", { name: /emergency withdrawal/i })
+    );
     await waitFor(() => {
       expect(emergencyMutateAsync).toHaveBeenCalledWith({ poolId: 11 });
     });

@@ -104,12 +104,17 @@ describe("transactions page", () => {
     ).toBe("BDI");
 
     await user.type(
-      screen.getByPlaceholderText("Search transactions..."),
+      screen.getByPlaceholderText("Search by reference or address..."),
       "0fed"
     );
 
     expect(screen.queryByText("+1.25 ETH")).not.toBeInTheDocument();
     expect(screen.getByText("-10 USDC")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /open/i }));
+
+    expect(screen.getByText(/internal reference/i)).toBeInTheDocument();
+    expect(screen.getByText("intent_2")).toBeInTheDocument();
   });
 
   it("switches to Arabic, updates the document direction, and persists the locale", async () => {
@@ -120,7 +125,7 @@ describe("transactions page", () => {
     await user.click(screen.getByRole("button", { name: "العربية" }));
 
     expect(
-      await screen.findByRole("heading", { name: "المعاملات" })
+      await screen.findByRole("heading", { name: "سجل حركة الأموال" })
     ).toBeInTheDocument();
     expect(document.documentElement.lang).toBe("ar");
     expect(document.documentElement.dir).toBe("rtl");
@@ -130,7 +135,7 @@ describe("transactions page", () => {
     renderWithRouter(<Transactions />);
 
     expect(
-      screen.getByRole("heading", { name: "المعاملات" })
+      screen.getByRole("heading", { name: "سجل حركة الأموال" })
     ).toBeInTheDocument();
   });
 });

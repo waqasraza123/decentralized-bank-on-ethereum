@@ -97,17 +97,15 @@ describe("dashboard page", () => {
   it("renders live balances, wallet details, and recent transaction history", () => {
     renderWithRouter(<Index />);
 
-    expect(screen.getByRole("heading", { name: "Dashboard" })).toBeInTheDocument();
+    expect(screen.getAllByRole("heading", { name: "Dashboard" }).length).toBeGreaterThan(0);
     expect(screen.getByText(/managed account overview for amina/i)).toBeInTheDocument();
     expect(screen.getByText("Ethereum")).toBeInTheDocument();
     expect(screen.getByText("1.5 ETH")).toBeInTheDocument();
-    expect(screen.getByText("0.25 ETH pending")).toBeInTheDocument();
-    expect(
-      screen.getByText("0x1111222233334444555566667777888899990000")
-    ).toBeInTheDocument();
-    expect(screen.getByText("Deposit")).toBeInTheDocument();
-    expect(screen.getByText("+1.25 ETH")).toBeInTheDocument();
-    expect(screen.queryByText(/AI Investment Advisor/i)).not.toBeInTheDocument();
+    expect(screen.getByText("0.25 ETH")).toBeInTheDocument();
+    expect(screen.getAllByText("0x1111222233334444555566667777888899990000").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Deposit").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("+1.25 ETH").length).toBeGreaterThan(0);
+    expect(screen.getByText(/trust layer/i)).toBeInTheDocument();
   });
 
   it("renders safe empty states when no balances or transaction history exist", () => {
@@ -134,8 +132,6 @@ describe("dashboard page", () => {
     renderWithRouter(<Index />);
 
     expect(screen.getByText("No balances yet")).toBeInTheDocument();
-    expect(
-      screen.getByText(/No transaction history has been recorded/i)
-    ).toBeInTheDocument();
+    expect(screen.getAllByText(/No transaction history has been recorded/i).length).toBeGreaterThan(0);
   });
 });

@@ -1,13 +1,12 @@
 import React from "react";
 import { Link, useLocation } from "react-router-dom";
 import {
-  Home,
-  History,
-  Wallet,
-  User,
-  CoinsIcon,
-  CreditCard,
-  Menu
+  Bell,
+  CircleHelp,
+  Landmark,
+  ShieldCheck,
+  UserRound,
+  Wallet
 } from "lucide-react";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { Logo } from "@/components/ui/logo";
@@ -16,136 +15,154 @@ import { cn } from "@/lib/utils";
 import { useLocale } from "@/i18n/use-locale";
 import { useT } from "@/i18n/use-t";
 import { useUserStore } from "@/stores/userStore";
-import { formatShortAddress } from "@/lib/customer-finance";
+import { formatDateLabel, formatShortAddress } from "@/lib/customer-finance";
 
-export const Layout = ({ children }: { children: React.ReactNode }) => {
+type LayoutProps = {
+  children: React.ReactNode;
+};
+
+export const Layout = ({ children }: LayoutProps) => {
   const location = useLocation();
-  const [isCollapsed, setIsCollapsed] = React.useState(false);
-  const { isRtl } = useLocale();
+  const { locale } = useLocale();
   const t = useT();
   const user = useUserStore((state) => state.user);
+
   const navItems = [
-    { icon: Home, label: t("navigation.dashboard"), path: "/" },
-    { icon: Wallet, label: t("navigation.wallet"), path: "/wallet" },
-    { icon: CoinsIcon, label: t("navigation.staking"), path: "/staking" },
-    { icon: CreditCard, label: t("navigation.loans"), path: "/loans" },
-    { icon: History, label: t("navigation.transactions"), path: "/transactions" },
-    { icon: User, label: t("navigation.profile"), path: "/profile" }
+    { label: t("navigation.dashboard"), path: "/" },
+    { label: t("navigation.wallet"), path: "/wallet" },
+    { label: locale === "ar" ? "العائد" : "Yield", path: "/yield" },
+    { label: t("navigation.transactions"), path: "/transactions" },
+    { label: t("navigation.profile"), path: "/profile" }
   ];
+
   const currentSection =
     navItems.find((item) => item.path === location.pathname)?.label ??
-    t("layout.workspaceLabel");
-  const sidebarWidthClass = isCollapsed ? "w-20" : "w-72";
-  const sidebarEdgeClass = isRtl
-    ? "right-0 border-l border-r-0"
-    : "left-0 border-r";
-  const contentInsetClass = isCollapsed
-    ? isRtl
-      ? "pr-20"
-      : "pl-20"
-    : isRtl
-      ? "pr-72"
-      : "pl-72";
-  const shortAddress = formatShortAddress(user?.ethereumAddress, t("shared.notAvailable"));
+    (location.pathname === "/loans"
+      ? t("navigation.loans")
+      : locale === "ar"
+        ? "منصة العميل"
+        : "Customer workspace");
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-background to-defi-light-purple/5">
-      <div className="flex min-h-screen">
-        <nav
-          className={cn(
-            "fixed inset-y-0 z-20 bg-background/70 backdrop-blur-xl transition-all duration-300",
-            sidebarWidthClass,
-            sidebarEdgeClass
-          )}
-        >
-          <div className="flex h-full flex-col">
-            <div className="flex items-center justify-between gap-3 p-6">
-              {!isCollapsed && <Logo />}
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => setIsCollapsed(!isCollapsed)}
-                className={cn(!isCollapsed && (isRtl ? "mr-auto" : "ml-auto"))}
-              >
-                <Menu className="h-5 w-5" />
-              </Button>
+    <div className="stb-shell-bg min-h-screen text-slate-900">
+      <div className="mx-auto flex min-h-screen w-full max-w-[1440px] flex-col px-4 pb-8 pt-4 sm:px-6 lg:px-8">
+        <header className="stb-inverse-surface relative overflow-hidden rounded-[2rem] px-5 py-5 sm:px-6">
+          <div className="stb-grid-lines absolute inset-0 opacity-30" aria-hidden="true" />
+          <div className="relative z-10 flex flex-col gap-6">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+              <div className="flex flex-wrap items-center gap-4">
+                <Logo size="md" tone="light" />
+                <div className="stb-control-ribbon">
+                  <span className="stb-section-kicker !text-[rgba(114,233,212,0.88)]">
+                    {locale === "ar" ? "نظام مُدار" : "Managed system"}
+                  </span>
+                  <span className="inline-flex items-center gap-2 text-sm">
+                    <ShieldCheck className="h-4 w-4 text-emerald-300" />
+                    {locale === "ar"
+                      ? "الضوابط والمراجعة مرئية"
+                      : "Controls and review are visible"}
+                  </span>
+                </div>
+              </div>
+              <div className="flex flex-wrap items-center gap-3">
+                <LanguageSwitcher tone="light" />
+                <div className="flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-white/84">
+                  <Bell className="h-4 w-4 text-white/70" />
+                  <span>{locale === "ar" ? "لا توجد تنبيهات" : "No alerts"}</span>
+                </div>
+                <div className="flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-white/84">
+                  <CircleHelp className="h-4 w-4 text-white/70" />
+                  <span>{locale === "ar" ? "المساعدة والأمان" : "Help & safety"}</span>
+                </div>
+              </div>
             </div>
-            <div className="flex-1 space-y-1 p-4">
+
+            <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
+              <div className="space-y-3">
+                <p className="text-xs font-semibold uppercase tracking-[0.24em] text-emerald-300/90">
+                  {locale === "ar" ? "الخدمات المصرفية على إيثيريوم" : "Ethereum banking workspace"}
+                </p>
+                <h1 className="stb-page-title text-3xl font-semibold text-white sm:text-4xl">
+                  {currentSection}
+                </h1>
+                <p className="max-w-3xl text-sm leading-7 text-white/70 sm:text-base">
+                  {locale === "ar"
+                    ? "ملخص واضح للأموال والحالة والخطوة التالية. يتم إبقاء تفاصيل السلسلة متاحة عند الحاجة فقط."
+                    : "A clear summary of money, status, and next steps. Chain-level detail stays available when you need it, not before."}
+                </p>
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-3">
+                <div className="rounded-[1.2rem] border border-white/10 bg-white/6 px-4 py-3">
+                  <div className="flex items-center gap-2 text-xs uppercase tracking-[0.18em] text-white/54">
+                    <Wallet className="h-3.5 w-3.5" />
+                    {locale === "ar" ? "مرجع المحفظة" : "Wallet reference"}
+                  </div>
+                  <p className="stb-ref mt-2 text-sm font-medium text-white">
+                    <bdi>{formatShortAddress(user?.ethereumAddress, t("layout.noWallet"))}</bdi>
+                  </p>
+                </div>
+                <div className="rounded-[1.2rem] border border-white/10 bg-white/6 px-4 py-3">
+                  <div className="flex items-center gap-2 text-xs uppercase tracking-[0.18em] text-white/54">
+                    <Landmark className="h-3.5 w-3.5" />
+                    {locale === "ar" ? "الحساب" : "Account"}
+                  </div>
+                  <p className="mt-2 text-sm font-medium text-white">
+                    {user?.email ?? (locale === "ar" ? "غير متاح" : "Not available")}
+                  </p>
+                </div>
+                <div className="rounded-[1.2rem] border border-white/10 bg-white/6 px-4 py-3">
+                  <div className="flex items-center gap-2 text-xs uppercase tracking-[0.18em] text-white/54">
+                    <UserRound className="h-3.5 w-3.5" />
+                    {locale === "ar" ? "آخر تحديث" : "Last updated"}
+                  </div>
+                  <p className="mt-2 text-sm font-medium text-white">
+                    {formatDateLabel(new Date().toISOString(), locale)}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </header>
+
+        <div className="mt-4 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <nav className="stb-surface rounded-[1.4rem] p-2">
+            <div className="flex flex-wrap items-center gap-2">
               {navItems.map((item) => {
-                const Icon = item.icon;
                 const isActive = location.pathname === item.path;
+
                 return (
                   <Link
                     key={item.path}
                     to={item.path}
                     className={cn(
-                      "flex items-center gap-3 rounded-2xl px-4 py-3 transition-all duration-200 hover:bg-defi-purple/10",
-                      isActive ? "bg-defi-purple text-white" : "text-muted-foreground hover:text-defi-purple",
-                      isCollapsed && "justify-center"
+                      "rounded-[1rem] px-4 py-3 text-sm font-semibold transition-colors",
+                      isActive
+                        ? "bg-slate-950 text-white"
+                        : "text-slate-600 hover:bg-white/75 hover:text-slate-950"
                     )}
                   >
-                    <Icon className={cn("h-5 w-5", isActive && "text-white")} />
-                    {!isCollapsed && <span>{item.label}</span>}
+                    {item.label}
                   </Link>
                 );
               })}
             </div>
-            <div className="p-4">
-              <div className="gradient-border">
-                <div className="space-y-2 p-4">
-                  {!isCollapsed && (
-                    <>
-                      <p className="text-sm text-muted-foreground">
-                        {t("layout.walletSummaryTitle")}
-                      </p>
-                      <p className="ltr-content truncate text-xs font-mono">
-                        <bdi>{shortAddress}</bdi>
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        {t("layout.walletSummaryDescription")}
-                      </p>
-                    </>
-                  )}
-                  <div
-                    className={cn(
-                      "h-2 rounded-full bg-gradient-to-r from-defi-purple via-defi-blue to-defi-pink",
-                      isCollapsed ? "w-8" : "w-full"
-                    )}
-                  />
-                </div>
-              </div>
-            </div>
-          </div>
-        </nav>
+          </nav>
 
-        <main className={cn("flex-1 transition-all duration-300", contentInsetClass)}>
-          <div className="container mx-auto px-5 py-6 sm:px-8">
-            <header className="mb-8 rounded-[2rem] border border-border/70 bg-background/85 p-5 shadow-[0_24px_80px_rgba(15,23,42,0.08)] backdrop-blur">
-              <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
-                <div className="space-y-2">
-                  <p className="text-xs font-semibold uppercase tracking-[0.24em] text-mint-700">
-                    {t("layout.workspaceLabel")}
-                  </p>
-                  <p className="auth-display text-3xl font-semibold tracking-[-0.04em] text-foreground">
-                    {currentSection}
-                  </p>
-                </div>
-                <div className="flex flex-col items-start gap-4 lg:items-end">
-                  <LanguageSwitcher />
-                  <div className="rounded-2xl border border-border/70 bg-card/80 px-4 py-3">
-                    <p className="text-xs font-semibold uppercase tracking-[0.22em] text-muted-foreground">
-                      {t("layout.walletSummaryTitle")}
-                    </p>
-                    <p className="ltr-content mt-2 text-sm font-semibold text-foreground">
-                      <bdi>{shortAddress}</bdi>
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </header>
-            <div className="animate-in">{children}</div>
+          <div className="flex flex-wrap items-center gap-3">
+            <Button
+              asChild
+              variant="outline"
+              className="rounded-full border-slate-200 bg-white/80 px-5"
+            >
+              <Link to="/loans">
+                {locale === "ar" ? "القروض لاحقاً" : "Loans later"}
+              </Link>
+            </Button>
           </div>
-        </main>
+        </div>
+
+        <main className="mt-6 flex-1">{children}</main>
       </div>
     </div>
   );

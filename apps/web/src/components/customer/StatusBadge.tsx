@@ -1,0 +1,19 @@
+import { cn } from "@/lib/utils";
+
+type StatusBadgeProps = {
+  label: string;
+  tone: "neutral" | "positive" | "warning" | "critical" | "technical";
+  className?: string;
+};
+
+export function StatusBadge({
+  label,
+  tone,
+  className
+}: StatusBadgeProps) {
+  return (
+    <span className={cn("stb-status-badge", className)} data-tone={tone}>
+      {label}
+    </span>
+  );
+}

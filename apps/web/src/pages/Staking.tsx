@@ -1,19 +1,15 @@
 import { useState } from "react";
-import { Link } from "react-router-dom";
 import {
-  AlertTriangle,
-  Clock3,
   Database,
   ShieldAlert,
+  Sparkles,
   Wallet
 } from "lucide-react";
 import { Layout } from "@/components/Layout";
-import { StakingStats } from "@/components/staking/StakingStats";
-import { PoolCard } from "@/components/staking/PoolCard";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Input } from "@/components/ui/input";
+import { StatusBadge } from "@/components/customer/StatusBadge";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { useLocale } from "@/i18n/use-locale";
 import { useT } from "@/i18n/use-t";
 import { useToast } from "@/hooks/use-toast";
@@ -51,9 +47,6 @@ const Staking = () => {
   const selectedPool =
     pools.find((pool) => pool.id === selectedPoolId) ?? pools[0] ?? null;
   const executionEnabled = snapshot?.execution.available ?? false;
-  const executionMessage =
-    snapshot?.execution.message ??
-    t("staking.executionLoading");
   const executionPending =
     depositMutation.isPending ||
     withdrawalMutation.isPending ||
@@ -156,275 +149,322 @@ const Staking = () => {
 
   return (
     <Layout>
-      <div className="space-y-8">
-        <div className="flex items-center justify-between">
-          <h1 className="text-3xl font-semibold text-foreground">
-            {t("staking.title")}
-          </h1>
-          <Button asChild variant="outline">
-            <Link to="/create-pool">{t("staking.governance")}</Link>
-          </Button>
-        </div>
+      <div className="space-y-6">
+        <section className="grid gap-6 xl:grid-cols-[minmax(0,1.15fr)_380px]">
+          <Card className="stb-surface rounded-[2rem] border-0 p-6">
+            <div className="space-y-4">
+              <div>
+                <p className="stb-section-kicker">
+                  {locale === "ar" ? "العائد" : "Yield"}
+                </p>
+                <h1 className="stb-page-title mt-2 text-3xl font-semibold text-slate-950">
+                  {locale === "ar" ? "العائد والبنية التحتية" : "Yield and infrastructure"}
+                </h1>
+                <p className="mt-3 max-w-3xl text-sm leading-7 text-slate-600">
+                  {locale === "ar"
+                    ? "يُعرض المنتج كخدمة خاضعة للحالة والحوكمة، مع إبقاء الأهلية والتنفيذ والمخاطر مرئية قبل أي إجراء."
+                    : "The product is framed as a governed, stateful service with eligibility, execution, and risk kept visible before any action."}
+                </p>
+              </div>
 
-        <Alert
-          className={
-            executionEnabled
-              ? "border-mint-200 bg-mint-50"
-              : "border-orange-200 bg-orange-50"
-          }
-        >
-          <ShieldAlert className="h-4 w-4" />
-          <AlertTitle>
-            {executionEnabled
-              ? t("staking.executionEnabled")
-              : t("staking.executionPolicyGated")}
-          </AlertTitle>
-          <AlertDescription>{executionMessage}</AlertDescription>
-        </Alert>
+              <div className="grid gap-4 sm:grid-cols-3">
+                <div className="rounded-[1.4rem] bg-white/80 p-4">
+                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+                    {locale === "ar" ? "المجمعات" : "Pools"}
+                  </p>
+                  <p className="mt-3 text-3xl font-semibold text-slate-950">
+                    {stakingQuery.isLoading ? "..." : pools.length}
+                  </p>
+                </div>
+                <div className="rounded-[1.4rem] bg-white/80 p-4">
+                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+                    {locale === "ar" ? "محفظة الدفع" : "Payout wallet"}
+                  </p>
+                  <p className="stb-ref mt-3 text-sm font-medium text-slate-950">
+                    <bdi>{formatShortAddress(user?.ethereumAddress, t("shared.notAvailable"))}</bdi>
+                  </p>
+                </div>
+                <div className="rounded-[1.4rem] bg-slate-950 p-4 text-white">
+                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-white/60">
+                    {locale === "ar" ? "قابلية التنفيذ" : "Execution"}
+                  </p>
+                  <p className="mt-3 text-sm font-semibold text-white">
+                    {executionEnabled
+                      ? locale === "ar"
+                        ? "مفعّل"
+                        : "Enabled"
+                      : locale === "ar"
+                        ? "مقيد"
+                        : "Policy-gated"}
+                  </p>
+                </div>
+              </div>
+
+              <div
+                className={`rounded-[1.5rem] p-5 ${
+                  executionEnabled ? "bg-emerald-50 text-emerald-900" : "bg-amber-50 text-amber-900"
+                }`}
+              >
+                <div className="flex items-center gap-2 text-sm font-semibold">
+                  <ShieldAlert className="h-4 w-4" />
+                  {executionEnabled
+                    ? locale === "ar"
+                      ? "التنفيذ المُدار متاح"
+                      : "Managed execution available"
+                    : locale === "ar"
+                      ? "التنفيذ مُقيد بسياسة"
+                      : "Execution remains policy-gated"}
+                </div>
+                <p className="mt-2 text-sm leading-7">
+                  {snapshot?.execution.message ??
+                    (locale === "ar"
+                      ? "يجري تحميل حالة التنفيذ."
+                      : "Execution status is loading.")}
+                </p>
+              </div>
+
+              {snapshot && !snapshot.readModel.available ? (
+                <div className="rounded-[1.5rem] bg-slate-100 p-5 text-slate-800">
+                  <div className="flex items-center gap-2 text-sm font-semibold">
+                    <Database className="h-4 w-4" />
+                    {t("staking.readModelLimitedTitle")}
+                  </div>
+                  <p className="mt-2 text-sm leading-7">{snapshot.readModel.message}</p>
+                </div>
+              ) : null}
+            </div>
+          </Card>
+
+          <Card className="stb-surface rounded-[2rem] border-0 p-6">
+            <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
+              <Sparkles className="h-4 w-4 text-indigo-700" />
+              {locale === "ar" ? "وضع المنتج" : "Product posture"}
+            </div>
+            <div className="mt-5 space-y-4 text-sm leading-7 text-slate-600">
+              <p>
+                {locale === "ar"
+                  ? "لا يتم عرض هذا المنتج كدعوة سريعة للعائد. تظهر الشروط والحالة قبل الأفعال."
+                  : "This product is not presented as a rush-to-yield surface. Conditions and state come before actions."}
+              </p>
+              <p>
+                {locale === "ar"
+                  ? "قد تكون بعض الإمكانات مقيدة وفق إعدادات التنفيذ الخلفية."
+                  : "Some capabilities may remain gated by backend execution posture."}
+              </p>
+            </div>
+          </Card>
+        </section>
 
         {stakingQuery.isError ? (
-          <Card className="border-red-200 bg-red-50 p-4 text-sm text-red-700">
+          <Card className="rounded-[1.6rem] border border-red-200 bg-red-50 p-4 text-sm text-red-700">
             {stakingQuery.error instanceof Error
               ? stakingQuery.error.message
               : t("staking.snapshotError")}
           </Card>
         ) : null}
 
-        {snapshot && !snapshot.readModel.available ? (
-          <Alert className="border-slate-200 bg-slate-50">
-            <Database className="h-4 w-4" />
-            <AlertTitle>{t("staking.readModelLimitedTitle")}</AlertTitle>
-            <AlertDescription>{snapshot.readModel.message}</AlertDescription>
-          </Alert>
-        ) : null}
-
-        <StakingStats pools={pools} />
-
-        <Card className="glass-card p-6">
-          <h2 className="mb-4 text-xl font-semibold">{t("staking.availablePools")}</h2>
-          {stakingQuery.isLoading ? (
-            <div className="space-y-4">
-              {Array.from({ length: 3 }).map((_, index) => (
-                <div key={index} className="rounded-lg border p-4">
-                  <div className="h-5 w-40 animate-pulse rounded bg-muted" />
-                  <div className="mt-3 h-4 w-56 animate-pulse rounded bg-muted" />
-                  <div className="mt-2 h-4 w-44 animate-pulse rounded bg-muted" />
+        <section className="grid gap-6 xl:grid-cols-[320px_minmax(0,1fr)]">
+          <Card className="stb-surface rounded-[2rem] border-0 p-5">
+            <h2 className="text-lg font-semibold text-slate-950">
+              {locale === "ar" ? "المجمعات المدرجة" : "Listed pools"}
+            </h2>
+            <div className="mt-5 space-y-3">
+              {stakingQuery.isLoading ? (
+                Array.from({ length: 3 }).map((_, index) => (
+                  <div key={index} className="h-24 animate-pulse rounded-[1.2rem] bg-slate-200" />
+                ))
+              ) : pools.length > 0 ? (
+                pools.map((pool) => (
+                  <button
+                    key={pool.id}
+                    type="button"
+                    className={`w-full rounded-[1.3rem] border p-4 text-left transition-colors ${
+                      selectedPool?.id === pool.id
+                        ? "border-slate-950 bg-slate-950 text-white"
+                        : "border-slate-200 bg-white/80 text-slate-950 hover:bg-white"
+                    }`}
+                    onClick={() => setSelectedPoolId(pool.id)}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="font-semibold">
+                          {locale === "ar" ? `المجمع #${pool.id}` : `Pool #${pool.id}`}
+                        </p>
+                        <p className="mt-1 text-sm opacity-75">
+                          {pool.rewardRate}% APR
+                        </p>
+                      </div>
+                      <StatusBadge
+                        label={pool.poolStatus}
+                        tone={pool.poolStatus === "active" ? "positive" : "warning"}
+                        className={
+                          selectedPool?.id === pool.id
+                            ? "!bg-white/12 !text-white before:!bg-white/70"
+                            : undefined
+                        }
+                      />
+                    </div>
+                  </button>
+                ))
+              ) : (
+                <div className="rounded-[1.2rem] border border-dashed border-slate-300 p-4 text-sm text-slate-600">
+                  {t("staking.noPools")}
                 </div>
-              ))}
+              )}
             </div>
-          ) : pools.length > 0 ? (
-            <div className="space-y-4">
-              {pools.map((pool) => (
-                <PoolCard
-                  key={pool.id}
-                  pool={pool}
-                  onSelect={(nextPool) => setSelectedPoolId(nextPool.id)}
-                  isSelected={selectedPool?.id === pool.id}
-                />
-              ))}
-            </div>
-          ) : (
-            <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
-              {t("staking.noPools")}
-            </div>
-          )}
-        </Card>
+          </Card>
 
-        {selectedPool ? (
-          <Card className="glass-card p-6 animate-in">
-            <div className="flex flex-wrap items-center justify-between gap-4">
-              <div>
-                <h2 className="text-xl font-semibold">
-                  {t("staking.selectedPoolTitle", { id: selectedPool.id })}
-                </h2>
-                <p className="text-sm text-muted-foreground">
-                  {t("staking.selectedPoolDescription")}
-                </p>
-              </div>
-              <div className="rounded-full bg-slate-100 px-3 py-1 text-sm font-medium text-slate-700">
-                {selectedPool.poolStatus}
-              </div>
-            </div>
-
-            <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-              <div className="rounded-lg border p-4">
-                <p className="text-sm text-muted-foreground">Reward Rate</p>
-                <p className="mt-2 text-2xl font-semibold">
-                  {selectedPool.rewardRate}%
-                </p>
-              </div>
-              <div className="rounded-lg border p-4">
-                <p className="text-sm text-muted-foreground">Total Staked</p>
-                <p className="mt-2 text-2xl font-semibold">
-                  {formatTokenAmount(selectedPool.totalStakedAmount, locale, 4)} ETH
-                </p>
-              </div>
-              <div className="rounded-lg border p-4">
-                <p className="text-sm text-muted-foreground">Rewards Paid</p>
-                <p className="mt-2 text-2xl font-semibold">
-                  {formatTokenAmount(selectedPool.totalRewardsPaid, locale, 4)} ETH
-                </p>
-              </div>
-              <div className="rounded-lg border p-4">
-                <p className="text-sm text-muted-foreground">Blockchain Pool</p>
-                <p className="mt-2 text-2xl font-semibold">
-                  {selectedPool.blockchainPoolId ?? "Pending"}
-                </p>
-              </div>
-            </div>
-
-            <div className="mt-6 grid gap-4 lg:grid-cols-2">
-              <div className="rounded-lg border p-4">
-                <div className="flex items-center gap-2 text-sm font-medium text-foreground">
-                  <Database className="h-4 w-4 text-mint-700" />
-                  Registry Timeline
-                </div>
-                <div className="mt-3 space-y-2 text-sm text-muted-foreground">
-                  <p>Created {formatDateLabel(selectedPool.createdAt, locale)}</p>
-                  <p>Updated {formatDateLabel(selectedPool.updatedAt, locale)}</p>
-                </div>
-              </div>
-
-              <div className="rounded-lg border p-4">
-                <div className="flex items-center gap-2 text-sm font-medium text-foreground">
-                  <Clock3 className="h-4 w-4 text-mint-700" />
-                  Managed Customer Context
-                </div>
-                <div className="mt-3 space-y-2 text-sm text-muted-foreground">
-                  <p>Managed wallet: {formatShortAddress(snapshot?.walletAddress ?? user?.ethereumAddress, t("shared.notAvailable"))}</p>
-                  <p>
-                    Account status: {snapshot?.accountStatus ?? "unknown"}.
+          {selectedPool ? (
+            <Card className="stb-surface rounded-[2rem] border-0 p-6">
+              <div className="flex flex-wrap items-start justify-between gap-4">
+                <div>
+                  <h2 className="text-2xl font-semibold text-slate-950">
+                    {locale === "ar" ? `المجمع #${selectedPool.id}` : `Pool #${selectedPool.id}`}
+                  </h2>
+                  <p className="mt-2 text-sm text-slate-600">
+                    {locale === "ar"
+                      ? "سياق المنتج، والأهلية، والحالة الحالية للمركز."
+                      : "Product context, eligibility, and current position state."}
                   </p>
-                  <p>Wallet custody: {snapshot?.walletCustodyType ?? "unknown"}.</p>
                 </div>
-              </div>
-            </div>
-
-            <div className="mt-6 grid gap-4 lg:grid-cols-2">
-              <div className="rounded-lg border p-4">
-                <div className="flex items-center gap-2 text-sm font-medium text-foreground">
-                  <Wallet className="h-4 w-4 text-mint-700" />
-                  Customer Position
-                </div>
-                <div className="mt-3 grid gap-4 sm:grid-cols-2">
-                  <div>
-                    <p className="text-sm text-muted-foreground">Staked Balance</p>
-                    <p className="mt-1 text-2xl font-semibold">
-                      {formatTokenAmount(selectedPool.position.stakedBalance, locale, 4)} ETH
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">Pending Reward</p>
-                    <p className="mt-1 text-2xl font-semibold">
-                      {formatTokenAmount(selectedPool.position.pendingReward, locale, 4)} ETH
-                    </p>
-                  </div>
-                </div>
+                <StatusBadge
+                  label={selectedPool.poolStatus}
+                  tone={selectedPool.poolStatus === "active" ? "positive" : "warning"}
+                />
               </div>
 
-              <div className="rounded-lg border p-4">
-                <div className="flex items-center gap-2 text-sm font-medium text-foreground">
-                  <ShieldAlert className="h-4 w-4 text-mint-700" />
-                  Execution Controls
+              <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                <div className="rounded-[1.4rem] bg-white/80 p-4">
+                  <p className="text-sm text-slate-500">{t("staking.rewardRate")}</p>
+                  <p className="mt-2 text-2xl font-semibold text-slate-950">
+                    {selectedPool.rewardRate}%
+                  </p>
                 </div>
-                <div className="mt-3 space-y-4">
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium" htmlFor="stake-deposit-amount">
-                      Deposit Amount (ETH)
+                <div className="rounded-[1.4rem] bg-white/80 p-4">
+                  <p className="text-sm text-slate-500">{t("staking.totalStaked")}</p>
+                  <p className="mt-2 text-2xl font-semibold text-slate-950">
+                    {formatTokenAmount(selectedPool.totalStakedAmount, locale, 4)} ETH
+                  </p>
+                </div>
+                <div className="rounded-[1.4rem] bg-white/80 p-4">
+                  <p className="text-sm text-slate-500">{t("staking.yourStake")}</p>
+                  <p className="mt-2 text-2xl font-semibold text-slate-950">
+                    {formatTokenAmount(selectedPool.position.stakedBalance, locale, 4)} ETH
+                  </p>
+                </div>
+                <div className="rounded-[1.4rem] bg-white/80 p-4">
+                  <p className="text-sm text-slate-500">{t("staking.pendingRewards")}</p>
+                  <p className="mt-2 text-2xl font-semibold text-slate-950">
+                    {formatTokenAmount(selectedPool.position.pendingReward, locale, 4)} ETH
+                  </p>
+                </div>
+              </div>
+
+              <div className="mt-6 grid gap-6 xl:grid-cols-2">
+                <div className="rounded-[1.5rem] border border-slate-200 bg-white/80 p-5">
+                  <h3 className="text-lg font-semibold text-slate-950">
+                    {locale === "ar" ? "زيادة المركز" : "Increase position"}
+                  </h3>
+                  <p className="mt-2 text-sm leading-7 text-slate-600">
+                    {locale === "ar"
+                      ? "يتم تنفيذ الإيداعات عبر مسار تشغيل مُدار عندما تسمح السياسة."
+                      : "Deposits move through a managed operational path when policy allows."}
+                  </p>
+                  <div className="mt-4 space-y-3">
+                    <label className="text-sm font-medium text-slate-700" htmlFor="yield-deposit-amount">
+                      {locale === "ar" ? "مبلغ الإيداع" : "Deposit amount"}
                     </label>
                     <Input
-                      id="stake-deposit-amount"
-                      inputMode="decimal"
-                      placeholder="0.00"
+                      id="yield-deposit-amount"
                       value={depositAmount}
                       onChange={(event) => setDepositAmount(event.target.value)}
-                      disabled={!executionEnabled || executionPending}
+                      placeholder={t("staking.depositPlaceholder")}
+                      className="h-12 rounded-2xl bg-white"
                     />
                     <Button
-                      className="w-full"
+                      className="h-12 w-full rounded-2xl bg-slate-950 text-white hover:bg-slate-900"
                       disabled={!executionEnabled || executionPending}
                       onClick={() => void handleDeposit(selectedPool)}
                     >
-                      Stake ETH
+                      {locale === "ar" ? "إضافة ETH" : "Stake ETH"}
                     </Button>
                   </div>
+                </div>
 
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium" htmlFor="stake-withdraw-amount">
-                      Withdrawal Amount (ETH)
+                <div className="rounded-[1.5rem] border border-slate-200 bg-white/80 p-5">
+                  <h3 className="text-lg font-semibold text-slate-950">
+                    {locale === "ar" ? "خفض المركز" : "Reduce position"}
+                  </h3>
+                  <p className="mt-2 text-sm leading-7 text-slate-600">
+                    {locale === "ar"
+                      ? "السحب يخضع لنفس الضوابط التنفيذية ويظل مرئياً ضمن حالة المنتج."
+                      : "Withdrawals follow the same execution controls and stay visible in product state."}
+                  </p>
+                  <div className="mt-4 space-y-3">
+                    <label className="text-sm font-medium text-slate-700" htmlFor="yield-withdraw-amount">
+                      {locale === "ar" ? "مبلغ السحب" : "Withdrawal amount"}
                     </label>
                     <Input
-                      id="stake-withdraw-amount"
-                      inputMode="decimal"
-                      placeholder="0.00"
+                      id="yield-withdraw-amount"
                       value={withdrawAmount}
                       onChange={(event) => setWithdrawAmount(event.target.value)}
-                      disabled={!executionEnabled || executionPending}
+                      placeholder={t("staking.withdrawPlaceholder")}
+                      className="h-12 rounded-2xl bg-white"
                     />
                     <Button
                       variant="outline"
-                      className="w-full"
+                      className="h-12 w-full rounded-2xl border-slate-300 bg-white"
                       disabled={!executionEnabled || executionPending}
                       onClick={() => void handleWithdrawal(selectedPool)}
                     >
-                      Withdraw Stake
-                    </Button>
-                  </div>
-
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <Button
-                      variant="outline"
-                      disabled={
-                        !executionEnabled ||
-                        executionPending ||
-                        Number(selectedPool.position.pendingReward) <= 0
-                      }
-                      onClick={() => void handleClaimReward(selectedPool)}
-                    >
-                      Claim Rewards
-                    </Button>
-                    <Button
-                      variant="destructive"
-                      disabled={
-                        !executionEnabled ||
-                        executionPending ||
-                        Number(selectedPool.position.stakedBalance) <= 0
-                      }
-                      onClick={() => void handleEmergencyWithdrawal(selectedPool)}
-                    >
-                      Emergency Exit
+                      {locale === "ar" ? "سحب الحصة" : "Withdraw stake"}
                     </Button>
                   </div>
                 </div>
               </div>
-            </div>
 
-            {!executionEnabled ? (
-              <div className="mt-6 rounded-lg border border-orange-200 bg-orange-50 p-4 text-sm text-orange-800">
-                Execution is currently disabled by the backend for this managed
-                customer wallet. The UI is wired to the real API and will only
-                enable staking actions when the backend explicitly marks the
-                execution path safe.
+              <div className="mt-6 flex flex-wrap gap-3">
+                <Button
+                  variant="outline"
+                  className="rounded-full border-slate-300 bg-white"
+                  disabled={!executionEnabled || executionPending}
+                  onClick={() => void handleClaimReward(selectedPool)}
+                >
+                  {locale === "ar" ? "تحصيل المكافآت" : "Claim rewards"}
+                </Button>
+                <Button
+                  variant="outline"
+                  className="rounded-full border-red-200 bg-red-50 text-red-700 hover:bg-red-100"
+                  disabled={!executionEnabled || executionPending}
+                  onClick={() => void handleEmergencyWithdrawal(selectedPool)}
+                >
+                  {locale === "ar" ? "سحب طارئ" : "Emergency withdrawal"}
+                </Button>
               </div>
-            ) : null}
-          </Card>
-        ) : pools.length > 0 ? (
-          <Card className="glass-card p-6">
-            <div className="flex items-start gap-3">
-              <AlertTriangle className="mt-0.5 h-5 w-5 text-mint-700" />
-              <div>
-                <h2 className="text-lg font-semibold text-foreground">
-                  Select a pool to inspect live details
-                </h2>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  The pool list and customer position data are live. Select a
-                  pool to review execution availability and customer position
-                  details.
+
+              {!executionEnabled ? (
+                <p className="mt-4 text-sm leading-7 text-slate-600">
+                  {locale === "ar"
+                    ? "التنفيذ معطل حالياً من الخلفية أو من وضع المحفظة المُدارة."
+                    : "Execution is currently disabled by backend policy or managed wallet posture."}
                 </p>
+              ) : null}
+
+              <div className="mt-6 flex items-center gap-2 text-sm text-slate-500">
+                <Wallet className="h-4 w-4" />
+                <span>
+                  {t("staking.payoutWallet")}:{" "}
+                  <span className="stb-ref font-medium text-slate-900">
+                    <bdi>{snapshot?.walletAddress ?? t("shared.notAvailable")}</bdi>
+                  </span>
+                </span>
               </div>
-            </div>
-          </Card>
-        ) : null}
+              <p className="mt-2 text-sm text-slate-500">
+                {t("staking.lastUpdated")}: {formatDateLabel(selectedPool.updatedAt, locale)}
+              </p>
+            </Card>
+          ) : null}
+        </section>
       </div>
     </Layout>
   );

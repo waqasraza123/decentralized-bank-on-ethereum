@@ -23,16 +23,16 @@ describe("Admin console", () => {
       screen.getByRole("heading", { name: "Operator Console" })
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("heading", { name: "Ledger reconciliation" })
+      screen.getByRole("heading", { name: "Operations Overview" })
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("heading", { name: "Platform audit log" })
+      screen.getByText("Queues")
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("heading", { name: "Treasury visibility" })
+      screen.getByText("Treasury")
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: "Route critical alerts" })
+      screen.getByText(/Credentials required/i)
     ).toBeInTheDocument();
     expect(screen.getByLabelText("Operator ID")).toBeInTheDocument();
     expect(screen.getByLabelText("Operator API Key")).toBeInTheDocument();

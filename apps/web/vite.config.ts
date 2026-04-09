@@ -55,6 +55,10 @@ export default defineConfig(({ mode }) => ({
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
+      "@stealth-trails-bank/ui-foundation": path.resolve(
+        __dirname,
+        "../../packages/ui-foundation"
+      ),
     },
   },
   test: {

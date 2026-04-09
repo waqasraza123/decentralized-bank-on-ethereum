@@ -1,0 +1,10 @@
+{
+  "name": "@stealth-trails-bank/ui-foundation",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./styles.css": "./styles.css"
+  }
+}

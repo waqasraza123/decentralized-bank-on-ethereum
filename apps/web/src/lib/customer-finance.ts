@@ -3,6 +3,14 @@ import {
   formatDecimalString,
   type SupportedLocale
 } from "@stealth-trails-bank/i18n";
+import {
+  buildIntentTimeline as buildSharedIntentTimeline,
+  getTransactionConfidenceLabel,
+  getTransactionConfidenceTone,
+  mapIntentStatusToConfidence,
+  type TimelineEvent,
+  type TransactionConfidenceStatus
+} from "@stealth-trails-bank/ui-foundation";
 
 export type CustomerIntentType = "deposit" | "withdrawal";
 
@@ -162,48 +170,64 @@ export function formatIntentStatusLabel(
   status: string,
   locale: SupportedLocale = "en"
 ): string {
-  if (locale !== "ar") {
-    return status;
-  }
+  return getTransactionConfidenceLabel(
+    mapIntentStatusToConfidence(status),
+    locale
+  );
+}
 
-  const labels: Record<string, string> = {
-    requested: "مطلوب",
-    review_required: "يتطلب مراجعة",
-    approved: "معتمد",
-    queued: "في قائمة الانتظار",
-    broadcast: "تم البث",
-    confirmed: "تم التأكيد",
-    settled: "تمت التسوية",
-    failed: "فشل",
-    cancelled: "أُلغي",
-    manually_resolved: "تمت معالجته يدوياً"
-  };
-
-  return labels[status] ?? status;
+export function getIntentConfidenceStatus(
+  status: string
+): TransactionConfidenceStatus {
+  return mapIntentStatusToConfidence(status);
 }
 
 export function getIntentStatusBadgeTone(status: string): string {
-  if (status === "settled" || status === "confirmed") {
-    return "bg-mint-100 text-mint-700";
+  switch (getTransactionConfidenceTone(mapIntentStatusToConfidence(status))) {
+    case "positive":
+      return "bg-emerald-50 text-emerald-700";
+    case "critical":
+      return "bg-red-50 text-red-700";
+    case "technical":
+      return "bg-indigo-50 text-indigo-700";
+    case "warning":
+      return "bg-amber-50 text-amber-700";
+    default:
+      return "bg-slate-100 text-slate-700";
   }
-
-  if (status === "failed" || status === "cancelled") {
-    return "bg-red-100 text-red-700";
-  }
-
-  return "bg-orange-100 text-orange-700";
 }
 
 export function getIntentStatusTextTone(status: string): string {
-  if (status === "settled" || status === "confirmed") {
-    return "text-mint-700";
+  switch (getTransactionConfidenceTone(mapIntentStatusToConfidence(status))) {
+    case "positive":
+      return "text-emerald-700";
+    case "critical":
+      return "text-red-700";
+    case "technical":
+      return "text-indigo-700";
+    case "warning":
+      return "text-amber-700";
+    default:
+      return "text-slate-700";
   }
+}
 
-  if (status === "failed" || status === "cancelled") {
-    return "text-red-700";
-  }
-
-  return "text-orange-600";
+export function buildIntentTimeline(input: {
+  id: string;
+  status: string;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+  latestBlockchainTransaction?: {
+    txHash: string | null;
+  } | null;
+}): TimelineEvent[] {
+  return buildSharedIntentTimeline({
+    id: input.id,
+    status: input.status,
+    createdAt: input.createdAt,
+    updatedAt: input.updatedAt,
+    txHash: input.latestBlockchainTransaction?.txHash ?? null
+  });
 }
 
 export function isEthereumAddress(value: string): boolean {

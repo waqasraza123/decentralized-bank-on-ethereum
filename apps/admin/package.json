@@ -19,10 +19,13 @@
     "@stealth-trails-bank/config": "workspace:*",
     "@stealth-trails-bank/i18n": "workspace:*",
     "@stealth-trails-bank/security": "workspace:*",
+    "@stealth-trails-bank/ui-foundation": "workspace:*",
     "@tanstack/react-query": "^5.75.1",
     "axios": "^1.7.9",
+    "lucide-react": "^0.511.0",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^6.26.2"
   },
   "devDependencies": {
     "@testing-library/jest-dom": "^6.9.1",

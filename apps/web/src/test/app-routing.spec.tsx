@@ -87,7 +87,7 @@ describe("app routing", () => {
     render(<App />);
 
     expect(
-      await screen.findByRole("heading", { name: "Dashboard" }),
-    ).toBeInTheDocument();
+      (await screen.findAllByRole("heading", { name: "Dashboard" })).length,
+    ).toBeGreaterThan(0);
   });
 });

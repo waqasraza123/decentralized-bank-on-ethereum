@@ -137,10 +137,10 @@ describe("wallet page", () => {
     ).toBeInTheDocument();
     expect(screen.getByText(/^Managed Deposit Address$/i)).toBeInTheDocument();
     expect(
-      screen.getByText("0x1111222233334444555566667777888899990000")
-    ).toBeInTheDocument();
+      screen.getAllByText("0x1111222233334444555566667777888899990000").length
+    ).toBeGreaterThan(0);
     expect(screen.getByText(/Available:/i)).toBeInTheDocument();
-    expect(screen.getByText(/2.5 ETH/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/2.5 ETH/i).length).toBeGreaterThan(0);
     expect(screen.queryByText(/Transfer Funds/i)).not.toBeInTheDocument();
   });
 
@@ -252,7 +252,7 @@ describe("wallet page", () => {
     expect(mutateDepositAsync).not.toHaveBeenCalled();
     expect(
       screen.getByText(
-        /Amount must be a positive decimal string with up to 18 decimal places/i
+        /Enter a valid positive decimal amount/i
       )
     ).toBeInTheDocument();
   });

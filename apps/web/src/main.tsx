@@ -10,6 +10,7 @@ import "@fontsource/ibm-plex-sans-arabic/600.css";
 import "@fontsource/space-grotesk/500.css";
 import "@fontsource/space-grotesk/600.css";
 import "@fontsource/space-grotesk/700.css";
+import "@stealth-trails-bank/ui-foundation/styles.css";
 import { createRoot } from 'react-dom/client'
 import App from './App.tsx'
 import './index.css'

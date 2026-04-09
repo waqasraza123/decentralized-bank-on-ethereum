@@ -9,36 +9,36 @@
     --font-display: "Space Grotesk", "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
     --font-sans-ar: "IBM Plex Sans Arabic", "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
     --font-display-ar: "Cairo", "IBM Plex Sans Arabic", "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
-    --background: 250 100% 99%;
-    --foreground: 240 10% 3.9%;
+    --background: 42 25% 96%;
+    --foreground: 211 38% 12%;
     --card: 0 0% 100%;
-    --card-foreground: 240 10% 3.9%;
+    --card-foreground: 211 38% 12%;
     --popover: 0 0% 100%;
-    --popover-foreground: 240 10% 3.9%;
-    --primary: 142 76% 45%; /* Changed from purple to green */
+    --popover-foreground: 211 38% 12%;
+    --primary: 167 76% 34%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 240 5% 96%;
-    --secondary-foreground: 240 6% 10%;
-    --muted: 240 5% 96%;
-    --muted-foreground: 240 4% 46%;
-    --accent: 240 5% 96%;
-    --accent-foreground: 240 6% 10%;
+    --secondary: 210 22% 94%;
+    --secondary-foreground: 211 38% 12%;
+    --muted: 220 20% 94%;
+    --muted-foreground: 214 16% 38%;
+    --accent: 226 100% 97%;
+    --accent-foreground: 228 36% 34%;
     --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 98%;
-    --border: 240 6% 90%;
-    --input: 240 6% 90%;
-    --ring: 142 76% 45%; /* Changed from purple to green */
+    --border: 214 18% 86%;
+    --input: 214 18% 86%;
+    --ring: 167 76% 34%;
     --radius: 1rem;
-    --auth-background: 218 39% 9%;
-    --auth-background-secondary: 214 29% 13%;
+    --auth-background: 214 35% 11%;
+    --auth-background-secondary: 214 30% 15%;
     --auth-foreground: 42 33% 95%;
-    --auth-muted: 216 16% 72%;
+    --auth-muted: 216 16% 80%;
     --auth-accent: 166 70% 66%;
-    --auth-accent-secondary: 211 88% 70%;
-    --auth-form-background: 40 30% 96%;
-    --auth-form-foreground: 216 33% 12%;
-    --auth-form-muted: 215 13% 38%;
-    --auth-form-accent: 172 58% 34%;
+    --auth-accent-secondary: 223 75% 72%;
+    --auth-form-background: 42 25% 96%;
+    --auth-form-foreground: 211 38% 12%;
+    --auth-form-muted: 214 16% 38%;
+    --auth-form-accent: 167 76% 34%;
   }
  
   .dark {
@@ -79,7 +79,11 @@
   }
 
   body {
-    @apply bg-gradient-to-br from-background to-apple-mint/20; /* Changed from light-purple to apple-mint */
+    @apply bg-background text-foreground;
+    background:
+      radial-gradient(circle at top left, rgba(91, 115, 217, 0.08), transparent 26rem),
+      radial-gradient(circle at top right, rgba(17, 128, 106, 0.08), transparent 24rem),
+      linear-gradient(180deg, rgba(247,245,240,1) 0%, rgba(237,241,245,1) 100%);
     font-feature-settings: "rlig" 1, "calt" 1;
     font-family: var(--font-sans);
   }
@@ -157,7 +161,8 @@
 }
 
 .gradient-border {
-  @apply relative rounded-lg p-[1px] bg-gradient-to-r from-defi-purple via-defi-blue to-defi-pink;
+  @apply relative rounded-lg p-[1px];
+  background: linear-gradient(90deg, rgba(91,115,217,0.28), rgba(17,128,106,0.32));
 }
 
 .gradient-border > * {

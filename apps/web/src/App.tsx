@@ -14,8 +14,7 @@ const Transactions = lazy(() => import("./pages/Transactions"));
 const Wallet = lazy(() => import("./pages/Wallet"));
 const Loans = lazy(() => import("./pages/Loans"));
 const Profile = lazy(() => import("./pages/Profile"));
-const Staking = lazy(() => import("./pages/Staking"));
-const CreatePool = lazy(() => import("./pages/CreatePool"));
+const Yield = lazy(() => import("./pages/Yield"));
 const SignIn = lazy(() => import("./pages/auth/SignIn"));
 const SignUp = lazy(() => import("./pages/auth/SignUp"));
 
@@ -88,15 +87,15 @@ const App = () => (
               }
             />
             <Route
-              path="/staking"
+              path="/yield"
               element={
-                <ProtectedRoute>{withRouteBoundary(<Staking />)}</ProtectedRoute>
+                <ProtectedRoute>{withRouteBoundary(<Yield />)}</ProtectedRoute>
               }
             />
             <Route
-              path="/create-pool"
+              path="/staking"
               element={
-                <ProtectedRoute>{withRouteBoundary(<CreatePool />)}</ProtectedRoute>
+                <Navigate to="/yield" replace />
               }
             />
             <Route
@@ -105,6 +104,7 @@ const App = () => (
                 <ProtectedRoute>{withRouteBoundary(<Profile />)}</ProtectedRoute>
               }
             />
+            <Route path="/create-pool" element={<Navigate to="/yield" replace />} />
 
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
