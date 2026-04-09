@@ -5,6 +5,7 @@ import { useSupportedAssets } from "@/hooks/assets/useSupportedAssets";
 import { useMyBalances } from "@/hooks/balances/useMyBalances";
 import { useCreateDepositIntent } from "@/hooks/transaction-intents/useCreateDepositIntent";
 import { useCreateWithdrawalIntent } from "@/hooks/transaction-intents/useCreateWithdrawalIntent";
+import { webLocaleStorageKey } from "@/i18n/provider";
 import Wallet from "@/pages/Wallet";
 import { useUserStore } from "@/stores/userStore";
 import { renderWithRouter } from "@/test/render-with-router";
@@ -280,4 +281,327 @@ describe("wallet page", () => {
       screen.getByText(/Destination address must be a valid EVM address/i)
     ).toBeInTheDocument();
   });
+
+  it("surfaces asset and balance loading failures while still rendering the wallet shell", () => {
+    mockUseSupportedAssets.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      isError: true,
+      error: new Error("Supported assets unavailable")
+    } as ReturnType<typeof useSupportedAssets>);
+
+    mockUseMyBalances.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      isError: true,
+      error: new Error("Balances unavailable")
+    } as ReturnType<typeof useMyBalances>);
+
+    renderWithRouter(<Wallet />);
+
+    expect(screen.getAllByText("Supported assets unavailable").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Balances unavailable").length).toBeGreaterThan(0);
+    expect(screen.getByText(/What happens next/i)).toBeInTheDocument();
+  });
+
+  it("blocks deposit requests when the managed wallet address is unavailable", async () => {
+    const user = userEvent.setup();
+
+    useUserStore.setState({
+      token: "test-token",
+      user: {
+        id: 1,
+        firstName: "Amina",
+        lastName: "Rahman",
+        email: "amina@example.com",
+        supabaseUserId: "supabase_1",
+        ethereumAddress: null as unknown as string
+      }
+    });
+
+    renderWithRouter(<Wallet />);
+
+    await user.type(
+      screen.getByLabelText(/^Amount$/i, { selector: "#deposit-amount" }),
+      "1.25"
+    );
+    await user.click(
+      screen.getByRole("button", { name: /create deposit request/i })
+    );
+
+    expect(mutateDepositAsync).not.toHaveBeenCalled();
+    expect(
+      screen.getByText(/Managed wallet address is not available for this account/i)
+    ).toBeInTheDocument();
+  });
+
+  it("blocks self-directed and overdrawn withdrawals before the mutation is called", async () => {
+    const user = userEvent.setup();
+
+    renderWithRouter(<Wallet />);
+
+    await user.selectOptions(
+      screen.getByLabelText(/^Asset$/i, { selector: "#withdraw-asset" }),
+      "USDC"
+    );
+    await user.type(
+      screen.getByLabelText(/destination address/i),
+      "0x1111222233334444555566667777888899990000"
+    );
+    await user.type(
+      screen.getByLabelText(/^Amount$/i, { selector: "#withdraw-amount" }),
+      "25"
+    );
+    await user.click(
+      screen.getByRole("button", { name: /create withdrawal request/i })
+    );
+
+    expect(mutateWithdrawalAsync).not.toHaveBeenCalled();
+    expect(
+      screen.getByText(/Destination address must be different from your managed wallet address/i)
+    ).toBeInTheDocument();
+
+    await user.clear(screen.getByLabelText(/destination address/i));
+    await user.type(
+      screen.getByLabelText(/destination address/i),
+      "0x0000000000000000000000000000000000000abc"
+    );
+    await user.clear(
+      screen.getByLabelText(/^Amount$/i, { selector: "#withdraw-amount" })
+    );
+    await user.type(
+      screen.getByLabelText(/^Amount$/i, { selector: "#withdraw-amount" }),
+      "250"
+    );
+    await user.click(
+      screen.getByRole("button", { name: /create withdrawal request/i })
+    );
+
+    expect(mutateWithdrawalAsync).not.toHaveBeenCalled();
+    expect(
+      screen.getByText(/Requested amount exceeds the available balance of 100 USDC/i)
+    ).toBeInTheDocument();
+  });
+
+  it("renders Arabic copy and empty supported-asset states", () => {
+    localStorage.setItem(webLocaleStorageKey, "ar");
+    useUserStore.setState({
+      token: "test-token",
+      user: {
+        id: 1,
+        firstName: "أمينة",
+        lastName: "رحمن",
+        email: "amina@example.com",
+        supabaseUserId: "supabase_1",
+        ethereumAddress: null as unknown as string
+      }
+    });
+
+    mockUseSupportedAssets.mockReturnValue({
+      data: {
+        assets: []
+      },
+      isLoading: false,
+      isError: false,
+      error: null
+    } as ReturnType<typeof useSupportedAssets>);
+
+    mockUseMyBalances.mockReturnValue({
+      data: {
+        customerAccountId: "account_1",
+        balances: []
+      },
+      isLoading: false,
+      isError: false,
+      error: null
+    } as ReturnType<typeof useMyBalances>);
+
+    renderWithRouter(<Wallet />);
+
+    expect(
+      screen.getByRole("heading", { name: /عمليات المحفظة المُدارة/i })
+    ).toBeInTheDocument();
+    expect(screen.getAllByText("لم يتم تعيين محفظة مُدارة بعد.").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("لا توجد أصول مدعومة").length).toBeGreaterThan(0);
+    expect(screen.getByText("ما الذي سيحدث بعد ذلك")).toBeInTheDocument();
+  });
+
+  it("surfaces deposit and withdrawal request failures from the backend", async () => {
+    const user = userEvent.setup();
+
+    mutateDepositAsync.mockRejectedValueOnce(new Error("Deposit request rejected"));
+    mutateWithdrawalAsync.mockRejectedValueOnce(new Error("Withdrawal request rejected"));
+
+    renderWithRouter(<Wallet />);
+
+    await user.type(
+      screen.getByLabelText(/^Amount$/i, { selector: "#deposit-amount" }),
+      "1.25"
+    );
+    await user.click(
+      screen.getByRole("button", { name: /create deposit request/i })
+    );
+
+    expect(await screen.findByText("Deposit request rejected")).toBeInTheDocument();
+
+    await user.selectOptions(
+      screen.getByLabelText(/^Asset$/i, { selector: "#withdraw-asset" }),
+      "USDC"
+    );
+    await user.type(
+      screen.getByLabelText(/destination address/i),
+      "0x0000000000000000000000000000000000000abc"
+    );
+    await user.type(
+      screen.getByLabelText(/^Amount$/i, { selector: "#withdraw-amount" }),
+      "25"
+    );
+    await user.click(
+      screen.getByRole("button", { name: /create withdrawal request/i })
+    );
+
+    expect(await screen.findByText("Withdrawal request rejected")).toBeInTheDocument();
+  }, 10000);
+
+  it("blocks assetless requests and invalid withdrawal amounts before mutation", async () => {
+    const user = userEvent.setup();
+
+    mockUseSupportedAssets.mockReturnValue({
+      data: {
+        assets: []
+      },
+      isLoading: false,
+      isError: false,
+      error: null
+    } as ReturnType<typeof useSupportedAssets>);
+
+    mockUseMyBalances.mockReturnValue({
+      data: {
+        customerAccountId: "account_1",
+        balances: []
+      },
+      isLoading: false,
+      isError: false,
+      error: null
+    } as ReturnType<typeof useMyBalances>);
+
+    renderWithRouter(<Wallet />);
+
+    await user.type(
+      screen.getByLabelText(/^Amount$/i, { selector: "#deposit-amount" }),
+      "1.25"
+    );
+    await user.click(
+      screen.getByRole("button", { name: /create deposit request/i })
+    );
+
+    expect(mutateDepositAsync).not.toHaveBeenCalled();
+    expect(
+      screen.getByText(/Select an asset before recording the request/i)
+    ).toBeInTheDocument();
+
+    await user.type(
+      screen.getByLabelText(/destination address/i),
+      "0x0000000000000000000000000000000000000abc"
+    );
+    await user.type(
+      screen.getByLabelText(/^Amount$/i, { selector: "#withdraw-amount" }),
+      "25"
+    );
+    await user.click(
+      screen.getByRole("button", { name: /create withdrawal request/i })
+    );
+
+    expect(mutateWithdrawalAsync).not.toHaveBeenCalled();
+    expect(
+      screen.getByText(/Select an asset before creating a withdrawal request/i)
+    ).toBeInTheDocument();
+
+    mockUseSupportedAssets.mockReturnValue({
+      data: {
+        assets: [
+          {
+            id: "asset_eth",
+            symbol: "ETH",
+            displayName: "Ether",
+            decimals: 18,
+            chainId: 1,
+            assetType: "native",
+            contractAddress: null
+          },
+          {
+            id: "asset_usdc",
+            symbol: "USDC",
+            displayName: "USD Coin",
+            decimals: 6,
+            chainId: 1,
+            assetType: "erc20",
+            contractAddress: "0x0000000000000000000000000000000000000abc"
+          }
+        ]
+      },
+      isLoading: false,
+      isError: false,
+      error: null
+    } as ReturnType<typeof useSupportedAssets>);
+
+    mockUseMyBalances.mockReturnValue({
+      data: {
+        customerAccountId: "account_1",
+        balances: [
+          {
+            asset: {
+              id: "asset_eth",
+              symbol: "ETH",
+              displayName: "Ether",
+              decimals: 18,
+              chainId: 1
+            },
+            availableBalance: "2.5",
+            pendingBalance: "0",
+            updatedAt: "2026-04-05T10:00:00.000Z"
+          },
+          {
+            asset: {
+              id: "asset_usdc",
+              symbol: "USDC",
+              displayName: "USD Coin",
+              decimals: 6,
+              chainId: 1
+            },
+            availableBalance: "100",
+            pendingBalance: "10",
+            updatedAt: "2026-04-05T10:00:00.000Z"
+          }
+        ]
+      },
+      isLoading: false,
+      isError: false,
+      error: null
+    } as ReturnType<typeof useMyBalances>);
+
+    cleanup();
+    renderWithRouter(<Wallet />);
+
+    await user.selectOptions(
+      screen.getByLabelText(/^Asset$/i, { selector: "#withdraw-asset" }),
+      "USDC"
+    );
+    await user.type(
+      screen.getByLabelText(/destination address/i),
+      "0x0000000000000000000000000000000000000abc"
+    );
+    await user.type(
+      screen.getByLabelText(/^Amount$/i, { selector: "#withdraw-amount" }),
+      "abc"
+    );
+    await user.click(
+      screen.getByRole("button", { name: /create withdrawal request/i })
+    );
+
+    expect(mutateWithdrawalAsync).not.toHaveBeenCalled();
+    expect(
+      screen.getByText(/Amount must be a valid positive decimal value/i)
+    ).toBeInTheDocument();
+  }, 10000);
 });

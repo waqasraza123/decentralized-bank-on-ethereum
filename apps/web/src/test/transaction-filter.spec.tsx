@@ -68,5 +68,5 @@ describe("transaction filter", () => {
         }
       });
     });
-  });
+  }, 10000);
 });

@@ -2,6 +2,7 @@ import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useMyBalances } from "@/hooks/balances/useMyBalances";
 import { useMyTransactionHistory } from "@/hooks/transactions/useMyTransactionHistory";
+import { webLocaleStorageKey } from "@/i18n/provider";
 import Index from "@/pages/Index";
 import { useUserStore } from "@/stores/userStore";
 import { renderWithRouter } from "@/test/render-with-router";
@@ -133,5 +134,104 @@ describe("dashboard page", () => {
 
     expect(screen.getByText("No balances yet")).toBeInTheDocument();
     expect(screen.getAllByText(/No transaction history has been recorded/i).length).toBeGreaterThan(0);
+  });
+
+  it("renders balance and history load failures without collapsing the dashboard shell", () => {
+    mockUseMyBalances.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      isError: true,
+      error: new Error("Balance feed unavailable")
+    } as ReturnType<typeof useMyBalances>);
+
+    mockUseMyTransactionHistory.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      isError: true,
+      error: new Error("History feed unavailable")
+    } as ReturnType<typeof useMyTransactionHistory>);
+
+    renderWithRouter(<Index />);
+
+    expect(screen.getByText("Balance feed unavailable")).toBeInTheDocument();
+    expect(screen.getByText("History feed unavailable")).toBeInTheDocument();
+    expect(screen.getByText(/Trust & safety/i)).toBeInTheDocument();
+  });
+
+  it("falls back to the generic overview copy when the customer first name is missing", () => {
+    useUserStore.setState({
+      token: "test-token",
+      user: {
+        id: 1,
+        firstName: "",
+        lastName: "Rahman",
+        email: "amina@example.com",
+        supabaseUserId: "supabase_1",
+        ethereumAddress: "0x1111222233334444555566667777888899990000"
+      }
+    });
+
+    renderWithRouter(<Index />);
+
+    expect(screen.getByText("Managed account overview.")).toBeInTheDocument();
+  });
+
+  it("renders Arabic copy, no-wallet fallback, and available-state balances", () => {
+    localStorage.setItem(webLocaleStorageKey, "ar");
+    useUserStore.setState({
+      token: "test-token",
+      user: {
+        id: 1,
+        firstName: "أمينة",
+        lastName: "رحمن",
+        email: "amina@example.com",
+        supabaseUserId: "supabase_1",
+        ethereumAddress: null as unknown as string
+      }
+    });
+
+    mockUseMyBalances.mockReturnValue({
+      data: {
+        customerAccountId: "account_1",
+        balances: [
+          {
+            asset: {
+              id: "asset_eth",
+              symbol: "ETH",
+              displayName: "Ethereum",
+              decimals: 18,
+              chainId: 1
+            },
+            availableBalance: "3",
+            pendingBalance: "0",
+            updatedAt: "2026-04-05T09:00:00.000Z"
+          }
+        ]
+      },
+      isLoading: false,
+      isError: false,
+      error: null
+    } as ReturnType<typeof useMyBalances>);
+
+    mockUseMyTransactionHistory.mockReturnValue({
+      data: {
+        limit: 5,
+        intents: []
+      },
+      isLoading: false,
+      isError: false,
+      error: null
+    } as ReturnType<typeof useMyTransactionHistory>);
+
+    renderWithRouter(<Index />);
+
+    expect(screen.getAllByRole("heading", { name: "لوحة التحكم" }).length).toBeGreaterThan(0);
+    expect(screen.getByText("نظرة عامة على الحساب المُدار لـ أمينة.")).toBeInTheDocument();
+    expect(screen.getAllByText("متاح").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("لم يتم تعيين محفظة مُدارة بعد.").length).toBeGreaterThan(0);
+    expect(
+      screen.getAllByText("لم يتم تسجيل أي سجل معاملات لهذا الحساب حتى الآن.").length
+    ).toBeGreaterThan(0);
+    expect(screen.getByText("الثقة والسلامة")).toBeInTheDocument();
   });
 });
