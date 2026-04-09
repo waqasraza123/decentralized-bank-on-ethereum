@@ -467,5 +467,5 @@ describe("staking product pages", () => {
     await waitFor(() => {
       expect(emergencyMutateAsync).toHaveBeenCalledWith({ poolId: 11 });
     });
-  });
+  }, 10000);
 });

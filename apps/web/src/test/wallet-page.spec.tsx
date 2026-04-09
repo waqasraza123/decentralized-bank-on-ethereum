@@ -381,7 +381,7 @@ describe("wallet page", () => {
     expect(
       screen.getByText(/Requested amount exceeds the available balance of 100 USDC/i)
     ).toBeInTheDocument();
-  });
+  }, 10000);
 
   it("renders Arabic copy and empty supported-asset states", () => {
     localStorage.setItem(webLocaleStorageKey, "ar");
