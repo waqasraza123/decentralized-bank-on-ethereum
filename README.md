@@ -14,6 +14,10 @@ This repository is not only a website and an API. It is the working product code
 
 The repo is being built in controlled stages so the platform can move forward without losing correctness in the areas that matter most for money movement.
 
+## Screenshots
+
+![alt text](<.github/screenshots/Screenshot 2026-04-10 at 8.58.46 PM.jpg>) ![alt text](<.github/screenshots/Screenshot 2026-04-10 at 8.59.31 PM.jpg>) ![alt text](<.github/screenshots/Screenshot 2026-04-10 at 8.59.40 PM.jpg>) ![alt text](<.github/screenshots/Screenshot 2026-04-10 at 8.59.50 PM.jpg>) ![alt text](<.github/screenshots/Screenshot 2026-04-10 at 9.00.14 PM.jpg>) ![alt text](<.github/screenshots/Screenshot 2026-04-10 at 9.00.32 PM.jpg>) ![alt text](<.github/screenshots/Screenshot 2026-04-10 at 9.00.47 PM.jpg>) ![alt text](<.github/screenshots/Screenshot 2026-04-10 at 9.00.57 PM.jpg>)
+
 ## What exists today
 
 The repository already includes real backend foundation for:
@@ -48,19 +52,19 @@ The system still needs broader production coverage in areas such as:
 
 ## Repository layout
 
-| Path | Purpose |
-|------|---------|
-| `apps/admin` | Internal operator console for review, oversight, and governed export workflows |
-| `apps/web` | Customer-facing web application |
-| `apps/api` | Backend API, workflow orchestration, persistence, and internal operational paths |
-| `apps/worker` | Async worker runtime for internal execution and blockchain monitoring |
-| `packages/config` | Shared runtime config loading and validation |
-| `packages/contracts-sdk` | Shared ABI ownership, chain adapters, and contract integration helpers |
-| `packages/db` | Shared Prisma client access |
-| `packages/security` | Shared header/auth hardening helpers and other reusable security utilities |
-| `packages/types` | Shared TypeScript contracts and types |
-| `packages/contracts` | Hardhat contracts package and contract tests |
-| `docs/` | Architecture, ADRs, runbooks, and operational notes |
+| Path                     | Purpose                                                                          |
+| ------------------------ | -------------------------------------------------------------------------------- |
+| `apps/admin`             | Internal operator console for review, oversight, and governed export workflows   |
+| `apps/web`               | Customer-facing web application                                                  |
+| `apps/api`               | Backend API, workflow orchestration, persistence, and internal operational paths |
+| `apps/worker`            | Async worker runtime for internal execution and blockchain monitoring            |
+| `packages/config`        | Shared runtime config loading and validation                                     |
+| `packages/contracts-sdk` | Shared ABI ownership, chain adapters, and contract integration helpers           |
+| `packages/db`            | Shared Prisma client access                                                      |
+| `packages/security`      | Shared header/auth hardening helpers and other reusable security utilities       |
+| `packages/types`         | Shared TypeScript contracts and types                                            |
+| `packages/contracts`     | Hardhat contracts package and contract tests                                     |
+| `docs/`                  | Architecture, ADRs, runbooks, and operational notes                              |
 
 ## How the system is shaped
 
@@ -99,9 +103,9 @@ This is important because it means the repo is no longer only a prototype shell.
 
 ### 1. Install dependencies
 
-~~~bash
+```bash
 pnpm install
-~~~
+```
 
 ### 2. Prepare environment files
 
@@ -130,24 +134,24 @@ Frontend environment values should be configured from the web app env examples w
 
 ### 3. Generate Prisma client and run database migrations
 
-~~~bash
+```bash
 pnpm --filter @stealth-trails-bank/api prisma:generate
 pnpm --filter @stealth-trails-bank/api prisma:migrate
-~~~
+```
 
 ### 4. Start local development
 
-~~~bash
+```bash
 pnpm dev
-~~~
+```
 
 `pnpm dev` now runs a repo-owned preflight first. It fails fast if the worker is pointed at the wrong local API URL or if your local API database is behind the checked-in Prisma migrations.
 
 If that preflight blocks startup, the usual recovery path is:
 
-~~~bash
+```bash
 pnpm --filter @stealth-trails-bank/api prisma:deploy
-~~~
+```
 
 ## Common commands
 
@@ -155,27 +159,27 @@ Run these from the repository root unless noted otherwise.
 
 ### Root commands
 
-| Command | Purpose |
-|---------|---------|
-| `pnpm dev` | Start repo development tasks |
-| `pnpm dev:preflight` | Validate local dev wiring and Prisma migration state before startup |
-| `pnpm build` | Build workspace packages that define a build script |
-| `pnpm test` | Run workspace tests |
-| `pnpm lint` | Run lint tasks where defined |
-| `pnpm compile` | Run compile tasks where defined |
-| `pnpm release:readiness:probe -- --help` | Run a Phase 12 drill probe and optionally record evidence |
-| `pnpm release:readiness:verify -- --help` | Run Phase 12 automated proof suites or manual review attestations |
-| `pnpm safe-push` | Run the repo push guard (`build` + `test`) and push only if it passes |
+| Command                                   | Purpose                                                               |
+| ----------------------------------------- | --------------------------------------------------------------------- |
+| `pnpm dev`                                | Start repo development tasks                                          |
+| `pnpm dev:preflight`                      | Validate local dev wiring and Prisma migration state before startup   |
+| `pnpm build`                              | Build workspace packages that define a build script                   |
+| `pnpm test`                               | Run workspace tests                                                   |
+| `pnpm lint`                               | Run lint tasks where defined                                          |
+| `pnpm compile`                            | Run compile tasks where defined                                       |
+| `pnpm release:readiness:probe -- --help`  | Run a Phase 12 drill probe and optionally record evidence             |
+| `pnpm release:readiness:verify -- --help` | Run Phase 12 automated proof suites or manual review attestations     |
+| `pnpm safe-push`                          | Run the repo push guard (`build` + `test`) and push only if it passes |
 
 ### Package-scoped examples
 
-~~~bash
+```bash
 pnpm --filter @stealth-trails-bank/web dev
 pnpm --filter @stealth-trails-bank/api start:dev
 pnpm --filter @stealth-trails-bank/api prisma:generate
 pnpm --filter @stealth-trails-bank/api prisma:migrate
 pnpm --filter @stealth-trails-bank/api prisma:deploy
-~~~
+```
 
 ## Documentation map
 
