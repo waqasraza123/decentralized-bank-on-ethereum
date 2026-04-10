@@ -94,6 +94,19 @@ export type InternalWorkerApiClient = ReturnType<
   typeof createInternalWorkerApiClient
 >;
 
+type ListWorkerLoanLiquidationCandidatesApiResult =
+  | ListWorkerLoanAgreementsResult
+  | {
+      candidates: Array<{
+        loanAgreementId: string;
+        customerEmail: string;
+        status: string;
+        collateralStatus: string | null;
+        latestLtvBps?: number | null;
+      }>;
+        limit: number;
+    };
+
 export function createInternalWorkerApiClient(runtime: WorkerRuntime) {
   const httpClient: AxiosInstance = axios.create({
     baseURL: runtime.internalApiBaseUrl,
@@ -297,13 +310,22 @@ export function createInternalWorkerApiClient(runtime: WorkerRuntime) {
     async listLoanLiquidationCandidates(
       limit: number
     ): Promise<ListWorkerLoanAgreementsResult> {
-      return readResponseData(
-        httpClient.get<ApiEnvelope<ListWorkerLoanAgreementsResult>>(
+      const result = await readResponseData(
+        httpClient.get<ApiEnvelope<ListWorkerLoanLiquidationCandidatesApiResult>>(
           "/loans/internal/worker/agreements/liquidation-candidates",
           { params: { limit } }
         ),
         baseUrl
       );
+
+      if ("agreements" in result) {
+        return result;
+      }
+
+      return {
+        agreements: result.candidates,
+        limit: result.limit
+      };
     },
 
     async listBroadcastWithdrawalIntents(

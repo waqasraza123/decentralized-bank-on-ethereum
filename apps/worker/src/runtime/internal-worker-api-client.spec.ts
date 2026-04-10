@@ -70,6 +70,19 @@ test("internal worker api client issues every worker request against the expecte
         });
       }
 
+      if (url.includes("/loans/internal/worker/agreements/liquidation-candidates")) {
+        return Promise.resolve({
+          data: {
+            status: "success",
+            message: "ok",
+            data: {
+              candidates: [],
+              limit: 20
+            }
+          }
+        });
+      }
+
       if (url.includes("/loans/internal/worker/agreements")) {
         return Promise.resolve({
           data: {

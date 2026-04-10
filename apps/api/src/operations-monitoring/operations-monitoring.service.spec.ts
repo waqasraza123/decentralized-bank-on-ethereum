@@ -1,4 +1,5 @@
 import {
+  Prisma,
   LedgerReconciliationScanRunStatus,
   PlatformAlertCategory,
   PlatformAlertRoutingStatus,
@@ -731,6 +732,121 @@ describe("OperationsMonitoringService", () => {
     expect(result.recentAlerts[0]?.code).toBe(
       "platform_alert_delivery_target_degraded"
     );
+  });
+
+  it("reuses a concurrently created durable alert when dedupe key creation races", async () => {
+    const { service, prismaService } = createService();
+    const concurrentAlert = buildPlatformAlertRecord({
+      id: "alert_concurrent_1",
+      dedupeKey: "reconciliation:core-health",
+      category: PlatformAlertCategory.reconciliation,
+      severity: PlatformAlertSeverity.critical,
+      code: "ledger_reconciliation_attention_required",
+      summary: "Ledger reconciliation requires operator attention."
+    });
+    const duplicateCreateError = Object.assign(
+      Object.create(Prisma.PrismaClientKnownRequestError.prototype),
+      {
+        code: "P2002",
+        message: "Unique constraint failed on the fields: (`dedupeKey`)"
+      }
+    ) as Prisma.PrismaClientKnownRequestError;
+
+    jest.spyOn(Date, "now").mockReturnValue(
+      new Date("2026-04-06T10:30:00.000Z").getTime()
+    );
+    mockHealthySnapshotQueries(prismaService);
+    (prismaService.platformAlertDelivery.findMany as jest.Mock).mockResolvedValue([
+      {
+        id: "delivery_failed_1",
+        platformAlertId: "alert_concurrent_1",
+        targetName: "ops-critical",
+        targetUrl: "https://ops.example.com/hooks/platform-alerts",
+        eventType: "opened",
+        status: "failed",
+        attemptCount: 1,
+        escalationLevel: 0,
+        requestPayload: {},
+        responseStatusCode: 500,
+        errorMessage: "Target unavailable",
+        lastAttemptedAt: new Date("2026-04-06T10:25:00.000Z"),
+        deliveredAt: null,
+        createdAt: new Date("2026-04-06T10:24:00.000Z"),
+        updatedAt: new Date("2026-04-06T10:25:00.000Z")
+      },
+      {
+        id: "delivery_failed_2",
+        platformAlertId: "alert_concurrent_1",
+        targetName: "ops-critical",
+        targetUrl: "https://ops.example.com/hooks/platform-alerts",
+        eventType: "reopened",
+        status: "failed",
+        attemptCount: 1,
+        escalationLevel: 0,
+        requestPayload: {},
+        responseStatusCode: 502,
+        errorMessage: "Target unavailable",
+        lastAttemptedAt: new Date("2026-04-06T10:20:00.000Z"),
+        deliveredAt: null,
+        createdAt: new Date("2026-04-06T10:19:00.000Z"),
+        updatedAt: new Date("2026-04-06T10:20:00.000Z")
+      },
+      {
+        id: "delivery_failed_3",
+        platformAlertId: "alert_concurrent_1",
+        targetName: "ops-critical",
+        targetUrl: "https://ops.example.com/hooks/platform-alerts",
+        eventType: "re_escalated",
+        status: "failed",
+        attemptCount: 1,
+        escalationLevel: 0,
+        requestPayload: {},
+        responseStatusCode: 503,
+        errorMessage: "Target unavailable",
+        lastAttemptedAt: new Date("2026-04-06T10:15:00.000Z"),
+        deliveredAt: null,
+        createdAt: new Date("2026-04-06T10:14:00.000Z"),
+        updatedAt: new Date("2026-04-06T10:15:00.000Z")
+      }
+    ]);
+    (prismaService.platformAlert.create as jest.Mock).mockImplementation(
+      async ({ data }: { data: { dedupeKey: string } }) => {
+        if (data.dedupeKey === "operations:alert-delivery-target:ops-critical") {
+          throw duplicateCreateError;
+        }
+
+        return buildPlatformAlertRecord({
+          dedupeKey: data.dedupeKey
+        });
+      }
+    );
+    (prismaService.platformAlert.findUnique as jest.Mock).mockResolvedValue(
+      concurrentAlert
+    );
+    (prismaService.platformAlert.update as jest.Mock).mockResolvedValue(
+      concurrentAlert
+    );
+    (prismaService.platformAlert.findMany as jest.Mock)
+      .mockResolvedValue([concurrentAlert])
+      .mockResolvedValueOnce([]);
+    (prismaService.platformAlert.count as jest.Mock)
+      .mockResolvedValueOnce(1)
+      .mockResolvedValueOnce(1)
+      .mockResolvedValueOnce(0);
+
+    const result = await service.getOperationsStatus({
+      recentAlertLimit: 8,
+      staleAfterSeconds: 180
+    });
+
+    expect(prismaService.platformAlert.findUnique).toHaveBeenCalledWith({
+      where: {
+        dedupeKey: "operations:alert-delivery-target:ops-critical"
+      }
+    });
+    expect(prismaService.platformAlert.update).toHaveBeenCalled();
+    expect(result.generatedAt).toBeTruthy();
+    expect(result.alertSummary.openCount).toBeGreaterThanOrEqual(0);
   });
 
   it("re-escalates overdue critical alerts for the worker sweep", async () => {

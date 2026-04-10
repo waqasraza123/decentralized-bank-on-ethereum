@@ -1527,46 +1527,71 @@ export class OperationsMonitoringService {
     );
 
     for (const candidate of alertCandidates) {
-      const existingAlert = existingAlertsByDedupeKey.get(candidate.dedupeKey);
+      let existingAlert =
+        existingAlertsByDedupeKey.get(candidate.dedupeKey) ?? null;
 
       if (!existingAlert) {
-        const createdAlert = await this.prismaService.platformAlert.create({
-          data: {
-            dedupeKey: candidate.dedupeKey,
-            category: candidate.category,
-            severity: candidate.severity,
-            status: PlatformAlertStatus.open,
-            routingStatus: PlatformAlertRoutingStatus.unrouted,
-            routingTargetType: null,
-            routingTargetId: null,
-            routedAt: null,
-            routedByOperatorId: null,
-            routingNote: null,
-            ownerOperatorId: null,
-            ownerAssignedAt: null,
-            ownerAssignedByOperatorId: null,
-            ownershipNote: null,
-            acknowledgedAt: null,
-            acknowledgedByOperatorId: null,
-            acknowledgementNote: null,
-            suppressedUntil: null,
-            suppressedByOperatorId: null,
-            suppressionNote: null,
-            code: candidate.code,
-            summary: candidate.summary,
-            detail: candidate.detail ?? null,
-            metadata: candidate.metadata ?? Prisma.JsonNull,
-            firstDetectedAt: generatedAt,
-            lastDetectedAt: generatedAt,
-            resolvedAt: null
+        try {
+          const createdAlert = await this.prismaService.platformAlert.create({
+            data: {
+              dedupeKey: candidate.dedupeKey,
+              category: candidate.category,
+              severity: candidate.severity,
+              status: PlatformAlertStatus.open,
+              routingStatus: PlatformAlertRoutingStatus.unrouted,
+              routingTargetType: null,
+              routingTargetId: null,
+              routedAt: null,
+              routedByOperatorId: null,
+              routingNote: null,
+              ownerOperatorId: null,
+              ownerAssignedAt: null,
+              ownerAssignedByOperatorId: null,
+              ownershipNote: null,
+              acknowledgedAt: null,
+              acknowledgedByOperatorId: null,
+              acknowledgementNote: null,
+              suppressedUntil: null,
+              suppressedByOperatorId: null,
+              suppressionNote: null,
+              code: candidate.code,
+              summary: candidate.summary,
+              detail: candidate.detail ?? null,
+              metadata: candidate.metadata ?? Prisma.JsonNull,
+              firstDetectedAt: generatedAt,
+              lastDetectedAt: generatedAt,
+              resolvedAt: null
+            }
+          });
+          existingAlertsByDedupeKey.set(candidate.dedupeKey, createdAlert);
+          void this.platformAlertDeliveryService.enqueueAlertEvent({
+            alert: this.buildPlatformAlertDeliveryPayload(createdAlert),
+            eventType: PlatformAlertDeliveryEventType.opened
+          });
+          await this.maybeAutoRoutePlatformAlert(createdAlert, "created");
+          continue;
+        } catch (error) {
+          if (
+            !(
+              error instanceof Prisma.PrismaClientKnownRequestError &&
+              error.code === "P2002"
+            )
+          ) {
+            throw error;
           }
-        });
-        void this.platformAlertDeliveryService.enqueueAlertEvent({
-          alert: this.buildPlatformAlertDeliveryPayload(createdAlert),
-          eventType: PlatformAlertDeliveryEventType.opened
-        });
-        await this.maybeAutoRoutePlatformAlert(createdAlert, "created");
-        continue;
+
+          existingAlert = await this.prismaService.platformAlert.findUnique({
+            where: {
+              dedupeKey: candidate.dedupeKey
+            }
+          });
+
+          if (!existingAlert) {
+            throw error;
+          }
+
+          existingAlertsByDedupeKey.set(candidate.dedupeKey, existingAlert);
+        }
       }
 
       const reopened = existingAlert.status === PlatformAlertStatus.resolved;
