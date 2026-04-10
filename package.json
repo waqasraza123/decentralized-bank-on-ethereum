@@ -16,6 +16,7 @@
     "compile": "turbo run compile",
     "release:readiness:probe": "pnpm --filter @stealth-trails-bank/api release-readiness:probe",
     "release:readiness:verify": "pnpm --filter @stealth-trails-bank/api release-readiness:verify",
+    "release:launch-closure": "pnpm --filter @stealth-trails-bank/api release-launch-closure",
     "verify:push": "./scripts/verify-push.sh",
     "safe-push": "./scripts/safe-push.sh",
     "setup:hooks": "git config core.hooksPath .githooks"

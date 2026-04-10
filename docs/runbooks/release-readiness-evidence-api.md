@@ -135,3 +135,21 @@ pnpm release:readiness:verify -- --help
 ```
 
 That command runs the automated Phase 12 proof suites, supports manual secret or role review attestations, prints structured JSON proof, and can persist each result through the same evidence API.
+
+## Launch-closure pack
+
+For the remaining staging-like Phase 12 work, prefer the repo-owned launch-closure helper:
+
+```bash
+pnpm release:launch-closure -- status
+pnpm release:launch-closure -- validate --manifest ./launch-manifest.json
+pnpm release:launch-closure -- scaffold --manifest ./launch-manifest.json --output-dir ./artifacts/release-launch/current --force
+```
+
+That helper does not close evidence gates. It validates required inputs, generates a strict execution pack, and preserves the distinction between:
+
+- repo-owned proofs already satisfiable from development or ci
+- local dry-run support that is still not accepted launch proof
+- external-only accepted proofs that require `staging`, `production_like`, or `production`
+
+See [`docs/runbooks/phase-12-launch-closure.md`](/Users/mc/development/blockchain/ethereum/stealth-trails-bank/docs/runbooks/phase-12-launch-closure.md).

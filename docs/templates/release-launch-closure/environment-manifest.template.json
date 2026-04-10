@@ -1,0 +1,45 @@
+{
+  "releaseIdentifier": "launch-2026.04.10.1",
+  "environment": "production_like",
+  "baseUrls": {
+    "web": "https://prodlike-web.example.com",
+    "admin": "https://prodlike-admin.example.com",
+    "api": "https://prodlike-api.example.com",
+    "restoreApi": "https://restore-api.example.com"
+  },
+  "worker": {
+    "identifier": "worker-prodlike-1"
+  },
+  "operator": {
+    "requesterId": "ops_requester_1",
+    "requesterRole": "operations_admin",
+    "approverId": "ops_approver_1",
+    "approverRole": "compliance_lead",
+    "apiKeyEnvironmentVariable": "INTERNAL_OPERATOR_API_KEY"
+  },
+  "artifacts": {
+    "apiReleaseId": "api-2026.04.10.1",
+    "workerReleaseId": "worker-2026.04.10.1",
+    "approvalRollbackReleaseId": "launch-rollback-2026.04.09.4",
+    "apiRollbackReleaseId": "api-2026.04.09.4",
+    "workerRollbackReleaseId": "worker-2026.04.09.4",
+    "backupReference": "snapshot-2026-04-10T08:00Z"
+  },
+  "alerting": {
+    "expectedTargetName": "ops-critical",
+    "expectedTargetHealthStatus": "critical",
+    "expectedMinReEscalations": 1,
+    "expectedAlertId": "alert_123",
+    "expectedAlertDedupeKey": ""
+  },
+  "governance": {
+    "secretReviewReference": "ticket/SEC-42",
+    "roleReviewReference": "ticket/GOV-12",
+    "roleReviewRosterReference": "ticket/GOV-12#launch-roster"
+  },
+  "notes": {
+    "launchSummary": "Production-like launch candidate ready for final governed review.",
+    "requestNote": "All accepted evidence must be current before approval.",
+    "residualRiskNote": "No accepted residual risks remain open at request time."
+  }
+}

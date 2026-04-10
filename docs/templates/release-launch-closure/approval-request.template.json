@@ -1,0 +1,17 @@
+{
+  "releaseIdentifier": "launch-2026.04.10.1",
+  "environment": "production_like",
+  "rollbackReleaseIdentifier": "launch-rollback-2026.04.09.4",
+  "summary": "Production-like launch candidate ready for final governed review.",
+  "requestNote": "All accepted evidence must be current before approval.",
+  "securityConfigurationComplete": false,
+  "accessAndGovernanceComplete": false,
+  "dataAndRecoveryComplete": false,
+  "platformHealthComplete": false,
+  "functionalProofComplete": false,
+  "contractAndChainProofComplete": false,
+  "finalSignoffComplete": false,
+  "unresolvedRisksAccepted": false,
+  "openBlockers": [],
+  "residualRiskNote": "No accepted residual risks remain open at request time."
+}

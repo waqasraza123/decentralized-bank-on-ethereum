@@ -1,5 +1,19 @@
 # Launch Checklist
 
+Use this checklist with the Phase 12 operator program in [`docs/runbooks/phase-12-launch-closure.md`](/Users/mc/development/blockchain/ethereum/stealth-trails-bank/docs/runbooks/phase-12-launch-closure.md).
+
+Before any staging-like execution starts:
+
+- complete the manifest in [`docs/templates/release-launch-closure/environment-manifest.template.json`](/Users/mc/development/blockchain/ethereum/stealth-trails-bank/docs/templates/release-launch-closure/environment-manifest.template.json)
+- validate it with `pnpm release:launch-closure -- validate --manifest <path>`
+- scaffold the execution pack with `pnpm release:launch-closure -- scaffold --manifest <path> --output-dir <path> --force`
+
+Important truth:
+
+- repo-owned automation can satisfy `contract_invariant_suite`, `backend_integration_suite`, and `end_to_end_finance_flows`
+- local dry-runs for restore and rollback are not accepted launch proof
+- accepted proof for alerting, restore, rollback, secret review, and role review must come from `staging`, `production_like`, or `production`
+
 ## Release identity
 
 - target release identifier recorded
