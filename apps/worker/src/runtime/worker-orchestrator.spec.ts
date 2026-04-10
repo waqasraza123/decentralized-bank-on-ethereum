@@ -64,12 +64,39 @@ function createCapturingLogger() {
   };
 }
 
+function createInternalApiClient(overrides: Record<string, unknown>) {
+  return {
+    async listAwaitingFundingLoans() {
+      return { agreements: [], limit: 20 };
+    },
+    async fundLoanAgreement() {},
+    async listDueLoanInstallments() {
+      return { installments: [], limit: 20 };
+    },
+    async runLoanAutopay() {
+      return { loanAgreementId: "loan_agreement_1", attempted: false };
+    },
+    async listValuationMonitorLoans() {
+      return { agreements: [], limit: 20 };
+    },
+    async refreshLoanValuation() {},
+    async listGracePeriodExpiredLoans() {
+      return { agreements: [], limit: 20 };
+    },
+    async escalateLoanDefault() {},
+    async listLoanLiquidationCandidates() {
+      return { agreements: [], limit: 20 };
+    },
+    ...overrides
+  };
+}
+
 test("synthetic mode records broadcasts and settles them", async () => {
   const queuedDepositIntent = createIntent("deposit_1");
   const queuedWithdrawalIntent = createIntent("withdrawal_1");
   const operations: string[] = [];
 
-  const client = {
+  const client = createInternalApiClient({
     async listQueuedDepositIntents() {
       return { intents: [queuedDepositIntent], limit: 20 };
     },
@@ -157,7 +184,7 @@ test("synthetic mode records broadcasts and settles them", async () => {
     async triggerCriticalAlertReEscalationSweep() {
       throw new Error("platform alert re-escalation is handled outside the orchestrator");
     }
-  };
+  });
 
   const orchestrator = new WorkerOrchestrator({
     runtime: {
@@ -197,7 +224,7 @@ test("synthetic mode records broadcasts and settles them", async () => {
 test("monitor mode confirms and settles broadcast intents with enough confirmations", async () => {
   const operations: string[] = [];
 
-  const client = {
+  const client = createInternalApiClient({
     async listQueuedDepositIntents() {
       return { intents: [], limit: 20 };
     },
@@ -267,7 +294,7 @@ test("monitor mode confirms and settles broadcast intents with enough confirmati
     async triggerCriticalAlertReEscalationSweep() {
       throw new Error("platform alert re-escalation is handled outside the orchestrator");
     }
-  };
+  });
 
   const orchestrator = new WorkerOrchestrator({
     runtime: {
@@ -317,7 +344,7 @@ test("monitor mode confirms and settles broadcast intents with enough confirmati
 test("worker settles confirmed recovery backlog after the broadcast pass", async () => {
   const operations: string[] = [];
 
-  const client = {
+  const client = createInternalApiClient({
     async listQueuedDepositIntents() {
       return { intents: [], limit: 20 };
     },
@@ -405,7 +432,7 @@ test("worker settles confirmed recovery backlog after the broadcast pass", async
     async triggerCriticalAlertReEscalationSweep() {
       throw new Error("platform alert re-escalation is handled outside the orchestrator");
     }
-  };
+  });
 
   const orchestrator = new WorkerOrchestrator({
     runtime: {
@@ -448,7 +475,7 @@ test("worker settles confirmed recovery backlog after the broadcast pass", async
 test("monitor mode waits when a broadcast intent does not yet have enough confirmations", async () => {
   const operations: string[] = [];
 
-  const client = {
+  const client = createInternalApiClient({
     async listQueuedDepositIntents() {
       return { intents: [], limit: 20 };
     },
@@ -518,7 +545,7 @@ test("monitor mode waits when a broadcast intent does not yet have enough confir
     async triggerCriticalAlertReEscalationSweep() {
       throw new Error("platform alert re-escalation is handled outside the orchestrator");
     }
-  };
+  });
 
   const orchestrator = new WorkerOrchestrator({
     runtime: {
@@ -566,7 +593,7 @@ test("managed mode broadcasts queued deposits and leaves withdrawals for manual 
   const operations: string[] = [];
   const { logger, warnings } = createCapturingLogger();
 
-  const client = {
+  const client = createInternalApiClient({
     async listQueuedDepositIntents() {
       return { intents: [createIntent("deposit_1")], limit: 20 };
     },
@@ -618,7 +645,7 @@ test("managed mode broadcasts queued deposits and leaves withdrawals for manual 
     async triggerCriticalAlertReEscalationSweep() {
       throw new Error("platform alert re-escalation is handled outside the orchestrator");
     }
-  };
+  });
 
   const orchestrator = new WorkerOrchestrator({
     runtime: {
@@ -676,7 +703,7 @@ test("managed mode broadcasts queued deposits and leaves withdrawals for manual 
 test("managed mode permanently fails malformed deposit intents", async () => {
   const operations: string[] = [];
 
-  const client = {
+  const client = createInternalApiClient({
     async listQueuedDepositIntents() {
       return {
         intents: [
@@ -735,7 +762,7 @@ test("managed mode permanently fails malformed deposit intents", async () => {
     async triggerCriticalAlertReEscalationSweep() {
       throw new Error("platform alert re-escalation is handled outside the orchestrator");
     }
-  };
+  });
 
   const orchestrator = new WorkerOrchestrator({
     runtime: {
@@ -804,7 +831,7 @@ test("monitor mode warns and skips broadcast intents that are missing a tx hash"
       rpcUrl: "https://rpc.example.com",
       depositSignerPrivateKey: null
     },
-    internalApiClient: {
+    internalApiClient: createInternalApiClient({
       async listQueuedDepositIntents() {
         return { intents: [], limit: 20 };
       },
@@ -864,7 +891,7 @@ test("monitor mode warns and skips broadcast intents that are missing a tx hash"
       async triggerCriticalAlertReEscalationSweep() {
         throw new Error("platform alert re-escalation is handled outside the orchestrator");
       }
-    } as never,
+    }) as never,
     rpcClient: {
       async getBlockNumber() {
         throw new Error("missing tx hash should return before block lookup");
@@ -904,7 +931,7 @@ test("monitor mode marks reverted withdrawal receipts as failed", async () => {
       rpcUrl: "https://rpc.example.com",
       depositSignerPrivateKey: null
     },
-    internalApiClient: {
+    internalApiClient: createInternalApiClient({
       async listQueuedDepositIntents() {
         return { intents: [], limit: 20 };
       },
@@ -974,7 +1001,7 @@ test("monitor mode marks reverted withdrawal receipts as failed", async () => {
       async triggerCriticalAlertReEscalationSweep() {
         throw new Error("platform alert re-escalation is handled outside the orchestrator");
       }
-    } as never,
+    }) as never,
     rpcClient: {
       async getBlockNumber() {
         return 101n;
@@ -1022,7 +1049,7 @@ test("monitor mode marks reverted deposit receipts as failed", async () => {
       rpcUrl: "https://rpc.example.com",
       depositSignerPrivateKey: null
     },
-    internalApiClient: {
+    internalApiClient: createInternalApiClient({
       async listQueuedDepositIntents() {
         return { intents: [], limit: 20 };
       },
@@ -1092,7 +1119,7 @@ test("monitor mode marks reverted deposit receipts as failed", async () => {
       async triggerCriticalAlertReEscalationSweep() {
         throw new Error("platform alert re-escalation is handled outside the orchestrator");
       }
-    } as never,
+    }) as never,
     rpcClient: {
       async getBlockNumber() {
         return 101n;
@@ -1139,7 +1166,7 @@ test("monitor mode confirms and settles withdrawal intents with enough confirmat
       rpcUrl: "https://rpc.example.com",
       depositSignerPrivateKey: null
     },
-    internalApiClient: {
+    internalApiClient: createInternalApiClient({
       async listQueuedDepositIntents() {
         return { intents: [], limit: 20 };
       },
@@ -1209,7 +1236,7 @@ test("monitor mode confirms and settles withdrawal intents with enough confirmat
       async triggerCriticalAlertReEscalationSweep() {
         throw new Error("platform alert re-escalation is handled outside the orchestrator");
       }
-    } as never,
+    }) as never,
     rpcClient: {
       async getBlockNumber() {
         return 101n;
@@ -1255,7 +1282,7 @@ test("monitor mode requires an rpc client once broadcast intents need confirmati
       rpcUrl: "https://rpc.example.com",
       depositSignerPrivateKey: null
     },
-    internalApiClient: {
+    internalApiClient: createInternalApiClient({
       async listQueuedDepositIntents() {
         return { intents: [], limit: 20 };
       },
@@ -1325,7 +1352,7 @@ test("monitor mode requires an rpc client once broadcast intents need confirmati
       async triggerCriticalAlertReEscalationSweep() {
         throw new Error("platform alert re-escalation is handled outside the orchestrator");
       }
-    } as never,
+    }) as never,
     rpcClient: null,
     depositBroadcaster: null,
     logger: createLogger()
@@ -1354,7 +1381,7 @@ test("monitor mode logs queued backlog when an external broadcaster is still res
       rpcUrl: "https://rpc.example.com",
       depositSignerPrivateKey: null
     },
-    internalApiClient: {
+    internalApiClient: createInternalApiClient({
       async listQueuedDepositIntents() {
         return { intents: [createIntent("deposit_backlog_1")], limit: 20 };
       },
@@ -1406,7 +1433,7 @@ test("monitor mode logs queued backlog when an external broadcaster is still res
       async triggerCriticalAlertReEscalationSweep() {
         throw new Error("platform alert re-escalation is handled outside the orchestrator");
       }
-    } as never,
+    }) as never,
     rpcClient: {
       async getBlockNumber() {
         return 100n;
@@ -1454,7 +1481,7 @@ test("managed mode logs retryable deposit broadcaster failures without marking t
       depositSignerPrivateKey:
         "0x59c6995e998f97a5a0044966f094538c5f6d4e07f16b8ad8cc7658f0f1b0f9d8"
     },
-    internalApiClient: {
+    internalApiClient: createInternalApiClient({
       async listQueuedDepositIntents() {
         return { intents: [createIntent("deposit_retryable_1")], limit: 20 };
       },
@@ -1506,7 +1533,7 @@ test("managed mode logs retryable deposit broadcaster failures without marking t
       async triggerCriticalAlertReEscalationSweep() {
         throw new Error("platform alert re-escalation is handled outside the orchestrator");
       }
-    } as never,
+    }) as never,
     rpcClient: {
       async getBlockNumber() {
         return 100n;
@@ -1549,7 +1576,7 @@ test("managed mode requires a deposit broadcaster when queued deposits exist", a
       depositSignerPrivateKey:
         "0x59c6995e998f97a5a0044966f094538c5f6d4e07f16b8ad8cc7658f0f1b0f9d8"
     },
-    internalApiClient: {
+    internalApiClient: createInternalApiClient({
       async listQueuedDepositIntents() {
         return { intents: [createIntent("deposit_missing_broadcaster_1")], limit: 20 };
       },
@@ -1601,7 +1628,7 @@ test("managed mode requires a deposit broadcaster when queued deposits exist", a
       async triggerCriticalAlertReEscalationSweep() {
         throw new Error("platform alert re-escalation is handled outside the orchestrator");
       }
-    } as never,
+    }) as never,
     rpcClient: {
       async getBlockNumber() {
         return 100n;
