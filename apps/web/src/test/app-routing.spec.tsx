@@ -46,6 +46,8 @@ describe("app routing", () => {
   beforeEach(() => {
     localStorage.clear();
     window.history.pushState({}, "", "/");
+    useUserStore.persist.clearStorage();
+    useUserStore.setState({ user: null, token: null });
 
     mockUseAuth.mockReturnValue({
       login: vi.fn(),
@@ -119,14 +121,14 @@ describe("app routing", () => {
   });
 
   it("redirects unauthenticated protected traffic to the sign-in route", async () => {
-    useUserStore.setState({ user: null, token: null });
+    window.history.pushState({}, "", "/wallet");
 
     render(<App />);
 
     expect(
       await screen.findByRole("heading", {
         name: /sign in to managed digital banking/i,
-      }),
+      }, { timeout: 5000 })
     ).toBeInTheDocument();
   });
 

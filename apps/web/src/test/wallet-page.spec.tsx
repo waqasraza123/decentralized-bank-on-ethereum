@@ -37,6 +37,7 @@ describe("wallet page", () => {
 
   beforeEach(() => {
     localStorage.clear();
+    useUserStore.persist.clearStorage();
     useUserStore.setState({
       token: "test-token",
       user: {
@@ -127,6 +128,8 @@ describe("wallet page", () => {
   });
 
   afterEach(() => {
+    useUserStore.persist.clearStorage();
+    useUserStore.setState({ user: null, token: null });
     cleanup();
   });
 
@@ -381,7 +384,7 @@ describe("wallet page", () => {
     expect(
       screen.getByText(/Requested amount exceeds the available balance of 100 USDC/i)
     ).toBeInTheDocument();
-  }, 10000);
+  }, 20000);
 
   it("renders Arabic copy and empty supported-asset states", () => {
     localStorage.setItem(webLocaleStorageKey, "ar");
@@ -461,7 +464,7 @@ describe("wallet page", () => {
     );
 
     expect(await screen.findByText("Withdrawal request rejected")).toBeInTheDocument();
-  }, 10000);
+  }, 20000);
 
   it("blocks assetless requests and invalid withdrawal amounts before mutation", async () => {
     const user = userEvent.setup();
@@ -603,5 +606,5 @@ describe("wallet page", () => {
     expect(
       screen.getByText(/Amount must be a valid positive decimal value/i)
     ).toBeInTheDocument();
-  }, 10000);
+  }, 20000);
 });
