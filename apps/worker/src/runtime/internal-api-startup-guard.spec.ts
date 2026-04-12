@@ -129,3 +129,50 @@ test("startup grace helpers no-op when the grace period is disabled or no wait s
     nowMs: 2_000
   });
 });
+
+test("startup grace helpers fall back to Date.now when explicit timestamps are omitted", () => {
+  const originalDateNow = Date.now;
+  const events: Array<{ event: string; metadata: Record<string, unknown> }> = [];
+  const state = createInternalApiStartupAvailabilityState();
+
+  Date.now = () => 12_000;
+
+  try {
+    const handled = reportInternalApiStartupUnavailable({
+      logger: {
+        info(event, metadata) {
+          events.push({ event, metadata });
+        }
+      },
+      error: new InternalApiUnavailableError({
+        baseUrl: "http://localhost:9101",
+        code: "ETIMEDOUT",
+        message: "Internal API is temporarily unavailable at http://localhost:9101.",
+        cause: new Error("timed out")
+      }),
+      state,
+      workerStartedAtMs: 1_000,
+      startupGracePeriodMs: 45_000
+    });
+
+    assert.equal(handled, true);
+
+    Date.now = () => 18_000;
+
+    reportInternalApiStartupAvailable({
+      logger: {
+        info(event, metadata) {
+          events.push({ event, metadata });
+        }
+      },
+      state,
+      baseUrl: "http://localhost:9101"
+    });
+  } finally {
+    Date.now = originalDateNow;
+  }
+
+  assert.equal(events.length, 2);
+  assert.equal(events[0]?.event, "internal_api_startup_waiting");
+  assert.equal(events[1]?.event, "internal_api_startup_ready");
+});

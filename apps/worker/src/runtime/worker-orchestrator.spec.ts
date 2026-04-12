@@ -2498,3 +2498,751 @@ test("managed mode requires a deposit broadcaster when queued deposits exist", a
     /Managed deposit broadcaster is required/
   );
 });
+
+test("managed mode skips queued withdrawals when another worker already holds the execution claim", async () => {
+  const operations: string[] = [];
+
+  const orchestrator = new WorkerOrchestrator({
+    runtime: createRuntime({
+      environment: "production",
+      workerId: "worker_1",
+      internalApiBaseUrl: "https://internal.example.com",
+      internalWorkerApiKey: "secret",
+      executionMode: "managed",
+      pollIntervalMs: 10,
+      batchLimit: 20,
+      requestTimeoutMs: 1000,
+      internalApiStartupGracePeriodMs: 45000,
+      confirmationBlocks: 1,
+      reconciliationScanIntervalMs: 300000,
+      platformAlertReEscalationIntervalMs: 300000,
+      rpcUrl: "https://rpc.example.com",
+      depositSignerPrivateKey:
+        "0x59c6995e998f97a5a0044966f094538c5f6d4e07f16b8ad8cc7658f0f1b0f9d8"
+    }),
+    internalApiClient: createInternalApiClient({
+      async listQueuedDepositIntents() {
+        return { intents: [], limit: 20 };
+      },
+      async listQueuedWithdrawalIntents() {
+        return { intents: [createIntent("withdrawal_claimed_elsewhere_1")], limit: 20 };
+      },
+      async startManagedWithdrawalExecution(intentId: string) {
+        operations.push(`startManagedWithdrawalExecution:${intentId}`);
+        return {
+          intent: createIntent(intentId),
+          executionClaimed: false,
+          executionReused: false
+        };
+      },
+      async recordSignedWithdrawalExecution() {
+        throw new Error("not expected");
+      },
+      async listBroadcastDepositIntents() {
+        return { intents: [], limit: 20 };
+      },
+      async listBroadcastWithdrawalIntents() {
+        return { intents: [], limit: 20 };
+      },
+      async listConfirmedDepositIntentsReadyToSettle() {
+        return { intents: [], limit: 20 };
+      },
+      async listConfirmedWithdrawalIntentsReadyToSettle() {
+        return { intents: [], limit: 20 };
+      },
+      async recordDepositBroadcast() {
+        throw new Error("not expected");
+      },
+      async confirmDepositIntent() {
+        throw new Error("not expected");
+      },
+      async settleDepositIntent() {
+        throw new Error("not expected");
+      },
+      async failDepositIntent() {
+        throw new Error("not expected");
+      },
+      async recordWithdrawalBroadcast() {
+        throw new Error("not expected");
+      },
+      async confirmWithdrawalIntent() {
+        throw new Error("not expected");
+      },
+      async settleWithdrawalIntent() {
+        throw new Error("not expected");
+      },
+      async failWithdrawalIntent() {
+        throw new Error("not expected");
+      },
+      async reportWorkerHeartbeat() {
+        throw new Error("worker heartbeat reporting is handled outside the orchestrator");
+      },
+      async triggerLedgerReconciliationScan() {
+        throw new Error("reconciliation scan scheduling is handled outside the orchestrator");
+      },
+      async triggerCriticalAlertReEscalationSweep() {
+        throw new Error("platform alert re-escalation is handled outside the orchestrator");
+      }
+    }) as never,
+    rpcClient: {
+      async getBlockNumber() {
+        return 100n;
+      },
+      async getTransactionReceipt() {
+        return null;
+      }
+    },
+    depositBroadcaster: {
+      signerAddress: "0x0000000000000000000000000000000000000aaa",
+      async broadcast() {
+        throw new Error("not expected");
+      }
+    },
+    withdrawalBroadcaster: createManagedWithdrawalBroadcaster({
+      canManageWallet() {
+        return true;
+      },
+      async prepare() {
+        throw new Error("not expected");
+      }
+    }),
+    policyControlledWithdrawalBroadcaster: null,
+    logger: createLogger()
+  });
+
+  await orchestrator.runOnce();
+
+  assert.deepEqual(operations, [
+    "startManagedWithdrawalExecution:withdrawal_claimed_elsewhere_1"
+  ]);
+});
+
+test("managed mode fails queued withdrawals with incomplete durable signed state", async () => {
+  const operations: string[] = [];
+
+  const orchestrator = new WorkerOrchestrator({
+    runtime: createRuntime({
+      environment: "production",
+      workerId: "worker_1",
+      internalApiBaseUrl: "https://internal.example.com",
+      internalWorkerApiKey: "secret",
+      executionMode: "managed",
+      pollIntervalMs: 10,
+      batchLimit: 20,
+      requestTimeoutMs: 1000,
+      internalApiStartupGracePeriodMs: 45000,
+      confirmationBlocks: 1,
+      reconciliationScanIntervalMs: 300000,
+      platformAlertReEscalationIntervalMs: 300000,
+      rpcUrl: "https://rpc.example.com",
+      depositSignerPrivateKey:
+        "0x59c6995e998f97a5a0044966f094538c5f6d4e07f16b8ad8cc7658f0f1b0f9d8"
+    }),
+    internalApiClient: createInternalApiClient({
+      async listQueuedDepositIntents() {
+        return { intents: [], limit: 20 };
+      },
+      async listQueuedWithdrawalIntents() {
+        return {
+          intents: [
+            createIntent("withdrawal_invalid_signed_queued_1", {
+              latestBlockchainTransaction: {
+                id: "withdrawal_tx_invalid_signed_queued_1",
+                txHash:
+                  "0x9999999999999999999999999999999999999999999999999999999999999999",
+                nonce: 7,
+                serializedTransaction: null,
+                status: "signed",
+                fromAddress: "0x0000000000000000000000000000000000000def",
+                toAddress: "0x0000000000000000000000000000000000000fed",
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+                confirmedAt: null
+              }
+            })
+          ],
+          limit: 20
+        };
+      },
+      async startManagedWithdrawalExecution() {
+        throw new Error("not expected");
+      },
+      async recordSignedWithdrawalExecution() {
+        throw new Error("not expected");
+      },
+      async listBroadcastDepositIntents() {
+        return { intents: [], limit: 20 };
+      },
+      async listBroadcastWithdrawalIntents() {
+        return { intents: [], limit: 20 };
+      },
+      async listConfirmedDepositIntentsReadyToSettle() {
+        return { intents: [], limit: 20 };
+      },
+      async listConfirmedWithdrawalIntentsReadyToSettle() {
+        return { intents: [], limit: 20 };
+      },
+      async recordDepositBroadcast() {
+        throw new Error("not expected");
+      },
+      async confirmDepositIntent() {
+        throw new Error("not expected");
+      },
+      async settleDepositIntent() {
+        throw new Error("not expected");
+      },
+      async failDepositIntent() {
+        throw new Error("not expected");
+      },
+      async recordWithdrawalBroadcast() {
+        throw new Error("not expected");
+      },
+      async confirmWithdrawalIntent() {
+        throw new Error("not expected");
+      },
+      async settleWithdrawalIntent() {
+        throw new Error("not expected");
+      },
+      async failWithdrawalIntent(intentId: string, payload: { failureCode: string }) {
+        operations.push(`failWithdrawalIntent:${intentId}:${payload.failureCode}`);
+      },
+      async reportWorkerHeartbeat() {
+        throw new Error("worker heartbeat reporting is handled outside the orchestrator");
+      },
+      async triggerLedgerReconciliationScan() {
+        throw new Error("reconciliation scan scheduling is handled outside the orchestrator");
+      },
+      async triggerCriticalAlertReEscalationSweep() {
+        throw new Error("platform alert re-escalation is handled outside the orchestrator");
+      }
+    }) as never,
+    rpcClient: {
+      async getBlockNumber() {
+        return 100n;
+      },
+      async getTransactionReceipt() {
+        return null;
+      }
+    },
+    depositBroadcaster: {
+      signerAddress: "0x0000000000000000000000000000000000000aaa",
+      async broadcast() {
+        throw new Error("not expected");
+      }
+    },
+    withdrawalBroadcaster: createManagedWithdrawalBroadcaster({
+      canManageWallet() {
+        return true;
+      },
+      async prepare() {
+        throw new Error("not expected");
+      }
+    }),
+    policyControlledWithdrawalBroadcaster: null,
+    logger: createLogger()
+  });
+
+  await orchestrator.runOnce();
+
+  assert.deepEqual(operations, [
+    "failWithdrawalIntent:withdrawal_invalid_signed_queued_1:managed_signed_withdrawal_state_invalid"
+  ]);
+});
+
+test("managed mode fails claimed withdrawals with incomplete durable signed state", async () => {
+  const operations: string[] = [];
+
+  const orchestrator = new WorkerOrchestrator({
+    runtime: createRuntime({
+      environment: "production",
+      workerId: "worker_1",
+      internalApiBaseUrl: "https://internal.example.com",
+      internalWorkerApiKey: "secret",
+      executionMode: "managed",
+      pollIntervalMs: 10,
+      batchLimit: 20,
+      requestTimeoutMs: 1000,
+      internalApiStartupGracePeriodMs: 45000,
+      confirmationBlocks: 1,
+      reconciliationScanIntervalMs: 300000,
+      platformAlertReEscalationIntervalMs: 300000,
+      rpcUrl: "https://rpc.example.com",
+      depositSignerPrivateKey:
+        "0x59c6995e998f97a5a0044966f094538c5f6d4e07f16b8ad8cc7658f0f1b0f9d8"
+    }),
+    internalApiClient: createInternalApiClient({
+      async listQueuedDepositIntents() {
+        return { intents: [], limit: 20 };
+      },
+      async listQueuedWithdrawalIntents() {
+        return { intents: [createIntent("withdrawal_invalid_signed_claimed_1")], limit: 20 };
+      },
+      async startManagedWithdrawalExecution(intentId: string) {
+        return {
+          intent: createIntent(intentId, {
+            latestBlockchainTransaction: {
+              id: "withdrawal_tx_invalid_signed_claimed_1",
+              txHash:
+                "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              nonce: 9,
+              serializedTransaction: null,
+              status: "signed",
+              fromAddress: "0x0000000000000000000000000000000000000def",
+              toAddress: "0x0000000000000000000000000000000000000fed",
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+              confirmedAt: null
+            }
+          }),
+          executionClaimed: true,
+          executionReused: false
+        };
+      },
+      async recordSignedWithdrawalExecution() {
+        throw new Error("not expected");
+      },
+      async listBroadcastDepositIntents() {
+        return { intents: [], limit: 20 };
+      },
+      async listBroadcastWithdrawalIntents() {
+        return { intents: [], limit: 20 };
+      },
+      async listConfirmedDepositIntentsReadyToSettle() {
+        return { intents: [], limit: 20 };
+      },
+      async listConfirmedWithdrawalIntentsReadyToSettle() {
+        return { intents: [], limit: 20 };
+      },
+      async recordDepositBroadcast() {
+        throw new Error("not expected");
+      },
+      async confirmDepositIntent() {
+        throw new Error("not expected");
+      },
+      async settleDepositIntent() {
+        throw new Error("not expected");
+      },
+      async failDepositIntent() {
+        throw new Error("not expected");
+      },
+      async recordWithdrawalBroadcast() {
+        throw new Error("not expected");
+      },
+      async confirmWithdrawalIntent() {
+        throw new Error("not expected");
+      },
+      async settleWithdrawalIntent() {
+        throw new Error("not expected");
+      },
+      async failWithdrawalIntent(intentId: string, payload: { failureCode: string }) {
+        operations.push(`failWithdrawalIntent:${intentId}:${payload.failureCode}`);
+      },
+      async reportWorkerHeartbeat() {
+        throw new Error("worker heartbeat reporting is handled outside the orchestrator");
+      },
+      async triggerLedgerReconciliationScan() {
+        throw new Error("reconciliation scan scheduling is handled outside the orchestrator");
+      },
+      async triggerCriticalAlertReEscalationSweep() {
+        throw new Error("platform alert re-escalation is handled outside the orchestrator");
+      }
+    }) as never,
+    rpcClient: {
+      async getBlockNumber() {
+        return 100n;
+      },
+      async getTransactionReceipt() {
+        return null;
+      }
+    },
+    depositBroadcaster: {
+      signerAddress: "0x0000000000000000000000000000000000000aaa",
+      async broadcast() {
+        throw new Error("not expected");
+      }
+    },
+    withdrawalBroadcaster: createManagedWithdrawalBroadcaster({
+      canManageWallet() {
+        return true;
+      },
+      async prepare() {
+        throw new Error("not expected");
+      }
+    }),
+    policyControlledWithdrawalBroadcaster: null,
+    logger: createLogger()
+  });
+
+  await orchestrator.runOnce();
+
+  assert.deepEqual(operations, [
+    "failWithdrawalIntent:withdrawal_invalid_signed_claimed_1:managed_signed_withdrawal_state_invalid"
+  ]);
+});
+
+test("managed mode routes policy-controlled manual failures into the intervention backlog", async () => {
+  const { logger, warnings } = createCapturingLogger();
+
+  const orchestrator = new WorkerOrchestrator({
+    runtime: createRuntime({
+      environment: "production",
+      workerId: "worker_1",
+      internalApiBaseUrl: "https://internal.example.com",
+      internalWorkerApiKey: "secret",
+      executionMode: "managed",
+      pollIntervalMs: 10,
+      batchLimit: 20,
+      requestTimeoutMs: 1000,
+      internalApiStartupGracePeriodMs: 45000,
+      confirmationBlocks: 1,
+      reconciliationScanIntervalMs: 300000,
+      platformAlertReEscalationIntervalMs: 300000,
+      rpcUrl: "https://rpc.example.com",
+      depositSignerPrivateKey:
+        "0x59c6995e998f97a5a0044966f094538c5f6d4e07f16b8ad8cc7658f0f1b0f9d8"
+    }),
+    internalApiClient: createInternalApiClient({
+      async listQueuedDepositIntents() {
+        return { intents: [], limit: 20 };
+      },
+      async listQueuedWithdrawalIntents() {
+        return {
+          intents: [
+            createIntent("withdrawal_policy_manual_1", {
+              sourceWalletCustodyType: "contract_controlled"
+            })
+          ],
+          limit: 20
+        };
+      },
+      async startManagedWithdrawalExecution(intentId: string) {
+        return {
+          intent: createIntent(intentId, {
+            sourceWalletCustodyType: "contract_controlled"
+          }),
+          executionClaimed: true,
+          executionReused: false
+        };
+      },
+      async recordSignedWithdrawalExecution() {
+        throw new Error("not expected");
+      },
+      async listBroadcastDepositIntents() {
+        return { intents: [], limit: 20 };
+      },
+      async listBroadcastWithdrawalIntents() {
+        return { intents: [], limit: 20 };
+      },
+      async listConfirmedDepositIntentsReadyToSettle() {
+        return { intents: [], limit: 20 };
+      },
+      async listConfirmedWithdrawalIntentsReadyToSettle() {
+        return { intents: [], limit: 20 };
+      },
+      async recordDepositBroadcast() {
+        throw new Error("not expected");
+      },
+      async confirmDepositIntent() {
+        throw new Error("not expected");
+      },
+      async settleDepositIntent() {
+        throw new Error("not expected");
+      },
+      async failDepositIntent() {
+        throw new Error("not expected");
+      },
+      async recordWithdrawalBroadcast() {
+        throw new Error("not expected");
+      },
+      async confirmWithdrawalIntent() {
+        throw new Error("not expected");
+      },
+      async settleWithdrawalIntent() {
+        throw new Error("not expected");
+      },
+      async failWithdrawalIntent() {
+        throw new Error("policy-controlled manual failures should stay operator-visible");
+      },
+      async reportWorkerHeartbeat() {
+        throw new Error("worker heartbeat reporting is handled outside the orchestrator");
+      },
+      async triggerLedgerReconciliationScan() {
+        throw new Error("reconciliation scan scheduling is handled outside the orchestrator");
+      },
+      async triggerCriticalAlertReEscalationSweep() {
+        throw new Error("platform alert re-escalation is handled outside the orchestrator");
+      }
+    }) as never,
+    rpcClient: {
+      async getBlockNumber() {
+        return 100n;
+      },
+      async getTransactionReceipt() {
+        return null;
+      }
+    },
+    depositBroadcaster: {
+      signerAddress: "0x0000000000000000000000000000000000000aaa",
+      async broadcast() {
+        throw new Error("not expected");
+      }
+    },
+    withdrawalBroadcaster: createManagedWithdrawalBroadcaster(),
+    policyControlledWithdrawalBroadcaster: createPolicyControlledWithdrawalBroadcaster({
+      async prepare() {
+        throw new ManagedExecutionIntentError({
+          failureCode: "policy_controlled_wallet_executor_mismatch",
+          failureReason: "Configured executor is not authorized by the wallet."
+        });
+      }
+    }),
+    logger
+  });
+
+  await orchestrator.runOnce();
+
+  assert.equal(warnings.length, 1);
+  assert.equal(
+    warnings[0]?.event,
+    "managed_withdrawal_requires_manual_intervention"
+  );
+  assert.equal(
+    warnings[0]?.metadata.reason,
+    "Configured executor is not authorized by the wallet."
+  );
+});
+
+test("managed mode logs retryable withdrawal execution failures without failing the intent", async () => {
+  const { logger, errors } = createCapturingLogger();
+
+  const orchestrator = new WorkerOrchestrator({
+    runtime: createRuntime({
+      environment: "production",
+      workerId: "worker_1",
+      internalApiBaseUrl: "https://internal.example.com",
+      internalWorkerApiKey: "secret",
+      executionMode: "managed",
+      pollIntervalMs: 10,
+      batchLimit: 20,
+      requestTimeoutMs: 1000,
+      internalApiStartupGracePeriodMs: 45000,
+      confirmationBlocks: 1,
+      reconciliationScanIntervalMs: 300000,
+      platformAlertReEscalationIntervalMs: 300000,
+      rpcUrl: "https://rpc.example.com",
+      depositSignerPrivateKey:
+        "0x59c6995e998f97a5a0044966f094538c5f6d4e07f16b8ad8cc7658f0f1b0f9d8"
+    }),
+    internalApiClient: createInternalApiClient({
+      async listQueuedDepositIntents() {
+        return { intents: [], limit: 20 };
+      },
+      async listQueuedWithdrawalIntents() {
+        return { intents: [createIntent("withdrawal_retryable_1")], limit: 20 };
+      },
+      async startManagedWithdrawalExecution(intentId: string) {
+        return {
+          intent: createIntent(intentId),
+          executionClaimed: true,
+          executionReused: false
+        };
+      },
+      async recordSignedWithdrawalExecution() {
+        throw new Error("not expected");
+      },
+      async listBroadcastDepositIntents() {
+        return { intents: [], limit: 20 };
+      },
+      async listBroadcastWithdrawalIntents() {
+        return { intents: [], limit: 20 };
+      },
+      async listConfirmedDepositIntentsReadyToSettle() {
+        return { intents: [], limit: 20 };
+      },
+      async listConfirmedWithdrawalIntentsReadyToSettle() {
+        return { intents: [], limit: 20 };
+      },
+      async recordDepositBroadcast() {
+        throw new Error("not expected");
+      },
+      async confirmDepositIntent() {
+        throw new Error("not expected");
+      },
+      async settleDepositIntent() {
+        throw new Error("not expected");
+      },
+      async failDepositIntent() {
+        throw new Error("not expected");
+      },
+      async recordWithdrawalBroadcast() {
+        throw new Error("not expected");
+      },
+      async confirmWithdrawalIntent() {
+        throw new Error("not expected");
+      },
+      async settleWithdrawalIntent() {
+        throw new Error("not expected");
+      },
+      async failWithdrawalIntent() {
+        throw new Error("retryable failures must not mark the intent failed");
+      },
+      async reportWorkerHeartbeat() {
+        throw new Error("worker heartbeat reporting is handled outside the orchestrator");
+      },
+      async triggerLedgerReconciliationScan() {
+        throw new Error("reconciliation scan scheduling is handled outside the orchestrator");
+      },
+      async triggerCriticalAlertReEscalationSweep() {
+        throw new Error("platform alert re-escalation is handled outside the orchestrator");
+      }
+    }) as never,
+    rpcClient: {
+      async getBlockNumber() {
+        return 100n;
+      },
+      async getTransactionReceipt() {
+        return null;
+      }
+    },
+    depositBroadcaster: {
+      signerAddress: "0x0000000000000000000000000000000000000aaa",
+      async broadcast() {
+        throw new Error("not expected");
+      }
+    },
+    withdrawalBroadcaster: createManagedWithdrawalBroadcaster({
+      canManageWallet() {
+        return true;
+      },
+      async prepare() {
+        throw new Error("rpc down");
+      }
+    }),
+    policyControlledWithdrawalBroadcaster: null,
+    logger
+  });
+
+  await orchestrator.runOnce();
+
+  assert.equal(errors.length, 1);
+  assert.equal(
+    errors[0]?.event,
+    "managed_withdrawal_execution_failed_retryable"
+  );
+});
+
+test("monitor mode logs pending confirmation when a withdrawal receipt is still unavailable", async () => {
+  const { logger, infos } = createCapturingLogger();
+
+  const orchestrator = new WorkerOrchestrator({
+    runtime: createRuntime({
+      environment: "production",
+      workerId: "worker_1",
+      internalApiBaseUrl: "https://internal.example.com",
+      internalWorkerApiKey: "secret",
+      executionMode: "monitor",
+      pollIntervalMs: 10,
+      batchLimit: 20,
+      requestTimeoutMs: 1000,
+      internalApiStartupGracePeriodMs: 45000,
+      confirmationBlocks: 2,
+      reconciliationScanIntervalMs: 300000,
+      platformAlertReEscalationIntervalMs: 300000,
+      rpcUrl: "https://rpc.example.com",
+      depositSignerPrivateKey: null
+    }),
+    internalApiClient: createInternalApiClient({
+      async listQueuedDepositIntents() {
+        return { intents: [], limit: 20 };
+      },
+      async listQueuedWithdrawalIntents() {
+        return { intents: [], limit: 20 };
+      },
+      async listBroadcastDepositIntents() {
+        return { intents: [], limit: 20 };
+      },
+      async listBroadcastWithdrawalIntents() {
+        return {
+          intents: [
+            createIntent("withdrawal_pending_confirmation_1", {
+              status: "broadcast",
+              latestBlockchainTransaction: {
+                id: "withdrawal_tx_pending_confirmation_1",
+                txHash:
+                  "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                nonce: 4,
+                serializedTransaction: "0xfeed",
+                status: "broadcast",
+                fromAddress: "0x0000000000000000000000000000000000000def",
+                toAddress: "0x0000000000000000000000000000000000000fed",
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+                confirmedAt: null
+              }
+            })
+          ],
+          limit: 20
+        };
+      },
+      async listConfirmedDepositIntentsReadyToSettle() {
+        return { intents: [], limit: 20 };
+      },
+      async listConfirmedWithdrawalIntentsReadyToSettle() {
+        return { intents: [], limit: 20 };
+      },
+      async recordDepositBroadcast() {
+        throw new Error("not expected");
+      },
+      async confirmDepositIntent() {
+        throw new Error("not expected");
+      },
+      async settleDepositIntent() {
+        throw new Error("not expected");
+      },
+      async failDepositIntent() {
+        throw new Error("not expected");
+      },
+      async recordWithdrawalBroadcast() {
+        throw new Error("not expected");
+      },
+      async confirmWithdrawalIntent() {
+        throw new Error("not expected");
+      },
+      async settleWithdrawalIntent() {
+        throw new Error("not expected");
+      },
+      async failWithdrawalIntent() {
+        throw new Error("not expected");
+      },
+      async reportWorkerHeartbeat() {
+        throw new Error("worker heartbeat reporting is handled outside the orchestrator");
+      },
+      async triggerLedgerReconciliationScan() {
+        throw new Error("reconciliation scan scheduling is handled outside the orchestrator");
+      },
+      async triggerCriticalAlertReEscalationSweep() {
+        throw new Error("platform alert re-escalation is handled outside the orchestrator");
+      }
+    }) as never,
+    rpcClient: {
+      async getBlockNumber() {
+        return 100n;
+      },
+      async getTransactionReceipt() {
+        return null;
+      }
+    },
+    depositBroadcaster: null,
+    withdrawalBroadcaster: null,
+    policyControlledWithdrawalBroadcaster: null,
+    logger
+  });
+
+  await orchestrator.runOnce();
+
+  assert.ok(
+    infos.some(
+      (entry) => entry.event === "broadcast_intent_pending_confirmation"
+    )
+  );
+});

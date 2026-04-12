@@ -351,3 +351,127 @@ test("internal worker api client rejects failed envelopes from the internal api"
     axios.create = originalCreate;
   }
 });
+
+test("internal worker api client normalizes non-refused retryable availability errors", async () => {
+  const originalCreate = axios.create;
+  const timeoutError = new axios.AxiosError("timeout", "ETIMEDOUT");
+  const fakeHttpClient = {
+    get() {
+      return Promise.reject(timeoutError);
+    }
+  };
+
+  axios.create = (() => fakeHttpClient as never) as unknown as typeof axios.create;
+
+  try {
+    const client = createInternalWorkerApiClient(runtime);
+
+    await assert.rejects(
+      () => client.listQueuedDepositIntents(1),
+      (error: unknown) => {
+        assert.ok(error instanceof InternalApiUnavailableError);
+        assert.equal(error.code, "ETIMEDOUT");
+        assert.match(error.message, /temporarily unavailable/);
+        return true;
+      }
+    );
+  } finally {
+    axios.create = originalCreate;
+  }
+});
+
+test("internal worker api client preserves direct errors and wraps non-error failures", async () => {
+  const originalCreate = axios.create;
+
+  axios.create = (() =>
+    ({
+      get() {
+        return Promise.reject(new Error("plain failure"));
+      }
+    }) as never) as unknown as typeof axios.create;
+
+  try {
+    const client = createInternalWorkerApiClient(runtime);
+
+    await assert.rejects(() => client.listQueuedDepositIntents(1), /plain failure/);
+  } finally {
+    axios.create = originalCreate;
+  }
+
+  axios.create = (() =>
+    ({
+      get() {
+        return Promise.reject("boom");
+      }
+    }) as never) as unknown as typeof axios.create;
+
+  try {
+    const client = createInternalWorkerApiClient(runtime);
+
+    await assert.rejects(
+      () => client.listQueuedDepositIntents(1),
+      /Internal API request failed/
+    );
+  } finally {
+    axios.create = originalCreate;
+  }
+});
+
+test("internal worker api client preserves agreement-shaped liquidation candidate responses", async () => {
+  const originalCreate = axios.create;
+  const fakeHttpClient = {
+    get(url: string) {
+      if (url === "/loans/internal/worker/agreements/liquidation-candidates") {
+        return Promise.resolve({
+          data: {
+            status: "success",
+            message: "ok",
+            data: {
+              agreements: [
+                {
+                  loanAgreementId: "loan_1",
+                  customerEmail: "client@example.com",
+                  status: "active",
+                  collateralStatus: "healthy"
+                }
+              ],
+              limit: 5
+            }
+          }
+        });
+      }
+
+      return Promise.resolve({
+        data: {
+          status: "success",
+          message: "ok",
+          data: {
+            agreements: [],
+            limit: 20
+          }
+        }
+      });
+    }
+  };
+
+  axios.create = (() => fakeHttpClient as never) as unknown as typeof axios.create;
+
+  try {
+    const client = createInternalWorkerApiClient(runtime);
+    const result = await client.listLoanLiquidationCandidates(5);
+
+    assert.deepEqual(result, {
+      agreements: [
+        {
+          loanAgreementId: "loan_1",
+          customerEmail: "client@example.com",
+          status: "active",
+          collateralStatus: "healthy"
+        }
+      ],
+      limit: 5
+    });
+  } finally {
+    axios.create = originalCreate;
+  }
+});
