@@ -27,6 +27,7 @@ export type WorkerIntentProjection = {
   asset: WorkerIntentAssetProjection;
   destinationWalletAddress: string | null;
   sourceWalletAddress: string | null;
+  sourceWalletCustodyType: string | null;
   externalAddress: string | null;
   chainId: number;
   status: string;
@@ -150,6 +151,13 @@ export type ManagedDepositBroadcaster = {
 
 export type ManagedWithdrawalBroadcaster = {
   canManageWallet(walletAddress: string | null | undefined): boolean;
+  prepare(intent: WorkerIntentProjection): Promise<PreparedManagedWithdrawalTransaction>;
+  broadcastSignedTransaction(
+    signedTransaction: string
+  ): Promise<DepositBroadcastResult>;
+};
+
+export type PolicyControlledWithdrawalBroadcaster = {
   prepare(intent: WorkerIntentProjection): Promise<PreparedManagedWithdrawalTransaction>;
   broadcastSignedTransaction(
     signedTransaction: string

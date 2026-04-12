@@ -22,6 +22,9 @@ const runtime = {
   rpcUrl: null,
   depositSignerPrivateKey: null,
   managedWithdrawalClaimTimeoutMs: 60000,
+  policyControlledWithdrawalExecutorPrivateKey: null,
+  policyControlledWithdrawalPolicySignerPrivateKey: null,
+  policyControlledWithdrawalAuthorizationTtlSeconds: 300,
   managedWithdrawalSigners: []
 };
 

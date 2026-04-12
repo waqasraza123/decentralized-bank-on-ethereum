@@ -4,6 +4,7 @@
 import type * as test from "./test";
 export type { test };
 export type { LoanBook } from "./LoanBook";
+export type { PolicyControlledWallet } from "./PolicyControlledWallet";
 export type { PoolManagement } from "./PoolManagement";
 export type { StakingOperations } from "./StakingOperations";
 export type { StakingPool } from "./StakingPool";

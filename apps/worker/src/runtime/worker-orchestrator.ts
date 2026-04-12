@@ -7,6 +7,7 @@ import type {
   ManagedDepositBroadcaster,
   ListIntentsResult,
   ManagedWithdrawalBroadcaster,
+  PolicyControlledWithdrawalBroadcaster,
   PreparedManagedWithdrawalTransaction,
   RecordBroadcastPayload,
   WorkerIntentProjection,
@@ -25,6 +26,7 @@ type WorkerOrchestratorDeps = {
   rpcClient: JsonRpcClient | null;
   depositBroadcaster: ManagedDepositBroadcaster | null;
   withdrawalBroadcaster: ManagedWithdrawalBroadcaster | null;
+  policyControlledWithdrawalBroadcaster: PolicyControlledWithdrawalBroadcaster | null;
   logger: WorkerLogger;
 };
 
@@ -402,183 +404,263 @@ export class WorkerOrchestrator {
     result: ListIntentsResult,
     metrics: WorkerIterationMetrics
   ): Promise<void> {
+    for (const intent of result.intents) {
+      if (intent.sourceWalletCustodyType === "platform_managed") {
+        await this.processPlatformManagedQueuedWithdrawal(intent, metrics);
+        continue;
+      }
+
+      if (intent.sourceWalletCustodyType === "contract_controlled") {
+        await this.processPolicyControlledQueuedWithdrawal(intent, metrics);
+        continue;
+      }
+
+      this.recordManualWithdrawalIntervention(
+        intent,
+        metrics,
+        "Withdrawal source wallet custody type is not configured for automated execution."
+      );
+    }
+  }
+
+  private async processPlatformManagedQueuedWithdrawal(
+    intent: WorkerIntentProjection,
+    metrics: WorkerIterationMetrics
+  ): Promise<void> {
     if (!this.deps.withdrawalBroadcaster) {
       throw new Error(
         "Managed withdrawal broadcaster is required in managed mode."
       );
     }
 
-    for (const intent of result.intents) {
-      if (!this.deps.withdrawalBroadcaster.canManageWallet(intent.sourceWalletAddress)) {
-        this.recordManualWithdrawalIntervention(
-          intent,
-          metrics,
-          "No managed signer is configured for the withdrawal source wallet."
+    if (!this.deps.withdrawalBroadcaster.canManageWallet(intent.sourceWalletAddress)) {
+      this.recordManualWithdrawalIntervention(
+        intent,
+        metrics,
+        "No managed signer is configured for the withdrawal source wallet."
+      );
+      return;
+    }
+
+    await this.processQueuedWithdrawalWithBroadcaster({
+      intent,
+      metrics,
+      broadcaster: this.deps.withdrawalBroadcaster,
+      invalidSignedStateFailureCode: "managed_signed_withdrawal_state_invalid",
+      invalidSignedStateFailureReason:
+        "Signed withdrawal execution state is missing durable transaction payload data.",
+      manualFailureCodes: new Set(["managed_withdrawal_signer_unavailable"]),
+      permanentFailureLogEvent: "managed_withdrawal_execution_failed_permanently",
+      retryableFailureLogEvent: "managed_withdrawal_execution_failed_retryable"
+    });
+  }
+
+  private async processPolicyControlledQueuedWithdrawal(
+    intent: WorkerIntentProjection,
+    metrics: WorkerIterationMetrics
+  ): Promise<void> {
+    if (!this.deps.policyControlledWithdrawalBroadcaster) {
+      this.recordManualWithdrawalIntervention(
+        intent,
+        metrics,
+        "Policy-controlled withdrawal execution is not configured in this worker runtime."
+      );
+      return;
+    }
+
+    await this.processQueuedWithdrawalWithBroadcaster({
+      intent,
+      metrics,
+      broadcaster: this.deps.policyControlledWithdrawalBroadcaster,
+      invalidSignedStateFailureCode:
+        "policy_controlled_signed_withdrawal_state_invalid",
+      invalidSignedStateFailureReason:
+        "Signed policy-controlled withdrawal execution state is missing durable transaction payload data.",
+      manualFailureCodes: new Set([
+        "policy_controlled_wallet_policy_signer_mismatch",
+        "policy_controlled_wallet_executor_mismatch"
+      ]),
+      permanentFailureLogEvent:
+        "policy_controlled_withdrawal_execution_failed_permanently",
+      retryableFailureLogEvent:
+        "policy_controlled_withdrawal_execution_failed_retryable"
+    });
+  }
+
+  private async processQueuedWithdrawalWithBroadcaster(args: {
+    intent: WorkerIntentProjection;
+    metrics: WorkerIterationMetrics;
+    broadcaster: {
+      prepare(
+        intent: WorkerIntentProjection
+      ): Promise<PreparedManagedWithdrawalTransaction>;
+      broadcastSignedTransaction(
+        signedTransaction: string
+      ): Promise<{ txHash: string }>;
+    };
+    invalidSignedStateFailureCode: string;
+    invalidSignedStateFailureReason: string;
+    manualFailureCodes: Set<string>;
+    permanentFailureLogEvent: string;
+    retryableFailureLogEvent: string;
+  }): Promise<void> {
+    try {
+      const latestBlockchainTransaction =
+        args.intent.latestBlockchainTransaction;
+
+      if (
+        latestBlockchainTransaction?.status === "signed" &&
+        latestBlockchainTransaction.serializedTransaction &&
+        latestBlockchainTransaction.txHash &&
+        latestBlockchainTransaction.fromAddress &&
+        latestBlockchainTransaction.toAddress
+      ) {
+        await args.broadcaster.broadcastSignedTransaction(
+          latestBlockchainTransaction.serializedTransaction
         );
-        continue;
+        await this.recordManagedWithdrawalBroadcast(
+          args.intent,
+          {
+            txHash: latestBlockchainTransaction.txHash,
+            nonce: latestBlockchainTransaction.nonce ?? 0,
+            serializedTransaction:
+              latestBlockchainTransaction.serializedTransaction,
+            fromAddress: latestBlockchainTransaction.fromAddress,
+            toAddress: latestBlockchainTransaction.toAddress
+          },
+          args.metrics
+        );
+        return;
       }
 
-      try {
-        const latestBlockchainTransaction = intent.latestBlockchainTransaction;
+      if (
+        latestBlockchainTransaction?.status === "signed" &&
+        (!latestBlockchainTransaction.serializedTransaction ||
+          !latestBlockchainTransaction.txHash)
+      ) {
+        await this.deps.internalApiClient.failWithdrawalIntent(args.intent.id, {
+          failureCode: args.invalidSignedStateFailureCode,
+          failureReason: args.invalidSignedStateFailureReason,
+          txHash: latestBlockchainTransaction.txHash ?? undefined,
+          fromAddress: latestBlockchainTransaction.fromAddress ?? undefined,
+          toAddress: latestBlockchainTransaction.toAddress ?? undefined
+        });
+        args.metrics.withdrawalFailedCount += 1;
+        return;
+      }
 
-        if (
-          latestBlockchainTransaction?.status === "signed" &&
-          latestBlockchainTransaction.serializedTransaction &&
-          latestBlockchainTransaction.txHash &&
-          latestBlockchainTransaction.fromAddress &&
-          latestBlockchainTransaction.toAddress
-        ) {
-          await this.deps.withdrawalBroadcaster.broadcastSignedTransaction(
-            latestBlockchainTransaction.serializedTransaction
-          );
-          await this.recordManagedWithdrawalBroadcast(
-            intent,
-            {
-              txHash: latestBlockchainTransaction.txHash,
-              nonce: latestBlockchainTransaction.nonce ?? 0,
-              serializedTransaction:
-                latestBlockchainTransaction.serializedTransaction,
-              fromAddress: latestBlockchainTransaction.fromAddress,
-              toAddress: latestBlockchainTransaction.toAddress
-            },
-            metrics
-          );
-          continue;
+      const execution = await this.deps.internalApiClient.startManagedWithdrawalExecution(
+        args.intent.id,
+        {
+          reclaimStaleAfterMs:
+            this.deps.runtime.managedWithdrawalClaimTimeoutMs
         }
+      );
 
-        if (
-          latestBlockchainTransaction?.status === "signed" &&
-          (!latestBlockchainTransaction.serializedTransaction ||
-            !latestBlockchainTransaction.txHash)
-        ) {
-          await this.deps.internalApiClient.failWithdrawalIntent(intent.id, {
-            failureCode: "managed_signed_withdrawal_state_invalid",
-            failureReason:
-              "Signed withdrawal execution state is missing durable transaction payload data.",
-            txHash: latestBlockchainTransaction.txHash ?? undefined,
-            fromAddress: latestBlockchainTransaction.fromAddress ?? undefined,
-            toAddress: latestBlockchainTransaction.toAddress ?? undefined
-          });
-          metrics.withdrawalFailedCount += 1;
-          continue;
-        }
+      if (!execution.executionClaimed) {
+        return;
+      }
 
-        const execution =
-          await this.deps.internalApiClient.startManagedWithdrawalExecution(
-            intent.id,
-            {
-              reclaimStaleAfterMs:
-                this.deps.runtime.managedWithdrawalClaimTimeoutMs
-            }
-          );
+      const claimedIntent = execution.intent;
+      const claimedLatestBlockchainTransaction =
+        claimedIntent.latestBlockchainTransaction;
 
-        if (!execution.executionClaimed) {
-          continue;
-        }
-
-        const claimedIntent = execution.intent;
-        const claimedLatestBlockchainTransaction =
-          claimedIntent.latestBlockchainTransaction;
-
-        if (
-          claimedLatestBlockchainTransaction?.status === "signed" &&
-          claimedLatestBlockchainTransaction.serializedTransaction &&
-          claimedLatestBlockchainTransaction.txHash &&
-          claimedLatestBlockchainTransaction.fromAddress &&
-          claimedLatestBlockchainTransaction.toAddress
-        ) {
-          await this.deps.withdrawalBroadcaster.broadcastSignedTransaction(
-            claimedLatestBlockchainTransaction.serializedTransaction
-          );
-          await this.recordManagedWithdrawalBroadcast(
-            claimedIntent,
-            {
-              txHash: claimedLatestBlockchainTransaction.txHash,
-              nonce: claimedLatestBlockchainTransaction.nonce ?? 0,
-              serializedTransaction:
-                claimedLatestBlockchainTransaction.serializedTransaction,
-              fromAddress: claimedLatestBlockchainTransaction.fromAddress,
-              toAddress: claimedLatestBlockchainTransaction.toAddress
-            },
-            metrics
-          );
-          continue;
-        }
-
-        if (
-          claimedLatestBlockchainTransaction?.status === "signed" &&
-          (!claimedLatestBlockchainTransaction.serializedTransaction ||
-            !claimedLatestBlockchainTransaction.txHash)
-        ) {
-          await this.deps.internalApiClient.failWithdrawalIntent(claimedIntent.id, {
-            failureCode: "managed_signed_withdrawal_state_invalid",
-            failureReason:
-              "Signed withdrawal execution state is missing durable transaction payload data.",
-            txHash: claimedLatestBlockchainTransaction.txHash ?? undefined,
-            fromAddress:
-              claimedLatestBlockchainTransaction.fromAddress ?? undefined,
-            toAddress: claimedLatestBlockchainTransaction.toAddress ?? undefined
-          });
-          metrics.withdrawalFailedCount += 1;
-          continue;
-        }
-
-        const preparedTransaction =
-          await this.deps.withdrawalBroadcaster.prepare(claimedIntent);
-
-        await this.deps.internalApiClient.recordSignedWithdrawalExecution(
-          claimedIntent.id,
-          {
-            txHash: preparedTransaction.txHash,
-            nonce: preparedTransaction.nonce,
-            serializedTransaction: preparedTransaction.serializedTransaction,
-            fromAddress: preparedTransaction.fromAddress,
-            toAddress: preparedTransaction.toAddress
-          }
-        );
-
-        await this.deps.withdrawalBroadcaster.broadcastSignedTransaction(
-          preparedTransaction.serializedTransaction
+      if (
+        claimedLatestBlockchainTransaction?.status === "signed" &&
+        claimedLatestBlockchainTransaction.serializedTransaction &&
+        claimedLatestBlockchainTransaction.txHash &&
+        claimedLatestBlockchainTransaction.fromAddress &&
+        claimedLatestBlockchainTransaction.toAddress
+      ) {
+        await args.broadcaster.broadcastSignedTransaction(
+          claimedLatestBlockchainTransaction.serializedTransaction
         );
         await this.recordManagedWithdrawalBroadcast(
           claimedIntent,
-          preparedTransaction,
-          metrics
+          {
+            txHash: claimedLatestBlockchainTransaction.txHash,
+            nonce: claimedLatestBlockchainTransaction.nonce ?? 0,
+            serializedTransaction:
+              claimedLatestBlockchainTransaction.serializedTransaction,
+            fromAddress: claimedLatestBlockchainTransaction.fromAddress,
+            toAddress: claimedLatestBlockchainTransaction.toAddress
+          },
+          args.metrics
         );
-      } catch (error) {
-        if (error instanceof ManagedExecutionIntentError) {
-          if (error.failure.failureCode === "managed_withdrawal_signer_unavailable") {
-            this.recordManualWithdrawalIntervention(
-              intent,
-              metrics,
-              error.failure.failureReason
-            );
-            continue;
-          }
+        return;
+      }
 
-          await this.deps.internalApiClient.failWithdrawalIntent(intent.id, {
-            failureCode: error.failure.failureCode,
-            failureReason: error.failure.failureReason,
-            fromAddress: error.failure.fromAddress,
-            toAddress: error.failure.toAddress
-          });
-          metrics.withdrawalFailedCount += 1;
-          this.deps.logger.warn("managed_withdrawal_execution_failed_permanently", {
-            intentId: intent.id,
-            failureCode: error.failure.failureCode,
-            failureReason: error.failure.failureReason,
-            assetSymbol: intent.asset.symbol
-          });
-          continue;
+      if (
+        claimedLatestBlockchainTransaction?.status === "signed" &&
+        (!claimedLatestBlockchainTransaction.serializedTransaction ||
+          !claimedLatestBlockchainTransaction.txHash)
+      ) {
+        await this.deps.internalApiClient.failWithdrawalIntent(claimedIntent.id, {
+          failureCode: args.invalidSignedStateFailureCode,
+          failureReason: args.invalidSignedStateFailureReason,
+          txHash: claimedLatestBlockchainTransaction.txHash ?? undefined,
+          fromAddress:
+            claimedLatestBlockchainTransaction.fromAddress ?? undefined,
+          toAddress: claimedLatestBlockchainTransaction.toAddress ?? undefined
+        });
+        args.metrics.withdrawalFailedCount += 1;
+        return;
+      }
+
+      const preparedTransaction = await args.broadcaster.prepare(claimedIntent);
+
+      await this.deps.internalApiClient.recordSignedWithdrawalExecution(
+        claimedIntent.id,
+        {
+          txHash: preparedTransaction.txHash,
+          nonce: preparedTransaction.nonce,
+          serializedTransaction: preparedTransaction.serializedTransaction,
+          fromAddress: preparedTransaction.fromAddress,
+          toAddress: preparedTransaction.toAddress
+        }
+      );
+
+      await args.broadcaster.broadcastSignedTransaction(
+        preparedTransaction.serializedTransaction
+      );
+      await this.recordManagedWithdrawalBroadcast(
+        claimedIntent,
+        preparedTransaction,
+        args.metrics
+      );
+    } catch (error) {
+      if (error instanceof ManagedExecutionIntentError) {
+        if (args.manualFailureCodes.has(error.failure.failureCode)) {
+          this.recordManualWithdrawalIntervention(
+            args.intent,
+            args.metrics,
+            error.failure.failureReason
+          );
+          return;
         }
 
-        this.deps.logger.error("managed_withdrawal_execution_failed_retryable", {
-          intentId: intent.id,
-          assetSymbol: intent.asset.symbol,
-          requestedAmount: intent.requestedAmount,
-          error
+        await this.deps.internalApiClient.failWithdrawalIntent(args.intent.id, {
+          failureCode: error.failure.failureCode,
+          failureReason: error.failure.failureReason,
+          fromAddress: error.failure.fromAddress,
+          toAddress: error.failure.toAddress
         });
+        args.metrics.withdrawalFailedCount += 1;
+        this.deps.logger.warn(args.permanentFailureLogEvent, {
+          intentId: args.intent.id,
+          failureCode: error.failure.failureCode,
+          failureReason: error.failure.failureReason,
+          assetSymbol: args.intent.asset.symbol
+        });
+        return;
       }
+
+      this.deps.logger.error(args.retryableFailureLogEvent, {
+        intentId: args.intent.id,
+        assetSymbol: args.intent.asset.symbol,
+        requestedAmount: args.intent.requestedAmount,
+        error
+      });
     }
   }
 

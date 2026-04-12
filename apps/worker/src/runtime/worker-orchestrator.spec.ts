@@ -5,6 +5,7 @@ import { WorkerOrchestrator } from "./worker-orchestrator";
 import type {
   DepositBroadcastResult,
   ManagedWithdrawalBroadcaster,
+  PolicyControlledWithdrawalBroadcaster,
   PreparedManagedWithdrawalTransaction,
   WorkerIntentProjection,
   WorkerLogger
@@ -28,6 +29,7 @@ function createIntent(
     },
     destinationWalletAddress: "0x0000000000000000000000000000000000000abc",
     sourceWalletAddress: "0x0000000000000000000000000000000000000def",
+    sourceWalletCustodyType: "platform_managed",
     externalAddress: "0x0000000000000000000000000000000000000fed",
     chainId: 8453,
     status: "queued",
@@ -114,14 +116,34 @@ function createManagedWithdrawalBroadcaster(
   };
 }
 
+function createPolicyControlledWithdrawalBroadcaster(
+  overrides: Partial<PolicyControlledWithdrawalBroadcaster> = {}
+): PolicyControlledWithdrawalBroadcaster {
+  return {
+    async prepare(): Promise<PreparedManagedWithdrawalTransaction> {
+      throw new Error("policy-controlled withdrawal prepare should not be called");
+    },
+    async broadcastSignedTransaction(): Promise<DepositBroadcastResult> {
+      throw new Error("policy-controlled withdrawal broadcast should not be called");
+    },
+    ...overrides
+  };
+}
+
 function createRuntime<T extends Record<string, unknown>>(
   overrides: T
 ): T & {
   managedWithdrawalClaimTimeoutMs: number;
+  policyControlledWithdrawalExecutorPrivateKey: null;
+  policyControlledWithdrawalPolicySignerPrivateKey: null;
+  policyControlledWithdrawalAuthorizationTtlSeconds: number;
   managedWithdrawalSigners: [];
 } {
   return {
     managedWithdrawalClaimTimeoutMs: 60000,
+    policyControlledWithdrawalExecutorPrivateKey: null,
+    policyControlledWithdrawalPolicySignerPrivateKey: null,
+    policyControlledWithdrawalAuthorizationTtlSeconds: 300,
     managedWithdrawalSigners: [],
     ...overrides
   };
@@ -252,6 +274,7 @@ test("synthetic mode records broadcasts and settles them", async () => {
       }
     },
     withdrawalBroadcaster: null,
+    policyControlledWithdrawalBroadcaster: null,
     logger: createLogger()
   });
 
@@ -384,6 +407,7 @@ test("monitor mode confirms and settles broadcast intents with enough confirmati
       }
     },
     withdrawalBroadcaster: null,
+    policyControlledWithdrawalBroadcaster: null,
     logger: createLogger()
   });
 
@@ -525,6 +549,7 @@ test("worker settles confirmed recovery backlog after the broadcast pass", async
       }
     },
     withdrawalBroadcaster: null,
+    policyControlledWithdrawalBroadcaster: null,
     logger: createLogger()
   });
 
@@ -653,6 +678,7 @@ test("monitor mode waits when a broadcast intent does not yet have enough confir
       }
     },
     withdrawalBroadcaster: null,
+    policyControlledWithdrawalBroadcaster: null,
     logger: createLogger()
   });
 
@@ -758,6 +784,7 @@ test("managed mode broadcasts queued deposits and leaves withdrawals for manual 
       }
     },
     withdrawalBroadcaster: createManagedWithdrawalBroadcaster(),
+    policyControlledWithdrawalBroadcaster: null,
     logger
   });
 
@@ -875,6 +902,7 @@ test("managed mode permanently fails malformed deposit intents", async () => {
       }
     },
     withdrawalBroadcaster: createManagedWithdrawalBroadcaster(),
+    policyControlledWithdrawalBroadcaster: null,
     logger: createLogger()
   });
 
@@ -1076,6 +1104,7 @@ test("managed mode broadcasts, confirms, and settles queued withdrawals", async 
         };
       }
     }),
+    policyControlledWithdrawalBroadcaster: null,
     logger: createLogger()
   });
 
@@ -1090,6 +1119,215 @@ test("managed mode broadcasts, confirms, and settles queued withdrawals", async 
     "settleWithdrawalIntent:withdrawal_managed_1"
   ]);
   assert.equal(phase, "settled");
+});
+
+test("managed mode executes contract-controlled withdrawals through the policy-controlled broadcaster", async () => {
+  const txHash =
+    "0x3333333333333333333333333333333333333333333333333333333333333333";
+  const serializedTransaction = "0xfeedface";
+  const operations: string[] = [];
+  const broadcasterOperations: string[] = [];
+  const queuedIntent = createIntent("withdrawal_policy_1", {
+    sourceWalletAddress: "0x0000000000000000000000000000000000000cab",
+    sourceWalletCustodyType: "contract_controlled"
+  });
+
+  const orchestrator = new WorkerOrchestrator({
+    runtime: createRuntime({
+      environment: "production",
+      workerId: "worker_1",
+      internalApiBaseUrl: "https://internal.example.com",
+      internalWorkerApiKey: "secret",
+      executionMode: "managed",
+      pollIntervalMs: 10,
+      batchLimit: 20,
+      requestTimeoutMs: 1000,
+      internalApiStartupGracePeriodMs: 45000,
+      confirmationBlocks: 2,
+      reconciliationScanIntervalMs: 300000,
+      platformAlertReEscalationIntervalMs: 300000,
+      rpcUrl: "https://rpc.example.com",
+      depositSignerPrivateKey:
+        "0x59c6995e998f97a5a0044966f094538c5f6d4e07f16b8ad8cc7658f0f1b0f9d8"
+    }),
+    internalApiClient: createInternalApiClient({
+      async listQueuedDepositIntents() {
+        return { intents: [], limit: 20 };
+      },
+      async listQueuedWithdrawalIntents() {
+        return { intents: [queuedIntent], limit: 20 };
+      },
+      async startManagedWithdrawalExecution(intentId: string) {
+        operations.push(`startManagedWithdrawalExecution:${intentId}`);
+        return {
+          intent: queuedIntent,
+          executionClaimed: true,
+          executionReused: false
+        };
+      },
+      async recordSignedWithdrawalExecution(intentId: string, payload: {
+        txHash: string;
+      }) {
+        operations.push(
+          `recordSignedWithdrawalExecution:${intentId}:${payload.txHash}`
+        );
+        return {
+          intent: createIntent("withdrawal_policy_1", {
+            sourceWalletAddress: queuedIntent.sourceWalletAddress,
+            sourceWalletCustodyType: "contract_controlled",
+            status: "queued",
+            latestBlockchainTransaction: {
+              id: "withdrawal_policy_tx_signed_1",
+              txHash,
+              nonce: 4,
+              serializedTransaction,
+              status: "signed",
+              fromAddress: "0x0000000000000000000000000000000000000bee",
+              toAddress: queuedIntent.sourceWalletAddress,
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+              confirmedAt: null
+            }
+          }),
+          signedStateReused: false
+        };
+      },
+      async listBroadcastDepositIntents() {
+        return { intents: [], limit: 20 };
+      },
+      async listBroadcastWithdrawalIntents() {
+        return {
+          intents: [
+            createIntent("withdrawal_policy_1", {
+              sourceWalletAddress: queuedIntent.sourceWalletAddress,
+              sourceWalletCustodyType: "contract_controlled",
+              status: "broadcast",
+              latestBlockchainTransaction: {
+                id: "withdrawal_policy_tx_broadcast_1",
+                txHash,
+                nonce: 4,
+                serializedTransaction,
+                status: "broadcast",
+                fromAddress: "0x0000000000000000000000000000000000000bee",
+                toAddress: queuedIntent.sourceWalletAddress,
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+                confirmedAt: null
+              }
+            })
+          ],
+          limit: 20
+        };
+      },
+      async listConfirmedDepositIntentsReadyToSettle() {
+        return { intents: [], limit: 20 };
+      },
+      async listConfirmedWithdrawalIntentsReadyToSettle() {
+        return { intents: [], limit: 20 };
+      },
+      async recordWithdrawalBroadcast(intentId: string, payload: {
+        txHash: string;
+      }) {
+        operations.push(`recordWithdrawalBroadcast:${intentId}:${payload.txHash}`);
+      },
+      async confirmWithdrawalIntent(intentId: string, payload: {
+        txHash?: string;
+      }) {
+        operations.push(`confirmWithdrawalIntent:${intentId}:${payload.txHash}`);
+      },
+      async settleWithdrawalIntent(intentId: string) {
+        operations.push(`settleWithdrawalIntent:${intentId}`);
+      },
+      async recordDepositBroadcast() {
+        throw new Error("deposit flow not expected");
+      },
+      async confirmDepositIntent() {
+        throw new Error("deposit flow not expected");
+      },
+      async settleDepositIntent() {
+        throw new Error("deposit flow not expected");
+      },
+      async failDepositIntent() {
+        throw new Error("deposit flow not expected");
+      },
+      async failWithdrawalIntent() {
+        throw new Error("policy-controlled withdrawal should not fail");
+      },
+      async reportWorkerHeartbeat() {
+        throw new Error("worker heartbeat reporting is handled outside the orchestrator");
+      },
+      async triggerLedgerReconciliationScan() {
+        throw new Error("reconciliation scan scheduling is handled outside the orchestrator");
+      },
+      async triggerCriticalAlertReEscalationSweep() {
+        throw new Error("platform alert re-escalation is handled outside the orchestrator");
+      }
+    }) as never,
+    rpcClient: {
+      async getBlockNumber() {
+        return 101n;
+      },
+      async getTransactionReceipt(requestedTxHash: string) {
+        assert.equal(requestedTxHash, txHash);
+        return {
+          txHash,
+          fromAddress: "0x0000000000000000000000000000000000000bee",
+          toAddress: queuedIntent.sourceWalletAddress!,
+          blockNumber: 100n,
+          succeeded: true
+        };
+      }
+    },
+    depositBroadcaster: {
+      signerAddress: "0x0000000000000000000000000000000000000aaa",
+      async broadcast() {
+        throw new Error("deposit broadcaster should not be called");
+      }
+    },
+    withdrawalBroadcaster: createManagedWithdrawalBroadcaster({
+      canManageWallet() {
+        return false;
+      }
+    }),
+    policyControlledWithdrawalBroadcaster:
+      createPolicyControlledWithdrawalBroadcaster({
+        async prepare(intent: WorkerIntentProjection) {
+          broadcasterOperations.push(`prepare:${intent.id}`);
+          return {
+            txHash,
+            nonce: 4,
+            serializedTransaction,
+            fromAddress: "0x0000000000000000000000000000000000000bee",
+            toAddress: queuedIntent.sourceWalletAddress!
+          };
+        },
+        async broadcastSignedTransaction(signedTransaction: string) {
+          broadcasterOperations.push(
+            `broadcastSignedTransaction:${signedTransaction}`
+          );
+          return {
+            txHash,
+            fromAddress: "0x0000000000000000000000000000000000000bee",
+            toAddress: queuedIntent.sourceWalletAddress!
+          };
+        }
+      }),
+    logger: createLogger()
+  });
+
+  await orchestrator.runOnce();
+
+  assert.deepEqual(operations, [
+    "startManagedWithdrawalExecution:withdrawal_policy_1",
+    "recordSignedWithdrawalExecution:withdrawal_policy_1:0x3333333333333333333333333333333333333333333333333333333333333333",
+    "recordWithdrawalBroadcast:withdrawal_policy_1:0x3333333333333333333333333333333333333333333333333333333333333333",
+    "confirmWithdrawalIntent:withdrawal_policy_1:0x3333333333333333333333333333333333333333333333333333333333333333",
+    "settleWithdrawalIntent:withdrawal_policy_1"
+  ]);
+  assert.deepEqual(broadcasterOperations, [
+    "prepare:withdrawal_policy_1",
+    "broadcastSignedTransaction:0xfeedface"
+  ]);
 });
 
 test("managed mode does not double-broadcast or double-settle signed withdrawals across duplicate runs", async () => {
@@ -1255,6 +1493,7 @@ test("managed mode does not double-broadcast or double-settle signed withdrawals
         };
       }
     }),
+    policyControlledWithdrawalBroadcaster: null,
     logger: createLogger()
   });
 
@@ -1389,6 +1628,7 @@ test("managed mode safely fails unrecoverable withdrawal execution errors", asyn
         });
       }
     }),
+    policyControlledWithdrawalBroadcaster: null,
     logger: createLogger()
   });
 
@@ -1490,6 +1730,7 @@ test("monitor mode warns and skips broadcast intents that are missing a tx hash"
     },
     depositBroadcaster: null,
     withdrawalBroadcaster: null,
+    policyControlledWithdrawalBroadcaster: null,
     logger
   });
 
@@ -1610,6 +1851,7 @@ test("monitor mode marks reverted withdrawal receipts as failed", async () => {
     },
     depositBroadcaster: null,
     withdrawalBroadcaster: null,
+    policyControlledWithdrawalBroadcaster: null,
     logger
   });
 
@@ -1731,6 +1973,7 @@ test("monitor mode marks reverted deposit receipts as failed", async () => {
     },
     depositBroadcaster: null,
     withdrawalBroadcaster: null,
+    policyControlledWithdrawalBroadcaster: null,
     logger: createLogger()
   });
 
@@ -1851,6 +2094,7 @@ test("monitor mode confirms and settles withdrawal intents with enough confirmat
     },
     depositBroadcaster: null,
     withdrawalBroadcaster: null,
+    policyControlledWithdrawalBroadcaster: null,
     logger: createLogger()
   });
 
@@ -1956,6 +2200,7 @@ test("monitor mode requires an rpc client once broadcast intents need confirmati
     rpcClient: null,
     depositBroadcaster: null,
     withdrawalBroadcaster: null,
+    policyControlledWithdrawalBroadcaster: null,
     logger: createLogger()
   });
 
@@ -2045,6 +2290,7 @@ test("monitor mode logs queued backlog when an external broadcaster is still res
     },
     depositBroadcaster: null,
     withdrawalBroadcaster: null,
+    policyControlledWithdrawalBroadcaster: null,
     logger
   });
 
@@ -2151,6 +2397,7 @@ test("managed mode logs retryable deposit broadcaster failures without marking t
       }
     },
     withdrawalBroadcaster: createManagedWithdrawalBroadcaster(),
+    policyControlledWithdrawalBroadcaster: null,
     logger
   });
 
@@ -2242,6 +2489,7 @@ test("managed mode requires a deposit broadcaster when queued deposits exist", a
     },
     depositBroadcaster: null,
     withdrawalBroadcaster: null,
+    policyControlledWithdrawalBroadcaster: null,
     logger: createLogger()
   });
 

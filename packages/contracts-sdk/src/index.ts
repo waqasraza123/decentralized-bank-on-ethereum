@@ -38,6 +38,14 @@ export const ERC20_TRANSFER_ABI = [
   "function transfer(address to, uint256 amount) returns (bool)"
 ] as const;
 
+export const POLICY_CONTROLLED_WALLET_ABI = [
+  "function policySigner() view returns (address)",
+  "function authorizedExecutor() view returns (address)",
+  "function nextNonce() view returns (uint256)",
+  "function executeAuthorizedTransfer(bytes32 intentId,address asset,address to,uint256 amount,uint256 authorizationNonce,uint256 authorizationDeadline,bytes authorizationSignature) external",
+  "event WithdrawalExecuted(bytes32 indexed intentId, address indexed asset, address indexed to, uint256 amount, uint256 authorizationNonce, address executor)"
+] as const;
+
 export function createJsonRpcProvider(
   rpcUrl: string
 ): ethers.providers.JsonRpcProvider {
@@ -97,6 +105,24 @@ export function createLoanBookWriteContract(
   return new ethers.Contract(contractAddress, LOAN_BOOK_ABI, signer);
 }
 
+export function createPolicyControlledWalletReadContract(
+  contractAddress: string,
+  providerOrSigner: ethers.Signer | ethers.providers.Provider
+): ethers.Contract {
+  return new ethers.Contract(
+    contractAddress,
+    POLICY_CONTROLLED_WALLET_ABI,
+    providerOrSigner
+  );
+}
+
+export function createPolicyControlledWalletWriteContract(
+  contractAddress: string,
+  signer: ethers.Signer
+): ethers.Contract {
+  return new ethers.Contract(contractAddress, POLICY_CONTROLLED_WALLET_ABI, signer);
+}
+
 export function formatEthAmount(value: ethers.BigNumberish): string {
   return ethers.utils.formatEther(value);
 }
@@ -110,6 +136,49 @@ export function parseAssetAmount(
   decimals: number
 ): ethers.BigNumber {
   return ethers.utils.parseUnits(value.trim(), decimals);
+}
+
+export function hashPolicyControlledIntentId(intentId: string): string {
+  return ethers.utils.keccak256(ethers.utils.toUtf8Bytes(intentId));
+}
+
+export async function signPolicyControlledWithdrawalAuthorization(args: {
+  walletAddress: string;
+  chainId: number;
+  policySigner: ethers.Wallet;
+  intentId: string;
+  assetAddress: string | null;
+  destinationAddress: string;
+  amount: ethers.BigNumberish;
+  authorizationNonce: ethers.BigNumberish;
+  authorizationDeadline: ethers.BigNumberish;
+}): Promise<string> {
+  return args.policySigner._signTypedData(
+    {
+      name: "StealthTrailsPolicyWallet",
+      version: "1",
+      chainId: args.chainId,
+      verifyingContract: args.walletAddress
+    },
+    {
+      WithdrawalAuthorization: [
+        { name: "intentId", type: "bytes32" },
+        { name: "asset", type: "address" },
+        { name: "to", type: "address" },
+        { name: "amount", type: "uint256" },
+        { name: "authorizationNonce", type: "uint256" },
+        { name: "authorizationDeadline", type: "uint256" }
+      ]
+    },
+    {
+      intentId: hashPolicyControlledIntentId(args.intentId),
+      asset: args.assetAddress ?? ethers.constants.AddressZero,
+      to: args.destinationAddress,
+      amount: args.amount,
+      authorizationNonce: args.authorizationNonce,
+      authorizationDeadline: args.authorizationDeadline
+    }
+  );
 }
 
 export function normalizeEvmAddress(address: string | null | undefined): {

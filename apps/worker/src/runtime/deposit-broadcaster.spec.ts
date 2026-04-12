@@ -24,6 +24,7 @@ function createIntent(
     },
     destinationWalletAddress: "0x0000000000000000000000000000000000000abc",
     sourceWalletAddress: "0x0000000000000000000000000000000000000def",
+    sourceWalletCustodyType: "platform_managed",
     externalAddress: "0x0000000000000000000000000000000000000fed",
     chainId: 8453,
     status: "queued",
@@ -49,6 +50,9 @@ function createManagedRuntime() {
     platformAlertReEscalationIntervalMs: 300000,
     rpcUrl: "https://rpc.example.com",
     managedWithdrawalClaimTimeoutMs: 60000,
+    policyControlledWithdrawalExecutorPrivateKey: null,
+    policyControlledWithdrawalPolicySignerPrivateKey: null,
+    policyControlledWithdrawalAuthorizationTtlSeconds: 300,
     managedWithdrawalSigners: [],
     depositSignerPrivateKey:
       "0x59c6995e998f97a5a0044966f094538c5f6d4e07f16b8ad8cc7658f0f1b0f9d8"
@@ -59,10 +63,16 @@ function withManagedWithdrawalDefaults<T extends Record<string, unknown>>(
   runtime: T
 ): T & {
   managedWithdrawalClaimTimeoutMs: number;
+  policyControlledWithdrawalExecutorPrivateKey: null;
+  policyControlledWithdrawalPolicySignerPrivateKey: null;
+  policyControlledWithdrawalAuthorizationTtlSeconds: number;
   managedWithdrawalSigners: [];
 } {
   return {
     managedWithdrawalClaimTimeoutMs: 60000,
+    policyControlledWithdrawalExecutorPrivateKey: null,
+    policyControlledWithdrawalPolicySignerPrivateKey: null,
+    policyControlledWithdrawalAuthorizationTtlSeconds: 300,
     managedWithdrawalSigners: [],
     ...runtime
   };

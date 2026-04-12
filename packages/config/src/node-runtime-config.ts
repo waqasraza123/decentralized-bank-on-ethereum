@@ -92,6 +92,7 @@ const DEFAULT_WORKER_CONFIRMATION_BLOCKS = 1;
 const DEFAULT_WORKER_PLATFORM_ALERT_REESCALATION_INTERVAL_MS = 300_000;
 const DEFAULT_WORKER_INTERNAL_API_STARTUP_GRACE_PERIOD_MS = 45_000;
 const DEFAULT_WORKER_MANAGED_WITHDRAWAL_CLAIM_TIMEOUT_MS = 60_000;
+const DEFAULT_WORKER_POLICY_CONTROLLED_WITHDRAWAL_AUTHORIZATION_TTL_SECONDS = 300;
 const DEFAULT_LOCAL_WORKER_ID = "worker-local-1";
 const DEFAULT_LOCAL_INTERNAL_API_BASE_URL = "http://localhost:9001";
 const DEFAULT_LOCAL_INTERNAL_WORKER_API_KEY = "local-dev-worker-key";
@@ -741,6 +742,9 @@ export type WorkerRuntimeConfig = {
   readonly reconciliationScanIntervalMs: number;
   readonly platformAlertReEscalationIntervalMs: number;
   readonly managedWithdrawalClaimTimeoutMs: number;
+  readonly policyControlledWithdrawalExecutorPrivateKey: string | null;
+  readonly policyControlledWithdrawalPolicySignerPrivateKey: string | null;
+  readonly policyControlledWithdrawalAuthorizationTtlSeconds: number;
   readonly rpcUrl: string | null;
   readonly depositSignerPrivateKey: string | null;
   readonly managedWithdrawalSigners: readonly ManagedWithdrawalSignerRuntimeConfig[];
@@ -1171,6 +1175,15 @@ export function loadWorkerRuntimeConfig(
     env,
     "WORKER_DEPOSIT_SIGNER_PRIVATE_KEY"
   );
+  const policyControlledWithdrawalExecutorPrivateKey = readOptionalRuntimeEnv(
+    env,
+    "WORKER_POLICY_CONTROLLED_WITHDRAWAL_EXECUTOR_PRIVATE_KEY"
+  );
+  const policyControlledWithdrawalPolicySignerPrivateKey =
+    readOptionalRuntimeEnv(
+      env,
+      "WORKER_POLICY_CONTROLLED_WITHDRAWAL_POLICY_SIGNER_PRIVATE_KEY"
+    );
   const managedWithdrawalSignersJson = readOptionalRuntimeEnv(
     env,
     "WORKER_MANAGED_WITHDRAWAL_SIGNERS_JSON"
@@ -1185,6 +1198,16 @@ export function loadWorkerRuntimeConfig(
   if (executionMode === "managed" && !depositSignerPrivateKey) {
     throw new Error(
       "WORKER_DEPOSIT_SIGNER_PRIVATE_KEY is required when WORKER_EXECUTION_MODE=managed."
+    );
+  }
+
+  if (
+    executionMode === "managed" &&
+    Boolean(policyControlledWithdrawalExecutorPrivateKey) !==
+      Boolean(policyControlledWithdrawalPolicySignerPrivateKey)
+  ) {
+    throw new Error(
+      "WORKER_POLICY_CONTROLLED_WITHDRAWAL_EXECUTOR_PRIVATE_KEY and WORKER_POLICY_CONTROLLED_WITHDRAWAL_POLICY_SIGNER_PRIVATE_KEY must be configured together."
     );
   }
 
@@ -1260,6 +1283,20 @@ export function loadWorkerRuntimeConfig(
         "WORKER_MANAGED_WITHDRAWAL_CLAIM_TIMEOUT_MS"
       ) ?? String(DEFAULT_WORKER_MANAGED_WITHDRAWAL_CLAIM_TIMEOUT_MS),
       "WORKER_MANAGED_WITHDRAWAL_CLAIM_TIMEOUT_MS"
+    ),
+    policyControlledWithdrawalExecutorPrivateKey:
+      policyControlledWithdrawalExecutorPrivateKey ?? null,
+    policyControlledWithdrawalPolicySignerPrivateKey:
+      policyControlledWithdrawalPolicySignerPrivateKey ?? null,
+    policyControlledWithdrawalAuthorizationTtlSeconds: parsePositiveInteger(
+      readOptionalRuntimeEnv(
+        env,
+        "WORKER_POLICY_CONTROLLED_WITHDRAWAL_AUTHORIZATION_TTL_SECONDS"
+      ) ??
+        String(
+          DEFAULT_WORKER_POLICY_CONTROLLED_WITHDRAWAL_AUTHORIZATION_TTL_SECONDS
+        ),
+      "WORKER_POLICY_CONTROLLED_WITHDRAWAL_AUTHORIZATION_TTL_SECONDS"
     ),
     rpcUrl: rpcUrl ?? null,
     depositSignerPrivateKey: depositSignerPrivateKey ?? null,

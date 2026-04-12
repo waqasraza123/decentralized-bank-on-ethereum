@@ -64,6 +64,7 @@ type CustomerIntentRecord = Prisma.TransactionIntentGetPayload<{
       select: {
         id: true;
         address: true;
+        custodyType: true;
       };
     };
   };
@@ -84,6 +85,7 @@ type InternalIntentRecord = Prisma.TransactionIntentGetPayload<{
       select: {
         id: true;
         address: true;
+        custodyType: true;
       };
     };
     customerAccount: {
@@ -147,6 +149,7 @@ type TransactionIntentProjection = {
   };
   sourceWalletId: string | null;
   sourceWalletAddress: string | null;
+  sourceWalletCustodyType: string | null;
   destinationWalletId: string | null;
   destinationWalletAddress: string | null;
   externalAddress: string | null;
@@ -378,6 +381,7 @@ export class WithdrawalIntentsService {
       },
       sourceWalletId: intent.sourceWalletId,
       sourceWalletAddress: intent.sourceWallet?.address ?? null,
+      sourceWalletCustodyType: intent.sourceWallet?.custodyType ?? null,
       destinationWalletId: intent.destinationWalletId,
       destinationWalletAddress: null,
       externalAddress: intent.externalAddress ?? null,
@@ -470,7 +474,8 @@ export class WithdrawalIntentsService {
           take: 2,
           select: {
             id: true,
-            address: true
+            address: true,
+            custodyType: true
           }
         }
       }
@@ -559,7 +564,8 @@ export class WithdrawalIntentsService {
         sourceWallet: {
           select: {
             id: true,
-            address: true
+            address: true,
+            custodyType: true
           }
         }
       }
@@ -588,7 +594,8 @@ export class WithdrawalIntentsService {
         sourceWallet: {
           select: {
             id: true,
-            address: true
+            address: true,
+            custodyType: true
           }
         },
         customerAccount: {
@@ -887,7 +894,8 @@ export class WithdrawalIntentsService {
               sourceWallet: {
                 select: {
                   id: true,
-                  address: true
+                  address: true,
+            custodyType: true
                 }
               }
             }
@@ -984,7 +992,8 @@ export class WithdrawalIntentsService {
         sourceWallet: {
           select: {
             id: true,
-            address: true
+            address: true,
+            custodyType: true
           }
         },
         customerAccount: {
@@ -1143,7 +1152,8 @@ export class WithdrawalIntentsService {
             sourceWallet: {
               select: {
                 id: true,
-                address: true
+                address: true,
+            custodyType: true
               }
             },
             customerAccount: {
@@ -1225,7 +1235,8 @@ export class WithdrawalIntentsService {
         sourceWallet: {
           select: {
             id: true,
-            address: true
+            address: true,
+            custodyType: true
           }
         },
         customerAccount: {
@@ -1353,7 +1364,8 @@ export class WithdrawalIntentsService {
             sourceWallet: {
               select: {
                 id: true,
-                address: true
+                address: true,
+            custodyType: true
               }
             },
             customerAccount: {
@@ -1435,7 +1447,8 @@ export class WithdrawalIntentsService {
         sourceWallet: {
           select: {
             id: true,
-            address: true
+            address: true,
+            custodyType: true
           }
         },
         customerAccount: {
@@ -1525,7 +1538,8 @@ export class WithdrawalIntentsService {
           sourceWallet: {
             select: {
               id: true,
-              address: true
+              address: true,
+            custodyType: true
             }
           },
           customerAccount: {
@@ -1636,7 +1650,8 @@ export class WithdrawalIntentsService {
             sourceWallet: {
               select: {
                 id: true,
-                address: true
+                address: true,
+            custodyType: true
               }
             },
             customerAccount: {
@@ -1757,7 +1772,8 @@ export class WithdrawalIntentsService {
           sourceWallet: {
             select: {
               id: true,
-              address: true
+              address: true,
+            custodyType: true
             }
           },
           customerAccount: {
@@ -1856,7 +1872,8 @@ export class WithdrawalIntentsService {
             sourceWallet: {
               select: {
                 id: true,
-                address: true
+                address: true,
+            custodyType: true
               }
             },
             customerAccount: {
@@ -2017,7 +2034,8 @@ export class WithdrawalIntentsService {
             sourceWallet: {
               select: {
                 id: true,
-                address: true
+                address: true,
+            custodyType: true
               }
             },
             customerAccount: {
@@ -2147,7 +2165,8 @@ export class WithdrawalIntentsService {
             sourceWallet: {
               select: {
                 id: true,
-                address: true
+                address: true,
+            custodyType: true
               }
             },
             customerAccount: {
@@ -2319,7 +2338,8 @@ export class WithdrawalIntentsService {
             sourceWallet: {
               select: {
                 id: true,
-                address: true
+                address: true,
+            custodyType: true
               }
             },
             customerAccount: {
@@ -2462,7 +2482,8 @@ export class WithdrawalIntentsService {
             sourceWallet: {
               select: {
                 id: true,
-                address: true
+                address: true,
+            custodyType: true
               }
             },
             customerAccount: {
@@ -2641,7 +2662,8 @@ export class WithdrawalIntentsService {
             sourceWallet: {
               select: {
                 id: true,
-                address: true
+                address: true,
+            custodyType: true
               }
             },
             customerAccount: {
@@ -2723,7 +2745,8 @@ export class WithdrawalIntentsService {
         sourceWallet: {
           select: {
             id: true,
-            address: true
+            address: true,
+            custodyType: true
           }
         },
         customerAccount: {
@@ -2805,7 +2828,8 @@ export class WithdrawalIntentsService {
         sourceWallet: {
           select: {
             id: true,
-            address: true
+            address: true,
+            custodyType: true
           }
         },
         customerAccount: {
@@ -2978,7 +3002,8 @@ export class WithdrawalIntentsService {
             sourceWallet: {
               select: {
                 id: true,
-                address: true
+                address: true,
+            custodyType: true
               }
             },
             customerAccount: {
@@ -3112,7 +3137,8 @@ export class WithdrawalIntentsService {
             sourceWallet: {
               select: {
                 id: true,
-                address: true
+                address: true,
+            custodyType: true
               }
             },
             customerAccount: {
@@ -3267,7 +3293,8 @@ export class WithdrawalIntentsService {
             sourceWallet: {
               select: {
                 id: true,
-                address: true
+                address: true,
+            custodyType: true
               }
             },
             customerAccount: {
@@ -3399,7 +3426,8 @@ export class WithdrawalIntentsService {
             sourceWallet: {
               select: {
                 id: true,
-                address: true
+                address: true,
+            custodyType: true
               }
             },
             customerAccount: {

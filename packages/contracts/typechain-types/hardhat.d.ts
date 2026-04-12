@@ -50,6 +50,10 @@ declare module "hardhat/types/runtime" {
       signerOrOptions?: ethers.Signer | FactoryOptions
     ): Promise<Contracts.SafeERC20__factory>;
     getContractFactory(
+      name: "ECDSA",
+      signerOrOptions?: ethers.Signer | FactoryOptions
+    ): Promise<Contracts.ECDSA__factory>;
+    getContractFactory(
       name: "IERC165",
       signerOrOptions?: ethers.Signer | FactoryOptions
     ): Promise<Contracts.IERC165__factory>;
@@ -61,6 +65,10 @@ declare module "hardhat/types/runtime" {
       name: "LoanBook",
       signerOrOptions?: ethers.Signer | FactoryOptions
     ): Promise<Contracts.LoanBook__factory>;
+    getContractFactory(
+      name: "PolicyControlledWallet",
+      signerOrOptions?: ethers.Signer | FactoryOptions
+    ): Promise<Contracts.PolicyControlledWallet__factory>;
     getContractFactory(
       name: "PoolManagement",
       signerOrOptions?: ethers.Signer | FactoryOptions
@@ -128,6 +136,11 @@ declare module "hardhat/types/runtime" {
       signer?: ethers.Signer
     ): Promise<Contracts.SafeERC20>;
     getContractAt(
+      name: "ECDSA",
+      address: string | ethers.Addressable,
+      signer?: ethers.Signer
+    ): Promise<Contracts.ECDSA>;
+    getContractAt(
       name: "IERC165",
       address: string | ethers.Addressable,
       signer?: ethers.Signer
@@ -142,6 +155,11 @@ declare module "hardhat/types/runtime" {
       address: string | ethers.Addressable,
       signer?: ethers.Signer
     ): Promise<Contracts.LoanBook>;
+    getContractAt(
+      name: "PolicyControlledWallet",
+      address: string | ethers.Addressable,
+      signer?: ethers.Signer
+    ): Promise<Contracts.PolicyControlledWallet>;
     getContractAt(
       name: "PoolManagement",
       address: string | ethers.Addressable,
@@ -205,6 +223,10 @@ declare module "hardhat/types/runtime" {
       signerOrOptions?: ethers.Signer | DeployContractOptions
     ): Promise<Contracts.SafeERC20>;
     deployContract(
+      name: "ECDSA",
+      signerOrOptions?: ethers.Signer | DeployContractOptions
+    ): Promise<Contracts.ECDSA>;
+    deployContract(
       name: "IERC165",
       signerOrOptions?: ethers.Signer | DeployContractOptions
     ): Promise<Contracts.IERC165>;
@@ -216,6 +238,10 @@ declare module "hardhat/types/runtime" {
       name: "LoanBook",
       signerOrOptions?: ethers.Signer | DeployContractOptions
     ): Promise<Contracts.LoanBook>;
+    deployContract(
+      name: "PolicyControlledWallet",
+      signerOrOptions?: ethers.Signer | DeployContractOptions
+    ): Promise<Contracts.PolicyControlledWallet>;
     deployContract(
       name: "PoolManagement",
       signerOrOptions?: ethers.Signer | DeployContractOptions
@@ -283,6 +309,11 @@ declare module "hardhat/types/runtime" {
       signerOrOptions?: ethers.Signer | DeployContractOptions
     ): Promise<Contracts.SafeERC20>;
     deployContract(
+      name: "ECDSA",
+      args: any[],
+      signerOrOptions?: ethers.Signer | DeployContractOptions
+    ): Promise<Contracts.ECDSA>;
+    deployContract(
       name: "IERC165",
       args: any[],
       signerOrOptions?: ethers.Signer | DeployContractOptions
@@ -297,6 +328,11 @@ declare module "hardhat/types/runtime" {
       args: any[],
       signerOrOptions?: ethers.Signer | DeployContractOptions
     ): Promise<Contracts.LoanBook>;
+    deployContract(
+      name: "PolicyControlledWallet",
+      args: any[],
+      signerOrOptions?: ethers.Signer | DeployContractOptions
+    ): Promise<Contracts.PolicyControlledWallet>;
     deployContract(
       name: "PoolManagement",
       args: any[],

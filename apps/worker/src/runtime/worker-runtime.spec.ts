@@ -22,6 +22,9 @@ test("worker runtime config defaults to monitor mode and requires rpc", () => {
   assert.equal(runtime.reconciliationScanIntervalMs, 300000);
   assert.equal(runtime.depositSignerPrivateKey, null);
   assert.equal(runtime.managedWithdrawalClaimTimeoutMs, 60000);
+  assert.equal(runtime.policyControlledWithdrawalExecutorPrivateKey, null);
+  assert.equal(runtime.policyControlledWithdrawalPolicySignerPrivateKey, null);
+  assert.equal(runtime.policyControlledWithdrawalAuthorizationTtlSeconds, 300);
   assert.deepEqual(runtime.managedWithdrawalSigners, []);
 });
 
@@ -37,6 +40,7 @@ test("worker runtime config defaults local development to synthetic mode", () =>
   assert.equal(runtime.internalApiStartupGracePeriodMs, 45000);
   assert.equal(runtime.rpcUrl, null);
   assert.equal(runtime.managedWithdrawalClaimTimeoutMs, 60000);
+  assert.equal(runtime.policyControlledWithdrawalAuthorizationTtlSeconds, 300);
 });
 
 test("worker runtime config allows overriding internal API startup grace period", () => {
@@ -64,6 +68,8 @@ test("worker runtime config parses managed withdrawal signer mappings", () => {
   });
 
   assert.equal(runtime.managedWithdrawalClaimTimeoutMs, 90000);
+  assert.equal(runtime.policyControlledWithdrawalExecutorPrivateKey, null);
+  assert.equal(runtime.policyControlledWithdrawalPolicySignerPrivateKey, null);
   assert.deepEqual(runtime.managedWithdrawalSigners, [
     {
       walletAddress: "0x0000000000000000000000000000000000000def",
@@ -120,4 +126,32 @@ test("worker runtime config requires a deposit signer in managed mode", () => {
       }),
     /WORKER_DEPOSIT_SIGNER_PRIVATE_KEY/
   );
+});
+
+test("worker runtime config accepts policy-controlled withdrawal signer configuration", () => {
+  const runtime = loadWorkerRuntimeConfig({
+    NODE_ENV: "production",
+    WORKER_ID: "worker_1",
+    INTERNAL_API_BASE_URL: "https://internal.example.com",
+    INTERNAL_WORKER_API_KEY: "secret",
+    WORKER_EXECUTION_MODE: "managed",
+    RPC_URL: "https://rpc.example.com",
+    WORKER_DEPOSIT_SIGNER_PRIVATE_KEY:
+      "0x59c6995e998f97a5a0044966f094538c5f6d4e07f16b8ad8cc7658f0f1b0f9d8",
+    WORKER_POLICY_CONTROLLED_WITHDRAWAL_EXECUTOR_PRIVATE_KEY:
+      "0x8b3a350cf5c34c9194ca3a545d6f7f9f4c6c2a59d71c7b3f1b5e2ad65379b3f7",
+    WORKER_POLICY_CONTROLLED_WITHDRAWAL_POLICY_SIGNER_PRIVATE_KEY:
+      "0x0dbbe8b82c15f97d8a52f9b54ef8101de9d57f1a6f8ea46e65d9d6f5bf86de1a",
+    WORKER_POLICY_CONTROLLED_WITHDRAWAL_AUTHORIZATION_TTL_SECONDS: "900"
+  });
+
+  assert.equal(
+    runtime.policyControlledWithdrawalExecutorPrivateKey,
+    "0x8b3a350cf5c34c9194ca3a545d6f7f9f4c6c2a59d71c7b3f1b5e2ad65379b3f7"
+  );
+  assert.equal(
+    runtime.policyControlledWithdrawalPolicySignerPrivateKey,
+    "0x0dbbe8b82c15f97d8a52f9b54ef8101de9d57f1a6f8ea46e65d9d6f5bf86de1a"
+  );
+  assert.equal(runtime.policyControlledWithdrawalAuthorizationTtlSeconds, 900);
 });
