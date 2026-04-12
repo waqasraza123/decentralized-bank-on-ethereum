@@ -361,6 +361,63 @@ describe("Finance flows integration", () => {
     expect(queuedResponse.status).toBe(200);
     expect(queuedResponse.body.data.intents).toHaveLength(1);
     expect(queuedResponse.body.data.intents[0].status).toBe("queued");
+    expect(queuedResponse.body.data.intents[0].asset.assetType).toBe("erc20");
+    expect(queuedResponse.body.data.intents[0].asset.contractAddress).toBe(
+      harness.asset.contractAddress
+    );
+
+    const startExecutionResponse = await request(app.getHttpServer())
+      .post(
+        `/transaction-intents/internal/worker/withdrawal-requests/${intentId}/start-execution`
+      )
+      .set(workerHeaders)
+      .send({
+        reclaimStaleAfterMs: 60000
+      });
+
+    expect(startExecutionResponse.status).toBe(201);
+    expect(startExecutionResponse.body.data.executionClaimed).toBe(true);
+    expect(startExecutionResponse.body.data.intent.latestBlockchainTransaction.status).toBe(
+      "created"
+    );
+
+    const signedResponse = await request(app.getHttpServer())
+      .post(
+        `/transaction-intents/internal/worker/withdrawal-requests/${intentId}/signed`
+      )
+      .set(workerHeaders)
+      .send({
+        txHash,
+        nonce: 7,
+        serializedTransaction: "0xdeadbeef",
+        fromAddress: harness.wallet.address,
+        toAddress: destinationAddress
+      });
+
+    expect(signedResponse.status).toBe(201);
+    expect(signedResponse.body.data.signedStateReused).toBe(false);
+    expect(signedResponse.body.data.intent.latestBlockchainTransaction.status).toBe(
+      "signed"
+    );
+    expect(
+      signedResponse.body.data.intent.latestBlockchainTransaction.serializedTransaction
+    ).toBe("0xdeadbeef");
+
+    const signedReplayResponse = await request(app.getHttpServer())
+      .post(
+        `/transaction-intents/internal/worker/withdrawal-requests/${intentId}/signed`
+      )
+      .set(workerHeaders)
+      .send({
+        txHash,
+        nonce: 7,
+        serializedTransaction: "0xdeadbeef",
+        fromAddress: harness.wallet.address,
+        toAddress: destinationAddress
+      });
+
+    expect(signedReplayResponse.status).toBe(201);
+    expect(signedReplayResponse.body.data.signedStateReused).toBe(true);
 
     const broadcastResponse = await request(app.getHttpServer())
       .post(
@@ -436,6 +493,8 @@ describe("Finance flows integration", () => {
       "transaction_intent.withdrawal.requested",
       "transaction_intent.withdrawal.approved",
       "transaction_intent.withdrawal.queued",
+      "transaction_intent.withdrawal.execution_started",
+      "transaction_intent.withdrawal.broadcast_persisted",
       "transaction_intent.withdrawal.broadcast",
       "transaction_intent.withdrawal.confirmed",
       "transaction_intent.withdrawal.settled"

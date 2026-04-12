@@ -48,8 +48,23 @@ function createManagedRuntime() {
     reconciliationScanIntervalMs: 300000,
     platformAlertReEscalationIntervalMs: 300000,
     rpcUrl: "https://rpc.example.com",
+    managedWithdrawalClaimTimeoutMs: 60000,
+    managedWithdrawalSigners: [],
     depositSignerPrivateKey:
       "0x59c6995e998f97a5a0044966f094538c5f6d4e07f16b8ad8cc7658f0f1b0f9d8"
+  };
+}
+
+function withManagedWithdrawalDefaults<T extends Record<string, unknown>>(
+  runtime: T
+): T & {
+  managedWithdrawalClaimTimeoutMs: number;
+  managedWithdrawalSigners: [];
+} {
+  return {
+    managedWithdrawalClaimTimeoutMs: 60000,
+    managedWithdrawalSigners: [],
+    ...runtime
   };
 }
 
@@ -158,7 +173,7 @@ test("buildManagedDepositTransferPlan rejects invalid amounts, missing ERC-20 co
 test("createManagedDepositBroadcaster rejects runtimes that are not managed", () => {
   assert.throws(
     () =>
-      createManagedDepositBroadcaster({
+      createManagedDepositBroadcaster(withManagedWithdrawalDefaults({
         environment: "development",
         workerId: "worker_1",
         internalApiBaseUrl: "http://localhost:9001",
@@ -173,7 +188,7 @@ test("createManagedDepositBroadcaster rejects runtimes that are not managed", ()
         platformAlertReEscalationIntervalMs: 300000,
         rpcUrl: null,
         depositSignerPrivateKey: null
-      }),
+      })),
     /WORKER_EXECUTION_MODE=managed/
   );
 });
@@ -181,7 +196,7 @@ test("createManagedDepositBroadcaster rejects runtimes that are not managed", ()
 test("createManagedDepositBroadcaster requires rpc and signer configuration in managed mode", () => {
   assert.throws(
     () =>
-      createManagedDepositBroadcaster({
+      createManagedDepositBroadcaster(withManagedWithdrawalDefaults({
         environment: "production",
         workerId: "worker_1",
         internalApiBaseUrl: "http://localhost:9001",
@@ -196,13 +211,13 @@ test("createManagedDepositBroadcaster requires rpc and signer configuration in m
         platformAlertReEscalationIntervalMs: 300000,
         rpcUrl: null,
         depositSignerPrivateKey: null
-      }),
+      })),
     /RPC_URL is required/
   );
 
   assert.throws(
     () =>
-      createManagedDepositBroadcaster({
+      createManagedDepositBroadcaster(withManagedWithdrawalDefaults({
         environment: "production",
         workerId: "worker_1",
         internalApiBaseUrl: "http://localhost:9001",
@@ -217,7 +232,7 @@ test("createManagedDepositBroadcaster requires rpc and signer configuration in m
         platformAlertReEscalationIntervalMs: 300000,
         rpcUrl: "https://rpc.example.com",
         depositSignerPrivateKey: null
-      }),
+      })),
     /WORKER_DEPOSIT_SIGNER_PRIVATE_KEY is required/
   );
 });

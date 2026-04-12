@@ -11,6 +11,7 @@ import {
 } from "./runtime/internal-api-startup-guard";
 import { createManagedDepositBroadcaster } from "./runtime/deposit-broadcaster";
 import { createJsonRpcClient } from "./runtime/json-rpc-client";
+import { createManagedWithdrawalBroadcaster } from "./runtime/withdrawal-broadcaster";
 import { createWorkerLogger } from "./runtime/worker-logger";
 import { WorkerOrchestrator } from "./runtime/worker-orchestrator";
 import { loadWorkerRuntime } from "./runtime/worker-runtime";
@@ -91,11 +92,16 @@ export async function startWorkerRuntime(): Promise<void> {
     runtime.executionMode === "managed"
       ? createManagedDepositBroadcaster(runtime)
       : null;
+  const withdrawalBroadcaster =
+    runtime.executionMode === "managed"
+      ? createManagedWithdrawalBroadcaster(runtime)
+      : null;
   const orchestrator = new WorkerOrchestrator({
     runtime,
     internalApiClient,
     rpcClient,
     depositBroadcaster,
+    withdrawalBroadcaster,
     logger
   });
   const internalApiStartupState = createInternalApiStartupAvailabilityState();

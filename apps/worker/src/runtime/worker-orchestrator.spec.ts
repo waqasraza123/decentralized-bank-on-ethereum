@@ -2,7 +2,13 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { ManagedExecutionIntentError } from "./deposit-broadcaster";
 import { WorkerOrchestrator } from "./worker-orchestrator";
-import type { WorkerIntentProjection, WorkerLogger } from "./worker-types";
+import type {
+  DepositBroadcastResult,
+  ManagedWithdrawalBroadcaster,
+  PreparedManagedWithdrawalTransaction,
+  WorkerIntentProjection,
+  WorkerLogger
+} from "./worker-types";
 
 function createIntent(
   id: string,
@@ -91,6 +97,36 @@ function createInternalApiClient(overrides: Record<string, unknown>) {
   };
 }
 
+function createManagedWithdrawalBroadcaster(
+  overrides: Partial<ManagedWithdrawalBroadcaster> = {}
+): ManagedWithdrawalBroadcaster {
+  return {
+    canManageWallet() {
+      return false;
+    },
+    async prepare(): Promise<PreparedManagedWithdrawalTransaction> {
+      throw new Error("withdrawal prepare should not be called");
+    },
+    async broadcastSignedTransaction(): Promise<DepositBroadcastResult> {
+      throw new Error("withdrawal broadcast should not be called");
+    },
+    ...overrides
+  };
+}
+
+function createRuntime<T extends Record<string, unknown>>(
+  overrides: T
+): T & {
+  managedWithdrawalClaimTimeoutMs: number;
+  managedWithdrawalSigners: [];
+} {
+  return {
+    managedWithdrawalClaimTimeoutMs: 60000,
+    managedWithdrawalSigners: [],
+    ...overrides
+  };
+}
+
 test("synthetic mode records broadcasts and settles them", async () => {
   const queuedDepositIntent = createIntent("deposit_1");
   const queuedWithdrawalIntent = createIntent("withdrawal_1");
@@ -112,6 +148,8 @@ test("synthetic mode records broadcasts and settles them", async () => {
               id: "btx_1",
               txHash:
                 "0x1111111111111111111111111111111111111111111111111111111111111111",
+              nonce: null,
+              serializedTransaction: null,
               status: "broadcast",
               fromAddress: "0x000000000000000000000000000000000000dEaD",
               toAddress: "0x0000000000000000000000000000000000000abc",
@@ -133,6 +171,8 @@ test("synthetic mode records broadcasts and settles them", async () => {
               id: "btx_2",
               txHash:
                 "0x2222222222222222222222222222222222222222222222222222222222222222",
+              nonce: null,
+              serializedTransaction: null,
               status: "broadcast",
               fromAddress: "0x0000000000000000000000000000000000000def",
               toAddress: "0x0000000000000000000000000000000000000fed",
@@ -187,7 +227,7 @@ test("synthetic mode records broadcasts and settles them", async () => {
   });
 
   const orchestrator = new WorkerOrchestrator({
-    runtime: {
+    runtime: createRuntime({
       environment: "development",
       workerId: "worker_1",
       internalApiBaseUrl: "http://localhost:9001",
@@ -202,10 +242,16 @@ test("synthetic mode records broadcasts and settles them", async () => {
       platformAlertReEscalationIntervalMs: 300000,
       rpcUrl: null,
       depositSignerPrivateKey: null
-    },
+    }),
     internalApiClient: client as never,
     rpcClient: null,
-    depositBroadcaster: null,
+    depositBroadcaster: {
+      signerAddress: "0x0000000000000000000000000000000000000aaa",
+      async broadcast() {
+        throw new Error("deposit broadcaster should not be called");
+      }
+    },
+    withdrawalBroadcaster: null,
     logger: createLogger()
   });
 
@@ -240,6 +286,8 @@ test("monitor mode confirms and settles broadcast intents with enough confirmati
               id: "btx_1",
               txHash:
                 "0x3333333333333333333333333333333333333333333333333333333333333333",
+              nonce: null,
+              serializedTransaction: null,
               status: "broadcast",
               fromAddress: "0x000000000000000000000000000000000000dEaD",
               toAddress: "0x0000000000000000000000000000000000000abc",
@@ -297,7 +345,7 @@ test("monitor mode confirms and settles broadcast intents with enough confirmati
   });
 
   const orchestrator = new WorkerOrchestrator({
-    runtime: {
+    runtime: createRuntime({
       environment: "production",
       workerId: "worker_1",
       internalApiBaseUrl: "https://internal.example.com",
@@ -312,7 +360,7 @@ test("monitor mode confirms and settles broadcast intents with enough confirmati
       platformAlertReEscalationIntervalMs: 300000,
       rpcUrl: "https://rpc.example.com",
       depositSignerPrivateKey: null
-    },
+    }),
     internalApiClient: client as never,
     rpcClient: {
       async getBlockNumber() {
@@ -329,7 +377,13 @@ test("monitor mode confirms and settles broadcast intents with enough confirmati
         };
       }
     },
-    depositBroadcaster: null,
+    depositBroadcaster: {
+      signerAddress: "0x0000000000000000000000000000000000000aaa",
+      async broadcast() {
+        throw new Error("deposit broadcaster should not be called");
+      }
+    },
+    withdrawalBroadcaster: null,
     logger: createLogger()
   });
 
@@ -366,6 +420,8 @@ test("worker settles confirmed recovery backlog after the broadcast pass", async
               id: "btx_3",
               txHash:
                 "0x4444444444444444444444444444444444444444444444444444444444444444",
+              nonce: null,
+              serializedTransaction: null,
               status: "confirmed",
               fromAddress: "0x000000000000000000000000000000000000dEaD",
               toAddress: "0x0000000000000000000000000000000000000abc",
@@ -387,6 +443,8 @@ test("worker settles confirmed recovery backlog after the broadcast pass", async
               id: "btx_4",
               txHash:
                 "0x5555555555555555555555555555555555555555555555555555555555555555",
+              nonce: null,
+              serializedTransaction: null,
               status: "confirmed",
               fromAddress: "0x0000000000000000000000000000000000000def",
               toAddress: "0x0000000000000000000000000000000000000fed",
@@ -435,7 +493,7 @@ test("worker settles confirmed recovery backlog after the broadcast pass", async
   });
 
   const orchestrator = new WorkerOrchestrator({
-    runtime: {
+    runtime: createRuntime({
       environment: "production",
       workerId: "worker_1",
       internalApiBaseUrl: "https://internal.example.com",
@@ -450,7 +508,7 @@ test("worker settles confirmed recovery backlog after the broadcast pass", async
       platformAlertReEscalationIntervalMs: 300000,
       rpcUrl: "https://rpc.example.com",
       depositSignerPrivateKey: null
-    },
+    }),
     internalApiClient: client as never,
     rpcClient: {
       async getBlockNumber() {
@@ -460,7 +518,13 @@ test("worker settles confirmed recovery backlog after the broadcast pass", async
         return null;
       }
     },
-    depositBroadcaster: null,
+    depositBroadcaster: {
+      signerAddress: "0x0000000000000000000000000000000000000aaa",
+      async broadcast() {
+        throw new Error("deposit broadcaster should not be called");
+      }
+    },
+    withdrawalBroadcaster: null,
     logger: createLogger()
   });
 
@@ -491,6 +555,8 @@ test("monitor mode waits when a broadcast intent does not yet have enough confir
               id: "btx_waiting_1",
               txHash:
                 "0x6666666666666666666666666666666666666666666666666666666666666666",
+              nonce: null,
+              serializedTransaction: null,
               status: "broadcast",
               fromAddress: "0x000000000000000000000000000000000000dEaD",
               toAddress: "0x0000000000000000000000000000000000000abc",
@@ -548,7 +614,7 @@ test("monitor mode waits when a broadcast intent does not yet have enough confir
   });
 
   const orchestrator = new WorkerOrchestrator({
-    runtime: {
+    runtime: createRuntime({
       environment: "production",
       workerId: "worker_1",
       internalApiBaseUrl: "https://internal.example.com",
@@ -563,7 +629,7 @@ test("monitor mode waits when a broadcast intent does not yet have enough confir
       platformAlertReEscalationIntervalMs: 300000,
       rpcUrl: "https://rpc.example.com",
       depositSignerPrivateKey: null
-    },
+    }),
     internalApiClient: client as never,
     rpcClient: {
       async getBlockNumber() {
@@ -580,7 +646,13 @@ test("monitor mode waits when a broadcast intent does not yet have enough confir
         };
       }
     },
-    depositBroadcaster: null,
+    depositBroadcaster: {
+      signerAddress: "0x0000000000000000000000000000000000000aaa",
+      async broadcast() {
+        throw new Error("deposit broadcaster should not be called");
+      }
+    },
+    withdrawalBroadcaster: null,
     logger: createLogger()
   });
 
@@ -648,7 +720,7 @@ test("managed mode broadcasts queued deposits and leaves withdrawals for manual 
   });
 
   const orchestrator = new WorkerOrchestrator({
-    runtime: {
+    runtime: createRuntime({
       environment: "production",
       workerId: "worker_1",
       internalApiBaseUrl: "https://internal.example.com",
@@ -664,7 +736,7 @@ test("managed mode broadcasts queued deposits and leaves withdrawals for manual 
       rpcUrl: "https://rpc.example.com",
       depositSignerPrivateKey:
         "0x59c6995e998f97a5a0044966f094538c5f6d4e07f16b8ad8cc7658f0f1b0f9d8"
-    },
+    }),
     internalApiClient: client as never,
     rpcClient: {
       async getBlockNumber() {
@@ -685,6 +757,7 @@ test("managed mode broadcasts queued deposits and leaves withdrawals for manual 
         };
       }
     },
+    withdrawalBroadcaster: createManagedWithdrawalBroadcaster(),
     logger
   });
 
@@ -696,7 +769,7 @@ test("managed mode broadcasts queued deposits and leaves withdrawals for manual 
   assert.equal(warnings.length, 1);
   assert.equal(
     warnings[0]?.event,
-    "queued_withdrawals_require_manual_custody_execution"
+    "managed_withdrawal_requires_manual_intervention"
   );
 });
 
@@ -765,7 +838,7 @@ test("managed mode permanently fails malformed deposit intents", async () => {
   });
 
   const orchestrator = new WorkerOrchestrator({
-    runtime: {
+    runtime: createRuntime({
       environment: "production",
       workerId: "worker_1",
       internalApiBaseUrl: "https://internal.example.com",
@@ -781,7 +854,7 @@ test("managed mode permanently fails malformed deposit intents", async () => {
       rpcUrl: "https://rpc.example.com",
       depositSignerPrivateKey:
         "0x59c6995e998f97a5a0044966f094538c5f6d4e07f16b8ad8cc7658f0f1b0f9d8"
-    },
+    }),
     internalApiClient: client as never,
     rpcClient: {
       async getBlockNumber() {
@@ -801,6 +874,7 @@ test("managed mode permanently fails malformed deposit intents", async () => {
         });
       }
     },
+    withdrawalBroadcaster: createManagedWithdrawalBroadcaster(),
     logger: createLogger()
   });
 
@@ -811,11 +885,525 @@ test("managed mode permanently fails malformed deposit intents", async () => {
   ]);
 });
 
+test("managed mode broadcasts, confirms, and settles queued withdrawals", async () => {
+  const operations: string[] = [];
+  let phase: "queued" | "broadcast" | "settled" = "queued";
+
+  const queuedIntent = createIntent("withdrawal_managed_1");
+  const txHash =
+    "0x7777777777777777777777777777777777777777777777777777777777777777";
+  const serializedTransaction = "0xabc123";
+
+  const client = createInternalApiClient({
+    async listQueuedDepositIntents() {
+      return { intents: [], limit: 20 };
+    },
+    async listQueuedWithdrawalIntents() {
+      return phase === "queued" ? { intents: [queuedIntent], limit: 20 } : { intents: [], limit: 20 };
+    },
+    async startManagedWithdrawalExecution(intentId: string) {
+      operations.push(`startManagedWithdrawalExecution:${intentId}`);
+
+      return {
+        intent: createIntent(intentId, {
+          latestBlockchainTransaction: {
+            id: "withdrawal_tx_created_1",
+            txHash: null,
+            nonce: null,
+            serializedTransaction: null,
+            status: "created",
+            fromAddress: queuedIntent.sourceWalletAddress,
+            toAddress: queuedIntent.externalAddress,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+            confirmedAt: null
+          }
+        }),
+        executionClaimed: true,
+        executionReused: false
+      };
+    },
+    async recordSignedWithdrawalExecution(intentId: string, payload: { txHash: string }) {
+      operations.push(`recordSignedWithdrawalExecution:${intentId}:${payload.txHash}`);
+      return {
+        intent: createIntent(intentId, {
+          latestBlockchainTransaction: {
+            id: "withdrawal_tx_signed_1",
+            txHash,
+            nonce: 9,
+            serializedTransaction,
+            status: "signed",
+            fromAddress: queuedIntent.sourceWalletAddress,
+            toAddress: queuedIntent.externalAddress,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+            confirmedAt: null
+          }
+        }),
+        signedStateReused: false
+      };
+    },
+    async listBroadcastDepositIntents() {
+      return { intents: [], limit: 20 };
+    },
+    async listBroadcastWithdrawalIntents() {
+      return phase === "broadcast"
+        ? {
+            intents: [
+              createIntent("withdrawal_managed_1", {
+                status: "broadcast",
+                latestBlockchainTransaction: {
+                  id: "withdrawal_tx_broadcast_1",
+                  txHash,
+                  nonce: 9,
+                  serializedTransaction,
+                  status: "broadcast",
+                  fromAddress: queuedIntent.sourceWalletAddress,
+                  toAddress: queuedIntent.externalAddress,
+                  createdAt: new Date().toISOString(),
+                  updatedAt: new Date().toISOString(),
+                  confirmedAt: null
+                }
+              })
+            ],
+            limit: 20
+          }
+        : { intents: [], limit: 20 };
+    },
+    async listConfirmedDepositIntentsReadyToSettle() {
+      return { intents: [], limit: 20 };
+    },
+    async listConfirmedWithdrawalIntentsReadyToSettle() {
+      return { intents: [], limit: 20 };
+    },
+    async recordDepositBroadcast() {
+      throw new Error("not expected");
+    },
+    async confirmDepositIntent() {
+      throw new Error("not expected");
+    },
+    async settleDepositIntent() {
+      throw new Error("not expected");
+    },
+    async failDepositIntent() {
+      throw new Error("not expected");
+    },
+    async recordWithdrawalBroadcast(intentId: string, payload: { txHash: string }) {
+      operations.push(`recordWithdrawalBroadcast:${intentId}:${payload.txHash}`);
+      phase = "broadcast";
+    },
+    async confirmWithdrawalIntent(intentId: string, payload: { txHash?: string }) {
+      operations.push(`confirmWithdrawalIntent:${intentId}:${payload.txHash ?? ""}`);
+    },
+    async settleWithdrawalIntent(intentId: string) {
+      operations.push(`settleWithdrawalIntent:${intentId}`);
+      phase = "settled";
+    },
+    async failWithdrawalIntent() {
+      throw new Error("not expected");
+    },
+    async reportWorkerHeartbeat() {
+      throw new Error("worker heartbeat reporting is handled outside the orchestrator");
+    },
+    async triggerLedgerReconciliationScan() {
+      throw new Error("reconciliation scan scheduling is handled outside the orchestrator");
+    },
+    async triggerCriticalAlertReEscalationSweep() {
+      throw new Error("platform alert re-escalation is handled outside the orchestrator");
+    }
+  });
+
+  const broadcasterOperations: string[] = [];
+  const orchestrator = new WorkerOrchestrator({
+    runtime: createRuntime({
+      environment: "production",
+      workerId: "worker_1",
+      internalApiBaseUrl: "https://internal.example.com",
+      internalWorkerApiKey: "secret",
+      executionMode: "managed",
+      pollIntervalMs: 10,
+      batchLimit: 20,
+      requestTimeoutMs: 1000,
+      internalApiStartupGracePeriodMs: 45000,
+      confirmationBlocks: 1,
+      reconciliationScanIntervalMs: 300000,
+      platformAlertReEscalationIntervalMs: 300000,
+      rpcUrl: "https://rpc.example.com",
+      depositSignerPrivateKey:
+        "0x59c6995e998f97a5a0044966f094538c5f6d4e07f16b8ad8cc7658f0f1b0f9d8"
+    }),
+    internalApiClient: client as never,
+    rpcClient: {
+      async getBlockNumber() {
+        return 101n;
+      },
+      async getTransactionReceipt() {
+        return {
+          txHash,
+          fromAddress: queuedIntent.sourceWalletAddress,
+          toAddress: queuedIntent.externalAddress,
+          blockNumber: 101n,
+          succeeded: true
+        };
+      }
+    },
+    depositBroadcaster: {
+      signerAddress: "0x0000000000000000000000000000000000000aaa",
+      async broadcast() {
+        throw new Error("deposit broadcaster should not be called");
+      }
+    },
+    withdrawalBroadcaster: createManagedWithdrawalBroadcaster({
+      canManageWallet() {
+        return true;
+      },
+      async prepare() {
+        broadcasterOperations.push("prepare");
+        return {
+          txHash,
+          nonce: 9,
+          serializedTransaction,
+          fromAddress: queuedIntent.sourceWalletAddress!,
+          toAddress: queuedIntent.externalAddress!
+        };
+      },
+      async broadcastSignedTransaction() {
+        broadcasterOperations.push("broadcastSignedTransaction");
+        return {
+          txHash,
+          fromAddress: queuedIntent.sourceWalletAddress!,
+          toAddress: queuedIntent.externalAddress!
+        };
+      }
+    }),
+    logger: createLogger()
+  });
+
+  await orchestrator.runOnce();
+
+  assert.deepEqual(broadcasterOperations, ["prepare", "broadcastSignedTransaction"]);
+  assert.deepEqual(operations, [
+    "startManagedWithdrawalExecution:withdrawal_managed_1",
+    "recordSignedWithdrawalExecution:withdrawal_managed_1:0x7777777777777777777777777777777777777777777777777777777777777777",
+    "recordWithdrawalBroadcast:withdrawal_managed_1:0x7777777777777777777777777777777777777777777777777777777777777777",
+    "confirmWithdrawalIntent:withdrawal_managed_1:0x7777777777777777777777777777777777777777777777777777777777777777",
+    "settleWithdrawalIntent:withdrawal_managed_1"
+  ]);
+  assert.equal(phase, "settled");
+});
+
+test("managed mode does not double-broadcast or double-settle signed withdrawals across duplicate runs", async () => {
+  let phase: "queued" | "broadcast" | "settled" = "queued";
+  let broadcastCount = 0;
+  let settleCount = 0;
+  const txHash =
+    "0x8888888888888888888888888888888888888888888888888888888888888888";
+  const serializedTransaction = "0xfeed";
+
+  const client = createInternalApiClient({
+    async listQueuedDepositIntents() {
+      return { intents: [], limit: 20 };
+    },
+    async listQueuedWithdrawalIntents() {
+      return phase === "queued"
+        ? {
+            intents: [
+              createIntent("withdrawal_duplicate_1", {
+                latestBlockchainTransaction: {
+                  id: "withdrawal_tx_signed_duplicate_1",
+                  txHash,
+                  nonce: 12,
+                  serializedTransaction,
+                  status: "signed",
+                  fromAddress: "0x0000000000000000000000000000000000000def",
+                  toAddress: "0x0000000000000000000000000000000000000fed",
+                  createdAt: new Date().toISOString(),
+                  updatedAt: new Date().toISOString(),
+                  confirmedAt: null
+                }
+              })
+            ],
+            limit: 20
+          }
+        : { intents: [], limit: 20 };
+    },
+    async startManagedWithdrawalExecution() {
+      throw new Error("signed withdrawals should not restart execution");
+    },
+    async recordSignedWithdrawalExecution() {
+      throw new Error("signed withdrawals should reuse the durable signed state");
+    },
+    async listBroadcastDepositIntents() {
+      return { intents: [], limit: 20 };
+    },
+    async listBroadcastWithdrawalIntents() {
+      return phase === "broadcast"
+        ? {
+            intents: [
+              createIntent("withdrawal_duplicate_1", {
+                status: "broadcast",
+                latestBlockchainTransaction: {
+                  id: "withdrawal_tx_broadcast_duplicate_1",
+                  txHash,
+                  nonce: 12,
+                  serializedTransaction,
+                  status: "broadcast",
+                  fromAddress: "0x0000000000000000000000000000000000000def",
+                  toAddress: "0x0000000000000000000000000000000000000fed",
+                  createdAt: new Date().toISOString(),
+                  updatedAt: new Date().toISOString(),
+                  confirmedAt: null
+                }
+              })
+            ],
+            limit: 20
+          }
+        : { intents: [], limit: 20 };
+    },
+    async listConfirmedDepositIntentsReadyToSettle() {
+      return { intents: [], limit: 20 };
+    },
+    async listConfirmedWithdrawalIntentsReadyToSettle() {
+      return { intents: [], limit: 20 };
+    },
+    async recordDepositBroadcast() {
+      throw new Error("not expected");
+    },
+    async confirmDepositIntent() {
+      throw new Error("not expected");
+    },
+    async settleDepositIntent() {
+      throw new Error("not expected");
+    },
+    async failDepositIntent() {
+      throw new Error("not expected");
+    },
+    async recordWithdrawalBroadcast() {
+      broadcastCount += 1;
+      phase = "broadcast";
+    },
+    async confirmWithdrawalIntent() {},
+    async settleWithdrawalIntent() {
+      settleCount += 1;
+      phase = "settled";
+    },
+    async failWithdrawalIntent() {
+      throw new Error("not expected");
+    },
+    async reportWorkerHeartbeat() {
+      throw new Error("worker heartbeat reporting is handled outside the orchestrator");
+    },
+    async triggerLedgerReconciliationScan() {
+      throw new Error("reconciliation scan scheduling is handled outside the orchestrator");
+    },
+    async triggerCriticalAlertReEscalationSweep() {
+      throw new Error("platform alert re-escalation is handled outside the orchestrator");
+    }
+  });
+
+  const orchestrator = new WorkerOrchestrator({
+    runtime: createRuntime({
+      environment: "production",
+      workerId: "worker_1",
+      internalApiBaseUrl: "https://internal.example.com",
+      internalWorkerApiKey: "secret",
+      executionMode: "managed",
+      pollIntervalMs: 10,
+      batchLimit: 20,
+      requestTimeoutMs: 1000,
+      internalApiStartupGracePeriodMs: 45000,
+      confirmationBlocks: 1,
+      reconciliationScanIntervalMs: 300000,
+      platformAlertReEscalationIntervalMs: 300000,
+      rpcUrl: "https://rpc.example.com",
+      depositSignerPrivateKey:
+        "0x59c6995e998f97a5a0044966f094538c5f6d4e07f16b8ad8cc7658f0f1b0f9d8"
+    }),
+    internalApiClient: client as never,
+    rpcClient: {
+      async getBlockNumber() {
+        return 101n;
+      },
+      async getTransactionReceipt() {
+        return {
+          txHash,
+          fromAddress: "0x0000000000000000000000000000000000000def",
+          toAddress: "0x0000000000000000000000000000000000000fed",
+          blockNumber: 101n,
+          succeeded: true
+        };
+      }
+    },
+    depositBroadcaster: {
+      signerAddress: "0x0000000000000000000000000000000000000aaa",
+      async broadcast() {
+        throw new Error("deposit broadcaster should not be called");
+      }
+    },
+    withdrawalBroadcaster: createManagedWithdrawalBroadcaster({
+      canManageWallet() {
+        return true;
+      },
+      async prepare() {
+        throw new Error("signed withdrawal should not be re-prepared");
+      },
+      async broadcastSignedTransaction() {
+        return {
+          txHash,
+          fromAddress: "0x0000000000000000000000000000000000000def",
+          toAddress: "0x0000000000000000000000000000000000000fed"
+        };
+      }
+    }),
+    logger: createLogger()
+  });
+
+  await orchestrator.runOnce();
+  await orchestrator.runOnce();
+
+  assert.equal(broadcastCount, 1);
+  assert.equal(settleCount, 1);
+});
+
+test("managed mode safely fails unrecoverable withdrawal execution errors", async () => {
+  const operations: string[] = [];
+
+  const client = createInternalApiClient({
+    async listQueuedDepositIntents() {
+      return { intents: [], limit: 20 };
+    },
+    async listQueuedWithdrawalIntents() {
+      return { intents: [createIntent("withdrawal_fail_1")], limit: 20 };
+    },
+    async startManagedWithdrawalExecution(intentId: string) {
+      return {
+        intent: createIntent(intentId, {
+          latestBlockchainTransaction: {
+            id: "withdrawal_tx_created_failure_1",
+            txHash: null,
+            nonce: null,
+            serializedTransaction: null,
+            status: "created",
+            fromAddress: "0x0000000000000000000000000000000000000def",
+            toAddress: "0x0000000000000000000000000000000000000fed",
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+            confirmedAt: null
+          }
+        }),
+        executionClaimed: true,
+        executionReused: false
+      };
+    },
+    async recordSignedWithdrawalExecution() {
+      throw new Error("not expected");
+    },
+    async listBroadcastDepositIntents() {
+      return { intents: [], limit: 20 };
+    },
+    async listBroadcastWithdrawalIntents() {
+      return { intents: [], limit: 20 };
+    },
+    async listConfirmedDepositIntentsReadyToSettle() {
+      return { intents: [], limit: 20 };
+    },
+    async listConfirmedWithdrawalIntentsReadyToSettle() {
+      return { intents: [], limit: 20 };
+    },
+    async recordDepositBroadcast() {
+      throw new Error("not expected");
+    },
+    async confirmDepositIntent() {
+      throw new Error("not expected");
+    },
+    async settleDepositIntent() {
+      throw new Error("not expected");
+    },
+    async failDepositIntent() {
+      throw new Error("not expected");
+    },
+    async recordWithdrawalBroadcast() {
+      throw new Error("not expected");
+    },
+    async confirmWithdrawalIntent() {
+      throw new Error("not expected");
+    },
+    async settleWithdrawalIntent() {
+      throw new Error("not expected");
+    },
+    async failWithdrawalIntent(intentId: string, payload: { failureCode: string }) {
+      operations.push(`failWithdrawalIntent:${intentId}:${payload.failureCode}`);
+    },
+    async reportWorkerHeartbeat() {
+      throw new Error("worker heartbeat reporting is handled outside the orchestrator");
+    },
+    async triggerLedgerReconciliationScan() {
+      throw new Error("reconciliation scan scheduling is handled outside the orchestrator");
+    },
+    async triggerCriticalAlertReEscalationSweep() {
+      throw new Error("platform alert re-escalation is handled outside the orchestrator");
+    }
+  });
+
+  const orchestrator = new WorkerOrchestrator({
+    runtime: createRuntime({
+      environment: "production",
+      workerId: "worker_1",
+      internalApiBaseUrl: "https://internal.example.com",
+      internalWorkerApiKey: "secret",
+      executionMode: "managed",
+      pollIntervalMs: 10,
+      batchLimit: 20,
+      requestTimeoutMs: 1000,
+      internalApiStartupGracePeriodMs: 45000,
+      confirmationBlocks: 1,
+      reconciliationScanIntervalMs: 300000,
+      platformAlertReEscalationIntervalMs: 300000,
+      rpcUrl: "https://rpc.example.com",
+      depositSignerPrivateKey:
+        "0x59c6995e998f97a5a0044966f094538c5f6d4e07f16b8ad8cc7658f0f1b0f9d8"
+    }),
+    internalApiClient: client as never,
+    rpcClient: {
+      async getBlockNumber() {
+        return 101n;
+      },
+      async getTransactionReceipt() {
+        return null;
+      }
+    },
+    depositBroadcaster: {
+      signerAddress: "0x0000000000000000000000000000000000000aaa",
+      async broadcast() {
+        throw new Error("deposit broadcaster should not be called");
+      }
+    },
+    withdrawalBroadcaster: createManagedWithdrawalBroadcaster({
+      canManageWallet() {
+        return true;
+      },
+      async prepare() {
+        throw new ManagedExecutionIntentError({
+          failureCode: "invalid_withdrawal_requested_amount",
+          failureReason: "Withdrawal amount is invalid."
+        });
+      }
+    }),
+    logger: createLogger()
+  });
+
+  await orchestrator.runOnce();
+
+  assert.deepEqual(operations, [
+    "failWithdrawalIntent:withdrawal_fail_1:invalid_withdrawal_requested_amount"
+  ]);
+});
+
 test("monitor mode warns and skips broadcast intents that are missing a tx hash", async () => {
   const { logger, warnings } = createCapturingLogger();
 
   const orchestrator = new WorkerOrchestrator({
-    runtime: {
+    runtime: createRuntime({
       environment: "production",
       workerId: "worker_1",
       internalApiBaseUrl: "https://internal.example.com",
@@ -830,7 +1418,7 @@ test("monitor mode warns and skips broadcast intents that are missing a tx hash"
       platformAlertReEscalationIntervalMs: 300000,
       rpcUrl: "https://rpc.example.com",
       depositSignerPrivateKey: null
-    },
+    }),
     internalApiClient: createInternalApiClient({
       async listQueuedDepositIntents() {
         return { intents: [], limit: 20 };
@@ -901,6 +1489,7 @@ test("monitor mode warns and skips broadcast intents that are missing a tx hash"
       }
     },
     depositBroadcaster: null,
+    withdrawalBroadcaster: null,
     logger
   });
 
@@ -915,7 +1504,7 @@ test("monitor mode marks reverted withdrawal receipts as failed", async () => {
   const { logger, warnings } = createCapturingLogger();
 
   const orchestrator = new WorkerOrchestrator({
-    runtime: {
+    runtime: createRuntime({
       environment: "production",
       workerId: "worker_1",
       internalApiBaseUrl: "https://internal.example.com",
@@ -930,7 +1519,7 @@ test("monitor mode marks reverted withdrawal receipts as failed", async () => {
       platformAlertReEscalationIntervalMs: 300000,
       rpcUrl: "https://rpc.example.com",
       depositSignerPrivateKey: null
-    },
+    }),
     internalApiClient: createInternalApiClient({
       async listQueuedDepositIntents() {
         return { intents: [], limit: 20 };
@@ -950,6 +1539,8 @@ test("monitor mode marks reverted withdrawal receipts as failed", async () => {
                 id: "btx_reverted_1",
                 txHash:
                   "0x7777777777777777777777777777777777777777777777777777777777777777",
+                nonce: null,
+                serializedTransaction: null,
                 status: "broadcast",
                 fromAddress: "0x0000000000000000000000000000000000000def",
                 toAddress: "0x0000000000000000000000000000000000000fed",
@@ -1018,6 +1609,7 @@ test("monitor mode marks reverted withdrawal receipts as failed", async () => {
       }
     },
     depositBroadcaster: null,
+    withdrawalBroadcaster: null,
     logger
   });
 
@@ -1033,7 +1625,7 @@ test("monitor mode marks reverted deposit receipts as failed", async () => {
   const operations: string[] = [];
 
   const orchestrator = new WorkerOrchestrator({
-    runtime: {
+    runtime: createRuntime({
       environment: "production",
       workerId: "worker_1",
       internalApiBaseUrl: "https://internal.example.com",
@@ -1048,7 +1640,7 @@ test("monitor mode marks reverted deposit receipts as failed", async () => {
       platformAlertReEscalationIntervalMs: 300000,
       rpcUrl: "https://rpc.example.com",
       depositSignerPrivateKey: null
-    },
+    }),
     internalApiClient: createInternalApiClient({
       async listQueuedDepositIntents() {
         return { intents: [], limit: 20 };
@@ -1065,6 +1657,8 @@ test("monitor mode marks reverted deposit receipts as failed", async () => {
                 id: "btx_reverted_deposit_1",
                 txHash:
                   "0x9999999999999999999999999999999999999999999999999999999999999999",
+                nonce: null,
+                serializedTransaction: null,
                 status: "broadcast",
                 fromAddress: "0x000000000000000000000000000000000000dEaD",
                 toAddress: "0x0000000000000000000000000000000000000abc",
@@ -1136,6 +1730,7 @@ test("monitor mode marks reverted deposit receipts as failed", async () => {
       }
     },
     depositBroadcaster: null,
+    withdrawalBroadcaster: null,
     logger: createLogger()
   });
 
@@ -1150,7 +1745,7 @@ test("monitor mode confirms and settles withdrawal intents with enough confirmat
   const operations: string[] = [];
 
   const orchestrator = new WorkerOrchestrator({
-    runtime: {
+    runtime: createRuntime({
       environment: "production",
       workerId: "worker_1",
       internalApiBaseUrl: "https://internal.example.com",
@@ -1165,7 +1760,7 @@ test("monitor mode confirms and settles withdrawal intents with enough confirmat
       platformAlertReEscalationIntervalMs: 300000,
       rpcUrl: "https://rpc.example.com",
       depositSignerPrivateKey: null
-    },
+    }),
     internalApiClient: createInternalApiClient({
       async listQueuedDepositIntents() {
         return { intents: [], limit: 20 };
@@ -1185,6 +1780,8 @@ test("monitor mode confirms and settles withdrawal intents with enough confirmat
                 id: "btx_confirmed_withdrawal_2",
                 txHash:
                   "0xabababababababababababababababababababababababababababababababab",
+                nonce: null,
+                serializedTransaction: null,
                 status: "broadcast",
                 fromAddress: "0x0000000000000000000000000000000000000def",
                 toAddress: "0x0000000000000000000000000000000000000fed",
@@ -1253,6 +1850,7 @@ test("monitor mode confirms and settles withdrawal intents with enough confirmat
       }
     },
     depositBroadcaster: null,
+    withdrawalBroadcaster: null,
     logger: createLogger()
   });
 
@@ -1266,7 +1864,7 @@ test("monitor mode confirms and settles withdrawal intents with enough confirmat
 
 test("monitor mode requires an rpc client once broadcast intents need confirmation checks", async () => {
   const orchestrator = new WorkerOrchestrator({
-    runtime: {
+    runtime: createRuntime({
       environment: "production",
       workerId: "worker_1",
       internalApiBaseUrl: "https://internal.example.com",
@@ -1281,7 +1879,7 @@ test("monitor mode requires an rpc client once broadcast intents need confirmati
       platformAlertReEscalationIntervalMs: 300000,
       rpcUrl: "https://rpc.example.com",
       depositSignerPrivateKey: null
-    },
+    }),
     internalApiClient: createInternalApiClient({
       async listQueuedDepositIntents() {
         return { intents: [], limit: 20 };
@@ -1298,6 +1896,8 @@ test("monitor mode requires an rpc client once broadcast intents need confirmati
                 id: "btx_requires_rpc_1",
                 txHash:
                   "0x8888888888888888888888888888888888888888888888888888888888888888",
+                nonce: null,
+                serializedTransaction: null,
                 status: "broadcast",
                 fromAddress: "0x000000000000000000000000000000000000dEaD",
                 toAddress: "0x0000000000000000000000000000000000000abc",
@@ -1355,6 +1955,7 @@ test("monitor mode requires an rpc client once broadcast intents need confirmati
     }) as never,
     rpcClient: null,
     depositBroadcaster: null,
+    withdrawalBroadcaster: null,
     logger: createLogger()
   });
 
@@ -1365,7 +1966,7 @@ test("monitor mode logs queued backlog when an external broadcaster is still res
   const { logger, warnings } = createCapturingLogger();
 
   const orchestrator = new WorkerOrchestrator({
-    runtime: {
+    runtime: createRuntime({
       environment: "production",
       workerId: "worker_1",
       internalApiBaseUrl: "https://internal.example.com",
@@ -1380,7 +1981,7 @@ test("monitor mode logs queued backlog when an external broadcaster is still res
       platformAlertReEscalationIntervalMs: 300000,
       rpcUrl: "https://rpc.example.com",
       depositSignerPrivateKey: null
-    },
+    }),
     internalApiClient: createInternalApiClient({
       async listQueuedDepositIntents() {
         return { intents: [createIntent("deposit_backlog_1")], limit: 20 };
@@ -1443,6 +2044,7 @@ test("monitor mode logs queued backlog when an external broadcaster is still res
       }
     },
     depositBroadcaster: null,
+    withdrawalBroadcaster: null,
     logger
   });
 
@@ -1464,7 +2066,7 @@ test("managed mode logs retryable deposit broadcaster failures without marking t
   const { logger, errors } = createCapturingLogger();
 
   const orchestrator = new WorkerOrchestrator({
-    runtime: {
+    runtime: createRuntime({
       environment: "production",
       workerId: "worker_1",
       internalApiBaseUrl: "https://internal.example.com",
@@ -1480,7 +2082,7 @@ test("managed mode logs retryable deposit broadcaster failures without marking t
       rpcUrl: "https://rpc.example.com",
       depositSignerPrivateKey:
         "0x59c6995e998f97a5a0044966f094538c5f6d4e07f16b8ad8cc7658f0f1b0f9d8"
-    },
+    }),
     internalApiClient: createInternalApiClient({
       async listQueuedDepositIntents() {
         return { intents: [createIntent("deposit_retryable_1")], limit: 20 };
@@ -1548,6 +2150,7 @@ test("managed mode logs retryable deposit broadcaster failures without marking t
         throw new Error("rpc down");
       }
     },
+    withdrawalBroadcaster: createManagedWithdrawalBroadcaster(),
     logger
   });
 
@@ -1559,7 +2162,7 @@ test("managed mode logs retryable deposit broadcaster failures without marking t
 
 test("managed mode requires a deposit broadcaster when queued deposits exist", async () => {
   const orchestrator = new WorkerOrchestrator({
-    runtime: {
+    runtime: createRuntime({
       environment: "production",
       workerId: "worker_1",
       internalApiBaseUrl: "https://internal.example.com",
@@ -1575,7 +2178,7 @@ test("managed mode requires a deposit broadcaster when queued deposits exist", a
       rpcUrl: "https://rpc.example.com",
       depositSignerPrivateKey:
         "0x59c6995e998f97a5a0044966f094538c5f6d4e07f16b8ad8cc7658f0f1b0f9d8"
-    },
+    }),
     internalApiClient: createInternalApiClient({
       async listQueuedDepositIntents() {
         return { intents: [createIntent("deposit_missing_broadcaster_1")], limit: 20 };
@@ -1638,6 +2241,7 @@ test("managed mode requires a deposit broadcaster when queued deposits exist", a
       }
     },
     depositBroadcaster: null,
+    withdrawalBroadcaster: null,
     logger: createLogger()
   });
 

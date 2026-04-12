@@ -846,6 +846,14 @@ export type OperationsStatus = {
     manualWithdrawalBacklogCount: number;
     oldestQueuedIntentCreatedAt: string | null;
   };
+  withdrawalExecutionHealth: {
+    status: "healthy" | "warning" | "critical";
+    queuedManagedWithdrawalCount: number;
+    broadcastingWithdrawalCount: number;
+    pendingConfirmationWithdrawalCount: number;
+    failedManagedWithdrawalCount: number;
+    manualInterventionWithdrawalCount: number;
+  };
   chainHealth: {
     status: "healthy" | "warning" | "critical";
     laggingBroadcastCount: number;

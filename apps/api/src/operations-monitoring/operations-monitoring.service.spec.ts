@@ -256,6 +256,9 @@ function mockHealthySnapshotQueries(prismaService: PrismaService) {
   (prismaService.transactionIntent.count as jest.Mock)
     .mockResolvedValueOnce(1)
     .mockResolvedValueOnce(0)
+    .mockResolvedValueOnce(0)
+    .mockResolvedValueOnce(0)
+    .mockResolvedValueOnce(0)
     .mockResolvedValueOnce(0);
   (prismaService.transactionIntent.findFirst as jest.Mock).mockResolvedValue({
     createdAt: new Date("2026-04-06T09:59:00.000Z")
@@ -389,6 +392,9 @@ describe("OperationsMonitoringService", () => {
     (prismaService.transactionIntent.count as jest.Mock)
       .mockResolvedValueOnce(12)
       .mockResolvedValueOnce(4)
+      .mockResolvedValueOnce(1)
+      .mockResolvedValueOnce(2)
+      .mockResolvedValueOnce(3)
       .mockResolvedValueOnce(3);
     (prismaService.transactionIntent.findFirst as jest.Mock).mockResolvedValue({
       createdAt: new Date("2026-04-06T09:50:00.000Z")
@@ -449,12 +455,91 @@ describe("OperationsMonitoringService", () => {
 
     expect(result.workerHealth.status).toBe("warning");
     expect(result.queueHealth.status).toBe("warning");
+    expect(result.withdrawalExecutionHealth.status).toBe("warning");
+    expect(result.withdrawalExecutionHealth.broadcastingWithdrawalCount).toBe(1);
+    expect(result.withdrawalExecutionHealth.pendingConfirmationWithdrawalCount).toBe(
+      2
+    );
+    expect(result.withdrawalExecutionHealth.failedManagedWithdrawalCount).toBe(3);
     expect(result.chainHealth.status).toBe("warning");
     expect(result.reconciliationHealth.status).toBe("critical");
     expect(result.treasuryHealth.status).toBe("healthy");
     expect(result.alertSummary.openCount).toBe(2);
     expect(prismaService.platformAlert.create).toHaveBeenCalled();
     expect(prismaService.platformAlert.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("reports managed withdrawal execution slices separately from manual backlog", async () => {
+    const { service, prismaService } = createService();
+
+    jest.spyOn(Date, "now").mockReturnValue(
+      new Date("2026-04-06T10:00:30.000Z").getTime()
+    );
+
+    (prismaService.workerRuntimeHeartbeat.findMany as jest.Mock).mockResolvedValue([
+      buildHeartbeatRecord({
+        latestIterationMetrics: {
+          manualWithdrawalBacklogCount: 0
+        }
+      })
+    ]);
+    (prismaService.transactionIntent.count as jest.Mock)
+      .mockResolvedValueOnce(0)
+      .mockResolvedValueOnce(2)
+      .mockResolvedValueOnce(1)
+      .mockResolvedValueOnce(3)
+      .mockResolvedValueOnce(4)
+      .mockResolvedValueOnce(0);
+    (prismaService.transactionIntent.findFirst as jest.Mock).mockResolvedValue(null);
+    (prismaService.blockchainTransaction.count as jest.Mock)
+      .mockResolvedValueOnce(0)
+      .mockResolvedValueOnce(0)
+      .mockResolvedValueOnce(0);
+    (prismaService.blockchainTransaction.findFirst as jest.Mock).mockResolvedValue(
+      null
+    );
+    (prismaService.ledgerReconciliationMismatch.count as jest.Mock)
+      .mockResolvedValueOnce(0)
+      .mockResolvedValueOnce(0);
+    (prismaService.ledgerReconciliationScanRun.count as jest.Mock).mockResolvedValue(
+      0
+    );
+    (prismaService.ledgerReconciliationScanRun.findFirst as jest.Mock).mockResolvedValue(
+      {
+        status: LedgerReconciliationScanRunStatus.succeeded,
+        startedAt: new Date("2026-04-06T09:55:00.000Z")
+      }
+    );
+    (prismaService.wallet.count as jest.Mock)
+      .mockResolvedValueOnce(1)
+      .mockResolvedValueOnce(1);
+    (prismaService.reviewCase.count as jest.Mock).mockResolvedValue(0);
+    (prismaService.oversightIncident.count as jest.Mock).mockResolvedValue(0);
+    (prismaService.customerAccount.count as jest.Mock).mockResolvedValue(0);
+    (prismaService.platformAlert.findMany as jest.Mock)
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
+    (prismaService.platformAlert.count as jest.Mock)
+      .mockResolvedValueOnce(0)
+      .mockResolvedValueOnce(0)
+      .mockResolvedValueOnce(0);
+
+    const result = await service.getOperationsStatus({
+      recentAlertLimit: 8,
+      staleAfterSeconds: 180
+    });
+
+    expect(result.queueHealth.manualWithdrawalBacklogCount).toBe(0);
+    expect(result.withdrawalExecutionHealth.queuedManagedWithdrawalCount).toBe(2);
+    expect(result.withdrawalExecutionHealth.broadcastingWithdrawalCount).toBe(1);
+    expect(result.withdrawalExecutionHealth.pendingConfirmationWithdrawalCount).toBe(
+      3
+    );
+    expect(result.withdrawalExecutionHealth.failedManagedWithdrawalCount).toBe(4);
+    expect(result.withdrawalExecutionHealth.manualInterventionWithdrawalCount).toBe(
+      0
+    );
   });
 
   it("lists platform alerts after refreshing durable alert state", async () => {
@@ -540,6 +625,7 @@ describe("OperationsMonitoringService", () => {
     expect(result).toContain("stb_platform_alert_reescalation_due_total");
     expect(result).toContain("stb_platform_alert_delivery_target_latency_ms");
     expect(result).toContain("stb_worker_latest_iteration_metric");
+    expect(result).toContain("stb_operations_managed_withdrawal_execution_total");
     expect(result).toContain('category="worker"');
   });
 

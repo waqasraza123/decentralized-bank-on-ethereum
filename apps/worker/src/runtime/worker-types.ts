@@ -1,6 +1,8 @@
 export type BlockchainTransactionProjection = {
   id: string;
   txHash: string | null;
+  nonce: number | null;
+  serializedTransaction: string | null;
   status: string;
   fromAddress: string | null;
   toAddress: string | null;
@@ -73,6 +75,29 @@ export type RecordBroadcastPayload = {
   toAddress?: string;
 };
 
+export type StartManagedWithdrawalExecutionPayload = {
+  reclaimStaleAfterMs: number;
+};
+
+export type RecordSignedWithdrawalPayload = {
+  txHash: string;
+  nonce: number;
+  serializedTransaction: string;
+  fromAddress?: string;
+  toAddress?: string;
+};
+
+export type StartManagedWithdrawalExecutionResult = {
+  intent: WorkerIntentProjection;
+  executionClaimed: boolean;
+  executionReused: boolean;
+};
+
+export type RecordSignedWithdrawalResult = {
+  intent: WorkerIntentProjection;
+  signedStateReused: boolean;
+};
+
 export type ConfirmIntentPayload = {
   txHash?: string;
 };
@@ -103,6 +128,14 @@ export type DepositBroadcastResult = {
   toAddress: string;
 };
 
+export type PreparedManagedWithdrawalTransaction = {
+  txHash: string;
+  nonce: number;
+  serializedTransaction: string;
+  fromAddress: string;
+  toAddress: string;
+};
+
 export type ManagedExecutionFailure = {
   failureCode: string;
   failureReason: string;
@@ -113,6 +146,14 @@ export type ManagedExecutionFailure = {
 export type ManagedDepositBroadcaster = {
   readonly signerAddress: string;
   broadcast(intent: WorkerIntentProjection): Promise<DepositBroadcastResult>;
+};
+
+export type ManagedWithdrawalBroadcaster = {
+  canManageWallet(walletAddress: string | null | undefined): boolean;
+  prepare(intent: WorkerIntentProjection): Promise<PreparedManagedWithdrawalTransaction>;
+  broadcastSignedTransaction(
+    signedTransaction: string
+  ): Promise<DepositBroadcastResult>;
 };
 
 export type WorkerLogger = {

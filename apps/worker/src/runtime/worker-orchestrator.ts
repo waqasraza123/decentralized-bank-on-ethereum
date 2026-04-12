@@ -6,6 +6,8 @@ import type {
   BroadcastReceipt,
   ManagedDepositBroadcaster,
   ListIntentsResult,
+  ManagedWithdrawalBroadcaster,
+  PreparedManagedWithdrawalTransaction,
   RecordBroadcastPayload,
   WorkerIntentProjection,
   WorkerIterationMetrics,
@@ -22,6 +24,7 @@ type WorkerOrchestratorDeps = {
   internalApiClient: InternalWorkerApiClient;
   rpcClient: JsonRpcClient | null;
   depositBroadcaster: ManagedDepositBroadcaster | null;
+  withdrawalBroadcaster: ManagedWithdrawalBroadcaster | null;
   logger: WorkerLogger;
 };
 
@@ -95,7 +98,7 @@ export class WorkerOrchestrator {
       await this.processQueuedWithdrawalsSynthetic(queuedWithdrawals, metrics);
     } else if (this.deps.runtime.executionMode === "managed") {
       await this.processQueuedDepositsManaged(queuedDeposits, metrics);
-      this.logQueuedWithdrawalsRequiringManualExecution(queuedWithdrawals, metrics);
+      await this.processQueuedWithdrawalsManaged(queuedWithdrawals, metrics);
     } else {
       this.logQueuedBacklog("deposit", queuedDeposits);
       this.logQueuedBacklog("withdrawal", queuedWithdrawals);
@@ -358,21 +361,225 @@ export class WorkerOrchestrator {
     }
   }
 
-  private logQueuedWithdrawalsRequiringManualExecution(
+  private recordManualWithdrawalIntervention(
+    intent: WorkerIntentProjection,
+    metrics: WorkerIterationMetrics,
+    reason: string
+  ): void {
+    metrics.manualWithdrawalBacklogCount += 1;
+    this.deps.logger.warn("managed_withdrawal_requires_manual_intervention", {
+      intentId: intent.id,
+      assetSymbol: intent.asset.symbol,
+      requestedAmount: intent.requestedAmount,
+      sourceWalletAddress: intent.sourceWalletAddress,
+      externalAddress: intent.externalAddress,
+      reason
+    });
+  }
+
+  private async recordManagedWithdrawalBroadcast(
+    intent: WorkerIntentProjection,
+    preparedTransaction: PreparedManagedWithdrawalTransaction,
+    metrics: WorkerIterationMetrics
+  ): Promise<void> {
+    await this.deps.internalApiClient.recordWithdrawalBroadcast(intent.id, {
+      txHash: preparedTransaction.txHash,
+      fromAddress: preparedTransaction.fromAddress,
+      toAddress: preparedTransaction.toAddress
+    });
+    metrics.withdrawalBroadcastRecordedCount += 1;
+    this.deps.logger.info("managed_withdrawal_broadcast_recorded", {
+      intentId: intent.id,
+      txHash: preparedTransaction.txHash,
+      fromAddress: preparedTransaction.fromAddress,
+      toAddress: preparedTransaction.toAddress,
+      assetSymbol: intent.asset.symbol,
+      requestedAmount: intent.requestedAmount
+    });
+  }
+
+  private async processQueuedWithdrawalsManaged(
     result: ListIntentsResult,
     metrics: WorkerIterationMetrics
-  ): void {
-    if (result.intents.length === 0) {
-      return;
+  ): Promise<void> {
+    if (!this.deps.withdrawalBroadcaster) {
+      throw new Error(
+        "Managed withdrawal broadcaster is required in managed mode."
+      );
     }
 
-    metrics.manualWithdrawalBacklogCount = result.intents.length;
-    this.deps.logger.warn("queued_withdrawals_require_manual_custody_execution", {
-      count: result.intents.length,
-      intentIds: stringifyIntentIds(result.intents),
-      reason:
-        "Customer withdrawal intents originate from product wallet projections that do not have an automated worker signer."
-    });
+    for (const intent of result.intents) {
+      if (!this.deps.withdrawalBroadcaster.canManageWallet(intent.sourceWalletAddress)) {
+        this.recordManualWithdrawalIntervention(
+          intent,
+          metrics,
+          "No managed signer is configured for the withdrawal source wallet."
+        );
+        continue;
+      }
+
+      try {
+        const latestBlockchainTransaction = intent.latestBlockchainTransaction;
+
+        if (
+          latestBlockchainTransaction?.status === "signed" &&
+          latestBlockchainTransaction.serializedTransaction &&
+          latestBlockchainTransaction.txHash &&
+          latestBlockchainTransaction.fromAddress &&
+          latestBlockchainTransaction.toAddress
+        ) {
+          await this.deps.withdrawalBroadcaster.broadcastSignedTransaction(
+            latestBlockchainTransaction.serializedTransaction
+          );
+          await this.recordManagedWithdrawalBroadcast(
+            intent,
+            {
+              txHash: latestBlockchainTransaction.txHash,
+              nonce: latestBlockchainTransaction.nonce ?? 0,
+              serializedTransaction:
+                latestBlockchainTransaction.serializedTransaction,
+              fromAddress: latestBlockchainTransaction.fromAddress,
+              toAddress: latestBlockchainTransaction.toAddress
+            },
+            metrics
+          );
+          continue;
+        }
+
+        if (
+          latestBlockchainTransaction?.status === "signed" &&
+          (!latestBlockchainTransaction.serializedTransaction ||
+            !latestBlockchainTransaction.txHash)
+        ) {
+          await this.deps.internalApiClient.failWithdrawalIntent(intent.id, {
+            failureCode: "managed_signed_withdrawal_state_invalid",
+            failureReason:
+              "Signed withdrawal execution state is missing durable transaction payload data.",
+            txHash: latestBlockchainTransaction.txHash ?? undefined,
+            fromAddress: latestBlockchainTransaction.fromAddress ?? undefined,
+            toAddress: latestBlockchainTransaction.toAddress ?? undefined
+          });
+          metrics.withdrawalFailedCount += 1;
+          continue;
+        }
+
+        const execution =
+          await this.deps.internalApiClient.startManagedWithdrawalExecution(
+            intent.id,
+            {
+              reclaimStaleAfterMs:
+                this.deps.runtime.managedWithdrawalClaimTimeoutMs
+            }
+          );
+
+        if (!execution.executionClaimed) {
+          continue;
+        }
+
+        const claimedIntent = execution.intent;
+        const claimedLatestBlockchainTransaction =
+          claimedIntent.latestBlockchainTransaction;
+
+        if (
+          claimedLatestBlockchainTransaction?.status === "signed" &&
+          claimedLatestBlockchainTransaction.serializedTransaction &&
+          claimedLatestBlockchainTransaction.txHash &&
+          claimedLatestBlockchainTransaction.fromAddress &&
+          claimedLatestBlockchainTransaction.toAddress
+        ) {
+          await this.deps.withdrawalBroadcaster.broadcastSignedTransaction(
+            claimedLatestBlockchainTransaction.serializedTransaction
+          );
+          await this.recordManagedWithdrawalBroadcast(
+            claimedIntent,
+            {
+              txHash: claimedLatestBlockchainTransaction.txHash,
+              nonce: claimedLatestBlockchainTransaction.nonce ?? 0,
+              serializedTransaction:
+                claimedLatestBlockchainTransaction.serializedTransaction,
+              fromAddress: claimedLatestBlockchainTransaction.fromAddress,
+              toAddress: claimedLatestBlockchainTransaction.toAddress
+            },
+            metrics
+          );
+          continue;
+        }
+
+        if (
+          claimedLatestBlockchainTransaction?.status === "signed" &&
+          (!claimedLatestBlockchainTransaction.serializedTransaction ||
+            !claimedLatestBlockchainTransaction.txHash)
+        ) {
+          await this.deps.internalApiClient.failWithdrawalIntent(claimedIntent.id, {
+            failureCode: "managed_signed_withdrawal_state_invalid",
+            failureReason:
+              "Signed withdrawal execution state is missing durable transaction payload data.",
+            txHash: claimedLatestBlockchainTransaction.txHash ?? undefined,
+            fromAddress:
+              claimedLatestBlockchainTransaction.fromAddress ?? undefined,
+            toAddress: claimedLatestBlockchainTransaction.toAddress ?? undefined
+          });
+          metrics.withdrawalFailedCount += 1;
+          continue;
+        }
+
+        const preparedTransaction =
+          await this.deps.withdrawalBroadcaster.prepare(claimedIntent);
+
+        await this.deps.internalApiClient.recordSignedWithdrawalExecution(
+          claimedIntent.id,
+          {
+            txHash: preparedTransaction.txHash,
+            nonce: preparedTransaction.nonce,
+            serializedTransaction: preparedTransaction.serializedTransaction,
+            fromAddress: preparedTransaction.fromAddress,
+            toAddress: preparedTransaction.toAddress
+          }
+        );
+
+        await this.deps.withdrawalBroadcaster.broadcastSignedTransaction(
+          preparedTransaction.serializedTransaction
+        );
+        await this.recordManagedWithdrawalBroadcast(
+          claimedIntent,
+          preparedTransaction,
+          metrics
+        );
+      } catch (error) {
+        if (error instanceof ManagedExecutionIntentError) {
+          if (error.failure.failureCode === "managed_withdrawal_signer_unavailable") {
+            this.recordManualWithdrawalIntervention(
+              intent,
+              metrics,
+              error.failure.failureReason
+            );
+            continue;
+          }
+
+          await this.deps.internalApiClient.failWithdrawalIntent(intent.id, {
+            failureCode: error.failure.failureCode,
+            failureReason: error.failure.failureReason,
+            fromAddress: error.failure.fromAddress,
+            toAddress: error.failure.toAddress
+          });
+          metrics.withdrawalFailedCount += 1;
+          this.deps.logger.warn("managed_withdrawal_execution_failed_permanently", {
+            intentId: intent.id,
+            failureCode: error.failure.failureCode,
+            failureReason: error.failure.failureReason,
+            assetSymbol: intent.asset.symbol
+          });
+          continue;
+        }
+
+        this.deps.logger.error("managed_withdrawal_execution_failed_retryable", {
+          intentId: intent.id,
+          assetSymbol: intent.asset.symbol,
+          requestedAmount: intent.requestedAmount,
+          error
+        });
+      }
+    }
   }
 
   private async processBroadcastDepositsSynthetic(

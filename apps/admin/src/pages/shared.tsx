@@ -99,6 +99,7 @@ export function buildSystemHealthTone(operations: OperationsStatus | undefined, 
     degradedServices: [
       operations?.workerHealth.status,
       operations?.queueHealth.status,
+      operations?.withdrawalExecutionHealth.status,
       operations?.chainHealth.status,
       operations?.treasuryHealth.status,
       operations?.reconciliationHealth.status,

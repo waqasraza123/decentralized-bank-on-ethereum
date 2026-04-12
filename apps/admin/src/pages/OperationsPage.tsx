@@ -69,6 +69,15 @@ export function OperationsPage() {
             detail={`${formatCount(operations.queueHealth.agedQueuedCount)} aged`}
           />
           <MetricCard
+            label="Withdrawal rail"
+            value={formatCount(
+              operations.withdrawalExecutionHealth.pendingConfirmationWithdrawalCount
+            )}
+            detail={`${formatCount(
+              operations.withdrawalExecutionHealth.manualInterventionWithdrawalCount
+            )} manual`}
+          />
+          <MetricCard
             label="Open mismatches"
             value={formatCount(operations.reconciliationHealth.openMismatchCount)}
             detail={`${formatCount(operations.reconciliationHealth.criticalMismatchCount)} critical`}
@@ -130,6 +139,13 @@ export function OperationsPage() {
             <h3>Queue health</h3>
             <p className="admin-copy">
               Oldest queued intent: {formatDateTime(operations.queueHealth.oldestQueuedIntentCreatedAt)}
+            </p>
+            <p className="admin-copy">
+              Managed withdrawals: {formatCount(operations.withdrawalExecutionHealth.queuedManagedWithdrawalCount)}{" "}
+              queued / {formatCount(operations.withdrawalExecutionHealth.broadcastingWithdrawalCount)}{" "}
+              broadcasting / {formatCount(operations.withdrawalExecutionHealth.pendingConfirmationWithdrawalCount)} pending confirmation /{" "}
+              {formatCount(operations.withdrawalExecutionHealth.failedManagedWithdrawalCount)} failed /{" "}
+              {formatCount(operations.withdrawalExecutionHealth.manualInterventionWithdrawalCount)} manual
             </p>
           </div>
           <div className="admin-list-card">

@@ -21,6 +21,8 @@ test("worker runtime config defaults to monitor mode and requires rpc", () => {
   assert.equal(runtime.internalApiStartupGracePeriodMs, 45000);
   assert.equal(runtime.reconciliationScanIntervalMs, 300000);
   assert.equal(runtime.depositSignerPrivateKey, null);
+  assert.equal(runtime.managedWithdrawalClaimTimeoutMs, 60000);
+  assert.deepEqual(runtime.managedWithdrawalSigners, []);
 });
 
 test("worker runtime config defaults local development to synthetic mode", () => {
@@ -34,6 +36,7 @@ test("worker runtime config defaults local development to synthetic mode", () =>
   assert.equal(runtime.executionMode, "synthetic");
   assert.equal(runtime.internalApiStartupGracePeriodMs, 45000);
   assert.equal(runtime.rpcUrl, null);
+  assert.equal(runtime.managedWithdrawalClaimTimeoutMs, 60000);
 });
 
 test("worker runtime config allows overriding internal API startup grace period", () => {
@@ -43,6 +46,31 @@ test("worker runtime config allows overriding internal API startup grace period"
   });
 
   assert.equal(runtime.internalApiStartupGracePeriodMs, 15000);
+});
+
+test("worker runtime config parses managed withdrawal signer mappings", () => {
+  const runtime = loadWorkerRuntimeConfig({
+    NODE_ENV: "production",
+    WORKER_ID: "worker_1",
+    INTERNAL_API_BASE_URL: "https://internal.example.com",
+    INTERNAL_WORKER_API_KEY: "secret",
+    WORKER_EXECUTION_MODE: "managed",
+    RPC_URL: "https://rpc.example.com",
+    WORKER_DEPOSIT_SIGNER_PRIVATE_KEY:
+      "0x59c6995e998f97a5a0044966f094538c5f6d4e07f16b8ad8cc7658f0f1b0f9d8",
+    WORKER_MANAGED_WITHDRAWAL_SIGNERS_JSON:
+      '[{"walletAddress":"0x0000000000000000000000000000000000000def","privateKey":"0x8b3a350cf5c34c9194ca3a545d6f7f9f4c6c2a59d71c7b3f1b5e2ad65379b3f7"}]',
+    WORKER_MANAGED_WITHDRAWAL_CLAIM_TIMEOUT_MS: "90000"
+  });
+
+  assert.equal(runtime.managedWithdrawalClaimTimeoutMs, 90000);
+  assert.deepEqual(runtime.managedWithdrawalSigners, [
+    {
+      walletAddress: "0x0000000000000000000000000000000000000def",
+      privateKey:
+        "0x8b3a350cf5c34c9194ca3a545d6f7f9f4c6c2a59d71c7b3f1b5e2ad65379b3f7"
+    }
+  ]);
 });
 
 test("internal API key config defaults in local development", () => {

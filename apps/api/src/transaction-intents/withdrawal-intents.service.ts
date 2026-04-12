@@ -31,8 +31,10 @@ import { ListBroadcastWithdrawalIntentsDto } from "./dto/list-broadcast-withdraw
 import { ListConfirmedWithdrawalIntentsDto } from "./dto/list-confirmed-withdrawal-intents.dto";
 import { ListPendingWithdrawalIntentsDto } from "./dto/list-pending-withdrawal-intents.dto";
 import { ListQueuedWithdrawalIntentsDto } from "./dto/list-queued-withdrawal-intents.dto";
+import { RecordSignedWithdrawalExecutionDto } from "./dto/record-signed-withdrawal-execution.dto";
 import { QueueApprovedWithdrawalIntentDto } from "./dto/queue-approved-withdrawal-intent.dto";
 import { RecordWithdrawalBroadcastDto } from "./dto/record-withdrawal-broadcast.dto";
+import { StartManagedWithdrawalExecutionDto } from "./dto/start-managed-withdrawal-execution.dto";
 import { SettleConfirmedWithdrawalIntentDto } from "./dto/settle-confirmed-withdrawal-intent.dto";
 
 type WithdrawalIntentContext = {
@@ -107,6 +109,8 @@ type InternalIntentRecord = Prisma.TransactionIntentGetPayload<{
       select: {
         id: true;
         txHash: true;
+        nonce: true;
+        serializedTransaction: true;
         status: true;
         fromAddress: true;
         toAddress: true;
@@ -121,6 +125,8 @@ type InternalIntentRecord = Prisma.TransactionIntentGetPayload<{
 type LatestBlockchainTransactionProjection = {
   id: string;
   txHash: string | null;
+  nonce: number | null;
+  serializedTransaction: string | null;
   status: BlockchainTransactionStatus;
   fromAddress: string | null;
   toAddress: string | null;
@@ -202,6 +208,17 @@ type ListQueuedWithdrawalIntentsResult = {
 type RecordWithdrawalBroadcastResult = {
   intent: WithdrawalIntentReviewProjection;
   broadcastReused: boolean;
+};
+
+type StartManagedWithdrawalExecutionResult = {
+  intent: WithdrawalIntentReviewProjection;
+  executionClaimed: boolean;
+  executionReused: boolean;
+};
+
+type RecordSignedWithdrawalExecutionResult = {
+  intent: WithdrawalIntentReviewProjection;
+  signedStateReused: boolean;
 };
 
 type FailWithdrawalIntentExecutionResult = {
@@ -390,6 +407,8 @@ export class WithdrawalIntentsService {
     return {
       id: latestBlockchainTransaction.id,
       txHash: latestBlockchainTransaction.txHash,
+      nonce: latestBlockchainTransaction.nonce,
+      serializedTransaction: latestBlockchainTransaction.serializedTransaction,
       status: latestBlockchainTransaction.status,
       fromAddress: latestBlockchainTransaction.fromAddress,
       toAddress: latestBlockchainTransaction.toAddress,
@@ -595,6 +614,8 @@ export class WithdrawalIntentsService {
           select: {
             id: true,
             txHash: true,
+            nonce: true,
+            serializedTransaction: true,
             status: true,
             fromAddress: true,
             toAddress: true,
@@ -684,6 +705,62 @@ export class WithdrawalIntentsService {
         "Withdrawal transaction intent is not confirmed and ready for settlement."
       );
     }
+  }
+
+  private assertWithdrawalIntentCanFailExecution(
+    intent: InternalIntentRecord
+  ): void {
+    if (
+      intent.policyDecision !== PolicyDecision.approved ||
+      (intent.status !== TransactionIntentStatus.queued &&
+        intent.status !== TransactionIntentStatus.broadcast)
+    ) {
+      throw new ConflictException(
+        "Withdrawal transaction intent is not in an execution state that can fail."
+      );
+    }
+  }
+
+  private isWithdrawalExecutionClaimReusable(
+    intent: InternalIntentRecord,
+    workerId: string,
+    staleBefore: Date
+  ): boolean {
+    if (!intent.executionClaimedAt || !intent.executionClaimedByWorkerId) {
+      return true;
+    }
+
+    if (intent.executionClaimedByWorkerId === workerId) {
+      return true;
+    }
+
+    return intent.executionClaimedAt.getTime() <= staleBefore.getTime();
+  }
+
+  private isWithdrawalExecutionInProgress(
+    intent: InternalIntentRecord
+  ): boolean {
+    const latestBlockchainTransaction = intent.blockchainTransactions[0] ?? null;
+
+    return (
+      intent.status === TransactionIntentStatus.queued &&
+      intent.policyDecision === PolicyDecision.approved &&
+      (latestBlockchainTransaction?.status === BlockchainTransactionStatus.created ||
+        latestBlockchainTransaction?.status === BlockchainTransactionStatus.signed)
+    );
+  }
+
+  private canReuseSignedWithdrawalExecution(
+    latestBlockchainTransaction: InternalIntentRecord["blockchainTransactions"][number] | null,
+    dto: RecordSignedWithdrawalExecutionDto
+  ): boolean {
+    return (
+      latestBlockchainTransaction?.status === BlockchainTransactionStatus.signed &&
+      latestBlockchainTransaction.txHash === dto.txHash &&
+      latestBlockchainTransaction.nonce === dto.nonce &&
+      latestBlockchainTransaction.serializedTransaction ===
+        dto.serializedTransaction
+    );
   }
 
   private resolveWithdrawalBroadcastAddresses(
@@ -933,6 +1010,8 @@ export class WithdrawalIntentsService {
           select: {
             id: true,
             txHash: true,
+            nonce: true,
+            serializedTransaction: true,
             status: true,
             fromAddress: true,
             toAddress: true,
@@ -1090,6 +1169,8 @@ export class WithdrawalIntentsService {
               select: {
                 id: true,
                 txHash: true,
+                nonce: true,
+                serializedTransaction: true,
                 status: true,
                 fromAddress: true,
                 toAddress: true,
@@ -1170,6 +1251,8 @@ export class WithdrawalIntentsService {
           select: {
             id: true,
             txHash: true,
+            nonce: true,
+            serializedTransaction: true,
             status: true,
             fromAddress: true,
             toAddress: true,
@@ -1296,6 +1379,8 @@ export class WithdrawalIntentsService {
               select: {
                 id: true,
                 txHash: true,
+                nonce: true,
+                serializedTransaction: true,
                 status: true,
                 fromAddress: true,
                 toAddress: true,
@@ -1376,6 +1461,8 @@ export class WithdrawalIntentsService {
           select: {
             id: true,
             txHash: true,
+            nonce: true,
+            serializedTransaction: true,
             status: true,
             fromAddress: true,
             toAddress: true,
@@ -1390,6 +1477,596 @@ export class WithdrawalIntentsService {
     return {
       intents: intents.map((intent) => this.mapIntentReviewProjection(intent)),
       limit
+    };
+  }
+
+  async startManagedWithdrawalExecution(
+    intentId: string,
+    workerId: string,
+    dto: StartManagedWithdrawalExecutionDto
+  ): Promise<StartManagedWithdrawalExecutionResult> {
+    const existingIntent = await this.findWithdrawalIntentForReview(intentId);
+
+    if (!existingIntent) {
+      throw new NotFoundException("Withdrawal transaction intent not found.");
+    }
+
+    if (
+      existingIntent.status !== TransactionIntentStatus.queued ||
+      existingIntent.policyDecision !== PolicyDecision.approved
+    ) {
+      return {
+        intent: this.mapIntentReviewProjection(existingIntent),
+        executionClaimed: false,
+        executionReused: true
+      };
+    }
+
+    const claimedAt = new Date();
+    const staleBefore = new Date(
+      claimedAt.getTime() - dto.reclaimStaleAfterMs
+    );
+
+    const result = await this.prismaService.$transaction(async (transaction) => {
+      const currentIntent = await transaction.transactionIntent.findFirst({
+        where: {
+          id: existingIntent.id
+        },
+        include: {
+          asset: {
+            select: {
+              id: true,
+              symbol: true,
+              displayName: true,
+              decimals: true,
+              chainId: true
+            }
+          },
+          sourceWallet: {
+            select: {
+              id: true,
+              address: true
+            }
+          },
+          customerAccount: {
+            select: {
+              id: true,
+              customerId: true,
+              customer: {
+                select: {
+                  id: true,
+                  supabaseUserId: true,
+                  email: true,
+                  firstName: true,
+                  lastName: true
+                }
+              }
+            }
+          },
+          blockchainTransactions: {
+            orderBy: {
+              createdAt: "desc"
+            },
+            take: 1,
+            select: {
+              id: true,
+              txHash: true,
+              nonce: true,
+              serializedTransaction: true,
+              status: true,
+              fromAddress: true,
+              toAddress: true,
+              createdAt: true,
+              updatedAt: true,
+              confirmedAt: true
+            }
+          }
+        }
+      });
+
+      if (!currentIntent) {
+        throw new NotFoundException("Withdrawal transaction intent not found.");
+      }
+
+      if (
+        currentIntent.status !== TransactionIntentStatus.queued ||
+        currentIntent.policyDecision !== PolicyDecision.approved
+      ) {
+        return {
+          intent: currentIntent,
+          executionClaimed: false,
+          executionReused: true
+        };
+      }
+
+      if (
+        !this.isWithdrawalExecutionClaimReusable(
+          currentIntent,
+          workerId,
+          staleBefore
+        )
+      ) {
+        return {
+          intent: currentIntent,
+          executionClaimed: false,
+          executionReused: true
+        };
+      }
+
+      const claimedIntentCount = await transaction.transactionIntent.updateMany({
+        where: {
+          id: currentIntent.id,
+          status: TransactionIntentStatus.queued,
+          policyDecision: PolicyDecision.approved,
+          OR: [
+            {
+              executionClaimedAt: null
+            },
+            {
+              executionClaimedAt: {
+                lte: staleBefore
+              }
+            },
+            {
+              executionClaimedByWorkerId: workerId
+            }
+          ]
+        },
+        data: {
+          executionClaimedAt: claimedAt,
+          executionClaimedByWorkerId: workerId
+        }
+      });
+
+      if (claimedIntentCount.count === 0) {
+        const refreshedUnclaimedIntent = await transaction.transactionIntent.findFirst({
+          where: {
+            id: currentIntent.id
+          },
+          include: {
+            asset: {
+              select: {
+                id: true,
+                symbol: true,
+                displayName: true,
+                decimals: true,
+                chainId: true
+              }
+            },
+            sourceWallet: {
+              select: {
+                id: true,
+                address: true
+              }
+            },
+            customerAccount: {
+              select: {
+                id: true,
+                customerId: true,
+                customer: {
+                  select: {
+                    id: true,
+                    supabaseUserId: true,
+                    email: true,
+                    firstName: true,
+                    lastName: true
+                  }
+                }
+              }
+            },
+            blockchainTransactions: {
+              orderBy: {
+                createdAt: "desc"
+              },
+              take: 1,
+              select: {
+                id: true,
+                txHash: true,
+                nonce: true,
+                serializedTransaction: true,
+                status: true,
+                fromAddress: true,
+                toAddress: true,
+                createdAt: true,
+                updatedAt: true,
+                confirmedAt: true
+              }
+            }
+          }
+        });
+
+        if (!refreshedUnclaimedIntent) {
+          throw new NotFoundException("Withdrawal transaction intent not found.");
+        }
+
+        return {
+          intent: refreshedUnclaimedIntent,
+          executionClaimed: false,
+          executionReused: true
+        };
+      }
+
+      const { normalizedFromAddress, normalizedToAddress } =
+        this.resolveWithdrawalBroadcastAddresses(currentIntent, null, null);
+      const latestBlockchainTransaction =
+        currentIntent.blockchainTransactions[0] ?? null;
+
+      if (!latestBlockchainTransaction) {
+        await transaction.blockchainTransaction.create({
+          data: {
+            transactionIntentId: currentIntent.id,
+            chainId: currentIntent.chainId,
+            txHash: null,
+            nonce: null,
+            serializedTransaction: null,
+            status: BlockchainTransactionStatus.created,
+            fromAddress: normalizedFromAddress,
+            toAddress: normalizedToAddress,
+            confirmedAt: null
+          }
+        });
+      }
+
+      await transaction.auditEvent.create({
+        data: {
+          customerId: currentIntent.customerAccount!.customer.id,
+          actorType: "worker",
+          actorId: workerId,
+          action: "transaction_intent.withdrawal.execution_started",
+          targetType: "TransactionIntent",
+          targetId: currentIntent.id,
+          metadata: {
+            customerAccountId: currentIntent.customerAccount!.id,
+            assetId: currentIntent.asset.id,
+            assetSymbol: currentIntent.asset.symbol,
+            assetDisplayName: currentIntent.asset.displayName,
+            requestedAmount: currentIntent.requestedAmount.toString(),
+            sourceWalletId: currentIntent.sourceWalletId,
+            sourceWalletAddress: normalizedFromAddress,
+            externalAddress: currentIntent.externalAddress,
+            chainId: currentIntent.chainId,
+            latestBlockchainStatus:
+              latestBlockchainTransaction?.status ?? BlockchainTransactionStatus.created,
+            executionClaimedAt: claimedAt.toISOString(),
+            reclaimStaleAfterMs: dto.reclaimStaleAfterMs,
+            executionChannel: this.resolveExecutionChannel({
+              actorType: "worker",
+              actorId: workerId,
+              actorRole: null,
+              reconciliationReplay: false,
+              replayReason: null
+            })
+          }
+        }
+      });
+
+      const refreshedIntent = await transaction.transactionIntent.findFirst({
+        where: {
+          id: currentIntent.id
+        },
+        include: {
+          asset: {
+            select: {
+              id: true,
+              symbol: true,
+              displayName: true,
+              decimals: true,
+              chainId: true
+            }
+          },
+          sourceWallet: {
+            select: {
+              id: true,
+              address: true
+            }
+          },
+          customerAccount: {
+            select: {
+              id: true,
+              customerId: true,
+              customer: {
+                select: {
+                  id: true,
+                  supabaseUserId: true,
+                  email: true,
+                  firstName: true,
+                  lastName: true
+                }
+              }
+            }
+          },
+          blockchainTransactions: {
+            orderBy: {
+              createdAt: "desc"
+            },
+            take: 1,
+            select: {
+              id: true,
+              txHash: true,
+              nonce: true,
+              serializedTransaction: true,
+              status: true,
+              fromAddress: true,
+              toAddress: true,
+              createdAt: true,
+              updatedAt: true,
+              confirmedAt: true
+            }
+          }
+        }
+      });
+
+      if (!refreshedIntent) {
+        throw new NotFoundException("Withdrawal transaction intent not found.");
+      }
+
+      return {
+        intent: refreshedIntent,
+        executionClaimed: true,
+        executionReused: this.isWithdrawalExecutionInProgress(currentIntent)
+      };
+    });
+
+    return {
+      intent: this.mapIntentReviewProjection(result.intent),
+      executionClaimed: result.executionClaimed,
+      executionReused: result.executionReused
+    };
+  }
+
+  async recordSignedWithdrawalExecution(
+    intentId: string,
+    workerId: string,
+    dto: RecordSignedWithdrawalExecutionDto
+  ): Promise<RecordSignedWithdrawalExecutionResult> {
+    const existingIntent = await this.findWithdrawalIntentForReview(intentId);
+
+    if (!existingIntent) {
+      throw new NotFoundException("Withdrawal transaction intent not found.");
+    }
+
+    const latestBlockchainTransaction =
+      existingIntent.blockchainTransactions[0] ?? null;
+
+    if (this.canReuseSignedWithdrawalExecution(latestBlockchainTransaction, dto)) {
+      return {
+        intent: this.mapIntentReviewProjection(existingIntent),
+        signedStateReused: true
+      };
+    }
+
+    this.ensureWithdrawalIntentIsQueued(existingIntent);
+
+    const updatedIntent = await this.prismaService.$transaction(
+      async (transaction) => {
+        const currentIntent = await transaction.transactionIntent.findFirst({
+          where: {
+            id: existingIntent.id
+          },
+          include: {
+            asset: {
+              select: {
+                id: true,
+                symbol: true,
+                displayName: true,
+                decimals: true,
+                chainId: true
+              }
+            },
+            sourceWallet: {
+              select: {
+                id: true,
+                address: true
+              }
+            },
+            customerAccount: {
+              select: {
+                id: true,
+                customerId: true,
+                customer: {
+                  select: {
+                    id: true,
+                    supabaseUserId: true,
+                    email: true,
+                    firstName: true,
+                    lastName: true
+                  }
+                }
+              }
+            },
+            blockchainTransactions: {
+              orderBy: {
+                createdAt: "desc"
+              },
+              take: 1,
+              select: {
+                id: true,
+                txHash: true,
+                nonce: true,
+                serializedTransaction: true,
+                status: true,
+                fromAddress: true,
+                toAddress: true,
+                createdAt: true,
+                updatedAt: true,
+                confirmedAt: true
+              }
+            }
+          }
+        });
+
+        if (!currentIntent) {
+          throw new NotFoundException("Withdrawal transaction intent not found.");
+        }
+
+        this.ensureWithdrawalIntentIsQueued(currentIntent);
+
+        if (currentIntent.executionClaimedByWorkerId !== workerId) {
+          throw new ConflictException(
+            "Withdrawal transaction intent is claimed by a different worker."
+          );
+        }
+
+        const currentLatestBlockchainTransaction =
+          currentIntent.blockchainTransactions[0] ?? null;
+
+        if (
+          this.canReuseSignedWithdrawalExecution(currentLatestBlockchainTransaction, dto)
+        ) {
+          return currentIntent;
+        }
+
+        if (!currentLatestBlockchainTransaction) {
+          throw new ConflictException(
+            "No blockchain execution record exists for this withdrawal intent."
+          );
+        }
+
+        if (
+          currentLatestBlockchainTransaction.status !==
+            BlockchainTransactionStatus.created &&
+          currentLatestBlockchainTransaction.status !==
+            BlockchainTransactionStatus.signed
+        ) {
+          throw new ConflictException(
+            "Withdrawal transaction intent is not ready for signed execution persistence."
+          );
+        }
+
+        const { normalizedFromAddress, normalizedToAddress } =
+          this.resolveWithdrawalBroadcastAddresses(
+            currentIntent,
+            dto.fromAddress?.trim() ??
+              currentLatestBlockchainTransaction.fromAddress ??
+              null,
+            dto.toAddress?.trim() ??
+              currentLatestBlockchainTransaction.toAddress ??
+              null
+          );
+
+        if (
+          currentLatestBlockchainTransaction.txHash &&
+          currentLatestBlockchainTransaction.txHash !== dto.txHash
+        ) {
+          throw new ConflictException(
+            "A different blockchain transaction is already recorded for this withdrawal intent."
+          );
+        }
+
+        await transaction.blockchainTransaction.update({
+          where: {
+            id: currentLatestBlockchainTransaction.id
+          },
+          data: {
+            txHash: dto.txHash,
+            nonce: dto.nonce,
+            serializedTransaction: dto.serializedTransaction,
+            status: BlockchainTransactionStatus.signed,
+            fromAddress: normalizedFromAddress,
+            toAddress: normalizedToAddress
+          }
+        });
+
+        await transaction.auditEvent.create({
+          data: {
+            customerId: currentIntent.customerAccount!.customer.id,
+            actorType: "worker",
+            actorId: workerId,
+            action: "transaction_intent.withdrawal.broadcast_persisted",
+            targetType: "TransactionIntent",
+            targetId: currentIntent.id,
+            metadata: {
+              customerAccountId: currentIntent.customerAccount!.id,
+              assetId: currentIntent.asset.id,
+              assetSymbol: currentIntent.asset.symbol,
+              assetDisplayName: currentIntent.asset.displayName,
+              requestedAmount: currentIntent.requestedAmount.toString(),
+              sourceWalletId: currentIntent.sourceWalletId,
+              sourceWalletAddress: normalizedFromAddress,
+              externalAddress: currentIntent.externalAddress,
+              chainId: currentIntent.chainId,
+              txHash: dto.txHash,
+              nonce: dto.nonce,
+              fromAddress: normalizedFromAddress,
+              toAddress: normalizedToAddress,
+              executionChannel: this.resolveExecutionChannel({
+                actorType: "worker",
+                actorId: workerId,
+                actorRole: null,
+                reconciliationReplay: false,
+                replayReason: null
+              })
+            }
+          }
+        });
+
+        const refreshedIntent = await transaction.transactionIntent.findFirst({
+          where: {
+            id: currentIntent.id
+          },
+          include: {
+            asset: {
+              select: {
+                id: true,
+                symbol: true,
+                displayName: true,
+                decimals: true,
+                chainId: true
+              }
+            },
+            sourceWallet: {
+              select: {
+                id: true,
+                address: true
+              }
+            },
+            customerAccount: {
+              select: {
+                id: true,
+                customerId: true,
+                customer: {
+                  select: {
+                    id: true,
+                    supabaseUserId: true,
+                    email: true,
+                    firstName: true,
+                    lastName: true
+                  }
+                }
+              }
+            },
+            blockchainTransactions: {
+              orderBy: {
+                createdAt: "desc"
+              },
+              take: 1,
+              select: {
+                id: true,
+                txHash: true,
+                nonce: true,
+                serializedTransaction: true,
+                status: true,
+                fromAddress: true,
+                toAddress: true,
+                createdAt: true,
+                updatedAt: true,
+                confirmedAt: true
+              }
+            }
+          }
+        });
+
+        if (!refreshedIntent) {
+          throw new NotFoundException("Withdrawal transaction intent not found.");
+        }
+
+        return refreshedIntent;
+      }
+    );
+
+    return {
+      intent: this.mapIntentReviewProjection(updatedIntent),
+      signedStateReused: false
     };
   }
 
@@ -1496,6 +2173,8 @@ export class WithdrawalIntentsService {
               select: {
                 id: true,
                 txHash: true,
+                nonce: true,
+                serializedTransaction: true,
                 status: true,
                 fromAddress: true,
                 toAddress: true,
@@ -1524,6 +2203,16 @@ export class WithdrawalIntentsService {
         }
 
         this.ensureWithdrawalIntentIsQueued(currentIntent);
+
+        if (
+          actor.actorType === "worker" &&
+          currentIntent.executionClaimedByWorkerId &&
+          currentIntent.executionClaimedByWorkerId !== actor.actorId
+        ) {
+          throw new ConflictException(
+            "Withdrawal transaction intent is claimed by a different worker."
+          );
+        }
 
         if (
           currentLatestBlockchainTransaction?.txHash &&
@@ -1560,6 +2249,7 @@ export class WithdrawalIntentsService {
               chainId: currentIntent.chainId,
               txHash: dto.txHash,
               nonce: null,
+              serializedTransaction: null,
               status: BlockchainTransactionStatus.broadcast,
               fromAddress: normalizedFromAddress,
               toAddress: normalizedToAddress,
@@ -1575,7 +2265,9 @@ export class WithdrawalIntentsService {
           data: {
             status: TransactionIntentStatus.broadcast,
             failureCode: null,
-            failureReason: null
+            failureReason: null,
+            executionClaimedAt: null,
+            executionClaimedByWorkerId: null
           }
         });
 
@@ -1653,6 +2345,8 @@ export class WithdrawalIntentsService {
               select: {
                 id: true,
                 txHash: true,
+                nonce: true,
+                serializedTransaction: true,
                 status: true,
                 fromAddress: true,
                 toAddress: true,
@@ -1794,6 +2488,8 @@ export class WithdrawalIntentsService {
               select: {
                 id: true,
                 txHash: true,
+                nonce: true,
+                serializedTransaction: true,
                 status: true,
                 fromAddress: true,
                 toAddress: true,
@@ -1822,15 +2518,7 @@ export class WithdrawalIntentsService {
           return currentIntent;
         }
 
-        if (
-          currentIntent.policyDecision !== PolicyDecision.approved ||
-          (currentIntent.status !== TransactionIntentStatus.queued &&
-            currentIntent.status !== TransactionIntentStatus.broadcast)
-        ) {
-          throw new ConflictException(
-            "Withdrawal transaction intent is not in an execution state that can fail."
-          );
-        }
+        this.assertWithdrawalIntentCanFailExecution(currentIntent);
 
         if (
           dto.txHash &&
@@ -1872,6 +2560,7 @@ export class WithdrawalIntentsService {
               chainId: currentIntent.chainId,
               txHash: dto.txHash ?? null,
               nonce: null,
+              serializedTransaction: null,
               status: BlockchainTransactionStatus.failed,
               fromAddress: normalizedFromAddress,
               toAddress: normalizedToAddress,
@@ -1894,7 +2583,9 @@ export class WithdrawalIntentsService {
           data: {
             status: TransactionIntentStatus.failed,
             failureCode,
-            failureReason
+            failureReason,
+            executionClaimedAt: null,
+            executionClaimedByWorkerId: null
           }
         });
 
@@ -1976,6 +2667,8 @@ export class WithdrawalIntentsService {
               select: {
                 id: true,
                 txHash: true,
+                nonce: true,
+                serializedTransaction: true,
                 status: true,
                 fromAddress: true,
                 toAddress: true,
@@ -2056,6 +2749,8 @@ export class WithdrawalIntentsService {
           select: {
             id: true,
             txHash: true,
+            nonce: true,
+            serializedTransaction: true,
             status: true,
             fromAddress: true,
             toAddress: true,
@@ -2136,6 +2831,8 @@ export class WithdrawalIntentsService {
           select: {
             id: true,
             txHash: true,
+            nonce: true,
+            serializedTransaction: true,
             status: true,
             fromAddress: true,
             toAddress: true,
@@ -2307,6 +3004,8 @@ export class WithdrawalIntentsService {
               select: {
                 id: true,
                 txHash: true,
+                nonce: true,
+                serializedTransaction: true,
                 status: true,
                 fromAddress: true,
                 toAddress: true,
@@ -2439,6 +3138,8 @@ export class WithdrawalIntentsService {
               select: {
                 id: true,
                 txHash: true,
+                nonce: true,
+                serializedTransaction: true,
                 status: true,
                 fromAddress: true,
                 toAddress: true,
@@ -2592,6 +3293,8 @@ export class WithdrawalIntentsService {
               select: {
                 id: true,
                 txHash: true,
+                nonce: true,
+                serializedTransaction: true,
                 status: true,
                 fromAddress: true,
                 toAddress: true,
@@ -2722,6 +3425,8 @@ export class WithdrawalIntentsService {
               select: {
                 id: true,
                 txHash: true,
+                nonce: true,
+                serializedTransaction: true,
                 status: true,
                 fromAddress: true,
                 toAddress: true,

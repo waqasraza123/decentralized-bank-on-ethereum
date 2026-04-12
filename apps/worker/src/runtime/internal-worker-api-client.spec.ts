@@ -20,7 +20,9 @@ const runtime = {
   reconciliationScanIntervalMs: 300000,
   platformAlertReEscalationIntervalMs: 300000,
   rpcUrl: null,
-  depositSignerPrivateKey: null
+  depositSignerPrivateKey: null,
+  managedWithdrawalClaimTimeoutMs: 60000,
+  managedWithdrawalSigners: []
 };
 
 test("internal worker api client wraps unavailable upstream errors", async () => {
@@ -204,6 +206,15 @@ test("internal worker api client issues every worker request against the expecte
     });
 
     await client.listQueuedWithdrawalIntents(20);
+    await client.startManagedWithdrawalExecution("withdrawal_1", {
+      reclaimStaleAfterMs: 60000
+    });
+    await client.recordSignedWithdrawalExecution("withdrawal_1", {
+      txHash:
+        "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      nonce: 7,
+      serializedTransaction: "0xdeadbeef"
+    });
     await client.listBroadcastWithdrawalIntents(20);
     await client.listConfirmedWithdrawalIntentsReadyToSettle(20);
     await client.recordWithdrawalBroadcast("withdrawal_1", {
@@ -284,6 +295,8 @@ test("internal worker api client issues every worker request against the expecte
         "post:/transaction-intents/internal/worker/deposit-requests/deposit_1/settle",
         "post:/transaction-intents/internal/worker/deposit-requests/deposit_1/fail",
         "get:/transaction-intents/internal/worker/withdrawal-requests/queued",
+        "post:/transaction-intents/internal/worker/withdrawal-requests/withdrawal_1/start-execution",
+        "post:/transaction-intents/internal/worker/withdrawal-requests/withdrawal_1/signed",
         "get:/transaction-intents/internal/worker/withdrawal-requests/broadcast",
         "get:/transaction-intents/internal/worker/withdrawal-requests/confirmed-ready-to-settle",
         "post:/transaction-intents/internal/worker/withdrawal-requests/withdrawal_1/broadcast",

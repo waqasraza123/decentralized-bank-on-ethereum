@@ -91,6 +91,7 @@ const DEFAULT_WORKER_REQUEST_TIMEOUT_MS = 10_000;
 const DEFAULT_WORKER_CONFIRMATION_BLOCKS = 1;
 const DEFAULT_WORKER_PLATFORM_ALERT_REESCALATION_INTERVAL_MS = 300_000;
 const DEFAULT_WORKER_INTERNAL_API_STARTUP_GRACE_PERIOD_MS = 45_000;
+const DEFAULT_WORKER_MANAGED_WITHDRAWAL_CLAIM_TIMEOUT_MS = 60_000;
 const DEFAULT_LOCAL_WORKER_ID = "worker-local-1";
 const DEFAULT_LOCAL_INTERNAL_API_BASE_URL = "http://localhost:9001";
 const DEFAULT_LOCAL_INTERNAL_WORKER_API_KEY = "local-dev-worker-key";
@@ -567,6 +568,68 @@ function parsePlatformAlertAutomationPolicies(
   return policies;
 }
 
+function parseManagedWithdrawalSigners(
+  value: string,
+  name: string
+): ManagedWithdrawalSignerRuntimeConfig[] {
+  let parsedValue: unknown;
+
+  try {
+    parsedValue = JSON.parse(value);
+  } catch {
+    throw new Error(`${name} must be valid JSON.`);
+  }
+
+  if (!Array.isArray(parsedValue)) {
+    throw new Error(`${name} must be a JSON array.`);
+  }
+
+  const signers = parsedValue.map((entry, index) => {
+    if (!isRecord(entry)) {
+      throw new Error(`${name}[${index}] must be an object.`);
+    }
+
+    if (
+      typeof entry.walletAddress !== "string" ||
+      entry.walletAddress.trim().length === 0
+    ) {
+      throw new Error(
+        `${name}[${index}].walletAddress must be a non-empty string.`
+      );
+    }
+
+    if (
+      typeof entry.privateKey !== "string" ||
+      entry.privateKey.trim().length === 0
+    ) {
+      throw new Error(
+        `${name}[${index}].privateKey must be a non-empty string.`
+      );
+    }
+
+    return {
+      walletAddress: entry.walletAddress.trim(),
+      privateKey: entry.privateKey.trim()
+    };
+  });
+
+  const walletAddresses = new Set<string>();
+
+  for (const signer of signers) {
+    const normalizedWalletAddress = signer.walletAddress.toLowerCase();
+
+    if (walletAddresses.has(normalizedWalletAddress)) {
+      throw new Error(
+        `${name} contains duplicate walletAddress "${signer.walletAddress}".`
+      );
+    }
+
+    walletAddresses.add(normalizedWalletAddress);
+  }
+
+  return signers;
+}
+
 function resolveWorkerExecutionMode(
   environment: ApiRuntimeEnvironment,
   configuredExecutionMode: string | undefined,
@@ -659,6 +722,11 @@ export type ApiServerRuntimeConfig = {
 
 export type WorkerExecutionMode = "monitor" | "synthetic" | "managed";
 
+export type ManagedWithdrawalSignerRuntimeConfig = {
+  readonly walletAddress: string;
+  readonly privateKey: string;
+};
+
 export type WorkerRuntimeConfig = {
   readonly environment: ApiRuntimeEnvironment;
   readonly workerId: string;
@@ -672,8 +740,10 @@ export type WorkerRuntimeConfig = {
   readonly confirmationBlocks: number;
   readonly reconciliationScanIntervalMs: number;
   readonly platformAlertReEscalationIntervalMs: number;
+  readonly managedWithdrawalClaimTimeoutMs: number;
   readonly rpcUrl: string | null;
   readonly depositSignerPrivateKey: string | null;
+  readonly managedWithdrawalSigners: readonly ManagedWithdrawalSignerRuntimeConfig[];
 };
 
 export type SharedLoginBootstrapRuntimeConfig = {
@@ -1101,6 +1171,16 @@ export function loadWorkerRuntimeConfig(
     env,
     "WORKER_DEPOSIT_SIGNER_PRIVATE_KEY"
   );
+  const managedWithdrawalSignersJson = readOptionalRuntimeEnv(
+    env,
+    "WORKER_MANAGED_WITHDRAWAL_SIGNERS_JSON"
+  );
+  const managedWithdrawalSigners = managedWithdrawalSignersJson
+    ? parseManagedWithdrawalSigners(
+        managedWithdrawalSignersJson,
+        "WORKER_MANAGED_WITHDRAWAL_SIGNERS_JSON"
+      )
+    : [];
 
   if (executionMode === "managed" && !depositSignerPrivateKey) {
     throw new Error(
@@ -1174,8 +1254,16 @@ export function loadWorkerRuntimeConfig(
       ) ?? String(DEFAULT_WORKER_PLATFORM_ALERT_REESCALATION_INTERVAL_MS),
       "WORKER_PLATFORM_ALERT_REESCALATION_INTERVAL_MS"
     ),
+    managedWithdrawalClaimTimeoutMs: parsePositiveInteger(
+      readOptionalRuntimeEnv(
+        env,
+        "WORKER_MANAGED_WITHDRAWAL_CLAIM_TIMEOUT_MS"
+      ) ?? String(DEFAULT_WORKER_MANAGED_WITHDRAWAL_CLAIM_TIMEOUT_MS),
+      "WORKER_MANAGED_WITHDRAWAL_CLAIM_TIMEOUT_MS"
+    ),
     rpcUrl: rpcUrl ?? null,
-    depositSignerPrivateKey: depositSignerPrivateKey ?? null
+    depositSignerPrivateKey: depositSignerPrivateKey ?? null,
+    managedWithdrawalSigners
   };
 }
 

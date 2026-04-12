@@ -60,6 +60,8 @@ type TransactionIntentRecord = {
   idempotencyKey: string;
   failureCode: string | null;
   failureReason: string | null;
+  executionClaimedAt: Date | null;
+  executionClaimedByWorkerId: string | null;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -70,6 +72,7 @@ type BlockchainTransactionRecord = {
   chainId: number;
   txHash: string | null;
   nonce: number | null;
+  serializedTransaction: string | null;
   status: BlockchainTransactionStatus;
   fromAddress: string | null;
   toAddress: string | null;
@@ -256,6 +259,10 @@ export class FinanceFlowIntegrationHarness {
         where: { id: string };
         data: TransactionIntentMutationData;
       }) => this.updateTransactionIntent(args.where.id, args.data),
+      updateMany: async (args: {
+        where?: Record<string, unknown>;
+        data: TransactionIntentMutationData;
+      }) => this.updateManyTransactionIntents(args.where, args.data),
       findFirst: async (args?: TransactionIntentFindArgs) =>
         this.findFirstTransactionIntent(args)
     },
@@ -489,7 +496,38 @@ export class FinanceFlowIntegrationHarness {
         return true;
       }
 
-      return intent[key as keyof TransactionIntentRecord] === value;
+      if (key === "OR" && Array.isArray(value)) {
+        return value.some(
+          (branch) =>
+            typeof branch === "object" &&
+            branch !== null &&
+            this.matchesIntentWhere(
+              intent,
+              branch as Record<string, unknown>
+            )
+        );
+      }
+
+      const candidate = intent[key as keyof TransactionIntentRecord];
+
+      if (value === null) {
+        return candidate === null;
+      }
+
+      if (
+        typeof value === "object" &&
+        value !== null &&
+        "lte" in value &&
+        candidate instanceof Date
+      ) {
+        const threshold = (value as { lte?: Date }).lte;
+
+        return threshold instanceof Date
+          ? candidate.getTime() <= threshold.getTime()
+          : false;
+      }
+
+      return candidate === value;
     });
   }
 
@@ -582,6 +620,9 @@ export class FinanceFlowIntegrationHarness {
       idempotencyKey: data.idempotencyKey as string,
       failureCode: (data.failureCode as string | null) ?? null,
       failureReason: (data.failureReason as string | null) ?? null,
+      executionClaimedAt: (data.executionClaimedAt as Date | null) ?? null,
+      executionClaimedByWorkerId:
+        (data.executionClaimedByWorkerId as string | null) ?? null,
       createdAt,
       updatedAt: createdAt
     };
@@ -621,6 +662,15 @@ export class FinanceFlowIntegrationHarness {
       intent.failureReason = data.failureReason ?? null;
     }
 
+    if ("executionClaimedAt" in data) {
+      intent.executionClaimedAt = data.executionClaimedAt ?? null;
+    }
+
+    if ("executionClaimedByWorkerId" in data) {
+      intent.executionClaimedByWorkerId =
+        data.executionClaimedByWorkerId ?? null;
+    }
+
     if ("settledAmount" in data) {
       intent.settledAmount = data.settledAmount
         ? new Prisma.Decimal(data.settledAmount.toString())
@@ -630,6 +680,23 @@ export class FinanceFlowIntegrationHarness {
     intent.updatedAt = this.nextTimestamp();
 
     return this.decorateIntent(intent);
+  }
+
+  private updateManyTransactionIntents(
+    where: Record<string, unknown> | undefined,
+    data: TransactionIntentMutationData
+  ): { count: number } {
+    const matchingIntents = this.transactionIntents.filter((intent) =>
+      this.matchesIntentWhere(intent, where)
+    );
+
+    for (const intent of matchingIntents) {
+      this.updateTransactionIntent(intent.id, data);
+    }
+
+    return {
+      count: matchingIntents.length
+    };
   }
 
   private createBlockchainTransaction(
@@ -643,6 +710,8 @@ export class FinanceFlowIntegrationHarness {
       chainId: data.chainId as number,
       txHash: (data.txHash as string | null) ?? null,
       nonce: (data.nonce as number | null) ?? null,
+      serializedTransaction:
+        (data.serializedTransaction as string | null) ?? null,
       status: data.status as BlockchainTransactionStatus,
       fromAddress: (data.fromAddress as string | null) ?? null,
       toAddress: (data.toAddress as string | null) ?? null,
@@ -673,6 +742,15 @@ export class FinanceFlowIntegrationHarness {
 
     if ("status" in data && data.status) {
       blockchainTransaction.status = data.status;
+    }
+
+    if ("nonce" in data) {
+      blockchainTransaction.nonce = data.nonce ?? null;
+    }
+
+    if ("serializedTransaction" in data) {
+      blockchainTransaction.serializedTransaction =
+        data.serializedTransaction ?? null;
     }
 
     if ("fromAddress" in data) {

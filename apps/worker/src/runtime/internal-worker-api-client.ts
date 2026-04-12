@@ -9,7 +9,11 @@ import type {
   ListWorkerLoanAgreementsResult,
   ListWorkerLoanInstallmentsResult,
   RecordBroadcastPayload,
+  RecordSignedWithdrawalPayload,
+  RecordSignedWithdrawalResult,
   SettleIntentPayload,
+  StartManagedWithdrawalExecutionPayload,
+  StartManagedWithdrawalExecutionResult,
   TrackedLedgerReconciliationScanResult,
   WorkerHeartbeatPayload
 } from "./worker-types";
@@ -216,6 +220,32 @@ export function createInternalWorkerApiClient(runtime: WorkerRuntime) {
           {
             params: { limit }
           }
+        ),
+        baseUrl
+      );
+    },
+
+    async startManagedWithdrawalExecution(
+      intentId: string,
+      payload: StartManagedWithdrawalExecutionPayload
+    ): Promise<StartManagedWithdrawalExecutionResult> {
+      return readResponseData(
+        httpClient.post<ApiEnvelope<StartManagedWithdrawalExecutionResult>>(
+          `/transaction-intents/internal/worker/withdrawal-requests/${intentId}/start-execution`,
+          payload
+        ),
+        baseUrl
+      );
+    },
+
+    async recordSignedWithdrawalExecution(
+      intentId: string,
+      payload: RecordSignedWithdrawalPayload
+    ): Promise<RecordSignedWithdrawalResult> {
+      return readResponseData(
+        httpClient.post<ApiEnvelope<RecordSignedWithdrawalResult>>(
+          `/transaction-intents/internal/worker/withdrawal-requests/${intentId}/signed`,
+          payload
         ),
         baseUrl
       );

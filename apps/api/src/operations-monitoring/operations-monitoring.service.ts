@@ -23,6 +23,7 @@ import {
   LedgerReconciliationMismatchStatus,
   LedgerReconciliationScanRunStatus,
   OversightIncidentStatus,
+  PolicyDecision,
   PlatformAlertCategory,
   PlatformAlertDeliveryEventType,
   PlatformAlertDeliveryStatus,
@@ -272,6 +273,14 @@ type OperationsStatusResult = {
     manualWithdrawalBacklogCount: number;
     oldestQueuedIntentCreatedAt: string | null;
   };
+  withdrawalExecutionHealth: {
+    status: OperationsSectionStatus;
+    queuedManagedWithdrawalCount: number;
+    broadcastingWithdrawalCount: number;
+    pendingConfirmationWithdrawalCount: number;
+    failedManagedWithdrawalCount: number;
+    manualInterventionWithdrawalCount: number;
+  };
   chainHealth: {
     status: OperationsSectionStatus;
     laggingBroadcastCount: number;
@@ -309,6 +318,7 @@ type OperationsSnapshot = {
   workers: WorkerRuntimeHealthProjection[];
   workerHealth: OperationsStatusResult["workerHealth"];
   queueHealth: OperationsStatusResult["queueHealth"];
+  withdrawalExecutionHealth: OperationsStatusResult["withdrawalExecutionHealth"];
   chainHealth: OperationsStatusResult["chainHealth"];
   treasuryHealth: OperationsStatusResult["treasuryHealth"];
   reconciliationHealth: OperationsStatusResult["reconciliationHealth"];
@@ -1280,6 +1290,7 @@ export class OperationsMonitoringService {
     workers: WorkerRuntimeHealthProjection[];
     workerHealth: OperationsStatusResult["workerHealth"];
     queueHealth: OperationsStatusResult["queueHealth"];
+    withdrawalExecutionHealth: OperationsStatusResult["withdrawalExecutionHealth"];
     chainHealth: OperationsStatusResult["chainHealth"];
     treasuryHealth: OperationsStatusResult["treasuryHealth"];
     reconciliationHealth: OperationsStatusResult["reconciliationHealth"];
@@ -1706,6 +1717,9 @@ export class OperationsMonitoringService {
       workerRecords,
       queuedDepositCount,
       queuedWithdrawalCount,
+      broadcastingWithdrawalCount,
+      pendingConfirmationWithdrawalCount,
+      failedManagedWithdrawalCount,
       agedQueuedCount,
       oldestQueuedIntent,
       criticalLaggingBroadcastCount,
@@ -1738,6 +1752,37 @@ export class OperationsMonitoringService {
         where: {
           status: TransactionIntentStatus.queued,
           intentType: TransactionIntentType.withdrawal
+        }
+      }),
+      this.prismaService.transactionIntent.count({
+        where: {
+          intentType: TransactionIntentType.withdrawal,
+          status: TransactionIntentStatus.queued,
+          policyDecision: PolicyDecision.approved,
+          blockchainTransactions: {
+            some: {
+              status: {
+                in: [
+                  BlockchainTransactionStatus.created,
+                  BlockchainTransactionStatus.signed
+                ]
+              }
+            }
+          }
+        }
+      }),
+      this.prismaService.transactionIntent.count({
+        where: {
+          intentType: TransactionIntentType.withdrawal,
+          status: TransactionIntentStatus.broadcast,
+          policyDecision: PolicyDecision.approved
+        }
+      }),
+      this.prismaService.transactionIntent.count({
+        where: {
+          intentType: TransactionIntentType.withdrawal,
+          status: TransactionIntentStatus.failed,
+          policyDecision: PolicyDecision.approved
         }
       }),
       this.prismaService.transactionIntent.count({
@@ -1912,6 +1957,34 @@ export class OperationsMonitoringService {
       oldestQueuedIntentCreatedAt
     };
 
+    let withdrawalExecutionStatus: OperationsSectionStatus = "healthy";
+
+    if (
+      manualWithdrawalBacklogCount >= 10 ||
+      failedManagedWithdrawalCount >= 10 ||
+      pendingConfirmationWithdrawalCount >= 10
+    ) {
+      withdrawalExecutionStatus = "critical";
+    } else if (
+      queuedWithdrawalCount > 0 ||
+      broadcastingWithdrawalCount > 0 ||
+      pendingConfirmationWithdrawalCount > 0 ||
+      failedManagedWithdrawalCount > 0 ||
+      manualWithdrawalBacklogCount > 0
+    ) {
+      withdrawalExecutionStatus = "warning";
+    }
+
+    const withdrawalExecutionHealth: OperationsStatusResult["withdrawalExecutionHealth"] =
+      {
+        status: withdrawalExecutionStatus,
+        queuedManagedWithdrawalCount: queuedWithdrawalCount,
+        broadcastingWithdrawalCount,
+        pendingConfirmationWithdrawalCount,
+        failedManagedWithdrawalCount,
+        manualInterventionWithdrawalCount: manualWithdrawalBacklogCount
+      };
+
     let chainStatus: OperationsSectionStatus = "healthy";
 
     if (
@@ -1994,6 +2067,7 @@ export class OperationsMonitoringService {
       workers,
       workerHealth,
       queueHealth,
+      withdrawalExecutionHealth,
       chainHealth,
       treasuryHealth,
       reconciliationHealth,
@@ -2003,6 +2077,7 @@ export class OperationsMonitoringService {
         workers,
         workerHealth,
         queueHealth,
+        withdrawalExecutionHealth,
         chainHealth,
         treasuryHealth,
         reconciliationHealth,
@@ -2195,6 +2270,7 @@ export class OperationsMonitoringService {
       },
       workerHealth: snapshot.workerHealth,
       queueHealth: snapshot.queueHealth,
+      withdrawalExecutionHealth: snapshot.withdrawalExecutionHealth,
       chainHealth: snapshot.chainHealth,
       treasuryHealth: snapshot.treasuryHealth,
       reconciliationHealth: snapshot.reconciliationHealth,
@@ -3009,6 +3085,33 @@ export class OperationsMonitoringService {
       formatPrometheusLine(
         "stb_operations_manual_withdrawal_backlog_total",
         snapshot.queueHealth.manualWithdrawalBacklogCount
+      ),
+      "# HELP stb_operations_managed_withdrawal_execution_total Current managed withdrawal execution counts by state.",
+      "# TYPE stb_operations_managed_withdrawal_execution_total gauge",
+      formatPrometheusLine(
+        "stb_operations_managed_withdrawal_execution_total",
+        snapshot.withdrawalExecutionHealth.queuedManagedWithdrawalCount,
+        { state: "queued" }
+      ),
+      formatPrometheusLine(
+        "stb_operations_managed_withdrawal_execution_total",
+        snapshot.withdrawalExecutionHealth.broadcastingWithdrawalCount,
+        { state: "broadcasting" }
+      ),
+      formatPrometheusLine(
+        "stb_operations_managed_withdrawal_execution_total",
+        snapshot.withdrawalExecutionHealth.pendingConfirmationWithdrawalCount,
+        { state: "pending_confirmation" }
+      ),
+      formatPrometheusLine(
+        "stb_operations_managed_withdrawal_execution_total",
+        snapshot.withdrawalExecutionHealth.failedManagedWithdrawalCount,
+        { state: "failed" }
+      ),
+      formatPrometheusLine(
+        "stb_operations_managed_withdrawal_execution_total",
+        snapshot.withdrawalExecutionHealth.manualInterventionWithdrawalCount,
+        { state: "manual_intervention" }
       ),
       "# HELP stb_operations_chain_lagging_broadcasts_total Current lagging blockchain broadcasts by severity window.",
       "# TYPE stb_operations_chain_lagging_broadcasts_total gauge",
