@@ -3,7 +3,7 @@ import { expect, test } from "@playwright/test";
 const liveEmail = process.env.PLAYWRIGHT_LIVE_WEB_EMAIL;
 const livePassword = process.env.PLAYWRIGHT_LIVE_WEB_PASSWORD;
 
-test("boots the live customer stack and renders a protected route after sign-in", async ({
+test("boots the live customer stack and renders critical protected routes after sign-in", async ({
   page
 }) => {
   test.skip(!liveEmail || !livePassword, "Live web smoke credentials are not configured.");
@@ -17,4 +17,14 @@ test("boots the live customer stack and renders a protected route after sign-in"
 
   await expect(page).toHaveURL("/");
   await expect(page.getByRole("heading", { name: /dashboard/i })).toBeVisible();
+
+  await page.goto("/wallet");
+  await expect(
+    page.getByRole("heading", { name: /managed wallet operations/i })
+  ).toBeVisible();
+
+  await page.goto("/transactions");
+  await expect(
+    page.getByRole("heading", { name: /money movement history|transactions/i })
+  ).toBeVisible();
 });

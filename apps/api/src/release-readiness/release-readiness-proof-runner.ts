@@ -18,12 +18,14 @@ type AutomatedProofCommandDefinition = {
   command: string;
   args: string[];
   coverage: string[];
+  environment?: Record<string, string>;
 };
 
 type CommandExecutor = (
   command: string,
   args: string[],
-  cwd: string
+  cwd: string,
+  environment?: Record<string, string>
 ) => CommandExecutionResult | Promise<CommandExecutionResult>;
 
 type AutomatedReleaseReadinessProofType =
@@ -52,7 +54,9 @@ type ReleaseReadinessProofResult = {
 
 type AutomatedReleaseReadinessProofInput = {
   evidenceType: AutomatedReleaseReadinessProofType;
+  environment?: ReleaseReadinessEnvironment;
   workspaceRoot?: string;
+  runtimeEnv?: NodeJS.ProcessEnv;
   commandExecutor?: CommandExecutor;
 };
 
@@ -210,6 +214,22 @@ const automatedProofDefinitions: Record<
   }
 };
 
+const liveSmokeAcceptedEnvironments = new Set<ReleaseReadinessEnvironment>([
+  "staging",
+  "production_like",
+  "production"
+]);
+
+const liveSmokeRequiredEnvironmentVariables = Object.freeze([
+  "PLAYWRIGHT_LIVE_WEB_URL",
+  "PLAYWRIGHT_LIVE_WEB_EMAIL",
+  "PLAYWRIGHT_LIVE_WEB_PASSWORD",
+  "PLAYWRIGHT_LIVE_ADMIN_URL",
+  "PLAYWRIGHT_LIVE_ADMIN_API_BASE_URL",
+  "PLAYWRIGHT_LIVE_ADMIN_OPERATOR_ID",
+  "PLAYWRIGHT_LIVE_ADMIN_API_KEY"
+]);
+
 const manualProofDefinitions: Record<
   ManualReleaseReadinessProofType,
   {
@@ -282,11 +302,16 @@ function buildOutputTail(output: string): string {
 function executeCommand(
   command: string,
   args: string[],
-  cwd: string
+  cwd: string,
+  environment?: Record<string, string>
 ): CommandExecutionResult {
   const startedAt = Date.now();
   const result = spawnSync(command, args, {
     cwd,
+    env: {
+      ...process.env,
+      ...(environment ?? {})
+    },
     encoding: "utf8",
     maxBuffer: 10 * 1024 * 1024
   });
@@ -301,6 +326,72 @@ function executeCommand(
     stderr: result.stderr ?? "",
     durationMs: Date.now() - startedAt
   };
+}
+
+function formatCommand(
+  command: string,
+  args: string[],
+  environment?: Record<string, string>
+): string {
+  const environmentPrefix = Object.entries(environment ?? {})
+    .map(([key, value]) => `${key}=${value}`)
+    .join(" ");
+  const commandText = [command, ...args].join(" ");
+
+  return environmentPrefix ? `${environmentPrefix} ${commandText}` : commandText;
+}
+
+function buildAutomatedProofCommands(
+  evidenceType: AutomatedReleaseReadinessProofType,
+  environment: ReleaseReadinessEnvironment
+): {
+  commands: AutomatedProofCommandDefinition[];
+  liveSmokeRequired: boolean;
+} {
+  const definition = automatedProofDefinitions[evidenceType];
+  const commands = [...definition.commands];
+  const liveSmokeRequired =
+    evidenceType === "end_to_end_finance_flows" &&
+    liveSmokeAcceptedEnvironments.has(environment);
+
+  if (liveSmokeRequired) {
+    commands.push({
+      label: "live_stack_smoke",
+      command: "pnpm",
+      args: [
+        "exec",
+        "playwright",
+        "test",
+        "--project",
+        "live-web-smoke",
+        "--project",
+        "live-admin-smoke"
+      ],
+      coverage: [
+        "live customer sign-in and protected-route boot",
+        "live wallet and transaction route rendering",
+        "live admin session persistence and critical operator routes"
+      ],
+      environment: {
+        PLAYWRIGHT_INCLUDE_LIVE_SMOKE: "1"
+      }
+    });
+  }
+
+  return {
+    commands,
+    liveSmokeRequired
+  };
+}
+
+function findMissingEnvironmentVariables(
+  environmentSource: NodeJS.ProcessEnv,
+  variableNames: readonly string[]
+): string[] {
+  return variableNames.filter((variableName) => {
+    const value = environmentSource[variableName];
+    return typeof value !== "string" || value.trim().length === 0;
+  });
 }
 
 async function executeAutomatedProofCommands(
@@ -319,6 +410,7 @@ async function executeAutomatedProofCommands(
     stdoutTail: string;
     stderrTail: string;
     status: "passed" | "failed";
+    environmentOverrides: string[];
   }>;
 }> {
   const commandResults: Array<{
@@ -330,25 +422,32 @@ async function executeAutomatedProofCommands(
     stdoutTail: string;
     stderrTail: string;
     status: "passed" | "failed";
+    environmentOverrides: string[];
   }> = [];
 
   for (const commandDefinition of commands) {
     const executionResult = await commandExecutor(
       commandDefinition.command,
       commandDefinition.args,
-      workspaceRoot
+      workspaceRoot,
+      commandDefinition.environment
     );
     const status = executionResult.exitCode === 0 ? "passed" : "failed";
 
     commandResults.push({
       label: commandDefinition.label,
-      command: [commandDefinition.command, ...commandDefinition.args].join(" "),
+      command: formatCommand(
+        commandDefinition.command,
+        commandDefinition.args,
+        commandDefinition.environment
+      ),
       coverage: commandDefinition.coverage,
       exitCode: executionResult.exitCode,
       durationMs: executionResult.durationMs,
       stdoutTail: buildOutputTail(executionResult.stdout),
       stderrTail: buildOutputTail(executionResult.stderr),
-      status
+      status,
+      environmentOverrides: Object.keys(commandDefinition.environment ?? {})
     });
 
     if (status === "failed") {
@@ -415,12 +514,50 @@ export async function runReleaseReadinessProof(
   if (isAutomatedProofType(input.evidenceType)) {
     const automatedInput = input as AutomatedReleaseReadinessProofInput;
     const definition = automatedProofDefinitions[input.evidenceType];
+    const environment =
+      automatedInput.environment ??
+      defaultReleaseReadinessEnvironmentForProof(input.evidenceType);
     const workspaceRoot =
       automatedInput.workspaceRoot ?? defaultWorkspaceRoot();
+    const runtimeEnv = automatedInput.runtimeEnv ?? process.env;
     const commandExecutor =
       automatedInput.commandExecutor ?? executeCommand;
+    const automatedCommands = buildAutomatedProofCommands(
+      input.evidenceType,
+      environment
+    );
+    const missingEnvironmentVariables = automatedCommands.liveSmokeRequired
+      ? findMissingEnvironmentVariables(
+          runtimeEnv,
+          liveSmokeRequiredEnvironmentVariables
+        )
+      : [];
+
+    if (missingEnvironmentVariables.length > 0) {
+      return {
+        evidenceType: input.evidenceType,
+        status: "failed",
+        summary:
+          "End-to-end finance flow suite requires live smoke environment variables for staging-like verification.",
+        observedAt: new Date().toISOString(),
+        runbookPath: definition.runbookPath,
+        evidenceLinks: [],
+        evidencePayload: {
+          proofKind: "automated_command_bundle",
+          commandCount: automatedCommands.commands.length,
+          durationMs: 0,
+          commands: [],
+          workspaceRoot,
+          environment,
+          liveSmokeRequired: true,
+          missingEnvironmentVariables,
+          requiredEnvironmentVariables: liveSmokeRequiredEnvironmentVariables
+        }
+      };
+    }
+
     const execution = await executeAutomatedProofCommands(
-      definition.commands,
+      automatedCommands.commands,
       workspaceRoot,
       commandExecutor
     );
@@ -438,10 +575,15 @@ export async function runReleaseReadinessProof(
       evidenceLinks: [],
       evidencePayload: {
         proofKind: "automated_command_bundle",
-        commandCount: definition.commands.length,
+        commandCount: automatedCommands.commands.length,
         durationMs: execution.totalDurationMs,
         commands: execution.commandResults,
-        workspaceRoot
+        workspaceRoot,
+        environment,
+        liveSmokeRequired: automatedCommands.liveSmokeRequired,
+        liveSmokeIncluded:
+          automatedCommands.liveSmokeRequired &&
+          missingEnvironmentVariables.length === 0
       }
     };
   }

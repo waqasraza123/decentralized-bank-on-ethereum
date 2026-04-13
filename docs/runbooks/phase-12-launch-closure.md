@@ -14,7 +14,7 @@ Already satisfied from repo-owned work:
 
 - `contract_invariant_suite` can be accepted from repo-owned automation
 - `backend_integration_suite` can be accepted from repo-owned automation
-- `end_to_end_finance_flows` can be accepted from repo-owned automation
+- `end_to_end_finance_flows` can be accepted from repo-owned automation, and staging-like reruns can append live smoke through the same verifier
 - local dry-run support already exists for `database_restore_drill`, `api_rollback_drill`, and `worker_rollback_drill`
 
 Still externally required:
@@ -31,6 +31,7 @@ Still externally required:
 Important truth:
 
 - local dry-runs are diagnostic support only
+- staging-like `end_to_end_finance_flows` reruns require live Playwright smoke configuration to count as accepted operational proof in that environment
 - accepted proof for the remaining operational items must come from `staging`, `production_like`, or `production`
 - launch approval is blocked until every required proof has current accepted evidence and every checklist attestation is complete
 
@@ -48,6 +49,7 @@ Required input classes:
 - release identifier
 - accepted environment label
 - web, admin, API, and restore-validation API base URLs
+- live smoke URLs and credentials when rerunning `end_to_end_finance_flows` in `staging`, `production_like`, or `production`
 - worker identifier
 - requester and approver identities
 - requester and approver roles

@@ -12,6 +12,11 @@ Use these commands to produce durable proof for:
 
 These proofs complement, but do not replace, the staging or production-like drill evidence required for alerting, restore, rollback, secret handling, and role review.
 
+For `end_to_end_finance_flows`, the verifier runs in two modes:
+
+- `development` or `ci`: repo-owned integration, replay, and worker coverage only
+- `staging`, `production_like`, or `production`: the same repo-owned bundle plus live Playwright smoke against the configured web and admin stacks
+
 ## Root command
 
 Run the full automated verifier from the repository root:
@@ -31,8 +36,12 @@ That command runs:
   - `pnpm --filter @stealth-trails-bank/api test -- --runTestsByPath src/transaction-intents/finance-flows.integration.spec.ts`
   - `pnpm --filter @stealth-trails-bank/api test -- --runTestsByPath src/transaction-intents/transaction-intents.replay.spec.ts src/transaction-intents/withdrawal-intents.replay.spec.ts src/transaction-intents/deposit-settlement-reconciliation.review-cases.spec.ts src/transaction-intents/withdrawal-settlement-reconciliation.review-cases.spec.ts`
   - `pnpm --filter @stealth-trails-bank/worker test`
+  - when `--environment` is `staging`, `production_like`, or `production` and the live smoke environment is configured:
+    - `PLAYWRIGHT_INCLUDE_LIVE_SMOKE=1 pnpm exec playwright test --project live-web-smoke --project live-admin-smoke`
 
 Each automated proof is recorded as a command bundle with per-command status, duration, output tails, and coverage notes so the durable evidence matches the hardened platform surface instead of a single coarse command.
+
+When live smoke is included, the proof payload also records that staging-like live route smoke was required and executed.
 
 ## Single-proof examples
 
@@ -52,6 +61,34 @@ pnpm release:readiness:verify -- --proof backend_integration_suite
 
 ```bash
 pnpm release:readiness:verify -- --proof end_to_end_finance_flows
+```
+
+### Staging-like end-to-end finance flows with live smoke
+
+Required environment variables:
+
+- `PLAYWRIGHT_LIVE_WEB_URL`
+- `PLAYWRIGHT_LIVE_WEB_EMAIL`
+- `PLAYWRIGHT_LIVE_WEB_PASSWORD`
+- `PLAYWRIGHT_LIVE_ADMIN_URL`
+- `PLAYWRIGHT_LIVE_ADMIN_API_BASE_URL`
+- `PLAYWRIGHT_LIVE_ADMIN_OPERATOR_ID`
+- `PLAYWRIGHT_LIVE_ADMIN_API_KEY`
+
+Example:
+
+```bash
+export PLAYWRIGHT_LIVE_WEB_URL=https://prodlike-web.example.com
+export PLAYWRIGHT_LIVE_WEB_EMAIL=customer.smoke@example.com
+export PLAYWRIGHT_LIVE_WEB_PASSWORD='customer-secret'
+export PLAYWRIGHT_LIVE_ADMIN_URL=https://prodlike-admin.example.com
+export PLAYWRIGHT_LIVE_ADMIN_API_BASE_URL=https://prodlike-api.example.com
+export PLAYWRIGHT_LIVE_ADMIN_OPERATOR_ID=ops_stage_1
+export PLAYWRIGHT_LIVE_ADMIN_API_KEY='operator-secret'
+
+pnpm release:readiness:verify -- \
+  --proof end_to_end_finance_flows \
+  --environment production_like
 ```
 
 ## Recording automated proof

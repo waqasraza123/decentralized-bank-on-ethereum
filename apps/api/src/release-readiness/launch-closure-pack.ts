@@ -540,6 +540,7 @@ Use this pack to:
 ## Important truth
 
 - Repo-owned automated proofs are already available for contract invariants, backend integration, and end-to-end finance flows.
+- Staging-like reruns of end-to-end finance flows can append live Playwright smoke when the required live environment variables are configured.
 - Local development dry-runs exist for restore and rollback, but they are diagnostic only and are not accepted launch proof.
 - Accepted evidence for the remaining operational items must come from \`${manifest.environment}\`, not local development.
 `;
@@ -551,7 +552,11 @@ function renderLocalVsAcceptedStatus(): string {
     .join("\n");
 
   const locallySatisfied = localSatisfiedChecks
-    .map((evidenceType) => `- \`${evidenceType}\`: repo-owned automated proof can be accepted from development or ci`)
+    .map((evidenceType) =>
+      evidenceType === "end_to_end_finance_flows"
+        ? "- `end_to_end_finance_flows`: repo-owned automated proof can be accepted from development or ci, and staging-like reruns can append live smoke through the same verifier"
+        : `- \`${evidenceType}\`: repo-owned automated proof can be accepted from development or ci`
+    )
     .join("\n");
 
   const dryRunOnly = localDryRunOnlyChecks
@@ -684,7 +689,9 @@ function renderStatusSummary(): string {
     "## Repo-local proof already in place",
     ...localSatisfiedChecks.map(
       (evidenceType) =>
-        `- ${evidenceType}: repo-owned automation can record accepted proof from development or ci`
+        evidenceType === "end_to_end_finance_flows"
+          ? "- end_to_end_finance_flows: repo-owned automation can record accepted proof from development or ci, and staging-like reruns can append live smoke through the same verifier"
+          : `- ${evidenceType}: repo-owned automation can record accepted proof from development or ci`
     ),
     "",
     "## Remaining operational checks",

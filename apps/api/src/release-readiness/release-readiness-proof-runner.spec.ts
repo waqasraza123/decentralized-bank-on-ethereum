@@ -32,7 +32,8 @@ describe("release-readiness-proof-runner", () => {
         "--grep",
         "invariant"
       ],
-      "/tmp/repo"
+      "/tmp/repo",
+      undefined
     );
     expect(result.status).toBe("passed");
     expect(result.summary).toContain("Contract invariant suite passed");
@@ -96,6 +97,116 @@ describe("release-readiness-proof-runner", () => {
             stderrTail: "replay recovery failed"
           })
         ]
+      })
+    );
+  });
+
+  it("adds live smoke to staging-like end-to-end proof when live environment is configured", async () => {
+    const commandExecutor = jest
+      .fn()
+      .mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: "finance integration passed",
+        stderr: "",
+        durationMs: 100
+      })
+      .mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: "replay safety passed",
+        stderr: "",
+        durationMs: 110
+      })
+      .mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: "worker recovery passed",
+        stderr: "",
+        durationMs: 120
+      })
+      .mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: "live smoke passed",
+        stderr: "",
+        durationMs: 130
+      });
+
+    const result = await runReleaseReadinessProof({
+      evidenceType: "end_to_end_finance_flows",
+      environment: "production_like",
+      workspaceRoot: "/tmp/repo",
+      runtimeEnv: {
+        PLAYWRIGHT_LIVE_WEB_URL: "https://prodlike-web.example.com",
+        PLAYWRIGHT_LIVE_WEB_EMAIL: "operator@example.com",
+        PLAYWRIGHT_LIVE_WEB_PASSWORD: "secret",
+        PLAYWRIGHT_LIVE_ADMIN_URL: "https://prodlike-admin.example.com",
+        PLAYWRIGHT_LIVE_ADMIN_API_BASE_URL: "https://prodlike-api.example.com",
+        PLAYWRIGHT_LIVE_ADMIN_OPERATOR_ID: "ops_stage_1",
+        PLAYWRIGHT_LIVE_ADMIN_API_KEY: "operator-key"
+      },
+      commandExecutor
+    });
+
+    expect(commandExecutor).toHaveBeenLastCalledWith(
+      "pnpm",
+      [
+        "exec",
+        "playwright",
+        "test",
+        "--project",
+        "live-web-smoke",
+        "--project",
+        "live-admin-smoke"
+      ],
+      "/tmp/repo",
+      {
+        PLAYWRIGHT_INCLUDE_LIVE_SMOKE: "1"
+      }
+    );
+    expect(result.status).toBe("passed");
+    expect(result.evidencePayload).toEqual(
+      expect.objectContaining({
+        durationMs: 460,
+        environment: "production_like",
+        liveSmokeRequired: true,
+        liveSmokeIncluded: true,
+        commands: expect.arrayContaining([
+          expect.objectContaining({
+            label: "live_stack_smoke",
+            command:
+              "PLAYWRIGHT_INCLUDE_LIVE_SMOKE=1 pnpm exec playwright test --project live-web-smoke --project live-admin-smoke",
+            environmentOverrides: ["PLAYWRIGHT_INCLUDE_LIVE_SMOKE"],
+            status: "passed"
+          })
+        ])
+      })
+    );
+  });
+
+  it("fails staging-like end-to-end proof when live smoke environment is missing", async () => {
+    const commandExecutor = jest.fn();
+
+    const result = await runReleaseReadinessProof({
+      evidenceType: "end_to_end_finance_flows",
+      environment: "production_like",
+      workspaceRoot: "/tmp/repo",
+      runtimeEnv: {
+        PLAYWRIGHT_LIVE_WEB_URL: "https://prodlike-web.example.com"
+      },
+      commandExecutor
+    });
+
+    expect(commandExecutor).not.toHaveBeenCalled();
+    expect(result.status).toBe("failed");
+    expect(result.summary).toContain(
+      "requires live smoke environment variables"
+    );
+    expect(result.evidencePayload).toEqual(
+      expect.objectContaining({
+        environment: "production_like",
+        liveSmokeRequired: true,
+        missingEnvironmentVariables: expect.arrayContaining([
+          "PLAYWRIGHT_LIVE_WEB_EMAIL",
+          "PLAYWRIGHT_LIVE_ADMIN_API_KEY"
+        ])
       })
     );
   });

@@ -69,6 +69,15 @@ Optional:
   --operator-role                 Operator role header when recording evidence
   --output                        Write the verifier JSON to a file
   --help                          Print this message
+
+Environment variables for staging-like end-to-end proof:
+  PLAYWRIGHT_LIVE_WEB_URL
+  PLAYWRIGHT_LIVE_WEB_EMAIL
+  PLAYWRIGHT_LIVE_WEB_PASSWORD
+  PLAYWRIGHT_LIVE_ADMIN_URL
+  PLAYWRIGHT_LIVE_ADMIN_API_BASE_URL
+  PLAYWRIGHT_LIVE_ADMIN_OPERATOR_ID
+  PLAYWRIGHT_LIVE_ADMIN_API_KEY
 `);
 }
 
@@ -222,7 +231,8 @@ async function runSingleProof(
   }
 
   return runReleaseReadinessProof({
-    evidenceType: proofType
+    evidenceType: proofType,
+    environment: parseEnvironment(parsedArgs, proofType)
   });
 }
 

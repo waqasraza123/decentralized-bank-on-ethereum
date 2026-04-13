@@ -7,7 +7,7 @@ const liveOperatorApiKey = process.env.PLAYWRIGHT_LIVE_ADMIN_API_KEY;
 const liveOperatorRole =
   process.env.PLAYWRIGHT_LIVE_ADMIN_OPERATOR_ROLE ?? "operations_admin";
 
-test("boots the live admin stack, saves operator session, and renders operations", async ({
+test("boots the live admin stack, saves operator session, and renders critical operator routes", async ({
   page
 }) => {
   test.skip(
@@ -25,4 +25,10 @@ test("boots the live admin stack, saves operator session, and renders operations
   await page.getByRole("button", { name: "Save Session" }).click();
 
   await expect(page.getByRole("heading", { name: "Operations overview" })).toBeVisible();
+
+  await page.goto("/launch-readiness");
+  await expect(page.getByRole("heading", { name: "Launch readiness" })).toBeVisible();
+
+  await page.goto("/queues");
+  await expect(page.getByRole("heading", { name: "Operational queues" })).toBeVisible();
 });
