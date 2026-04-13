@@ -693,6 +693,239 @@ function launchApproval(status = "pending_approval") {
   };
 }
 
+function incidentPackageSnapshot() {
+  return {
+    generatedAt: isoAt(0),
+    customer: {
+      customerId: "customer_1",
+      customerAccountId: "account_1",
+      supabaseUserId: "supabase_1",
+      email: "amina@example.com",
+      firstName: "Amina",
+      lastName: "Rahman"
+    },
+    accountStatus: "restricted",
+    currentRestriction: {
+      active: true,
+      restrictedAt: isoAt(48),
+      restrictedFromStatus: "active",
+      restrictionReasonCode: "manual_review_hold",
+      restrictedByOperatorId: "ops_lead",
+      restrictedByOversightIncidentId: "incident_1"
+    },
+    balances: [
+      {
+        asset: {
+          symbol: "USDC",
+          displayName: "USD Coin",
+          chainId: 1,
+          decimals: 6
+        },
+        availableBalance: "70",
+        pendingBalance: "5",
+        updatedAt: isoAt(2)
+      }
+    ],
+    activeHolds: [
+      {
+        id: "hold_1",
+        status: "active",
+        restrictionReasonCode: "manual_review_hold",
+        appliedByOperatorId: "ops_lead",
+        appliedAt: isoAt(48)
+      }
+    ],
+    holdHistory: [
+      {
+        id: "hold_1",
+        status: "active",
+        releaseDecisionStatus: "pending",
+        releaseRequestedAt: isoAt(24)
+      }
+    ],
+    reviewCases: [
+      {
+        id: "review_case_1",
+        type: "withdrawal_review",
+        status: "resolved",
+        assignedOperatorId: "ops_lead",
+        updatedAt: isoAt(24)
+      },
+      {
+        id: "review_case_2",
+        type: "account_review",
+        status: "in_progress",
+        assignedOperatorId: "ops_e2e",
+        updatedAt: isoAt(2)
+      }
+    ],
+    oversightIncidents: [
+      {
+        id: "incident_1",
+        incidentType: "manual_resolution_watch",
+        status: "in_progress",
+        assignedOperatorId: "ops_e2e",
+        updatedAt: isoAt(2)
+      }
+    ],
+    recentTransactionIntents: [
+      {
+        id: "intent_1",
+        intentType: "withdrawal",
+        status: "manually_resolved",
+        requestedAmount: "30",
+        manuallyResolvedByOperatorId: "ops_lead",
+        updatedAt: isoAt(24)
+      }
+    ],
+    timeline: [
+      {
+        id: "timeline_1",
+        eventType: "account_hold.applied",
+        occurredAt: isoAt(48),
+        actorType: "operator",
+        actorId: "ops_lead",
+        reviewCaseId: "review_case_2"
+      },
+      {
+        id: "timeline_2",
+        eventType: "oversight_incident.started",
+        occurredAt: isoAt(2),
+        actorType: "operator",
+        actorId: "ops_e2e",
+        reviewCaseId: "review_case_2"
+      }
+    ],
+    limits: {
+      recentLimit: 12,
+      timelineLimit: 40
+    }
+  };
+}
+
+function governedIncidentPackageExport(
+  overrides: Record<string, unknown> = {}
+) {
+  const snapshot = incidentPackageSnapshot();
+
+  return {
+    exportMetadata: {
+      exportMode: "compliance_focused",
+      generatedAt: isoAt(0),
+      generatedByOperatorId: "ops_e2e",
+      generatedByOperatorRole: "operations_admin",
+      redactionsApplied: true,
+      recentLimitRequested: 12,
+      recentLimitApplied: 12,
+      timelineLimitRequested: 40,
+      timelineLimitApplied: 40,
+      sinceDaysRequested: 30,
+      sinceDaysApplied: 30,
+      packageChecksumSha256:
+        "sha256:111122223333444455556666777788889999aaaabbbbccccddddeeeeffff0000"
+    },
+    complianceSummary: {
+      accountStatus: snapshot.accountStatus,
+      activeRestriction: true,
+      activeRestrictionReasonCode: "manual_review_hold",
+      openReviewCases: 1,
+      openOversightIncidents: 1,
+      activeAccountHolds: 1,
+      manuallyResolvedTransactionIntents: 1,
+      releaseReviewDecisionStates: [
+        {
+          decisionStatus: "pending",
+          count: 1
+        }
+      ],
+      timelineEventBreakdown: [
+        {
+          eventType: "account_hold.applied",
+          count: 1
+        },
+        {
+          eventType: "oversight_incident.started",
+          count: 1
+        }
+      ]
+    },
+    narrative: {
+      executiveSummary:
+        "Restricted account remains under governed review and requires a controlled compliance handoff.",
+      controlPosture:
+        "An active restriction, open oversight incident, and pending release review remain in effect.",
+      investigationSummary:
+        "Recent manually resolved withdrawal activity and account-review follow-up are included in the package.",
+      complianceObservations:
+        "Release should remain limited to governed compliance recipients until oversight is closed."
+    },
+    package: {
+      customer: snapshot.customer,
+      accountStatus: snapshot.accountStatus,
+      currentRestriction: snapshot.currentRestriction,
+      balances: snapshot.balances,
+      activeHolds: snapshot.activeHolds,
+      reviewCases: snapshot.reviewCases,
+      oversightIncidents: snapshot.oversightIncidents,
+      recentTransactionIntents: snapshot.recentTransactionIntents,
+      timeline: snapshot.timeline
+    },
+    ...overrides
+  };
+}
+
+function incidentPackageRelease(
+  status = "pending_approval",
+  overrides: Record<string, unknown> = {}
+) {
+  const isApproved = status === "approved" || status === "released";
+  const isRejected = status === "rejected";
+  const isReleased = status === "released";
+
+  return {
+    id:
+      status === "released"
+        ? "incident_package_release_2"
+        : "incident_package_release_1",
+    customer: {
+      customerId: "customer_1",
+      customerAccountId: "account_1",
+      supabaseUserId: "supabase_1",
+      email: "amina@example.com",
+      firstName: "Amina",
+      lastName: "Rahman",
+      accountStatus: "restricted"
+    },
+    status,
+    exportMode: "compliance_focused",
+    releaseTarget: "compliance_handoff",
+    releaseReasonCode: "compliance_review_request",
+    requestedByOperatorId: "ops_e2e",
+    requestedByOperatorRole: "operations_admin",
+    approvedByOperatorId: isApproved ? "ops_approver" : null,
+    approvedByOperatorRole: isApproved ? "compliance_lead" : null,
+    rejectedByOperatorId: isRejected ? "ops_approver" : null,
+    rejectedByOperatorRole: isRejected ? "compliance_lead" : null,
+    releasedByOperatorId: isReleased ? "ops_approver" : null,
+    releasedByOperatorRole: isReleased ? "compliance_lead" : null,
+    requestNote: "Compliance requested a governed export for case review.",
+    approvalNote: isApproved ? "Scoped package reviewed and approved." : null,
+    rejectionNote: isRejected ? "Further review required before disclosure." : null,
+    releaseNote: isReleased ? "Released to the compliance case system." : null,
+    artifactChecksumSha256:
+      "sha256:111122223333444455556666777788889999aaaabbbbccccddddeeeeffff0000",
+    artifactPayload: governedIncidentPackageExport().package,
+    requestedAt: isoAt(6),
+    approvedAt: isApproved ? isoAt(2) : null,
+    rejectedAt: isRejected ? isoAt(2) : null,
+    releasedAt: isReleased ? isoAt(1) : null,
+    expiresAt: status === "approved" ? isoAt(-12) : null,
+    createdAt: isoAt(6),
+    updatedAt: isReleased ? isoAt(1) : isApproved || isRejected ? isoAt(2) : isoAt(4),
+    ...overrides
+  };
+}
+
 function cloneAdminData<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
 }
@@ -1052,6 +1285,13 @@ function buildLoanAgreementWorkspace(status = "active", liquidationStatus: strin
 
 export type AdminScenario = {
   operationsStatus: MockResponseSpec<Record<string, unknown>>;
+  incidentPackageSnapshot: MockResponseSpec<Record<string, unknown>>;
+  incidentPackageExport: MockResponseSpec<Record<string, unknown>>;
+  createIncidentPackageReleaseRequest: MockResponseSpec<Record<string, unknown>>;
+  incidentPackageReleaseDetail: MockResponseSpec<Record<string, unknown>>;
+  approveIncidentPackageRelease: MockResponseSpec<Record<string, unknown>>;
+  rejectIncidentPackageRelease: MockResponseSpec<Record<string, unknown>>;
+  releaseIncidentPackage: MockResponseSpec<Record<string, unknown>>;
   loanSummary: MockResponseSpec<Record<string, unknown>>;
   loanApplications: MockResponseSpec<Record<string, unknown>>;
   loanApplicationWorkspace: MockResponseSpec<Record<string, unknown>>;
@@ -1121,10 +1361,84 @@ export function buildAdminScenario(
   const recon = reconciliationWorkspace();
   const loanApplications = buildLoanApplicationList();
   const loanAgreements = buildLoanAgreementList();
+  const packageSnapshot = incidentPackageSnapshot();
+  const packageExport = governedIncidentPackageExport();
+  const pendingIncidentPackageRelease = incidentPackageRelease();
+  const releasedIncidentPackageRelease = incidentPackageRelease("released");
 
   const base: AdminScenario = {
     operationsStatus: {
       data: operationsStatus()
+    },
+    incidentPackageSnapshot: {
+      data: packageSnapshot
+    },
+    incidentPackageExport: {
+      data: packageExport
+    },
+    createIncidentPackageReleaseRequest: {
+      data: {
+        release: {
+          ...incidentPackageRelease(),
+          id: "incident_package_release_3",
+          requestedAt: isoAt(0),
+          createdAt: isoAt(0),
+          updatedAt: isoAt(0)
+        },
+        stateReused: false
+      }
+    },
+    incidentPackageReleaseDetail: {
+      data: {
+        release: pendingIncidentPackageRelease,
+        stateReused: false
+      }
+    },
+    approveIncidentPackageRelease: {
+      data: {
+        release: {
+          ...pendingIncidentPackageRelease,
+          status: "approved",
+          approvedAt: isoAt(0),
+          approvedByOperatorId: "ops_e2e",
+          approvedByOperatorRole: "operations_admin",
+          approvalNote: "Scoped package approved for governed release.",
+          expiresAt: isoAt(-12),
+          updatedAt: isoAt(0)
+        },
+        stateReused: false
+      }
+    },
+    rejectIncidentPackageRelease: {
+      data: {
+        release: {
+          ...pendingIncidentPackageRelease,
+          status: "rejected",
+          rejectedAt: isoAt(0),
+          rejectedByOperatorId: "ops_e2e",
+          rejectedByOperatorRole: "operations_admin",
+          rejectionNote: "Additional review is still required.",
+          updatedAt: isoAt(0)
+        },
+        stateReused: false
+      }
+    },
+    releaseIncidentPackage: {
+      data: {
+        release: {
+          ...pendingIncidentPackageRelease,
+          status: "released",
+          approvedAt: isoAt(1),
+          approvedByOperatorId: "ops_e2e",
+          approvedByOperatorRole: "operations_admin",
+          releasedAt: isoAt(0),
+          releasedByOperatorId: "ops_e2e",
+          releasedByOperatorRole: "operations_admin",
+          releaseNote: "Released to the compliance case system.",
+          updatedAt: isoAt(0)
+        },
+        stateReused: false
+      }
     },
     loanSummary: {
       data: {
@@ -1554,33 +1868,13 @@ export function buildAdminScenario(
     },
     pendingReleases: {
       data: {
-        releases: [
-          {
-            id: "release_1",
-            customer: {
-              email: "amina@example.com"
-            },
-            status: "pending",
-            releaseTarget: "incident_package",
-            requestedAt: isoAt(4)
-          }
-        ],
+        releases: [pendingIncidentPackageRelease],
         limit: 20
       }
     },
     releasedReleases: {
       data: {
-        releases: [
-          {
-            id: "release_done_1",
-            customer: {
-              email: "old@example.com"
-            },
-            status: "released",
-            releaseTarget: "incident_package",
-            requestedAt: isoAt(50)
-          }
-        ],
+        releases: [releasedIncidentPackageRelease],
         limit: 20
       }
     },
@@ -1832,6 +2126,14 @@ export async function mockAdminApi(
   scenario: Partial<AdminScenario> = {}
 ): Promise<void> {
   const resolved = buildAdminScenario("happy", scenario);
+  const currentIncidentPackageSnapshot = cloneAdminData(
+    ((resolved.incidentPackageSnapshot.data as Record<string, unknown> | undefined) ??
+      incidentPackageSnapshot()) as Record<string, unknown>
+  ) as Record<string, any>;
+  const currentIncidentPackageExport = cloneAdminData(
+    ((resolved.incidentPackageExport.data as Record<string, unknown> | undefined) ??
+      governedIncidentPackageExport()) as Record<string, unknown>
+  ) as Record<string, any>;
   const currentEvidence = [
     ...(((resolved.evidence.data as Record<string, unknown> | undefined)?.[
       "evidence"
@@ -1860,6 +2162,33 @@ export async function mockAdminApi(
     ((resolved.loanAgreementWorkspace.data as Record<string, unknown> | undefined) ??
       buildLoanAgreementWorkspace()) as Record<string, any>
   ) as any;
+  const currentIncidentPackageReleases = Array.from(
+    new Map(
+      [
+        ...((((resolved.pendingReleases.data as Record<string, unknown> | undefined)?.[
+          "releases"
+        ] as Array<Record<string, any>> | undefined) ?? []).map((release) => [
+          release.id,
+          cloneAdminData(release)
+        ])),
+        ...((((resolved.releasedReleases.data as Record<string, unknown> | undefined)?.[
+          "releases"
+        ] as Array<Record<string, any>> | undefined) ?? []).map((release) => [
+          release.id,
+          cloneAdminData(release)
+        ])),
+        ...(() => {
+          const detailRelease = (
+            (resolved.incidentPackageReleaseDetail.data as Record<string, unknown> | undefined)?.[
+              "release"
+            ] as Record<string, any> | undefined
+          );
+
+          return detailRelease ? [[detailRelease.id, cloneAdminData(detailRelease)]] : [];
+        })()
+      ]
+    ).values()
+  ) as Array<Record<string, any>>;
 
   function currentLoanPolicyPacks() {
     return (
@@ -1908,6 +2237,76 @@ export async function mockAdminApi(
     };
   }
 
+  function findIncidentPackageRelease(releaseId: string) {
+    return currentIncidentPackageReleases.find((release) => release.id === releaseId) ?? null;
+  }
+
+  function buildIncidentPackageSnapshotState(
+    queryParams: URLSearchParams
+  ): Record<string, unknown> {
+    const nextSnapshot = cloneAdminData(currentIncidentPackageSnapshot);
+    const customerAccountId = queryParams.get("customerAccountId")?.trim();
+    const supabaseUserId = queryParams.get("supabaseUserId")?.trim();
+    const recentLimit = Number.parseInt(queryParams.get("recentLimit") ?? "", 10);
+    const timelineLimit = Number.parseInt(queryParams.get("timelineLimit") ?? "", 10);
+
+    if (customerAccountId) {
+      nextSnapshot.customer.customerAccountId = customerAccountId;
+    }
+
+    if (supabaseUserId) {
+      nextSnapshot.customer.supabaseUserId = supabaseUserId;
+    }
+
+    if (Number.isFinite(recentLimit) && recentLimit > 0) {
+      nextSnapshot.limits.recentLimit = recentLimit;
+    }
+
+    if (Number.isFinite(timelineLimit) && timelineLimit > 0) {
+      nextSnapshot.limits.timelineLimit = timelineLimit;
+    }
+
+    return nextSnapshot;
+  }
+
+  function buildIncidentPackageExportState(
+    queryParams: URLSearchParams
+  ): Record<string, unknown> {
+    const nextExport = cloneAdminData(currentIncidentPackageExport);
+    const mode = queryParams.get("mode")?.trim();
+    const recentLimit = Number.parseInt(queryParams.get("recentLimit") ?? "", 10);
+    const timelineLimit = Number.parseInt(queryParams.get("timelineLimit") ?? "", 10);
+    const sinceDays = Number.parseInt(queryParams.get("sinceDays") ?? "", 10);
+    const nextSnapshot = buildIncidentPackageSnapshotState(queryParams);
+
+    if (mode) {
+      nextExport.exportMetadata.exportMode = mode;
+    }
+
+    if (Number.isFinite(recentLimit) && recentLimit > 0) {
+      nextExport.exportMetadata.recentLimitRequested = recentLimit;
+      nextExport.exportMetadata.recentLimitApplied = recentLimit;
+    }
+
+    if (Number.isFinite(timelineLimit) && timelineLimit > 0) {
+      nextExport.exportMetadata.timelineLimitRequested = timelineLimit;
+      nextExport.exportMetadata.timelineLimitApplied = timelineLimit;
+    }
+
+    if (Number.isFinite(sinceDays) && sinceDays > 0) {
+      nextExport.exportMetadata.sinceDaysRequested = sinceDays;
+      nextExport.exportMetadata.sinceDaysApplied = sinceDays;
+    }
+
+    nextExport.package = {
+      ...nextExport.package,
+      customer: nextSnapshot.customer,
+      timeline: nextSnapshot.timeline
+    };
+
+    return nextExport;
+  }
+
   await page.route("**/*", async (route) => {
     const request = route.request();
     const pathname = new URL(request.url()).pathname;
@@ -1915,6 +2314,251 @@ export async function mockAdminApi(
 
     if (pathname.endsWith("/operations/internal/status") && method === "GET") {
       return fulfillJson(route, resolved.operationsStatus);
+    }
+
+    if (pathname.endsWith("/customer-account-incident-package/internal") && method === "GET") {
+      if (resolved.incidentPackageSnapshot.ok === false) {
+        return fulfillJson(route, resolved.incidentPackageSnapshot);
+      }
+
+      return fulfillJson(route, {
+        ...resolved.incidentPackageSnapshot,
+        data: buildIncidentPackageSnapshotState(new URL(request.url()).searchParams)
+      });
+    }
+
+    if (
+      pathname.endsWith("/customer-account-incident-package/internal/export") &&
+      method === "GET"
+    ) {
+      if (resolved.incidentPackageExport.ok === false) {
+        return fulfillJson(route, resolved.incidentPackageExport);
+      }
+
+      return fulfillJson(route, {
+        ...resolved.incidentPackageExport,
+        data: buildIncidentPackageExportState(new URL(request.url()).searchParams)
+      });
+    }
+
+    if (
+      pathname.endsWith("/customer-account-incident-package/internal/releases") &&
+      method === "POST"
+    ) {
+      if (resolved.createIncidentPackageReleaseRequest.ok === false) {
+        return fulfillJson(route, resolved.createIncidentPackageReleaseRequest);
+      }
+
+      const payload = (request.postDataJSON() as Record<string, unknown> | null) ?? {};
+      const nextExport = buildIncidentPackageExportState(new URL(request.url()).searchParams);
+      const generatedRelease = {
+        ...incidentPackageRelease(),
+        id: `incident_package_release_${currentIncidentPackageReleases.length + 1}`,
+        customer: {
+          ...incidentPackageRelease().customer,
+          customerAccountId:
+            (payload.customerAccountId as string | undefined) ??
+            currentIncidentPackageSnapshot.customer.customerAccountId,
+          supabaseUserId:
+            (payload.supabaseUserId as string | undefined) ??
+            currentIncidentPackageSnapshot.customer.supabaseUserId
+        },
+        exportMode:
+          (payload.mode as string | undefined) ??
+          nextExport.exportMetadata.exportMode,
+        releaseTarget:
+          (payload.releaseTarget as string | undefined) ?? "compliance_handoff",
+        releaseReasonCode:
+          (payload.releaseReasonCode as string | undefined) ?? "compliance_review_request",
+        requestNote: (payload.requestNote as string | undefined) ?? null,
+        artifactChecksumSha256: nextExport.exportMetadata.packageChecksumSha256,
+        artifactPayload: nextExport.package,
+        requestedAt: isoAt(0),
+        createdAt: isoAt(0),
+        updatedAt: isoAt(0)
+      };
+
+      currentIncidentPackageReleases.unshift(generatedRelease);
+
+      return fulfillJson(route, {
+        ...resolved.createIncidentPackageReleaseRequest,
+        data: {
+          release: generatedRelease,
+          stateReused: false
+        }
+      });
+    }
+
+    if (
+      pathname.endsWith("/customer-account-incident-package/internal/releases/pending") &&
+      method === "GET"
+    ) {
+      return fulfillJson(route, {
+        ...resolved.pendingReleases,
+        data: {
+          releases: currentIncidentPackageReleases.filter(
+            (release) => release.status === "pending_approval"
+          ),
+          limit:
+            ((resolved.pendingReleases.data as Record<string, unknown> | undefined)?.[
+              "limit"
+            ] as number | undefined) ?? 20
+        }
+      });
+    }
+
+    if (
+      pathname.endsWith("/customer-account-incident-package/internal/releases/released") &&
+      method === "GET"
+    ) {
+      return fulfillJson(route, {
+        ...resolved.releasedReleases,
+        data: {
+          releases: currentIncidentPackageReleases.filter(
+            (release) => release.status === "released"
+          ),
+          limit:
+            ((resolved.releasedReleases.data as Record<string, unknown> | undefined)?.[
+              "limit"
+            ] as number | undefined) ?? 20
+        }
+      });
+    }
+
+    if (
+      /\/customer-account-incident-package\/internal\/releases\/[^/]+$/.test(pathname) &&
+      method === "GET"
+    ) {
+      if (resolved.incidentPackageReleaseDetail.ok === false) {
+        return fulfillJson(route, resolved.incidentPackageReleaseDetail);
+      }
+
+      const releaseId = pathname.split("/").at(-1) ?? "";
+      const release = findIncidentPackageRelease(releaseId);
+
+      return fulfillJson(route, {
+        ...resolved.incidentPackageReleaseDetail,
+        data: {
+          release:
+            release ??
+            ((resolved.incidentPackageReleaseDetail.data as Record<string, unknown> | undefined)?.[
+              "release"
+            ] as Record<string, unknown> | undefined),
+          stateReused: false
+        }
+      });
+    }
+
+    if (
+      /\/customer-account-incident-package\/internal\/releases\/[^/]+\/approve$/.test(pathname) &&
+      method === "POST"
+    ) {
+      if (resolved.approveIncidentPackageRelease.ok === false) {
+        return fulfillJson(route, resolved.approveIncidentPackageRelease);
+      }
+
+      const releaseId = pathname.split("/").slice(-2)[0];
+      const currentRelease = findIncidentPackageRelease(releaseId);
+      const approvalNote =
+        ((request.postDataJSON() as Record<string, unknown> | null)?.[
+          "approvalNote"
+        ] as string | undefined) ?? null;
+
+      if (currentRelease) {
+        currentRelease.status = "approved";
+        currentRelease.approvedAt = isoAt(0);
+        currentRelease.approvedByOperatorId = "ops_e2e";
+        currentRelease.approvedByOperatorRole = "operations_admin";
+        currentRelease.approvalNote = approvalNote;
+        currentRelease.expiresAt = isoAt(-12);
+        currentRelease.updatedAt = isoAt(0);
+      }
+
+      return fulfillJson(route, {
+        ...resolved.approveIncidentPackageRelease,
+        data: {
+          release:
+            currentRelease ??
+            ((resolved.approveIncidentPackageRelease.data as Record<string, unknown> | undefined)?.[
+              "release"
+            ] as Record<string, unknown> | undefined),
+          stateReused: false
+        }
+      });
+    }
+
+    if (
+      /\/customer-account-incident-package\/internal\/releases\/[^/]+\/reject$/.test(pathname) &&
+      method === "POST"
+    ) {
+      if (resolved.rejectIncidentPackageRelease.ok === false) {
+        return fulfillJson(route, resolved.rejectIncidentPackageRelease);
+      }
+
+      const releaseId = pathname.split("/").slice(-2)[0];
+      const currentRelease = findIncidentPackageRelease(releaseId);
+      const rejectionNote =
+        ((request.postDataJSON() as Record<string, unknown> | null)?.[
+          "rejectionNote"
+        ] as string | undefined) ?? null;
+
+      if (currentRelease) {
+        currentRelease.status = "rejected";
+        currentRelease.rejectedAt = isoAt(0);
+        currentRelease.rejectedByOperatorId = "ops_e2e";
+        currentRelease.rejectedByOperatorRole = "operations_admin";
+        currentRelease.rejectionNote = rejectionNote;
+        currentRelease.updatedAt = isoAt(0);
+      }
+
+      return fulfillJson(route, {
+        ...resolved.rejectIncidentPackageRelease,
+        data: {
+          release:
+            currentRelease ??
+            ((resolved.rejectIncidentPackageRelease.data as Record<string, unknown> | undefined)?.[
+              "release"
+            ] as Record<string, unknown> | undefined),
+          stateReused: false
+        }
+      });
+    }
+
+    if (
+      /\/customer-account-incident-package\/internal\/releases\/[^/]+\/release$/.test(pathname) &&
+      method === "POST"
+    ) {
+      if (resolved.releaseIncidentPackage.ok === false) {
+        return fulfillJson(route, resolved.releaseIncidentPackage);
+      }
+
+      const releaseId = pathname.split("/").slice(-2)[0];
+      const currentRelease = findIncidentPackageRelease(releaseId);
+      const releaseNote =
+        ((request.postDataJSON() as Record<string, unknown> | null)?.[
+          "releaseNote"
+        ] as string | undefined) ?? null;
+
+      if (currentRelease) {
+        currentRelease.status = "released";
+        currentRelease.releasedAt = isoAt(0);
+        currentRelease.releasedByOperatorId = "ops_e2e";
+        currentRelease.releasedByOperatorRole = "operations_admin";
+        currentRelease.releaseNote = releaseNote;
+        currentRelease.updatedAt = isoAt(0);
+      }
+
+      return fulfillJson(route, {
+        ...resolved.releaseIncidentPackage,
+        data: {
+          release:
+            currentRelease ??
+            ((resolved.releaseIncidentPackage.data as Record<string, unknown> | undefined)?.[
+              "release"
+            ] as Record<string, unknown> | undefined),
+          stateReused: false
+        }
+      });
     }
 
     if (pathname.endsWith("/loans/internal/summary") && method === "GET") {
@@ -2639,20 +3283,6 @@ export async function mockAdminApi(
       }
 
       return fulfillJson(route, resolved.requestApproval);
-    }
-
-    if (
-      pathname.endsWith("/customer-account-incident-package/internal/releases/pending") &&
-      method === "GET"
-    ) {
-      return fulfillJson(route, resolved.pendingReleases);
-    }
-
-    if (
-      pathname.endsWith("/customer-account-incident-package/internal/releases/released") &&
-      method === "GET"
-    ) {
-      return fulfillJson(route, resolved.releasedReleases);
     }
 
     if (
