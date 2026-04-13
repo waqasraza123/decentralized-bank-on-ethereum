@@ -90,7 +90,9 @@ test("resolves and dismisses incidents through governed controls", async ({ page
   await expectJsonRequest(resolveRequest, {});
   await expect(page.getByText("Oversight incident resolved.")).toBeVisible();
 
-  await page.getByRole("checkbox").check();
+  await page
+    .getByText("I reviewed the incident timeline, related cases, and current restriction state.")
+    .click();
   const dismissRequest = waitForJsonRequest(
     page,
     "/oversight-incidents/internal/incident_1/dismiss"
