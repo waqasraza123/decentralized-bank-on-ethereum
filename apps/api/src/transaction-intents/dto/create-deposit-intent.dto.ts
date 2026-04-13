@@ -1,20 +1,27 @@
 import { IsString, Matches, MaxLength, MinLength } from "class-validator";
+import {
+  TRANSACTION_INTENT_AMOUNT_PATTERN,
+  TRANSACTION_INTENT_AMOUNT_PATTERN_MESSAGE,
+  TRANSACTION_INTENT_ASSET_SYMBOL_MAX_LENGTH,
+  TRANSACTION_INTENT_ASSET_SYMBOL_MIN_LENGTH,
+  TRANSACTION_INTENT_IDEMPOTENCY_KEY_MAX_LENGTH,
+  TRANSACTION_INTENT_IDEMPOTENCY_KEY_MIN_LENGTH
+} from "./transaction-intent-request.validation";
 
 export class CreateDepositIntentDto {
   @IsString()
-  @MinLength(8)
-  @MaxLength(120)
+  @MinLength(TRANSACTION_INTENT_IDEMPOTENCY_KEY_MIN_LENGTH)
+  @MaxLength(TRANSACTION_INTENT_IDEMPOTENCY_KEY_MAX_LENGTH)
   readonly idempotencyKey!: string;
 
   @IsString()
-  @MinLength(2)
-  @MaxLength(20)
+  @MinLength(TRANSACTION_INTENT_ASSET_SYMBOL_MIN_LENGTH)
+  @MaxLength(TRANSACTION_INTENT_ASSET_SYMBOL_MAX_LENGTH)
   readonly assetSymbol!: string;
 
   @IsString()
-  @Matches(/^(?:0|[1-9]\d*)(?:\.\d{1,18})?$/, {
-    message:
-      "amount must be a positive decimal string with up to 18 decimal places."
+  @Matches(TRANSACTION_INTENT_AMOUNT_PATTERN, {
+    message: TRANSACTION_INTENT_AMOUNT_PATTERN_MESSAGE
   })
   readonly amount!: string;
 }
