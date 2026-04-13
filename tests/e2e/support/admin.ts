@@ -926,6 +926,304 @@ function incidentPackageRelease(
   };
 }
 
+function treasuryOverview() {
+  return {
+    generatedAt: isoAt(0),
+    coverage: {
+      status: "warning",
+      staleAfterSeconds: 300,
+      managedWorkerCount: 2,
+      degradedManagedWorkerCount: 1,
+      staleManagedWorkerCount: 0,
+      activeTreasuryWalletCount: 2,
+      activeOperationalWalletCount: 3,
+      customerLinkedWalletCount: 2,
+      missingManagedWalletCoverage: false,
+      openTreasuryAlertCount: 2
+    },
+    walletSummary: {
+      totalWalletCount: 3,
+      byKind: [
+        { kind: "treasury", count: 2 },
+        { kind: "operational", count: 1 }
+      ],
+      byStatus: [
+        { status: "active", count: 2 },
+        { status: "restricted", count: 1 }
+      ],
+      byCustodyType: [
+        { custodyType: "managed", count: 2 },
+        { custodyType: "customer_linked", count: 1 }
+      ]
+    },
+    managedWorkers: [
+      {
+        workerId: "worker_managed_1",
+        healthStatus: "healthy",
+        environment: "staging",
+        lastIterationStatus: "completed",
+        lastHeartbeatAt: isoAt(0),
+        consecutiveFailureCount: 0,
+        lastErrorCode: null,
+        lastErrorMessage: null
+      },
+      {
+        workerId: "worker_managed_2",
+        healthStatus: "degraded",
+        environment: "staging",
+        lastIterationStatus: "retrying",
+        lastHeartbeatAt: isoAt(1),
+        consecutiveFailureCount: 2,
+        lastErrorCode: "rpc_timeout",
+        lastErrorMessage: "RPC provider timed out during treasury scan."
+      }
+    ],
+    wallets: [
+      {
+        id: "treasury_wallet_1",
+        chainId: 1,
+        address: "0x1111222233334444555566667777888899990000",
+        kind: "treasury",
+        custodyType: "managed",
+        status: "active",
+        recentIntentCount: 4,
+        lastActivityAt: isoAt(1),
+        createdAt: isoAt(240),
+        updatedAt: isoAt(1),
+        customerAssignment: null
+      },
+      {
+        id: "operational_wallet_1",
+        chainId: 1,
+        address: "0x2222333344445555666677778888999900001111",
+        kind: "operational",
+        custodyType: "customer_linked",
+        status: "active",
+        recentIntentCount: 2,
+        lastActivityAt: isoAt(2),
+        createdAt: isoAt(200),
+        updatedAt: isoAt(2),
+        customerAssignment: {
+          customerAccountId: "account_1",
+          accountStatus: "restricted",
+          email: "amina@example.com",
+          supabaseUserId: "supabase_1",
+          firstName: "Amina",
+          lastName: "Rahman"
+        }
+      },
+      {
+        id: "treasury_wallet_2",
+        chainId: 8453,
+        address: "0x3333444455556666777788889999000011112222",
+        kind: "treasury",
+        custodyType: "managed",
+        status: "restricted",
+        recentIntentCount: 1,
+        lastActivityAt: isoAt(8),
+        createdAt: isoAt(300),
+        updatedAt: isoAt(8),
+        customerAssignment: null
+      }
+    ],
+    recentActivity: [
+      {
+        transactionIntentId: "intent_treasury_1",
+        intentType: "withdrawal",
+        status: "queued",
+        policyDecision: "approved",
+        requestedAmount: "12.5",
+        settledAmount: null,
+        externalAddress: "0x0000000000000000000000000000000000000fed",
+        createdAt: isoAt(6),
+        updatedAt: isoAt(1),
+        asset: {
+          id: "asset_eth",
+          symbol: "ETH",
+          displayName: "Ether",
+          decimals: 18,
+          chainId: 1
+        },
+        sourceWallet: {
+          id: "treasury_wallet_1",
+          address: "0x1111222233334444555566667777888899990000",
+          kind: "treasury",
+          custodyType: "managed",
+          status: "active"
+        },
+        destinationWallet: null,
+        latestBlockchainTransaction: null
+      },
+      {
+        transactionIntentId: "intent_treasury_2",
+        intentType: "deposit",
+        status: "confirmed",
+        policyDecision: "approved",
+        requestedAmount: "4000",
+        settledAmount: "4000",
+        externalAddress: null,
+        createdAt: isoAt(12),
+        updatedAt: isoAt(2),
+        asset: {
+          id: "asset_usdc",
+          symbol: "USDC",
+          displayName: "USD Coin",
+          decimals: 6,
+          chainId: 1
+        },
+        sourceWallet: null,
+        destinationWallet: {
+          id: "operational_wallet_1",
+          address: "0x2222333344445555666677778888999900001111",
+          kind: "operational",
+          custodyType: "customer_linked",
+          status: "active"
+        },
+        latestBlockchainTransaction: {
+          id: "chain_tx_treasury_2",
+          txHash:
+            "0xbeef1111222233334444555566667777888899990000aaaabbbbccccdddd0002",
+          status: "confirmed",
+          fromAddress: "0x9999222233334444555566667777888899990000",
+          toAddress: "0x2222333344445555666677778888999900001111",
+          createdAt: isoAt(12),
+          updatedAt: isoAt(2),
+          confirmedAt: isoAt(2)
+        }
+      },
+      {
+        transactionIntentId: "intent_treasury_3",
+        intentType: "withdrawal",
+        status: "failed",
+        policyDecision: "approved",
+        requestedAmount: "7",
+        settledAmount: null,
+        externalAddress: "0x0000000000000000000000000000000000000abc",
+        createdAt: isoAt(18),
+        updatedAt: isoAt(8),
+        asset: {
+          id: "asset_eth",
+          symbol: "ETH",
+          displayName: "Ether",
+          decimals: 18,
+          chainId: 8453
+        },
+        sourceWallet: {
+          id: "treasury_wallet_2",
+          address: "0x3333444455556666777788889999000011112222",
+          kind: "treasury",
+          custodyType: "managed",
+          status: "restricted"
+        },
+        destinationWallet: null,
+        latestBlockchainTransaction: null
+      }
+    ],
+    recentAlerts: [
+      {
+        id: "treasury_alert_1",
+        dedupeKey: "treasury:wallet:coverage",
+        severity: "warning",
+        status: "open",
+        code: "TREASURY_WALLET_COVERAGE_WARNING",
+        summary: "Operational wallet coverage is drifting from the expected baseline.",
+        detail: "Recent wallet assignment drift requires treasury review.",
+        metadata: null,
+        firstDetectedAt: isoAt(10),
+        lastDetectedAt: isoAt(1),
+        resolvedAt: null
+      },
+      {
+        id: "treasury_alert_2",
+        dedupeKey: "treasury:worker:degraded",
+        severity: "critical",
+        status: "open",
+        code: "TREASURY_WORKER_DEGRADED",
+        summary: "A managed treasury worker is retrying with RPC timeouts.",
+        detail: "worker_managed_2 exceeded retry thresholds during treasury scanning.",
+        metadata: null,
+        firstDetectedAt: isoAt(6),
+        lastDetectedAt: isoAt(1),
+        resolvedAt: null
+      }
+    ]
+  };
+}
+
+function auditEventList() {
+  return {
+    events: [
+      {
+        id: "audit_event_1",
+        actorType: "operator",
+        actorId: "ops_e2e",
+        action: "customer_account.incident_package_release_approved",
+        targetType: "CustomerAccountIncidentPackageRelease",
+        targetId: "incident_package_release_1",
+        metadata: {
+          releaseTarget: "compliance_handoff",
+          exportMode: "compliance_focused"
+        },
+        createdAt: isoAt(2),
+        customer: {
+          customerId: "customer_1",
+          supabaseUserId: "supabase_1",
+          email: "amina@example.com",
+          firstName: "Amina",
+          lastName: "Rahman"
+        }
+      },
+      {
+        id: "audit_event_2",
+        actorType: "worker",
+        actorId: "worker_managed_2",
+        action: "treasury.wallet_coverage_warning_detected",
+        targetType: "TreasuryWallet",
+        targetId: "treasury_wallet_2",
+        metadata: {
+          status: "restricted",
+          reasonCode: "coverage_drift"
+        },
+        createdAt: isoAt(4),
+        customer: null
+      },
+      {
+        id: "audit_event_3",
+        actorType: "system",
+        actorId: null,
+        action: "review_case.resolved",
+        targetType: "ReviewCase",
+        targetId: "review_case_1",
+        metadata: {
+          resolution: "policy_review_completed"
+        },
+        createdAt: isoAt(8),
+        customer: {
+          customerId: "customer_1",
+          supabaseUserId: "supabase_1",
+          email: "amina@example.com",
+          firstName: "Amina",
+          lastName: "Rahman"
+        }
+      }
+    ],
+    limit: 30,
+    totalCount: 3,
+    filters: {
+      search: null,
+      customerId: null,
+      email: null,
+      actorType: null,
+      actorId: null,
+      action: null,
+      targetType: null,
+      targetId: null,
+      dateFrom: null,
+      dateTo: null
+    }
+  };
+}
+
 function cloneAdminData<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
 }
@@ -1285,6 +1583,8 @@ function buildLoanAgreementWorkspace(status = "active", liquidationStatus: strin
 
 export type AdminScenario = {
   operationsStatus: MockResponseSpec<Record<string, unknown>>;
+  treasuryOverview: MockResponseSpec<Record<string, unknown>>;
+  auditEvents: MockResponseSpec<Record<string, unknown>>;
   incidentPackageSnapshot: MockResponseSpec<Record<string, unknown>>;
   incidentPackageExport: MockResponseSpec<Record<string, unknown>>;
   createIncidentPackageReleaseRequest: MockResponseSpec<Record<string, unknown>>;
@@ -1369,6 +1669,12 @@ export function buildAdminScenario(
   const base: AdminScenario = {
     operationsStatus: {
       data: operationsStatus()
+    },
+    treasuryOverview: {
+      data: treasuryOverview()
+    },
+    auditEvents: {
+      data: auditEventList()
     },
     incidentPackageSnapshot: {
       data: packageSnapshot
@@ -1954,6 +2260,35 @@ export function buildAdminScenario(
   };
 
   if (kind === "empty") {
+    base.treasuryOverview = {
+      data: {
+        ...treasuryOverview(),
+        coverage: {
+          ...treasuryOverview().coverage,
+          activeTreasuryWalletCount: 0,
+          activeOperationalWalletCount: 0,
+          customerLinkedWalletCount: 0,
+          openTreasuryAlertCount: 0
+        },
+        walletSummary: {
+          totalWalletCount: 0,
+          byKind: [],
+          byStatus: [],
+          byCustodyType: []
+        },
+        managedWorkers: [],
+        wallets: [],
+        recentActivity: [],
+        recentAlerts: []
+      }
+    };
+    base.auditEvents = {
+      data: {
+        ...auditEventList(),
+        events: [],
+        totalCount: 0
+      }
+    };
     base.loanSummary = {
       data: {
         applicationBacklog: [],
@@ -1998,6 +2333,29 @@ export function buildAdminScenario(
   }
 
   if (kind === "degraded") {
+    base.treasuryOverview = {
+      data: {
+        ...treasuryOverview(),
+        coverage: {
+          ...treasuryOverview().coverage,
+          status: "critical",
+          degradedManagedWorkerCount: 1,
+          staleManagedWorkerCount: 1,
+          openTreasuryAlertCount: 3
+        },
+        managedWorkers: [
+          {
+            ...treasuryOverview().managedWorkers[0],
+            healthStatus: "stale",
+            lastIterationStatus: "stalled",
+            consecutiveFailureCount: 4,
+            lastErrorCode: "stale_runtime",
+            lastErrorMessage: "Worker heartbeat is stale."
+          },
+          treasuryOverview().managedWorkers[1]
+        ]
+      }
+    };
     base.operationsStatus = {
       data: operationsStatus({
         workerHealth: {
@@ -2033,6 +2391,16 @@ export function buildAdminScenario(
   }
 
   if (kind === "api_error") {
+    base.treasuryOverview = {
+      ok: false,
+      statusCode: 500,
+      message: "Treasury visibility unavailable."
+    };
+    base.auditEvents = {
+      ok: false,
+      statusCode: 500,
+      message: "Audit trail unavailable."
+    };
     base.operationsStatus = {
       ok: false,
       statusCode: 500,
@@ -2126,6 +2494,16 @@ export async function mockAdminApi(
   scenario: Partial<AdminScenario> = {}
 ): Promise<void> {
   const resolved = buildAdminScenario("happy", scenario);
+  const currentTreasuryOverview = cloneAdminData(
+    ((resolved.treasuryOverview.data as Record<string, unknown> | undefined) ??
+      treasuryOverview()) as Record<string, unknown>
+  ) as Record<string, any>;
+  const currentAuditEvents =
+    cloneAdminData(
+      (((resolved.auditEvents.data as Record<string, unknown> | undefined)?.[
+        "events"
+      ] as Array<Record<string, any>> | undefined) ?? auditEventList().events)
+    ) as Array<Record<string, any>>;
   const currentIncidentPackageSnapshot = cloneAdminData(
     ((resolved.incidentPackageSnapshot.data as Record<string, unknown> | undefined) ??
       incidentPackageSnapshot()) as Record<string, unknown>
@@ -2307,6 +2685,136 @@ export async function mockAdminApi(
     return nextExport;
   }
 
+  function buildTreasuryOverviewState(
+    queryParams: URLSearchParams
+  ): Record<string, unknown> {
+    const nextOverview = cloneAdminData(currentTreasuryOverview);
+    const walletLimit = Number.parseInt(queryParams.get("walletLimit") ?? "", 10);
+    const activityLimit = Number.parseInt(queryParams.get("activityLimit") ?? "", 10);
+    const alertLimit = Number.parseInt(queryParams.get("alertLimit") ?? "", 10);
+    const staleAfterSeconds = Number.parseInt(
+      queryParams.get("staleAfterSeconds") ?? "",
+      10
+    );
+
+    if (Number.isFinite(walletLimit) && walletLimit > 0) {
+      nextOverview.wallets = nextOverview.wallets.slice(0, walletLimit);
+    }
+
+    if (Number.isFinite(activityLimit) && activityLimit > 0) {
+      nextOverview.recentActivity = nextOverview.recentActivity.slice(0, activityLimit);
+    }
+
+    if (Number.isFinite(alertLimit) && alertLimit > 0) {
+      nextOverview.recentAlerts = nextOverview.recentAlerts.slice(0, alertLimit);
+    }
+
+    if (Number.isFinite(staleAfterSeconds) && staleAfterSeconds > 0) {
+      nextOverview.coverage.staleAfterSeconds = staleAfterSeconds;
+    }
+
+    nextOverview.coverage.activeTreasuryWalletCount = nextOverview.wallets.filter(
+      (wallet: Record<string, any>) => wallet.kind === "treasury"
+    ).length;
+    nextOverview.coverage.activeOperationalWalletCount = nextOverview.wallets.filter(
+      (wallet: Record<string, any>) => wallet.kind === "operational"
+    ).length;
+    nextOverview.coverage.customerLinkedWalletCount = nextOverview.wallets.filter(
+      (wallet: Record<string, any>) => wallet.customerAssignment !== null
+    ).length;
+    nextOverview.coverage.openTreasuryAlertCount = nextOverview.recentAlerts.length;
+    nextOverview.walletSummary.totalWalletCount = nextOverview.wallets.length;
+
+    return nextOverview;
+  }
+
+  function buildAuditEventsState(
+    queryParams: URLSearchParams
+  ): Record<string, unknown> {
+    const filters = {
+      search: queryParams.get("search")?.trim() || null,
+      customerId: queryParams.get("customerId")?.trim() || null,
+      email: queryParams.get("email")?.trim() || null,
+      actorType: queryParams.get("actorType")?.trim() || null,
+      actorId: queryParams.get("actorId")?.trim() || null,
+      action: queryParams.get("action")?.trim() || null,
+      targetType: queryParams.get("targetType")?.trim() || null,
+      targetId: queryParams.get("targetId")?.trim() || null,
+      dateFrom: queryParams.get("dateFrom")?.trim() || null,
+      dateTo: queryParams.get("dateTo")?.trim() || null
+    };
+    const limit = Number.parseInt(queryParams.get("limit") ?? "", 10);
+    const normalizedSearch = filters.search?.toLowerCase() ?? null;
+
+    const filtered = currentAuditEvents.filter((event) => {
+      const searchable = [
+        event.id,
+        event.actorType,
+        event.actorId,
+        event.action,
+        event.targetType,
+        event.targetId,
+        event.customer?.customerId,
+        event.customer?.email,
+        event.customer?.firstName,
+        event.customer?.lastName
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+
+      if (normalizedSearch && !searchable.includes(normalizedSearch)) {
+        return false;
+      }
+
+      if (filters.customerId && event.customer?.customerId !== filters.customerId) {
+        return false;
+      }
+
+      if (filters.email && event.customer?.email !== filters.email) {
+        return false;
+      }
+
+      if (filters.actorType && event.actorType !== filters.actorType) {
+        return false;
+      }
+
+      if (filters.actorId && event.actorId !== filters.actorId) {
+        return false;
+      }
+
+      if (filters.action && event.action !== filters.action) {
+        return false;
+      }
+
+      if (filters.targetType && event.targetType !== filters.targetType) {
+        return false;
+      }
+
+      if (filters.targetId && event.targetId !== filters.targetId) {
+        return false;
+      }
+
+      if (filters.dateFrom && event.createdAt < filters.dateFrom) {
+        return false;
+      }
+
+      if (filters.dateTo && event.createdAt > filters.dateTo) {
+        return false;
+      }
+
+      return true;
+    });
+
+    return {
+      events:
+        Number.isFinite(limit) && limit > 0 ? filtered.slice(0, limit) : filtered,
+      limit: Number.isFinite(limit) && limit > 0 ? limit : 30,
+      totalCount: filtered.length,
+      filters
+    };
+  }
+
   await page.route("**/*", async (route) => {
     const request = route.request();
     const pathname = new URL(request.url()).pathname;
@@ -2314,6 +2822,28 @@ export async function mockAdminApi(
 
     if (pathname.endsWith("/operations/internal/status") && method === "GET") {
       return fulfillJson(route, resolved.operationsStatus);
+    }
+
+    if (pathname.endsWith("/treasury/internal/overview") && method === "GET") {
+      if (resolved.treasuryOverview.ok === false) {
+        return fulfillJson(route, resolved.treasuryOverview);
+      }
+
+      return fulfillJson(route, {
+        ...resolved.treasuryOverview,
+        data: buildTreasuryOverviewState(new URL(request.url()).searchParams)
+      });
+    }
+
+    if (pathname.endsWith("/audit-events/internal") && method === "GET") {
+      if (resolved.auditEvents.ok === false) {
+        return fulfillJson(route, resolved.auditEvents);
+      }
+
+      return fulfillJson(route, {
+        ...resolved.auditEvents,
+        data: buildAuditEventsState(new URL(request.url()).searchParams)
+      });
     }
 
     if (pathname.endsWith("/customer-account-incident-package/internal") && method === "GET") {

@@ -406,11 +406,14 @@ button {
 .admin-workspace-column {
   display: grid;
   gap: 1rem;
+  min-width: 0;
 }
 
 .admin-action-rail {
   display: grid;
   gap: 0.9rem;
+  position: relative;
+  z-index: 1;
   border-radius: var(--admin-radius-lg);
   border: 1px solid var(--admin-line);
   background: var(--admin-panel-strong);
