@@ -179,9 +179,12 @@ Use a small shared scenario vocabulary so coverage stays readable:
 ### Accounts and restrictions
 
 - incident selection updates the workspace
+- unified customer-account operations summary renders transaction, review, incident, and hold counts for the selected subject
+- customer-account operations timeline filters persist in the URL and shape the backend query
 - start incident, add note, and place hold succeed
 - resolve incident succeeds
 - dismiss incident succeeds
+- customer-account timeline failure degrades inline while the incident workspace remains actionable
 - failure path shows an inline error notice
 - active-hold empty state is covered
 

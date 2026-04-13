@@ -1317,6 +1317,61 @@ export type OversightRestrictionMutationResult = {
   stateReused: boolean;
 };
 
+export type CustomerAccountOperationsSummary = {
+  customer: {
+    customerId: string;
+    customerAccountId: string;
+    supabaseUserId: string;
+    email: string;
+    firstName: string;
+    lastName: string;
+  };
+  accountStatus: string;
+  currentRestriction: {
+    active: boolean;
+    restrictedAt: string | null;
+    restrictedFromStatus: string | null;
+    restrictionReasonCode: string | null;
+    restrictedByOperatorId: string | null;
+    restrictedByOversightIncidentId: string | null;
+    restrictionReleasedAt: string | null;
+    restrictionReleasedByOperatorId: string | null;
+  };
+  counts: {
+    totalTransactionIntents: number;
+    manuallyResolvedTransactionIntents: number;
+    openReviewCases: number;
+    openOversightIncidents: number;
+    activeAccountHolds: number;
+  };
+};
+
+export type CustomerAccountTimelineEntry = {
+  id: string;
+  eventType: string;
+  occurredAt: string;
+  actorType: string | null;
+  actorId: string | null;
+  customerAccountId: string;
+  transactionIntentId: string | null;
+  reviewCaseId: string | null;
+  oversightIncidentId: string | null;
+  accountRestrictionId: string | null;
+  metadata: JsonValue;
+};
+
+export type CustomerAccountOperationsTimeline = {
+  summary: CustomerAccountOperationsSummary;
+  timeline: CustomerAccountTimelineEntry[];
+  limit: number;
+  filters: {
+    eventType: string | null;
+    actorId: string | null;
+    dateFrom: string | null;
+    dateTo: string | null;
+  };
+};
+
 export type OversightAlert = {
   incidentType: string;
   subjectCustomer: {

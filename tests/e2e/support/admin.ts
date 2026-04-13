@@ -564,6 +564,181 @@ function oversightWorkspace(status = "open", restricted = false) {
   };
 }
 
+function customerAccountTimeline(restricted = false) {
+  return {
+    summary: {
+      customer: {
+        customerId: "customer_1",
+        customerAccountId: "account_1",
+        supabaseUserId: "supabase_1",
+        email: "amina@example.com",
+        firstName: "Amina",
+        lastName: "Rahman"
+      },
+      accountStatus: restricted ? "restricted" : "active",
+      currentRestriction: {
+        active: restricted,
+        restrictedAt: restricted ? isoAt(1) : null,
+        restrictedFromStatus: restricted ? "active" : null,
+        restrictionReasonCode: restricted ? "manual_review_hold" : null,
+        restrictedByOperatorId: restricted ? "ops_e2e" : null,
+        restrictedByOversightIncidentId: restricted ? "incident_1" : null,
+        restrictionReleasedAt: null,
+        restrictionReleasedByOperatorId: null
+      },
+      counts: {
+        totalTransactionIntents: 5,
+        manuallyResolvedTransactionIntents: 1,
+        openReviewCases: 1,
+        openOversightIncidents: statusIsOpen("open") ? 1 : 0,
+        activeAccountHolds: restricted ? 1 : 0
+      }
+    },
+    timeline: [
+      {
+        id: "oversight_incident_event:oversight_event_started_1",
+        eventType: "oversight_incident.started",
+        occurredAt: isoAt(2),
+        actorType: "operator",
+        actorId: "ops_e2e",
+        customerAccountId: "account_1",
+        transactionIntentId: null,
+        reviewCaseId: null,
+        oversightIncidentId: "incident_1",
+        accountRestrictionId: null,
+        metadata: {
+          incidentType: "manual_resolution_watch",
+          incidentStatus: "in_progress",
+          incidentReasonCode: "repeat_manual_resolution",
+          assignedOperatorId: "ops_e2e",
+          subjectOperatorId: null,
+          note: "Incident moved into active investigation."
+        }
+      },
+      {
+        id: "review_case_event:review_case_event_1",
+        eventType: "review_case.note_added",
+        occurredAt: isoAt(6),
+        actorType: "operator",
+        actorId: "ops_lead",
+        customerAccountId: "account_1",
+        transactionIntentId: "intent_older",
+        reviewCaseId: "review_case_older",
+        oversightIncidentId: null,
+        accountRestrictionId: null,
+        metadata: {
+          reviewCaseType: "withdrawal_review",
+          reviewCaseStatus: "resolved",
+          reviewCaseReasonCode: "manual_review",
+          assignedOperatorId: "ops_lead",
+          note: "Withdrawal evidence reviewed before manual resolution."
+        }
+      },
+      {
+        id: "transaction_intent_manually_resolved:manual_intent_1",
+        eventType: "transaction_intent.manually_resolved",
+        occurredAt: isoAt(24),
+        actorType: "operator",
+        actorId: "ops_lead",
+        customerAccountId: "account_1",
+        transactionIntentId: "manual_intent_1",
+        reviewCaseId: "review_case_older",
+        oversightIncidentId: null,
+        accountRestrictionId: null,
+        metadata: {
+          intentType: "withdrawal",
+          status: "manually_resolved",
+          manualResolutionReasonCode: "manual_review_hold",
+          manualResolutionNote: "Held pending investigation.",
+          manualResolutionOperatorRole: "risk_manager",
+          assetSymbol: "ETH",
+          requestedAmount: "0.5"
+        }
+      },
+      {
+        id: "transaction_intent_created:intent_older",
+        eventType: "transaction_intent.created",
+        occurredAt: isoAt(26),
+        actorType: "system",
+        actorId: null,
+        customerAccountId: "account_1",
+        transactionIntentId: "intent_older",
+        reviewCaseId: null,
+        oversightIncidentId: null,
+        accountRestrictionId: null,
+        metadata: {
+          intentType: "withdrawal",
+          status: "queued",
+          policyDecision: "pending",
+          requestedAmount: "0.5",
+          settledAmount: null,
+          assetSymbol: "ETH",
+          assetDisplayName: "Ether",
+          sourceWalletAddress: "0x1111222233334444555566667777888899990000",
+          destinationWalletAddress: null,
+          externalAddress: "0x0000000000000000000000000000000000000fed",
+          latestBlockchainTransaction: null
+        }
+      },
+      {
+        id: "oversight_incident_event:oversight_event_opened_1",
+        eventType: "oversight_incident.opened",
+        occurredAt: isoAt(10),
+        actorType: "system",
+        actorId: null,
+        customerAccountId: "account_1",
+        transactionIntentId: null,
+        reviewCaseId: null,
+        oversightIncidentId: "incident_1",
+        accountRestrictionId: null,
+        metadata: {
+          incidentType: "manual_resolution_watch",
+          incidentStatus: "open",
+          incidentReasonCode: "repeat_manual_resolution",
+          assignedOperatorId: "ops_e2e",
+          subjectOperatorId: null,
+          note: "Incident opened from oversight alerting."
+        }
+      },
+      ...(restricted
+        ? [
+            {
+              id: "account_hold_applied:hold_1",
+              eventType: "account_hold.applied",
+              occurredAt: isoAt(1),
+              actorType: "operator",
+              actorId: "ops_e2e",
+              customerAccountId: "account_1",
+              transactionIntentId: null,
+              reviewCaseId: "review_case_older",
+              oversightIncidentId: "incident_1",
+              accountRestrictionId: "hold_1",
+              metadata: {
+                restrictionReasonCode: "manual_review_hold",
+                appliedByOperatorRole: "operations_admin",
+                previousStatus: "active",
+                appliedNote: "Restriction evidence verified.",
+                releaseDecisionStatus: "pending",
+                oversightIncidentType: "manual_resolution_watch"
+              }
+            }
+          ]
+        : [])
+    ],
+    limit: 30,
+    filters: {
+      eventType: null,
+      actorId: null,
+      dateFrom: null,
+      dateTo: null
+    }
+  };
+}
+
+function statusIsOpen(status: string) {
+  return status === "open" || status === "in_progress";
+}
+
 function reconciliationWorkspace() {
   return {
     mismatch: {
@@ -1785,6 +1960,7 @@ export type AdminScenario = {
   activeAccountHolds: MockResponseSpec<Record<string, unknown>>;
   accountHoldSummary: MockResponseSpec<Record<string, unknown>>;
   oversightWorkspace: MockResponseSpec<Record<string, unknown>>;
+  customerAccountTimeline: MockResponseSpec<Record<string, unknown>>;
   startOversightIncident: MockResponseSpec<Record<string, unknown>>;
   addOversightIncidentNote: MockResponseSpec<Record<string, unknown>>;
   applyAccountRestriction: MockResponseSpec<Record<string, unknown>>;
@@ -2326,7 +2502,20 @@ export function buildAdminScenario(
               releasedByOperatorId: null,
               releasedByOperatorRole: null
             },
-            customer: selectedIncident.subjectCustomer,
+            customer: {
+              ...selectedIncident.subjectCustomer,
+              status: "restricted"
+            },
+            oversightIncident: {
+              id: selectedIncident.id,
+              incidentType: selectedIncident.incidentType,
+              status: selectedIncident.status,
+              reasonCode: selectedIncident.reasonCode,
+              summaryNote: selectedIncident.summaryNote,
+              assignedOperatorId: selectedIncident.assignedOperatorId,
+              openedAt: selectedIncident.openedAt,
+              updatedAt: selectedIncident.updatedAt
+            },
             releaseReview: {
               decisionStatus: "pending"
             }
@@ -2354,6 +2543,9 @@ export function buildAdminScenario(
     },
     oversightWorkspace: {
       data: oversightWorkspace()
+    },
+    customerAccountTimeline: {
+      data: customerAccountTimeline(true)
     },
     startOversightIncident: {
       data: {
@@ -2751,6 +2943,18 @@ export function buildAdminScenario(
         limit: 20
       }
     };
+    base.customerAccountTimeline = {
+      data: {
+        ...customerAccountTimeline(),
+        summary: {
+          ...customerAccountTimeline().summary,
+          counts: {
+            ...customerAccountTimeline().summary.counts,
+            activeAccountHolds: 0
+          }
+        }
+      }
+    };
     base.platformAlerts = {
       data: {
         alerts: [],
@@ -2874,6 +3078,11 @@ export function buildAdminScenario(
       statusCode: 500,
       message: "Account review state unavailable."
     };
+    base.customerAccountTimeline = {
+      ok: false,
+      statusCode: 500,
+      message: "Customer account timeline unavailable."
+    };
     base.reconciliationMismatches = {
       ok: false,
       statusCode: 500,
@@ -2975,6 +3184,35 @@ export async function mockAdminApi(
       "reviews"
     ] as Array<Record<string, any>> | undefined) ?? [])
   ) as Array<Record<string, any>>;
+  const currentOversightIncidents = cloneAdminData(
+    (((resolved.oversightIncidents.data as Record<string, unknown> | undefined)?.[
+      "oversightIncidents"
+    ] as Array<Record<string, any>> | undefined) ?? [])
+  ) as Array<Record<string, any>>;
+  const currentActiveAccountHolds = cloneAdminData(
+    (((resolved.activeAccountHolds.data as Record<string, unknown> | undefined)?.[
+      "holds"
+    ] as Array<Record<string, any>> | undefined) ?? [])
+  ) as Array<Record<string, any>>;
+  const currentAccountHoldSummary = cloneAdminData(
+    ((resolved.accountHoldSummary.data as Record<string, unknown> | undefined) ?? {
+      totalHolds: 0,
+      activeHolds: 0,
+      releasedHolds: 0,
+      byIncidentType: [],
+      byReasonCode: [],
+      byAppliedOperator: [],
+      byReleasedOperator: []
+    }) as Record<string, unknown>
+  ) as Record<string, any>;
+  const baseOversightWorkspace = cloneAdminData(
+    ((resolved.oversightWorkspace.data as Record<string, unknown> | undefined) ??
+      oversightWorkspace()) as Record<string, unknown>
+  ) as Record<string, any>;
+  const baseCustomerAccountTimeline = cloneAdminData(
+    ((resolved.customerAccountTimeline.data as Record<string, unknown> | undefined) ??
+      customerAccountTimeline()) as Record<string, unknown>
+  ) as Record<string, any>;
   const currentManualResolutionSummary = cloneAdminData(
     ((resolved.manualResolutionSummary.data as Record<string, unknown> | undefined) ??
       manualResolutionSummary()) as Record<string, unknown>
@@ -3002,6 +3240,8 @@ export async function mockAdminApi(
       reviewWorkspace()) as Record<string, unknown>
   ) as Record<string, any>;
   const currentReviewWorkspaces = new Map<string, Record<string, any>>();
+  const currentOversightWorkspaces = new Map<string, Record<string, any>>();
+  const currentCustomerAccountTimeline = cloneAdminData(baseCustomerAccountTimeline);
   const currentIncidentPackageReleases = Array.from(
     new Map(
       [
@@ -3059,8 +3299,198 @@ export async function mockAdminApi(
     );
   }
 
+  for (const incidentRecord of currentOversightIncidents) {
+    const nextWorkspace = cloneAdminData(baseOversightWorkspace);
+    nextWorkspace.oversightIncident = cloneAdminData(incidentRecord);
+    currentOversightWorkspaces.set(String(incidentRecord.id), nextWorkspace);
+  }
+
+  if (baseOversightWorkspace.oversightIncident?.id) {
+    currentOversightWorkspaces.set(
+      String(baseOversightWorkspace.oversightIncident.id),
+      currentOversightWorkspaces.get(String(baseOversightWorkspace.oversightIncident.id)) ??
+        cloneAdminData(baseOversightWorkspace)
+    );
+  }
+
   function findReviewCase(reviewCaseId: string) {
     return currentReviewCases.find((reviewCaseRecord) => reviewCaseRecord.id === reviewCaseId) ?? null;
+  }
+
+  function findOversightIncident(incidentId: string) {
+    return currentOversightIncidents.find((incidentRecord) => incidentRecord.id === incidentId) ?? null;
+  }
+
+  function findActiveHoldForIncident(incidentId: string) {
+    return (
+      currentActiveAccountHolds.find(
+        (hold) =>
+          hold.oversightIncident?.id === incidentId &&
+          hold.hold?.status === "active"
+      ) ?? null
+    );
+  }
+
+  function getOversightWorkspaceState(incidentId: string) {
+    const existingWorkspace = currentOversightWorkspaces.get(incidentId);
+    if (existingWorkspace) {
+      return existingWorkspace;
+    }
+
+    const incidentRecord = findOversightIncident(incidentId) ?? oversightIncident();
+    const nextWorkspace = cloneAdminData(baseOversightWorkspace);
+    nextWorkspace.oversightIncident = cloneAdminData(incidentRecord);
+    currentOversightWorkspaces.set(incidentId, nextWorkspace);
+    return nextWorkspace;
+  }
+
+  function sortCustomerAccountTimelineEntries(entries: Array<Record<string, any>>) {
+    return entries.sort((left, right) => {
+      const timeDelta =
+        new Date(String(right.occurredAt)).getTime() - new Date(String(left.occurredAt)).getTime();
+
+      if (timeDelta !== 0) {
+        return timeDelta;
+      }
+
+      return String(left.id).localeCompare(String(right.id));
+    });
+  }
+
+  function syncAccountHoldSummary() {
+    currentAccountHoldSummary.totalHolds = currentActiveAccountHolds.length;
+    currentAccountHoldSummary.activeHolds = currentActiveAccountHolds.filter(
+      (hold) => hold.hold?.status === "active"
+    ).length;
+    currentAccountHoldSummary.releasedHolds = currentActiveAccountHolds.filter(
+      (hold) => hold.hold?.status === "released"
+    ).length;
+
+    const byIncidentType = new Map<string, number>();
+    const byReasonCode = new Map<string, number>();
+    const byAppliedOperator = new Map<string, { role: string | null; count: number }>();
+    const byReleasedOperator = new Map<string, { role: string | null; count: number }>();
+
+    for (const hold of currentActiveAccountHolds) {
+      const incidentType = String(hold.oversightIncident?.incidentType ?? "unknown");
+      byIncidentType.set(incidentType, (byIncidentType.get(incidentType) ?? 0) + 1);
+
+      const reasonCode = String(hold.hold?.restrictionReasonCode ?? "unknown");
+      byReasonCode.set(reasonCode, (byReasonCode.get(reasonCode) ?? 0) + 1);
+
+      const appliedByOperatorId = hold.hold?.appliedByOperatorId;
+      if (appliedByOperatorId) {
+        const existing = byAppliedOperator.get(appliedByOperatorId);
+        byAppliedOperator.set(appliedByOperatorId, {
+          role: hold.hold?.appliedByOperatorRole ?? null,
+          count: (existing?.count ?? 0) + 1
+        });
+      }
+
+      const releasedByOperatorId = hold.hold?.releasedByOperatorId;
+      if (releasedByOperatorId) {
+        const existing = byReleasedOperator.get(releasedByOperatorId);
+        byReleasedOperator.set(releasedByOperatorId, {
+          role: hold.hold?.releasedByOperatorRole ?? null,
+          count: (existing?.count ?? 0) + 1
+        });
+      }
+    }
+
+    currentAccountHoldSummary.byIncidentType = Array.from(byIncidentType.entries()).map(
+      ([incidentType, count]) => ({
+        incidentType,
+        count
+      })
+    );
+    currentAccountHoldSummary.byReasonCode = Array.from(byReasonCode.entries()).map(
+      ([restrictionReasonCode, count]) => ({
+        restrictionReasonCode,
+        count
+      })
+    );
+    currentAccountHoldSummary.byAppliedOperator = Array.from(byAppliedOperator.entries()).map(
+      ([appliedByOperatorId, value]) => ({
+        appliedByOperatorId,
+        appliedByOperatorRole: value.role,
+        count: value.count
+      })
+    );
+    currentAccountHoldSummary.byReleasedOperator = Array.from(byReleasedOperator.entries()).map(
+      ([releasedByOperatorId, value]) => ({
+        releasedByOperatorId,
+        releasedByOperatorRole: value.role,
+        count: value.count
+      })
+    );
+  }
+
+  function syncCustomerAccountTimelineSummary() {
+    const selectedHold =
+      currentActiveAccountHolds.find(
+        (hold) =>
+          hold.customer?.customerAccountId ===
+          currentCustomerAccountTimeline.summary.customer.customerAccountId
+      ) ?? null;
+    const activeHold = selectedHold?.hold?.status === "active" ? selectedHold : null;
+    const incident = activeHold
+      ? findOversightIncident(String(activeHold.oversightIncident?.id ?? ""))
+      : currentOversightIncidents.find(
+          (entry) =>
+            entry.subjectCustomer?.customerAccountId ===
+            currentCustomerAccountTimeline.summary.customer.customerAccountId
+        ) ?? null;
+
+    currentCustomerAccountTimeline.summary.accountStatus = activeHold ? "restricted" : "active";
+    currentCustomerAccountTimeline.summary.currentRestriction = {
+      active: Boolean(activeHold),
+      restrictedAt: activeHold?.hold?.appliedAt ?? null,
+      restrictedFromStatus: activeHold?.hold?.previousStatus ?? null,
+      restrictionReasonCode: activeHold?.hold?.restrictionReasonCode ?? null,
+      restrictedByOperatorId: activeHold?.hold?.appliedByOperatorId ?? null,
+      restrictedByOversightIncidentId: activeHold?.oversightIncident?.id ?? null,
+      restrictionReleasedAt: activeHold?.hold?.releasedAt ?? null,
+      restrictionReleasedByOperatorId: activeHold?.hold?.releasedByOperatorId ?? null
+    };
+    currentCustomerAccountTimeline.summary.counts.openOversightIncidents = incident
+      ? statusIsOpen(String(incident.status)) ? 1 : 0
+      : 0;
+    currentCustomerAccountTimeline.summary.counts.activeAccountHolds = activeHold ? 1 : 0;
+  }
+
+  function syncOversightWorkspaceState(incidentId: string) {
+    const currentIncident = findOversightIncident(incidentId);
+    const currentWorkspace = getOversightWorkspaceState(incidentId);
+    const activeHold = findActiveHoldForIncident(incidentId);
+
+    if (currentIncident) {
+      currentWorkspace.oversightIncident = cloneAdminData(currentIncident);
+    }
+
+    currentWorkspace.accountRestriction = {
+      ...currentWorkspace.accountRestriction,
+      active: Boolean(activeHold),
+      customerAccountId:
+        currentIncident?.subjectCustomer?.customerAccountId ??
+        currentWorkspace.accountRestriction.customerAccountId,
+      accountStatus: activeHold ? "restricted" : "active",
+      restrictedAt: activeHold?.hold?.appliedAt ?? null,
+      restrictedFromStatus: activeHold?.hold?.previousStatus ?? null,
+      restrictionReasonCode: activeHold?.hold?.restrictionReasonCode ?? null,
+      restrictedByOperatorId: activeHold?.hold?.appliedByOperatorId ?? null,
+      restrictedByOversightIncidentId: activeHold?.oversightIncident?.id ?? null,
+      restrictionReleasedAt: activeHold?.hold?.releasedAt ?? null,
+      restrictionReleasedByOperatorId: activeHold?.hold?.releasedByOperatorId ?? null
+    };
+  }
+
+  function addCustomerAccountTimelineEntry(entry: Record<string, any>) {
+    currentCustomerAccountTimeline.timeline = sortCustomerAccountTimelineEntries([
+      cloneAdminData(entry),
+      ...currentCustomerAccountTimeline.timeline.filter(
+        (existing: Record<string, any>) => existing.id !== entry.id
+      )
+    ]);
   }
 
   function findReleaseReview(reviewCaseId: string) {
@@ -3175,6 +3605,62 @@ export async function mockAdminApi(
         count
       })),
       policyPacks: currentLoanPolicyPacks()
+    };
+  }
+
+  function buildCustomerAccountTimelineState(
+    queryParams: URLSearchParams
+  ): Record<string, unknown> {
+    const customerAccountId = queryParams.get("customerAccountId")?.trim() || null;
+    const supabaseUserId = queryParams.get("supabaseUserId")?.trim() || null;
+    const eventType = queryParams.get("eventType")?.trim() || null;
+    const actorId = queryParams.get("actorId")?.trim() || null;
+    const dateFrom = queryParams.get("dateFrom")?.trim() || null;
+    const dateTo = queryParams.get("dateTo")?.trim() || null;
+    const limit = Number.parseInt(queryParams.get("limit") ?? "", 10);
+    const summaryCustomer = currentCustomerAccountTimeline.summary.customer;
+
+    const matchesLookup =
+      (!customerAccountId || customerAccountId === summaryCustomer.customerAccountId) &&
+      (!supabaseUserId || supabaseUserId === summaryCustomer.supabaseUserId);
+
+    const filteredTimeline = matchesLookup
+      ? currentCustomerAccountTimeline.timeline.filter((entry: Record<string, any>) => {
+          if (eventType && entry.eventType !== eventType) {
+            return false;
+          }
+
+          if (actorId && entry.actorId !== actorId) {
+            return false;
+          }
+
+          const occurredAtValue = new Date(String(entry.occurredAt)).getTime();
+
+          if (dateFrom && occurredAtValue < new Date(dateFrom).getTime()) {
+            return false;
+          }
+
+          if (dateTo && occurredAtValue > new Date(dateTo).getTime()) {
+            return false;
+          }
+
+          return true;
+        })
+      : [];
+
+    return {
+      summary: cloneAdminData(currentCustomerAccountTimeline.summary),
+      timeline:
+        Number.isFinite(limit) && limit > 0
+          ? filteredTimeline.slice(0, limit)
+          : filteredTimeline,
+      limit: Number.isFinite(limit) && limit > 0 ? limit : currentCustomerAccountTimeline.limit,
+      filters: {
+        eventType,
+        actorId,
+        dateFrom,
+        dateTo
+      }
     };
   }
 
@@ -3376,6 +3862,12 @@ export async function mockAdminApi(
       totalCount: filtered.length,
       filters
     };
+  }
+
+  syncAccountHoldSummary();
+  syncCustomerAccountTimelineSummary();
+  for (const incidentRecord of currentOversightIncidents) {
+    syncOversightWorkspaceState(String(incidentRecord.id));
   }
 
   function findStakingGovernanceRequest(requestId: string) {
@@ -4914,51 +5406,451 @@ export async function mockAdminApi(
     }
 
     if (pathname.endsWith("/oversight-incidents/internal") && method === "GET") {
-      return fulfillJson(route, resolved.oversightIncidents);
+      if (resolved.oversightIncidents.ok === false) {
+        return fulfillJson(route, resolved.oversightIncidents);
+      }
+
+      return fulfillJson(route, {
+        ...resolved.oversightIncidents,
+        data: {
+          oversightIncidents: currentOversightIncidents,
+          limit:
+            ((resolved.oversightIncidents.data as Record<string, unknown> | undefined)?.[
+              "limit"
+            ] as number | undefined) ?? 20
+        }
+      });
     }
 
     if (
       pathname.endsWith("/oversight-incidents/internal/account-holds/active") &&
       method === "GET"
     ) {
-      return fulfillJson(route, resolved.activeAccountHolds);
+      if (resolved.activeAccountHolds.ok === false) {
+        return fulfillJson(route, resolved.activeAccountHolds);
+      }
+
+      return fulfillJson(route, {
+        ...resolved.activeAccountHolds,
+        data: {
+          holds: currentActiveAccountHolds,
+          limit:
+            ((resolved.activeAccountHolds.data as Record<string, unknown> | undefined)?.[
+              "limit"
+            ] as number | undefined) ?? 20
+        }
+      });
     }
 
     if (
       pathname.endsWith("/oversight-incidents/internal/account-holds/summary") &&
       method === "GET"
     ) {
-      return fulfillJson(route, resolved.accountHoldSummary);
+      if (resolved.accountHoldSummary.ok === false) {
+        return fulfillJson(route, resolved.accountHoldSummary);
+      }
+
+      return fulfillJson(route, {
+        ...resolved.accountHoldSummary,
+        data: currentAccountHoldSummary
+      });
     }
 
     if (
       /\/oversight-incidents\/internal\/[^/]+\/workspace$/.test(pathname) &&
       method === "GET"
     ) {
-      return fulfillJson(route, resolved.oversightWorkspace);
+      if (resolved.oversightWorkspace.ok === false) {
+        return fulfillJson(route, resolved.oversightWorkspace);
+      }
+
+      const incidentId = pathname.split("/").slice(-2)[0] ?? "";
+      syncOversightWorkspaceState(incidentId);
+
+      return fulfillJson(route, {
+        ...resolved.oversightWorkspace,
+        data: getOversightWorkspaceState(incidentId)
+      });
     }
 
     if (/\/oversight-incidents\/internal\/[^/]+\/start$/.test(pathname) && method === "POST") {
-      return fulfillJson(route, resolved.startOversightIncident);
+      if (resolved.startOversightIncident.ok === false) {
+        return fulfillJson(route, resolved.startOversightIncident);
+      }
+
+      const incidentId = pathname.split("/").slice(-2)[0] ?? "";
+      const payload = (request.postDataJSON() as Record<string, unknown> | null) ?? {};
+      const note = (payload.note as string | undefined)?.trim() ?? null;
+      const currentIncident = findOversightIncident(incidentId);
+      const currentWorkspace = getOversightWorkspaceState(incidentId);
+      const event = {
+        id: `oversight_event_started_${currentWorkspace.events.length + 1}`,
+        actorType: "operator",
+        actorId: "ops_e2e",
+        eventType: "started",
+        note,
+        metadata: {},
+        createdAt: isoAt(0)
+      };
+
+      if (currentIncident) {
+        currentIncident.status = "in_progress";
+        currentIncident.startedAt = currentIncident.startedAt ?? isoAt(0);
+        currentIncident.updatedAt = isoAt(0);
+      }
+
+      currentWorkspace.events.unshift(event);
+      addCustomerAccountTimelineEntry({
+        id: `oversight_incident_event:${event.id}`,
+        eventType: "oversight_incident.started",
+        occurredAt: event.createdAt,
+        actorType: event.actorType,
+        actorId: event.actorId,
+        customerAccountId:
+          currentIncident?.subjectCustomer?.customerAccountId ??
+          currentCustomerAccountTimeline.summary.customer.customerAccountId,
+        transactionIntentId: null,
+        reviewCaseId: null,
+        oversightIncidentId: incidentId,
+        accountRestrictionId: null,
+        metadata: {
+          incidentType: currentIncident?.incidentType ?? "manual_resolution_watch",
+          incidentStatus: "in_progress",
+          incidentReasonCode: currentIncident?.reasonCode ?? "repeat_manual_resolution",
+          assignedOperatorId: currentIncident?.assignedOperatorId ?? "ops_e2e",
+          subjectOperatorId: currentIncident?.subjectOperatorId ?? null,
+          note
+        }
+      });
+      syncOversightWorkspaceState(incidentId);
+      syncCustomerAccountTimelineSummary();
+
+      return fulfillJson(route, {
+        ...resolved.startOversightIncident,
+        data: {
+          oversightIncident: currentIncident ?? currentWorkspace.oversightIncident,
+          stateReused: false
+        }
+      });
     }
 
     if (/\/oversight-incidents\/internal\/[^/]+\/notes$/.test(pathname) && method === "POST") {
-      return fulfillJson(route, resolved.addOversightIncidentNote);
+      if (resolved.addOversightIncidentNote.ok === false) {
+        return fulfillJson(route, resolved.addOversightIncidentNote);
+      }
+
+      const incidentId = pathname.split("/").slice(-2)[0] ?? "";
+      const payload = (request.postDataJSON() as Record<string, unknown> | null) ?? {};
+      const note = String(payload.note ?? "").trim();
+      const currentIncident = findOversightIncident(incidentId);
+      const currentWorkspace = getOversightWorkspaceState(incidentId);
+      const event = {
+        id: `oversight_event_note_${currentWorkspace.events.length + 1}`,
+        actorType: "operator",
+        actorId: "ops_e2e",
+        eventType: "note_added",
+        note,
+        metadata: {},
+        createdAt: isoAt(0)
+      };
+
+      if (currentIncident) {
+        currentIncident.summaryNote = note;
+        currentIncident.updatedAt = isoAt(0);
+      }
+
+      currentWorkspace.events.unshift(event);
+      addCustomerAccountTimelineEntry({
+        id: `oversight_incident_event:${event.id}`,
+        eventType: "oversight_incident.note_added",
+        occurredAt: event.createdAt,
+        actorType: event.actorType,
+        actorId: event.actorId,
+        customerAccountId:
+          currentIncident?.subjectCustomer?.customerAccountId ??
+          currentCustomerAccountTimeline.summary.customer.customerAccountId,
+        transactionIntentId: null,
+        reviewCaseId: null,
+        oversightIncidentId: incidentId,
+        accountRestrictionId: null,
+        metadata: {
+          incidentType: currentIncident?.incidentType ?? "manual_resolution_watch",
+          incidentStatus: currentIncident?.status ?? "open",
+          incidentReasonCode: currentIncident?.reasonCode ?? "repeat_manual_resolution",
+          assignedOperatorId: currentIncident?.assignedOperatorId ?? "ops_e2e",
+          subjectOperatorId: currentIncident?.subjectOperatorId ?? null,
+          note
+        }
+      });
+      syncOversightWorkspaceState(incidentId);
+
+      return fulfillJson(route, {
+        ...resolved.addOversightIncidentNote,
+        data: {
+          oversightIncident: currentIncident ?? currentWorkspace.oversightIncident,
+          event
+        }
+      });
     }
 
     if (
       /\/oversight-incidents\/internal\/[^/]+\/place-account-hold$/.test(pathname) &&
       method === "POST"
     ) {
-      return fulfillJson(route, resolved.applyAccountRestriction);
+      if (resolved.applyAccountRestriction.ok === false) {
+        return fulfillJson(route, resolved.applyAccountRestriction);
+      }
+
+      const incidentId = pathname.split("/").slice(-2)[0] ?? "";
+      const payload = (request.postDataJSON() as Record<string, unknown> | null) ?? {};
+      const note = (payload.note as string | undefined)?.trim() ?? null;
+      const restrictionReasonCode =
+        String(payload.restrictionReasonCode ?? "manual_review_hold").trim() ||
+        "manual_review_hold";
+      const currentIncident = findOversightIncident(incidentId);
+      const currentWorkspace = getOversightWorkspaceState(incidentId);
+      const existingHold = findActiveHoldForIncident(incidentId);
+      const nextHold =
+        existingHold ??
+        {
+          hold: {
+            id: `hold_${currentActiveAccountHolds.length + 1}`,
+            status: "active",
+            restrictionReasonCode,
+            appliedByOperatorId: "ops_e2e",
+            appliedByOperatorRole: "operations_admin",
+            appliedNote: note,
+            previousStatus: "active",
+            appliedAt: isoAt(0),
+            releasedAt: null,
+            releasedByOperatorId: null,
+            releasedByOperatorRole: null,
+            releaseNote: null,
+            restoredStatus: null,
+            holdDurationMs: null
+          },
+          customer: cloneAdminData(currentIncident?.subjectCustomer ?? currentWorkspace.oversightIncident.subjectCustomer),
+          oversightIncident: {
+            id: currentIncident?.id ?? incidentId,
+            incidentType: currentIncident?.incidentType ?? "manual_resolution_watch",
+            status: currentIncident?.status ?? "open",
+            reasonCode: currentIncident?.reasonCode ?? "repeat_manual_resolution",
+            summaryNote: currentIncident?.summaryNote ?? null,
+            assignedOperatorId: currentIncident?.assignedOperatorId ?? "ops_e2e",
+            openedAt: currentIncident?.openedAt ?? isoAt(10),
+            updatedAt: isoAt(0)
+          },
+          releaseReview: {
+            reviewCaseId: "review_case_older",
+            reviewCaseStatus: "pending_review",
+            reviewCaseAssignedOperatorId: "ops_e2e",
+            decisionStatus: "pending",
+            requestedAt: null,
+            requestedByOperatorId: null,
+            requestNote: null,
+            decidedAt: null,
+            decidedByOperatorId: null,
+            decisionNote: null
+          }
+        };
+
+      nextHold.hold = {
+        ...nextHold.hold,
+        status: "active",
+        restrictionReasonCode,
+        appliedByOperatorId: "ops_e2e",
+        appliedByOperatorRole: "operations_admin",
+        appliedNote: note,
+        appliedAt: isoAt(0),
+        releasedAt: null,
+        releasedByOperatorId: null,
+        releasedByOperatorRole: null,
+        releaseNote: null,
+        restoredStatus: null
+      };
+      nextHold.oversightIncident = {
+        ...nextHold.oversightIncident,
+        id: currentIncident?.id ?? incidentId,
+        incidentType: currentIncident?.incidentType ?? nextHold.oversightIncident.incidentType,
+        status: currentIncident?.status ?? nextHold.oversightIncident.status,
+        reasonCode: currentIncident?.reasonCode ?? nextHold.oversightIncident.reasonCode,
+        summaryNote: currentIncident?.summaryNote ?? nextHold.oversightIncident.summaryNote,
+        assignedOperatorId:
+          currentIncident?.assignedOperatorId ?? nextHold.oversightIncident.assignedOperatorId,
+        updatedAt: isoAt(0)
+      };
+
+      if (!existingHold) {
+        currentActiveAccountHolds.unshift(nextHold);
+      }
+
+      syncAccountHoldSummary();
+      syncOversightWorkspaceState(incidentId);
+      syncCustomerAccountTimelineSummary();
+      addCustomerAccountTimelineEntry({
+        id: `account_hold_applied:${nextHold.hold.id}`,
+        eventType: "account_hold.applied",
+        occurredAt: nextHold.hold.appliedAt,
+        actorType: "operator",
+        actorId: "ops_e2e",
+        customerAccountId:
+          nextHold.customer?.customerAccountId ??
+          currentCustomerAccountTimeline.summary.customer.customerAccountId,
+        transactionIntentId: null,
+        reviewCaseId: nextHold.releaseReview?.reviewCaseId ?? null,
+        oversightIncidentId: incidentId,
+        accountRestrictionId: nextHold.hold.id,
+        metadata: {
+          restrictionReasonCode,
+          appliedByOperatorRole: "operations_admin",
+          previousStatus: nextHold.hold.previousStatus ?? "active",
+          appliedNote: note,
+          releaseDecisionStatus: nextHold.releaseReview?.decisionStatus ?? "pending",
+          oversightIncidentType: nextHold.oversightIncident?.incidentType ?? "manual_resolution_watch"
+        }
+      });
+
+      return fulfillJson(route, {
+        ...resolved.applyAccountRestriction,
+        data: {
+          oversightIncident: currentIncident ?? currentWorkspace.oversightIncident,
+          accountRestriction: currentWorkspace.accountRestriction,
+          stateReused: false
+        }
+      });
     }
 
     if (/\/oversight-incidents\/internal\/[^/]+\/resolve$/.test(pathname) && method === "POST") {
-      return fulfillJson(route, resolved.resolveOversightIncident);
+      if (resolved.resolveOversightIncident.ok === false) {
+        return fulfillJson(route, resolved.resolveOversightIncident);
+      }
+
+      const incidentId = pathname.split("/").slice(-2)[0] ?? "";
+      const payload = (request.postDataJSON() as Record<string, unknown> | null) ?? {};
+      const note = (payload.note as string | undefined)?.trim() ?? null;
+      const currentIncident = findOversightIncident(incidentId);
+      const currentWorkspace = getOversightWorkspaceState(incidentId);
+      const event = {
+        id: `oversight_event_resolved_${currentWorkspace.events.length + 1}`,
+        actorType: "operator",
+        actorId: "ops_e2e",
+        eventType: "resolved",
+        note,
+        metadata: {},
+        createdAt: isoAt(0)
+      };
+
+      if (currentIncident) {
+        currentIncident.status = "resolved";
+        currentIncident.resolvedAt = isoAt(0);
+        currentIncident.updatedAt = isoAt(0);
+      }
+
+      currentWorkspace.events.unshift(event);
+      addCustomerAccountTimelineEntry({
+        id: `oversight_incident_event:${event.id}`,
+        eventType: "oversight_incident.resolved",
+        occurredAt: event.createdAt,
+        actorType: event.actorType,
+        actorId: event.actorId,
+        customerAccountId:
+          currentIncident?.subjectCustomer?.customerAccountId ??
+          currentCustomerAccountTimeline.summary.customer.customerAccountId,
+        transactionIntentId: null,
+        reviewCaseId: null,
+        oversightIncidentId: incidentId,
+        accountRestrictionId: null,
+        metadata: {
+          incidentType: currentIncident?.incidentType ?? "manual_resolution_watch",
+          incidentStatus: "resolved",
+          incidentReasonCode: currentIncident?.reasonCode ?? "repeat_manual_resolution",
+          assignedOperatorId: currentIncident?.assignedOperatorId ?? "ops_e2e",
+          subjectOperatorId: currentIncident?.subjectOperatorId ?? null,
+          note
+        }
+      });
+      syncOversightWorkspaceState(incidentId);
+      syncCustomerAccountTimelineSummary();
+
+      return fulfillJson(route, {
+        ...resolved.resolveOversightIncident,
+        data: {
+          oversightIncident: currentIncident ?? currentWorkspace.oversightIncident,
+          stateReused: false
+        }
+      });
     }
 
     if (/\/oversight-incidents\/internal\/[^/]+\/dismiss$/.test(pathname) && method === "POST") {
-      return fulfillJson(route, resolved.dismissOversightIncident);
+      if (resolved.dismissOversightIncident.ok === false) {
+        return fulfillJson(route, resolved.dismissOversightIncident);
+      }
+
+      const incidentId = pathname.split("/").slice(-2)[0] ?? "";
+      const payload = (request.postDataJSON() as Record<string, unknown> | null) ?? {};
+      const note = (payload.note as string | undefined)?.trim() ?? null;
+      const currentIncident = findOversightIncident(incidentId);
+      const currentWorkspace = getOversightWorkspaceState(incidentId);
+      const event = {
+        id: `oversight_event_dismissed_${currentWorkspace.events.length + 1}`,
+        actorType: "operator",
+        actorId: "ops_e2e",
+        eventType: "dismissed",
+        note,
+        metadata: {},
+        createdAt: isoAt(0)
+      };
+
+      if (currentIncident) {
+        currentIncident.status = "dismissed";
+        currentIncident.dismissedAt = isoAt(0);
+        currentIncident.updatedAt = isoAt(0);
+      }
+
+      currentWorkspace.events.unshift(event);
+      addCustomerAccountTimelineEntry({
+        id: `oversight_incident_event:${event.id}`,
+        eventType: "oversight_incident.dismissed",
+        occurredAt: event.createdAt,
+        actorType: event.actorType,
+        actorId: event.actorId,
+        customerAccountId:
+          currentIncident?.subjectCustomer?.customerAccountId ??
+          currentCustomerAccountTimeline.summary.customer.customerAccountId,
+        transactionIntentId: null,
+        reviewCaseId: null,
+        oversightIncidentId: incidentId,
+        accountRestrictionId: null,
+        metadata: {
+          incidentType: currentIncident?.incidentType ?? "manual_resolution_watch",
+          incidentStatus: "dismissed",
+          incidentReasonCode: currentIncident?.reasonCode ?? "repeat_manual_resolution",
+          assignedOperatorId: currentIncident?.assignedOperatorId ?? "ops_e2e",
+          subjectOperatorId: currentIncident?.subjectOperatorId ?? null,
+          note
+        }
+      });
+      syncOversightWorkspaceState(incidentId);
+      syncCustomerAccountTimelineSummary();
+
+      return fulfillJson(route, {
+        ...resolved.dismissOversightIncident,
+        data: {
+          oversightIncident: currentIncident ?? currentWorkspace.oversightIncident,
+          stateReused: false
+        }
+      });
+    }
+
+    if (pathname.endsWith("/customer-account-operations/internal/timeline") && method === "GET") {
+      if (resolved.customerAccountTimeline.ok === false) {
+        return fulfillJson(route, resolved.customerAccountTimeline);
+      }
+
+      return fulfillJson(route, {
+        ...resolved.customerAccountTimeline,
+        data: buildCustomerAccountTimelineState(new URL(request.url()).searchParams)
+      });
     }
 
     if (

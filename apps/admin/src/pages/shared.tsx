@@ -9,6 +9,7 @@ import {
 } from "@stealth-trails-bank/ui-foundation";
 import type {
   AuditTimelineEntry,
+  CustomerAccountTimelineEntry,
   OperationsStatus,
   OversightIncidentEvent,
   PlatformAlert,
@@ -150,6 +151,60 @@ export function mapOversightEventsToTimeline(entries: OversightIncidentEvent[]):
     tone: mapStatusToTone(entry.eventType),
     metadata: [{ label: "Actor", value: entry.actorId ?? "system" }]
   }));
+}
+
+export function mapCustomerAccountTimelineEntriesToTimeline(
+  entries: CustomerAccountTimelineEntry[]
+): TimelineEvent[] {
+  return entries.map((entry) => {
+    const metadataItems = [
+      { label: "Actor", value: entry.actorId ?? entry.actorType ?? "system" },
+      { label: "Review", value: shortenValue(entry.reviewCaseId) },
+      { label: "Incident", value: shortenValue(entry.oversightIncidentId) },
+      { label: "Intent", value: shortenValue(entry.transactionIntentId) },
+      { label: "Hold", value: shortenValue(entry.accountRestrictionId) }
+    ].filter((item) => item.value !== "Not available" && item.value !== "غير متاح");
+
+    const metadata =
+      entry.metadata && typeof entry.metadata === "object" && !Array.isArray(entry.metadata)
+        ? entry.metadata
+        : null;
+    const noteCandidates = metadata
+      ? [
+          metadata.note,
+          metadata.appliedNote,
+          metadata.releaseNote,
+          metadata.manualResolutionNote
+        ]
+      : [];
+    const note =
+      noteCandidates.find(
+        (value): value is string => typeof value === "string" && value.trim().length > 0
+      ) ?? null;
+    const intentType =
+      metadata && typeof metadata.intentType === "string" ? metadata.intentType : null;
+    const restrictionReasonCode =
+      metadata && typeof metadata.restrictionReasonCode === "string"
+        ? metadata.restrictionReasonCode
+        : null;
+
+    return {
+      id: entry.id,
+      label: toTitleCase(entry.eventType),
+      description:
+        note ??
+        (intentType
+          ? `${toTitleCase(intentType)} workflow activity recorded for the customer account.`
+          : restrictionReasonCode
+            ? `${toTitleCase(restrictionReasonCode)} restriction activity recorded.`
+            : `Customer account activity recorded by ${toTitleCase(
+                entry.actorType ?? "system"
+              )} ${entry.actorId ?? "system"}.`),
+      timestamp: entry.occurredAt,
+      tone: mapStatusToTone(entry.eventType),
+      metadata: metadataItems
+    };
+  });
 }
 
 export function mapIntentToTimeline(intent: TransactionIntent): TimelineEvent[] {

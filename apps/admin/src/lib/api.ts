@@ -9,6 +9,7 @@ import type {
   ApiResponseEnvelope,
   ApplyManualResolutionResult,
   CriticalPlatformAlertRoutingResult,
+  CustomerAccountOperationsTimeline,
   GovernedIncidentPackageExport,
   IncidentPackageReleaseList,
   IncidentPackageReleaseMutationResult,
@@ -122,6 +123,17 @@ export async function getLoanOperationsSummary(
   return requestData(session, {
     method: "GET",
     url: "/loans/internal/summary"
+  });
+}
+
+export async function listCustomerAccountTimeline(
+  session: OperatorSession,
+  params: Record<string, string | number | undefined>
+): Promise<CustomerAccountOperationsTimeline> {
+  return requestData(session, {
+    method: "GET",
+    url: "/customer-account-operations/internal/timeline",
+    params
   });
 }
 
