@@ -2,6 +2,7 @@ import axios, { type AxiosRequestConfig } from "axios";
 import { buildInternalOperatorHeaders } from "@stealth-trails-bank/security";
 import type {
   AccountHoldList,
+  AccountReleaseReviewMutationResult,
   AccountHoldSummary,
   AccountReleaseReviewList,
   AuditEventList,
@@ -781,7 +782,7 @@ export async function requestAccountRelease(
   session: OperatorSession,
   reviewCaseId: string,
   note?: string
-): Promise<IncidentPackageReleaseMutationResult> {
+): Promise<AccountReleaseReviewMutationResult> {
   return requestData(session, {
     method: "POST",
     url: `/review-cases/internal/${reviewCaseId}/request-account-release`,
@@ -794,7 +795,7 @@ export async function decideAccountRelease(
   reviewCaseId: string,
   decision: "approved" | "denied",
   note?: string
-): Promise<IncidentPackageReleaseMutationResult> {
+): Promise<AccountReleaseReviewMutationResult> {
   return requestData(session, {
     method: "POST",
     url: `/review-cases/internal/account-release-requests/${reviewCaseId}/decision`,

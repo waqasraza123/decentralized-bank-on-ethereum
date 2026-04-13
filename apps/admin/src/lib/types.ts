@@ -1491,6 +1491,11 @@ export type AccountReleaseReviewList = {
   limit: number;
 };
 
+export type AccountReleaseReviewMutationResult = {
+  accountReleaseReview: AccountReleaseReview;
+  stateReused: boolean;
+};
+
 export type IncidentPackageRelease = {
   id: string;
   customer: {

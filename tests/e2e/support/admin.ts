@@ -411,6 +411,45 @@ function reviewWorkspace(status = "pending_review") {
   };
 }
 
+function manualResolutionSummary(overrides: Record<string, unknown> = {}) {
+  return {
+    totalIntents: 3,
+    byIntentType: [
+      {
+        intentType: "withdrawal",
+        count: 2
+      },
+      {
+        intentType: "deposit",
+        count: 1
+      }
+    ],
+    byReasonCode: [
+      {
+        manualResolutionReasonCode: "support_case_closed",
+        count: 2
+      },
+      {
+        manualResolutionReasonCode: "duplicate_request_closed",
+        count: 1
+      }
+    ],
+    byOperator: [
+      {
+        manualResolvedByOperatorId: "ops_lead",
+        manualResolutionOperatorRole: "operations_admin",
+        count: 2
+      },
+      {
+        manualResolvedByOperatorId: "ops_compliance_1",
+        manualResolutionOperatorRole: "compliance_lead",
+        count: 1
+      }
+    ],
+    ...overrides
+  };
+}
+
 function oversightIncident(status = "open") {
   return {
     id: "incident_1",
@@ -1732,10 +1771,14 @@ export type AdminScenario = {
   releaseSummary: MockResponseSpec<Record<string, unknown>>;
   reviewCases: MockResponseSpec<Record<string, unknown>>;
   releaseReviews: MockResponseSpec<Record<string, unknown>>;
+  manualResolutionSummary: MockResponseSpec<Record<string, unknown>>;
   reviewWorkspace: MockResponseSpec<Record<string, unknown>>;
   startReviewCase: MockResponseSpec<Record<string, unknown>>;
   addReviewCaseNote: MockResponseSpec<Record<string, unknown>>;
+  handoffReviewCase: MockResponseSpec<Record<string, unknown>>;
+  applyManualResolution: MockResponseSpec<Record<string, unknown>>;
   requestAccountRelease: MockResponseSpec<Record<string, unknown>>;
+  decideAccountRelease: MockResponseSpec<Record<string, unknown>>;
   resolveReviewCase: MockResponseSpec<Record<string, unknown>>;
   dismissReviewCase: MockResponseSpec<Record<string, unknown>>;
   oversightIncidents: MockResponseSpec<Record<string, unknown>>;
@@ -2049,16 +2092,45 @@ export function buildAdminScenario(
             reviewCase: selectedReviewCase,
             customer: selectedReviewCase.customer,
             restriction: {
+              id: "hold_1",
+              status: "active",
+              restrictionReasonCode: "manual_review_hold",
+              appliedByOperatorId: "ops_lead",
+              appliedByOperatorRole: "risk_manager",
+              appliedNote: "Held pending evidence.",
+              previousStatus: "registered",
+              appliedAt: isoAt(4),
+              releasedAt: null,
+              releasedByOperatorId: null,
+              releasedByOperatorRole: null,
+              releaseNote: null,
+              restoredStatus: null,
               releaseDecisionStatus: "pending",
-              releaseRequestedAt: isoAt(2)
+              releaseRequestedAt: isoAt(2),
+              releaseRequestedByOperatorId: "ops_e2e",
+              releaseRequestNote: "Release requested after queue review.",
+              releaseDecidedAt: null,
+              releaseDecidedByOperatorId: null,
+              releaseDecisionNote: null,
+              releaseReviewCaseId: selectedReviewCase.id
             },
             oversightIncident: {
-              status: "open"
+              id: "incident_1",
+              incidentType: "manual_resolution_watch",
+              status: "open",
+              reasonCode: "repeat_manual_resolution",
+              summaryNote: null,
+              assignedOperatorId: "ops_e2e",
+              openedAt: isoAt(8),
+              updatedAt: isoAt(2)
             }
           }
         ],
         limit: 20
       }
+    },
+    manualResolutionSummary: {
+      data: manualResolutionSummary()
     },
     reviewWorkspace: {
       data: reviewWorkspace()
@@ -2083,10 +2155,138 @@ export function buildAdminScenario(
         }
       }
     },
+    handoffReviewCase: {
+      data: {
+        reviewCase: {
+          ...reviewCase("in_progress"),
+          assignedOperatorId: "ops_compliance_1",
+          updatedAt: isoAt(0)
+        },
+        stateReused: false
+      }
+    },
+    applyManualResolution: {
+      data: {
+        reviewCase: {
+          ...reviewCase("resolved"),
+          assignedOperatorId: "ops_e2e",
+          resolvedAt: isoAt(0),
+          notes: "Manual intervention completed after evidence review.",
+          updatedAt: isoAt(0)
+        },
+        transactionIntent: {
+          ...reviewCase().transactionIntent,
+          status: "manually_resolved",
+          manuallyResolvedAt: isoAt(0),
+          manualResolutionReasonCode: "support_case_closed",
+          manualResolutionNote: "Manual intervention completed after evidence review.",
+          manualResolvedByOperatorId: "ops_e2e",
+          manualResolutionOperatorRole: "operations_admin",
+          manualResolutionReviewCaseId: "review_case_1",
+          updatedAt: isoAt(0)
+        },
+        stateReused: false
+      }
+    },
     requestAccountRelease: {
       data: {
-        releaseRequest: {
-          reviewCaseId: selectedReviewCase.id
+        accountReleaseReview: {
+          reviewCase: selectedReviewCase,
+          customer: {
+            customerId: "customer_1",
+            customerAccountId: "account_1",
+            status: "restricted",
+            supabaseUserId: "supabase_1",
+            email: "amina@example.com",
+            firstName: "Amina",
+            lastName: "Rahman"
+          },
+          restriction: {
+            id: "hold_1",
+            status: "active",
+            restrictionReasonCode: "manual_review_hold",
+            appliedByOperatorId: "ops_lead",
+            appliedByOperatorRole: "risk_manager",
+            appliedNote: "Held pending evidence.",
+            previousStatus: "registered",
+            appliedAt: isoAt(4),
+            releasedAt: null,
+            releasedByOperatorId: null,
+            releasedByOperatorRole: null,
+            releaseNote: null,
+            restoredStatus: null,
+            releaseDecisionStatus: "pending",
+            releaseRequestedAt: isoAt(0),
+            releaseRequestedByOperatorId: "ops_e2e",
+            releaseRequestNote: "Release requested after queue review.",
+            releaseDecidedAt: null,
+            releaseDecidedByOperatorId: null,
+            releaseDecisionNote: null,
+            releaseReviewCaseId: selectedReviewCase.id
+          },
+          oversightIncident: {
+            id: "incident_1",
+            incidentType: "manual_resolution_watch",
+            status: "open",
+            reasonCode: "repeat_manual_resolution",
+            summaryNote: null,
+            assignedOperatorId: "ops_e2e",
+            openedAt: isoAt(8),
+            updatedAt: isoAt(0)
+          }
+        },
+        stateReused: false
+      }
+    },
+    decideAccountRelease: {
+      data: {
+        accountReleaseReview: {
+          reviewCase: {
+            ...selectedReviewCase,
+            updatedAt: isoAt(0)
+          },
+          customer: {
+            customerId: "customer_1",
+            customerAccountId: "account_1",
+            status: "registered",
+            supabaseUserId: "supabase_1",
+            email: "amina@example.com",
+            firstName: "Amina",
+            lastName: "Rahman"
+          },
+          restriction: {
+            id: "hold_1",
+            status: "released",
+            restrictionReasonCode: "manual_review_hold",
+            appliedByOperatorId: "ops_lead",
+            appliedByOperatorRole: "risk_manager",
+            appliedNote: "Held pending evidence.",
+            previousStatus: "registered",
+            appliedAt: isoAt(4),
+            releasedAt: isoAt(0),
+            releasedByOperatorId: "ops_e2e",
+            releasedByOperatorRole: "operations_admin",
+            releaseNote: "Release approved from the queue workspace.",
+            restoredStatus: "registered",
+            releaseDecisionStatus: "approved",
+            releaseRequestedAt: isoAt(2),
+            releaseRequestedByOperatorId: "ops_e2e",
+            releaseRequestNote: "Release requested after queue review.",
+            releaseDecidedAt: isoAt(0),
+            releaseDecidedByOperatorId: "ops_e2e",
+            releaseDecisionNote: "Release approved from the queue workspace.",
+            releaseReviewCaseId: selectedReviewCase.id
+          },
+          oversightIncident: {
+            id: "incident_1",
+            incidentType: "manual_resolution_watch",
+            status: "open",
+            reasonCode: "repeat_manual_resolution",
+            summaryNote: null,
+            assignedOperatorId: "ops_e2e",
+            openedAt: isoAt(8),
+            updatedAt: isoAt(0)
+          }
         },
         stateReused: false
       }
@@ -2537,6 +2737,14 @@ export function buildAdminScenario(
         limit: 20
       }
     };
+    base.manualResolutionSummary = {
+      data: {
+        totalIntents: 0,
+        byIntentType: [],
+        byReasonCode: [],
+        byOperator: []
+      }
+    };
     base.activeAccountHolds = {
       data: {
         holds: [],
@@ -2656,6 +2864,11 @@ export function buildAdminScenario(
       statusCode: 500,
       message: "Queue state unavailable."
     };
+    base.manualResolutionSummary = {
+      ok: false,
+      statusCode: 500,
+      message: "Queue state unavailable."
+    };
     base.oversightIncidents = {
       ok: false,
       statusCode: 500,
@@ -2752,6 +2965,20 @@ export async function mockAdminApi(
       "approvals"
     ] as Record<string, unknown>[] | undefined) ?? [])
   ];
+  const currentReviewCases = cloneAdminData(
+    (((resolved.reviewCases.data as Record<string, unknown> | undefined)?.[
+      "reviewCases"
+    ] as Array<Record<string, any>> | undefined) ?? [])
+  ) as Array<Record<string, any>>;
+  const currentReleaseReviews = cloneAdminData(
+    (((resolved.releaseReviews.data as Record<string, unknown> | undefined)?.[
+      "reviews"
+    ] as Array<Record<string, any>> | undefined) ?? [])
+  ) as Array<Record<string, any>>;
+  const currentManualResolutionSummary = cloneAdminData(
+    ((resolved.manualResolutionSummary.data as Record<string, unknown> | undefined) ??
+      manualResolutionSummary()) as Record<string, unknown>
+  ) as Record<string, any>;
   const currentLoanApplications = cloneAdminData(
     (((resolved.loanApplications.data as Record<string, unknown> | undefined)?.[
       "applications"
@@ -2770,6 +2997,11 @@ export async function mockAdminApi(
     ((resolved.loanAgreementWorkspace.data as Record<string, unknown> | undefined) ??
       buildLoanAgreementWorkspace()) as Record<string, any>
   ) as any;
+  const baseReviewWorkspace = cloneAdminData(
+    ((resolved.reviewWorkspace.data as Record<string, unknown> | undefined) ??
+      reviewWorkspace()) as Record<string, unknown>
+  ) as Record<string, any>;
+  const currentReviewWorkspaces = new Map<string, Record<string, any>>();
   const currentIncidentPackageReleases = Array.from(
     new Map(
       [
@@ -2797,6 +3029,107 @@ export async function mockAdminApi(
       ]
     ).values()
   ) as Array<Record<string, any>>;
+
+  function createReviewWorkspaceState(reviewCaseRecord: Record<string, any>) {
+    const nextWorkspace = cloneAdminData(baseReviewWorkspace) as Record<string, any>;
+    nextWorkspace.reviewCase = cloneAdminData(reviewCaseRecord);
+    nextWorkspace.recentIntents = reviewCaseRecord.transactionIntent
+      ? [cloneAdminData(reviewCaseRecord.transactionIntent)]
+      : [];
+    nextWorkspace.manualResolutionEligibility = {
+      ...nextWorkspace.manualResolutionEligibility,
+      currentIntentStatus: reviewCaseRecord.transactionIntent?.status ?? null,
+      currentReviewCaseStatus: reviewCaseRecord.status,
+      currentReviewCaseType: reviewCaseRecord.type
+    };
+    return nextWorkspace;
+  }
+
+  for (const reviewCaseRecord of currentReviewCases) {
+    currentReviewWorkspaces.set(
+      String(reviewCaseRecord.id),
+      createReviewWorkspaceState(reviewCaseRecord)
+    );
+  }
+
+  if (baseReviewWorkspace.reviewCase?.id) {
+    currentReviewWorkspaces.set(
+      String(baseReviewWorkspace.reviewCase.id),
+      cloneAdminData(baseReviewWorkspace)
+    );
+  }
+
+  function findReviewCase(reviewCaseId: string) {
+    return currentReviewCases.find((reviewCaseRecord) => reviewCaseRecord.id === reviewCaseId) ?? null;
+  }
+
+  function findReleaseReview(reviewCaseId: string) {
+    return (
+      currentReleaseReviews.find((review) => review.reviewCase.id === reviewCaseId) ?? null
+    );
+  }
+
+  function getReviewWorkspaceState(reviewCaseId: string) {
+    const existingWorkspace = currentReviewWorkspaces.get(reviewCaseId);
+    if (existingWorkspace) {
+      return existingWorkspace;
+    }
+
+    const existingReviewCase = findReviewCase(reviewCaseId) ?? reviewCase();
+    const nextWorkspace = createReviewWorkspaceState(existingReviewCase);
+    currentReviewWorkspaces.set(reviewCaseId, nextWorkspace);
+    return nextWorkspace;
+  }
+
+  function syncReleaseReviewCase(reviewCaseId: string) {
+    const reviewCaseRecord = findReviewCase(reviewCaseId);
+    const releaseReview = findReleaseReview(reviewCaseId);
+
+    if (!reviewCaseRecord || !releaseReview) {
+      return;
+    }
+
+    releaseReview.reviewCase = {
+      ...releaseReview.reviewCase,
+      id: reviewCaseRecord.id,
+      type: reviewCaseRecord.type,
+      status: reviewCaseRecord.status,
+      reasonCode: reviewCaseRecord.reasonCode,
+      notes: reviewCaseRecord.notes,
+      assignedOperatorId: reviewCaseRecord.assignedOperatorId,
+      startedAt: reviewCaseRecord.startedAt,
+      resolvedAt: reviewCaseRecord.resolvedAt,
+      dismissedAt: reviewCaseRecord.dismissedAt,
+      createdAt: reviewCaseRecord.createdAt,
+      updatedAt: reviewCaseRecord.updatedAt
+    };
+  }
+
+  function incrementSummaryBucket(
+    entries: Array<Record<string, any>>,
+    key: string,
+    value: string,
+    operatorRole?: string | null
+  ) {
+    const existingEntry = entries.find((entry) => entry[key] === value);
+    if (existingEntry) {
+      existingEntry.count = Number(existingEntry.count ?? 0) + 1;
+      return;
+    }
+
+    entries.push(
+      operatorRole === undefined
+        ? {
+            [key]: value,
+            count: 1
+          }
+        : {
+            [key]: value,
+            manualResolutionOperatorRole: operatorRole,
+            count: 1
+          }
+    );
+  }
 
   function currentLoanPolicyPacks() {
     return (
@@ -4062,41 +4395,522 @@ export async function mockAdminApi(
     }
 
     if (pathname.endsWith("/review-cases/internal") && method === "GET") {
-      return fulfillJson(route, resolved.reviewCases);
+      if (resolved.reviewCases.ok === false) {
+        return fulfillJson(route, resolved.reviewCases);
+      }
+
+      return fulfillJson(route, {
+        ...resolved.reviewCases,
+        data: {
+          reviewCases: currentReviewCases,
+          limit:
+            ((resolved.reviewCases.data as Record<string, unknown> | undefined)?.[
+              "limit"
+            ] as number | undefined) ?? 20
+        }
+      });
     }
 
     if (
       pathname.endsWith("/review-cases/internal/account-release-requests/pending") &&
       method === "GET"
     ) {
-      return fulfillJson(route, resolved.releaseReviews);
+      if (resolved.releaseReviews.ok === false) {
+        return fulfillJson(route, resolved.releaseReviews);
+      }
+
+      return fulfillJson(route, {
+        ...resolved.releaseReviews,
+        data: {
+          reviews: currentReleaseReviews.filter(
+            (review) => review.restriction.releaseDecisionStatus === "pending"
+          ),
+          limit:
+            ((resolved.releaseReviews.data as Record<string, unknown> | undefined)?.[
+              "limit"
+            ] as number | undefined) ?? 20
+        }
+      });
+    }
+
+    if (
+      pathname.endsWith("/review-cases/internal/manual-resolutions/summary") &&
+      method === "GET"
+    ) {
+      if (resolved.manualResolutionSummary.ok === false) {
+        return fulfillJson(route, resolved.manualResolutionSummary);
+      }
+
+      return fulfillJson(route, {
+        ...resolved.manualResolutionSummary,
+        data: currentManualResolutionSummary
+      });
     }
 
     if (/\/review-cases\/internal\/[^/]+\/workspace$/.test(pathname) && method === "GET") {
-      return fulfillJson(route, resolved.reviewWorkspace);
+      if (resolved.reviewWorkspace.ok === false) {
+        return fulfillJson(route, resolved.reviewWorkspace);
+      }
+
+      const reviewCaseId = pathname.split("/").slice(-2)[0] ?? "";
+
+      return fulfillJson(route, {
+        ...resolved.reviewWorkspace,
+        data: getReviewWorkspaceState(reviewCaseId)
+      });
     }
 
     if (/\/review-cases\/internal\/[^/]+\/start$/.test(pathname) && method === "POST") {
-      return fulfillJson(route, resolved.startReviewCase);
+      if (resolved.startReviewCase.ok === false) {
+        return fulfillJson(route, resolved.startReviewCase);
+      }
+
+      const reviewCaseId = pathname.split("/").slice(-2)[0] ?? "";
+      const payload = (request.postDataJSON() as Record<string, unknown> | null) ?? {};
+      const note = (payload.note as string | undefined)?.trim() ?? null;
+      const currentReviewCase = findReviewCase(reviewCaseId);
+      const currentWorkspace = getReviewWorkspaceState(reviewCaseId);
+
+      if (currentReviewCase) {
+        currentReviewCase.status = "in_progress";
+        currentReviewCase.assignedOperatorId = "ops_e2e";
+        currentReviewCase.startedAt = currentReviewCase.startedAt ?? isoAt(0);
+        currentReviewCase.updatedAt = isoAt(0);
+        if (note) {
+          currentReviewCase.notes = note;
+        }
+      }
+
+      currentWorkspace.reviewCase = cloneAdminData(currentReviewCase ?? currentWorkspace.reviewCase);
+      currentWorkspace.manualResolutionEligibility.currentReviewCaseStatus =
+        currentReviewCase?.status ?? "in_progress";
+      currentWorkspace.caseEvents.unshift({
+        id: `review_event_started_${currentWorkspace.caseEvents.length + 1}`,
+        actorType: "operator",
+        actorId: "ops_e2e",
+        eventType: "started",
+        note,
+        metadata: {},
+        createdAt: isoAt(0)
+      });
+      syncReleaseReviewCase(reviewCaseId);
+
+      return fulfillJson(route, {
+        ...resolved.startReviewCase,
+        data: {
+          reviewCase: currentReviewCase ?? currentWorkspace.reviewCase,
+          stateReused: false
+        }
+      });
     }
 
     if (/\/review-cases\/internal\/[^/]+\/notes$/.test(pathname) && method === "POST") {
-      return fulfillJson(route, resolved.addReviewCaseNote);
+      if (resolved.addReviewCaseNote.ok === false) {
+        return fulfillJson(route, resolved.addReviewCaseNote);
+      }
+
+      const reviewCaseId = pathname.split("/").slice(-2)[0] ?? "";
+      const payload = (request.postDataJSON() as Record<string, unknown> | null) ?? {};
+      const note = String(payload.note ?? "").trim();
+      const currentReviewCase = findReviewCase(reviewCaseId);
+      const currentWorkspace = getReviewWorkspaceState(reviewCaseId);
+      const event = {
+        id: `review_event_note_${currentWorkspace.caseEvents.length + 1}`,
+        actorType: "operator",
+        actorId: "ops_e2e",
+        eventType: "note_added",
+        note,
+        metadata: {},
+        createdAt: isoAt(0)
+      };
+
+      if (currentReviewCase) {
+        currentReviewCase.notes = note;
+        currentReviewCase.updatedAt = isoAt(0);
+      }
+
+      currentWorkspace.reviewCase = cloneAdminData(currentReviewCase ?? currentWorkspace.reviewCase);
+      currentWorkspace.caseEvents.unshift(event);
+      syncReleaseReviewCase(reviewCaseId);
+
+      return fulfillJson(route, {
+        ...resolved.addReviewCaseNote,
+        data: {
+          reviewCase: currentReviewCase ?? currentWorkspace.reviewCase,
+          event
+        }
+      });
+    }
+
+    if (/\/review-cases\/internal\/[^/]+\/handoff$/.test(pathname) && method === "POST") {
+      if (resolved.handoffReviewCase.ok === false) {
+        return fulfillJson(route, resolved.handoffReviewCase);
+      }
+
+      const reviewCaseId = pathname.split("/").slice(-2)[0] ?? "";
+      const payload = (request.postDataJSON() as Record<string, unknown> | null) ?? {};
+      const note = (payload.note as string | undefined)?.trim() ?? null;
+      const nextOperatorId = String(payload.nextOperatorId ?? "").trim() || "ops_compliance_1";
+      const currentReviewCase = findReviewCase(reviewCaseId);
+      const currentWorkspace = getReviewWorkspaceState(reviewCaseId);
+
+      if (currentReviewCase) {
+        currentReviewCase.assignedOperatorId = nextOperatorId;
+        currentReviewCase.status =
+          currentReviewCase.status === "pending_review" ? "in_progress" : currentReviewCase.status;
+        currentReviewCase.startedAt = currentReviewCase.startedAt ?? isoAt(0);
+        currentReviewCase.updatedAt = isoAt(0);
+        if (note) {
+          currentReviewCase.notes = note;
+        }
+      }
+
+      currentWorkspace.reviewCase = cloneAdminData(currentReviewCase ?? currentWorkspace.reviewCase);
+      currentWorkspace.manualResolutionEligibility.currentReviewCaseStatus =
+        currentReviewCase?.status ?? currentWorkspace.manualResolutionEligibility.currentReviewCaseStatus;
+      currentWorkspace.caseEvents.unshift({
+        id: `review_event_handoff_${currentWorkspace.caseEvents.length + 1}`,
+        actorType: "operator",
+        actorId: "ops_e2e",
+        eventType: "handed_off",
+        note,
+        metadata: {
+          nextOperatorId
+        },
+        createdAt: isoAt(0)
+      });
+      syncReleaseReviewCase(reviewCaseId);
+
+      return fulfillJson(route, {
+        ...resolved.handoffReviewCase,
+        data: {
+          reviewCase: currentReviewCase ?? currentWorkspace.reviewCase,
+          stateReused: false
+        }
+      });
+    }
+
+    if (
+      /\/review-cases\/internal\/[^/]+\/apply-manual-resolution$/.test(pathname) &&
+      method === "POST"
+    ) {
+      if (resolved.applyManualResolution.ok === false) {
+        return fulfillJson(route, resolved.applyManualResolution);
+      }
+
+      const reviewCaseId = pathname.split("/").slice(-2)[0] ?? "";
+      const payload = (request.postDataJSON() as Record<string, unknown> | null) ?? {};
+      const note = (payload.note as string | undefined)?.trim() ?? null;
+      const manualResolutionReasonCode =
+        String(payload.manualResolutionReasonCode ?? "").trim() || "support_case_closed";
+      const currentReviewCase = findReviewCase(reviewCaseId);
+      const currentWorkspace = getReviewWorkspaceState(reviewCaseId);
+
+      if (currentReviewCase?.transactionIntent) {
+        currentReviewCase.transactionIntent.status = "manually_resolved";
+        currentReviewCase.transactionIntent.manuallyResolvedAt = isoAt(0);
+        currentReviewCase.transactionIntent.manualResolutionReasonCode =
+          manualResolutionReasonCode;
+        currentReviewCase.transactionIntent.manualResolutionNote = note;
+        currentReviewCase.transactionIntent.manualResolvedByOperatorId = "ops_e2e";
+        currentReviewCase.transactionIntent.manualResolutionOperatorRole = "operations_admin";
+        currentReviewCase.transactionIntent.manualResolutionReviewCaseId = reviewCaseId;
+        currentReviewCase.transactionIntent.updatedAt = isoAt(0);
+      }
+
+      if (currentReviewCase) {
+        currentReviewCase.status = "resolved";
+        currentReviewCase.assignedOperatorId = currentReviewCase.assignedOperatorId ?? "ops_e2e";
+        currentReviewCase.startedAt = currentReviewCase.startedAt ?? isoAt(0);
+        currentReviewCase.resolvedAt = isoAt(0);
+        currentReviewCase.updatedAt = isoAt(0);
+        if (note) {
+          currentReviewCase.notes = note;
+        }
+      }
+
+      currentWorkspace.reviewCase = cloneAdminData(currentReviewCase ?? currentWorkspace.reviewCase);
+      currentWorkspace.recentIntents = currentReviewCase?.transactionIntent
+        ? [cloneAdminData(currentReviewCase.transactionIntent)]
+        : currentWorkspace.recentIntents;
+      currentWorkspace.manualResolutionEligibility = {
+        ...currentWorkspace.manualResolutionEligibility,
+        eligible: false,
+        reasonCode: "manual_resolution_applied",
+        reason: "Manual resolution has already been applied for this review case.",
+        currentIntentStatus: currentReviewCase?.transactionIntent?.status ?? "manually_resolved",
+        currentReviewCaseStatus: currentReviewCase?.status ?? "resolved",
+        recommendedAction: "review_audit_trail"
+      };
+      currentWorkspace.caseEvents.unshift({
+        id: `review_event_manual_resolution_${currentWorkspace.caseEvents.length + 1}`,
+        actorType: "operator",
+        actorId: "ops_e2e",
+        eventType: "manual_resolution_applied",
+        note,
+        metadata: {
+          manualResolutionReasonCode
+        },
+        createdAt: isoAt(0)
+      });
+      currentWorkspace.caseEvents.unshift({
+        id: `review_event_resolved_${currentWorkspace.caseEvents.length + 2}`,
+        actorType: "operator",
+        actorId: "ops_e2e",
+        eventType: "resolved",
+        note,
+        metadata: {
+          resolutionSource: "manual_intervention"
+        },
+        createdAt: isoAt(0)
+      });
+      syncReleaseReviewCase(reviewCaseId);
+      currentManualResolutionSummary.totalIntents =
+        Number(currentManualResolutionSummary.totalIntents ?? 0) + 1;
+      incrementSummaryBucket(
+        currentManualResolutionSummary.byIntentType,
+        "intentType",
+        String(currentReviewCase?.transactionIntent?.intentType ?? "unknown")
+      );
+      incrementSummaryBucket(
+        currentManualResolutionSummary.byReasonCode,
+        "manualResolutionReasonCode",
+        manualResolutionReasonCode
+      );
+      incrementSummaryBucket(
+        currentManualResolutionSummary.byOperator,
+        "manualResolvedByOperatorId",
+        "ops_e2e",
+        "operations_admin"
+      );
+
+      return fulfillJson(route, {
+        ...resolved.applyManualResolution,
+        data: {
+          reviewCase: currentReviewCase ?? currentWorkspace.reviewCase,
+          transactionIntent:
+            currentReviewCase?.transactionIntent ?? currentWorkspace.recentIntents[0],
+          stateReused: false
+        }
+      });
     }
 
     if (
       /\/review-cases\/internal\/[^/]+\/request-account-release$/.test(pathname) &&
       method === "POST"
     ) {
-      return fulfillJson(route, resolved.requestAccountRelease);
+      if (resolved.requestAccountRelease.ok === false) {
+        return fulfillJson(route, resolved.requestAccountRelease);
+      }
+
+      const reviewCaseId = pathname.split("/").slice(-2)[0] ?? "";
+      const payload = (request.postDataJSON() as Record<string, unknown> | null) ?? {};
+      const note = (payload.note as string | undefined)?.trim() ?? null;
+      const existingReview = findReleaseReview(reviewCaseId);
+      const currentReviewCase = findReviewCase(reviewCaseId);
+      const nextReview =
+        existingReview ??
+        {
+          ...((
+            resolved.requestAccountRelease.data as Record<string, unknown> | undefined
+          )?.["accountReleaseReview"] as Record<string, any> | undefined),
+          reviewCase: currentReviewCase
+            ? {
+                id: currentReviewCase.id,
+                type: currentReviewCase.type,
+                status: currentReviewCase.status,
+                reasonCode: currentReviewCase.reasonCode,
+                notes: currentReviewCase.notes,
+                assignedOperatorId: currentReviewCase.assignedOperatorId,
+                startedAt: currentReviewCase.startedAt,
+                resolvedAt: currentReviewCase.resolvedAt,
+                dismissedAt: currentReviewCase.dismissedAt,
+                createdAt: currentReviewCase.createdAt,
+                updatedAt: currentReviewCase.updatedAt
+              }
+            : reviewCase(),
+          customer: {
+            customerId: currentReviewCase?.customer?.customerId ?? "customer_1",
+            customerAccountId: currentReviewCase?.customerAccountId ?? "account_1",
+            status: "restricted",
+            supabaseUserId: currentReviewCase?.customer?.supabaseUserId ?? "supabase_1",
+            email: currentReviewCase?.customer?.email ?? "amina@example.com",
+            firstName: currentReviewCase?.customer?.firstName ?? "Amina",
+            lastName: currentReviewCase?.customer?.lastName ?? "Rahman"
+          }
+        };
+
+      nextReview.restriction = {
+        ...nextReview.restriction,
+        releaseDecisionStatus: "pending",
+        releaseRequestedAt: isoAt(0),
+        releaseRequestedByOperatorId: "ops_e2e",
+        releaseRequestNote: note,
+        releaseDecidedAt: null,
+        releaseDecidedByOperatorId: null,
+        releaseDecisionNote: null,
+        releaseReviewCaseId: reviewCaseId,
+        status: "active",
+        releasedAt: null,
+        releasedByOperatorId: null,
+        releasedByOperatorRole: null,
+        releaseNote: null
+      };
+      nextReview.oversightIncident = {
+        ...nextReview.oversightIncident,
+        updatedAt: isoAt(0)
+      };
+
+      if (!existingReview) {
+        currentReleaseReviews.unshift(nextReview);
+      }
+
+      return fulfillJson(route, {
+        ...resolved.requestAccountRelease,
+        data: {
+          accountReleaseReview: nextReview,
+          stateReused: false
+        }
+      });
+    }
+
+    if (
+      /\/review-cases\/internal\/account-release-requests\/[^/]+\/decision$/.test(pathname) &&
+      method === "POST"
+    ) {
+      if (resolved.decideAccountRelease.ok === false) {
+        return fulfillJson(route, resolved.decideAccountRelease);
+      }
+
+      const reviewCaseId = pathname.split("/").slice(-2)[0] ?? "";
+      const payload = (request.postDataJSON() as Record<string, unknown> | null) ?? {};
+      const note = (payload.note as string | undefined)?.trim() ?? null;
+      const decision = String(payload.decision ?? "approved");
+      const releaseReview = findReleaseReview(reviewCaseId);
+
+      if (releaseReview) {
+        releaseReview.restriction.releaseDecisionStatus =
+          decision === "approved" ? "approved" : "denied";
+        releaseReview.restriction.releaseDecidedAt = isoAt(0);
+        releaseReview.restriction.releaseDecidedByOperatorId = "ops_e2e";
+        releaseReview.restriction.releaseDecisionNote = note;
+        releaseReview.restriction.releaseNote = note;
+        if (decision === "approved") {
+          releaseReview.restriction.status = "released";
+          releaseReview.restriction.releasedAt = isoAt(0);
+          releaseReview.restriction.releasedByOperatorId = "ops_e2e";
+          releaseReview.restriction.releasedByOperatorRole = "operations_admin";
+          releaseReview.restriction.restoredStatus = "registered";
+          releaseReview.customer.status = "registered";
+        } else {
+          releaseReview.restriction.status = "active";
+          releaseReview.restriction.releasedAt = null;
+          releaseReview.restriction.releasedByOperatorId = null;
+          releaseReview.restriction.releasedByOperatorRole = null;
+          releaseReview.restriction.restoredStatus = null;
+          releaseReview.customer.status = "restricted";
+        }
+      }
+
+      return fulfillJson(route, {
+        ...resolved.decideAccountRelease,
+        data: {
+          accountReleaseReview:
+            releaseReview ??
+            ((resolved.decideAccountRelease.data as Record<string, unknown> | undefined)?.[
+              "accountReleaseReview"
+            ] as Record<string, unknown> | undefined),
+          stateReused: false
+        }
+      });
     }
 
     if (/\/review-cases\/internal\/[^/]+\/resolve$/.test(pathname) && method === "POST") {
-      return fulfillJson(route, resolved.resolveReviewCase);
+      if (resolved.resolveReviewCase.ok === false) {
+        return fulfillJson(route, resolved.resolveReviewCase);
+      }
+
+      const reviewCaseId = pathname.split("/").slice(-2)[0] ?? "";
+      const payload = (request.postDataJSON() as Record<string, unknown> | null) ?? {};
+      const note = (payload.note as string | undefined)?.trim() ?? null;
+      const currentReviewCase = findReviewCase(reviewCaseId);
+      const currentWorkspace = getReviewWorkspaceState(reviewCaseId);
+
+      if (currentReviewCase) {
+        currentReviewCase.status = "resolved";
+        currentReviewCase.assignedOperatorId = currentReviewCase.assignedOperatorId ?? "ops_e2e";
+        currentReviewCase.startedAt = currentReviewCase.startedAt ?? isoAt(0);
+        currentReviewCase.resolvedAt = isoAt(0);
+        currentReviewCase.updatedAt = isoAt(0);
+        if (note) {
+          currentReviewCase.notes = note;
+        }
+      }
+
+      currentWorkspace.reviewCase = cloneAdminData(currentReviewCase ?? currentWorkspace.reviewCase);
+      currentWorkspace.manualResolutionEligibility.currentReviewCaseStatus =
+        currentReviewCase?.status ?? "resolved";
+      currentWorkspace.caseEvents.unshift({
+        id: `review_event_resolve_${currentWorkspace.caseEvents.length + 1}`,
+        actorType: "operator",
+        actorId: "ops_e2e",
+        eventType: "resolved",
+        note,
+        metadata: {},
+        createdAt: isoAt(0)
+      });
+      syncReleaseReviewCase(reviewCaseId);
+
+      return fulfillJson(route, {
+        ...resolved.resolveReviewCase,
+        data: {
+          reviewCase: currentReviewCase ?? currentWorkspace.reviewCase,
+          stateReused: false
+        }
+      });
     }
 
     if (/\/review-cases\/internal\/[^/]+\/dismiss$/.test(pathname) && method === "POST") {
-      return fulfillJson(route, resolved.dismissReviewCase);
+      if (resolved.dismissReviewCase.ok === false) {
+        return fulfillJson(route, resolved.dismissReviewCase);
+      }
+
+      const reviewCaseId = pathname.split("/").slice(-2)[0] ?? "";
+      const payload = (request.postDataJSON() as Record<string, unknown> | null) ?? {};
+      const note = (payload.note as string | undefined)?.trim() ?? null;
+      const currentReviewCase = findReviewCase(reviewCaseId);
+      const currentWorkspace = getReviewWorkspaceState(reviewCaseId);
+
+      if (currentReviewCase) {
+        currentReviewCase.status = "dismissed";
+        currentReviewCase.dismissedAt = isoAt(0);
+        currentReviewCase.updatedAt = isoAt(0);
+        if (note) {
+          currentReviewCase.notes = note;
+        }
+      }
+
+      currentWorkspace.reviewCase = cloneAdminData(currentReviewCase ?? currentWorkspace.reviewCase);
+      currentWorkspace.manualResolutionEligibility.currentReviewCaseStatus =
+        currentReviewCase?.status ?? "dismissed";
+      currentWorkspace.caseEvents.unshift({
+        id: `review_event_dismiss_${currentWorkspace.caseEvents.length + 1}`,
+        actorType: "operator",
+        actorId: "ops_e2e",
+        eventType: "dismissed",
+        note,
+        metadata: {},
+        createdAt: isoAt(0)
+      });
+      syncReleaseReviewCase(reviewCaseId);
+
+      return fulfillJson(route, {
+        ...resolved.dismissReviewCase,
+        data: {
+          reviewCase: currentReviewCase ?? currentWorkspace.reviewCase,
+          stateReused: false
+        }
+      });
     }
 
     if (pathname.endsWith("/oversight-incidents/internal") && method === "GET") {

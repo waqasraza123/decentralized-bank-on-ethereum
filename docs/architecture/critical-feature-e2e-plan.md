@@ -168,7 +168,10 @@ Use a small shared scenario vocabulary so coverage stays readable:
 - review-case selection updates the workspace
 - start case mutation succeeds and flashes success
 - add note succeeds and clears the note field
+- handoff captures the next operator and preserves selected review context
+- manual resolution only executes when governance posture permits it and records the chosen reason
 - request release requires governed confirmation and succeeds
+- pending account-release reviews expose approval and denial controls from the same workspace
 - resolve and dismiss actions require governed confirmation
 - mutation failure shows an inline critical notice and preserves the workspace
 - empty pending-release-review list renders the expected empty state
