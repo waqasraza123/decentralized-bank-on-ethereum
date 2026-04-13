@@ -263,13 +263,30 @@ export function mapPlatformAlertToTimeline(alert: PlatformAlert): TimelineEvent[
     }
   ];
 
+  if (alert.routedAt) {
+    events.push({
+      id: `${alert.id}-routed`,
+      label: "Review routed",
+      description:
+        alert.routingNote ??
+        `Routed to ${alert.routingTargetType ?? "review work"} ${alert.routingTargetId ?? ""}`.trim(),
+      timestamp: alert.routedAt,
+      tone: "warning",
+      metadata: [
+        { label: "Target", value: alert.routingTargetId ?? "Not available" },
+        { label: "Routed by", value: alert.routedByOperatorId ?? "system" }
+      ]
+    });
+  }
+
   if (alert.ownerOperatorId) {
     events.push({
       id: `${alert.id}-owner`,
       label: "Owner assigned",
-      description: `Owned by ${alert.ownerOperatorId}.`,
+      description: alert.ownershipNote ?? `Owned by ${alert.ownerOperatorId}.`,
       timestamp: alert.ownerAssignedAt,
-      tone: "warning"
+      tone: "warning",
+      metadata: [{ label: "Assigned by", value: alert.ownerAssignedByOperatorId ?? "system" }]
     });
   }
 
@@ -283,13 +300,38 @@ export function mapPlatformAlertToTimeline(alert: PlatformAlert): TimelineEvent[
     });
   }
 
+  if (alert.deliverySummary.lastAttemptedAt) {
+    events.push({
+      id: `${alert.id}-delivery`,
+      label: "Latest delivery attempt",
+      description:
+        alert.deliverySummary.lastErrorMessage ??
+        `Delivery status ${alert.deliverySummary.lastStatus ?? "unknown"} for ${alert.deliverySummary.lastTargetName ?? "target"}.`,
+      timestamp: alert.deliverySummary.lastAttemptedAt,
+      tone:
+        alert.deliverySummary.lastStatus === "failed"
+          ? "critical"
+          : alert.deliverySummary.lastStatus === "pending"
+            ? "warning"
+            : "technical",
+      metadata: [
+        { label: "Target", value: alert.deliverySummary.lastTargetName ?? "Not available" },
+        {
+          label: "Escalation",
+          value: String(alert.deliverySummary.highestEscalationLevel ?? 0)
+        }
+      ]
+    });
+  }
+
   if (alert.hasActiveSuppression) {
     events.push({
       id: `${alert.id}-suppression`,
       label: "Suppression active",
       description: alert.suppressionNote ?? "Alert is currently suppressed.",
       timestamp: alert.suppressedUntil,
-      tone: "warning"
+      tone: "warning",
+      metadata: [{ label: "Suppressed by", value: alert.suppressedByOperatorId ?? "system" }]
     });
   }
 

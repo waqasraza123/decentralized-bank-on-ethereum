@@ -199,7 +199,11 @@ Use a small shared scenario vocabulary so coverage stays readable:
 ### Alerts
 
 - alert selection updates the workspace
+- alert filters persist in the URL and shape the backend query
+- owner assignment keeps active alerts accountable to a specific operator
 - acknowledge, route to review, and retry deliveries succeed
+- suppression and clear-suppression flows preserve operator-visible timeline state
+- bulk critical-alert routing reports how much unrouted backlog remains
 - action failure shows an inline error
 - delivery-health list renders degraded targets
 - no selected alert leaves controls locked

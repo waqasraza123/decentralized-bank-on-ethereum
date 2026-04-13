@@ -140,7 +140,7 @@ function operationsStatus(overrides: Record<string, unknown> = {}) {
       {
         id: "alert_1",
         dedupeKey: "alert:key:1",
-        category: "delivery",
+        category: "operations",
         severity: "critical",
         status: "open",
         routingStatus: "unrouted",
@@ -817,6 +817,105 @@ function reconciliationWorkspace() {
 
 function platformAlert() {
   return operationsStatus().recentAlerts[0];
+}
+
+function platformAlertList() {
+  const selectedAlert = platformAlert();
+
+  return [
+    selectedAlert,
+    {
+      ...selectedAlert,
+      id: "alert_2",
+      dedupeKey: "alert:key:2",
+      category: "worker",
+      severity: "critical",
+      status: "open",
+      routingStatus: "unrouted",
+      routingTargetType: null,
+      routingTargetId: null,
+      routedAt: null,
+      routedByOperatorId: null,
+      routingNote: null,
+      ownerOperatorId: null,
+      ownerAssignedAt: null,
+      ownerAssignedByOperatorId: null,
+      ownershipNote: null,
+      acknowledgedAt: null,
+      acknowledgedByOperatorId: null,
+      acknowledgementNote: null,
+      suppressedUntil: null,
+      suppressedByOperatorId: null,
+      suppressionNote: null,
+      isAcknowledged: false,
+      hasActiveSuppression: false,
+      deliverySummary: {
+        ...selectedAlert.deliverySummary,
+        totalCount: 5,
+        pendingCount: 2,
+        failedCount: 3,
+        escalatedCount: 2,
+        reEscalationCount: 1,
+        highestEscalationLevel: 2,
+        lastAttemptedAt: isoAt(2),
+        lastTargetName: "slack-failover",
+        lastErrorMessage: "Managed worker heartbeat is stale."
+      },
+      code: "WORKER_RUNTIME_STALE",
+      summary: "Managed worker runtime heartbeat is stale.",
+      detail: "The secondary worker has not reported a fresh heartbeat inside the stale threshold.",
+      firstDetectedAt: isoAt(16),
+      lastDetectedAt: isoAt(2),
+      createdAt: isoAt(16),
+      updatedAt: isoAt(2)
+    },
+    {
+      ...selectedAlert,
+      id: "alert_3",
+      dedupeKey: "alert:key:3",
+      category: "treasury",
+      severity: "warning",
+      status: "open",
+      routingStatus: "routed",
+      routingTargetType: "review_case",
+      routingTargetId: "review_case_7",
+      routedAt: isoAt(5),
+      routedByOperatorId: "ops_lead",
+      routingNote: "Treasury coverage drift should be triaged with the morning review batch.",
+      ownerOperatorId: "ops_treasury_1",
+      ownerAssignedAt: isoAt(5),
+      ownerAssignedByOperatorId: "ops_lead",
+      ownershipNote: "Treasury owns follow-up while coverage is restored.",
+      acknowledgedAt: isoAt(4),
+      acknowledgedByOperatorId: "ops_treasury_1",
+      acknowledgementNote: "Coverage drift acknowledged pending wallet inventory repair.",
+      suppressedUntil: isoAt(-8),
+      suppressedByOperatorId: "ops_treasury_1",
+      suppressionNote: "Muted during planned treasury maintenance window.",
+      isAcknowledged: true,
+      hasActiveSuppression: true,
+      deliverySummary: {
+        ...selectedAlert.deliverySummary,
+        totalCount: 2,
+        pendingCount: 0,
+        failedCount: 0,
+        escalatedCount: 0,
+        reEscalationCount: 0,
+        highestEscalationLevel: 0,
+        lastAttemptedAt: isoAt(4),
+        lastStatus: "succeeded",
+        lastTargetName: "pagerduty-primary",
+        lastErrorMessage: null
+      },
+      code: "TREASURY_WALLET_COVERAGE_WARNING",
+      summary: "Treasury wallet coverage is drifting from the expected baseline.",
+      detail: "Managed execution still has coverage, but operational wallet drift needs review.",
+      firstDetectedAt: isoAt(24),
+      lastDetectedAt: isoAt(4),
+      createdAt: isoAt(24),
+      updatedAt: isoAt(4)
+    }
+  ];
 }
 
 function launchApproval(status = "pending_approval") {
@@ -1977,7 +2076,11 @@ export type AdminScenario = {
   platformAlerts: MockResponseSpec<Record<string, unknown>>;
   deliveryHealth: MockResponseSpec<Record<string, unknown>>;
   oversightAlerts: MockResponseSpec<Record<string, unknown>>;
+  routeCriticalAlerts: MockResponseSpec<Record<string, unknown>>;
+  assignAlertOwner: MockResponseSpec<Record<string, unknown>>;
   acknowledgeAlert: MockResponseSpec<Record<string, unknown>>;
+  suppressAlert: MockResponseSpec<Record<string, unknown>>;
+  clearAlertSuppression: MockResponseSpec<Record<string, unknown>>;
   routeAlert: MockResponseSpec<Record<string, unknown>>;
   retryDeliveries: MockResponseSpec<Record<string, unknown>>;
   evidence: MockResponseSpec<Record<string, unknown>>;
@@ -2000,6 +2103,7 @@ export function buildAdminScenario(
   const selectedReviewCase = reviewCase();
   const selectedIncident = oversightIncident();
   const selectedAlert = platformAlert();
+  const platformAlerts = platformAlertList();
   const approval = launchApproval();
   const recon = reconciliationWorkspace();
   const loanApplications = buildLoanApplicationList();
@@ -2663,9 +2767,9 @@ export function buildAdminScenario(
     },
     platformAlerts: {
       data: {
-        alerts: [selectedAlert],
+        alerts: platformAlerts,
         limit: 20,
-        totalCount: 1
+        totalCount: platformAlerts.length
       }
     },
     deliveryHealth: {
@@ -2729,12 +2833,56 @@ export function buildAdminScenario(
         operatorThreshold: 3
       }
     },
+    routeCriticalAlerts: {
+      data: {
+        routedAlerts: [],
+        limit: 10,
+        remainingUnroutedCriticalAlertCount: 0,
+        staleAfterSeconds: 180
+      }
+    },
+    assignAlertOwner: {
+      data: {
+        alert: {
+          ...selectedAlert,
+          ownerOperatorId: "ops_e2e",
+          ownerAssignedAt: isoAt(0),
+          ownerAssignedByOperatorId: "ops_e2e",
+          ownershipNote: "Assigned from e2e."
+        },
+        stateReused: false
+      }
+    },
     acknowledgeAlert: {
       data: {
         alert: {
           ...selectedAlert,
           acknowledgedAt: isoAt(0),
           acknowledgementNote: "Acknowledged from e2e."
+        },
+        stateReused: false
+      }
+    },
+    suppressAlert: {
+      data: {
+        alert: {
+          ...selectedAlert,
+          suppressedUntil: isoAt(-4),
+          suppressedByOperatorId: "ops_e2e",
+          suppressionNote: "Suppressed from e2e.",
+          hasActiveSuppression: true
+        },
+        stateReused: false
+      }
+    },
+    clearAlertSuppression: {
+      data: {
+        alert: {
+          ...selectedAlert,
+          suppressedUntil: null,
+          suppressedByOperatorId: null,
+          suppressionNote: "Suppression cleared from e2e.",
+          hasActiveSuppression: false
         },
         stateReused: false
       }
@@ -3242,6 +3390,29 @@ export async function mockAdminApi(
   const currentReviewWorkspaces = new Map<string, Record<string, any>>();
   const currentOversightWorkspaces = new Map<string, Record<string, any>>();
   const currentCustomerAccountTimeline = cloneAdminData(baseCustomerAccountTimeline);
+  const currentPlatformAlerts = cloneAdminData(
+    (((resolved.platformAlerts.data as Record<string, unknown> | undefined)?.[
+      "alerts"
+    ] as Array<Record<string, any>> | undefined) ?? [])
+  ) as Array<Record<string, any>>;
+  const currentOversightAlerts = cloneAdminData(
+    (((resolved.oversightAlerts.data as Record<string, unknown> | undefined)?.[
+      "alerts"
+    ] as Array<Record<string, any>> | undefined) ?? [])
+  ) as Array<Record<string, any>>;
+  const currentDeliveryHealth = cloneAdminData(
+    ((resolved.deliveryHealth.data as Record<string, unknown> | undefined) ?? {
+      generatedAt: isoAt(0),
+      lookbackHours: 24,
+      summary: {
+        totalTargetCount: 0,
+        healthyTargetCount: 0,
+        warningTargetCount: 0,
+        criticalTargetCount: 0
+      },
+      targets: []
+    }) as Record<string, unknown>
+  ) as Record<string, any>;
   const currentIncidentPackageReleases = Array.from(
     new Map(
       [
@@ -3491,6 +3662,117 @@ export async function mockAdminApi(
         (existing: Record<string, any>) => existing.id !== entry.id
       )
     ]);
+  }
+
+  function normalizePlatformAlertGovernanceState(alert: Record<string, any>) {
+    alert.isAcknowledged = Boolean(alert.acknowledgedAt);
+    alert.hasActiveSuppression = Boolean(
+      alert.suppressedUntil && new Date(String(alert.suppressedUntil)).getTime() > Date.now()
+    );
+    return alert;
+  }
+
+  for (const alert of currentPlatformAlerts) {
+    normalizePlatformAlertGovernanceState(alert);
+  }
+
+  function findPlatformAlert(alertId: string) {
+    return currentPlatformAlerts.find((alert) => alert.id === alertId) ?? null;
+  }
+
+  function nextAlertReviewCaseId() {
+    return `review_case_alert_${currentPlatformAlerts.filter(
+      (alert) => alert.routingTargetId
+    ).length + 1}`;
+  }
+
+  function countRemainingUnroutedCriticalAlerts() {
+    return currentPlatformAlerts.filter(
+      (alert) =>
+        alert.status === "open" &&
+        alert.severity === "critical" &&
+        alert.routingStatus !== "routed"
+    ).length;
+  }
+
+  function buildPlatformAlertsState(queryParams: URLSearchParams): Record<string, unknown> {
+    const limit = Number.parseInt(queryParams.get("limit") ?? "", 10);
+    const status = queryParams.get("status")?.trim() || null;
+    const severity = queryParams.get("severity")?.trim() || null;
+    const category = queryParams.get("category")?.trim() || null;
+    const routingStatus = queryParams.get("routingStatus")?.trim() || null;
+    const ownerOperatorId = queryParams.get("ownerOperatorId")?.trim() || null;
+    const acknowledged = queryParams.get("acknowledged")?.trim() || null;
+    const suppressed = queryParams.get("suppressed")?.trim() || null;
+
+    const filteredAlerts = currentPlatformAlerts.filter((alert) => {
+      if (status && alert.status !== status) {
+        return false;
+      }
+
+      if (severity && alert.severity !== severity) {
+        return false;
+      }
+
+      if (category && alert.category !== category) {
+        return false;
+      }
+
+      if (routingStatus && alert.routingStatus !== routingStatus) {
+        return false;
+      }
+
+      if (ownerOperatorId && alert.ownerOperatorId !== ownerOperatorId) {
+        return false;
+      }
+
+      if (acknowledged === "true" && !alert.isAcknowledged) {
+        return false;
+      }
+
+      if (acknowledged === "false" && alert.isAcknowledged) {
+        return false;
+      }
+
+      if (suppressed === "true" && !alert.hasActiveSuppression) {
+        return false;
+      }
+
+      if (suppressed === "false" && alert.hasActiveSuppression) {
+        return false;
+      }
+
+      return true;
+    });
+
+    return {
+      alerts:
+        Number.isFinite(limit) && limit > 0 ? filteredAlerts.slice(0, limit) : filteredAlerts,
+      limit:
+        Number.isFinite(limit) && limit > 0
+          ? limit
+          : ((resolved.platformAlerts.data as Record<string, unknown> | undefined)?.[
+              "limit"
+            ] as number | undefined) ?? 20,
+      totalCount: filteredAlerts.length
+    };
+  }
+
+  function buildDeliveryHealthState(): Record<string, unknown> {
+    const nextState = cloneAdminData(currentDeliveryHealth);
+    const targets = Array.isArray(nextState.targets) ? nextState.targets : [];
+
+    nextState.summary = {
+      totalTargetCount: targets.length,
+      healthyTargetCount: targets.filter((target: Record<string, any>) => target.healthStatus === "healthy")
+        .length,
+      warningTargetCount: targets.filter((target: Record<string, any>) => target.healthStatus === "warning")
+        .length,
+      criticalTargetCount: targets.filter((target: Record<string, any>) => target.healthStatus === "critical")
+        .length
+    };
+
+    return nextState;
   }
 
   function findReleaseReview(reviewCaseId: string) {
@@ -5911,39 +6193,326 @@ export async function mockAdminApi(
     }
 
     if (pathname.endsWith("/operations/internal/alerts") && method === "GET") {
-      return fulfillJson(route, resolved.platformAlerts);
+      if (resolved.platformAlerts.ok === false) {
+        return fulfillJson(route, resolved.platformAlerts);
+      }
+
+      return fulfillJson(route, {
+        ...resolved.platformAlerts,
+        data: buildPlatformAlertsState(new URL(request.url()).searchParams)
+      });
     }
 
     if (
       pathname.endsWith("/operations/internal/alerts/delivery-target-health") &&
       method === "GET"
     ) {
-      return fulfillJson(route, resolved.deliveryHealth);
+      if (resolved.deliveryHealth.ok === false) {
+        return fulfillJson(route, resolved.deliveryHealth);
+      }
+
+      return fulfillJson(route, {
+        ...resolved.deliveryHealth,
+        data: buildDeliveryHealthState()
+      });
     }
 
     if (pathname.endsWith("/oversight-incidents/internal/alerts") && method === "GET") {
-      return fulfillJson(route, resolved.oversightAlerts);
+      if (resolved.oversightAlerts.ok === false) {
+        return fulfillJson(route, resolved.oversightAlerts);
+      }
+
+      return fulfillJson(route, {
+        ...resolved.oversightAlerts,
+        data: {
+          ...((resolved.oversightAlerts.data as Record<string, unknown> | undefined) ?? {}),
+          alerts: currentOversightAlerts,
+          limit: currentOversightAlerts.length
+        }
+      });
+    }
+
+    if (
+      pathname.endsWith("/operations/internal/alerts/route-critical") &&
+      method === "POST"
+    ) {
+      if (resolved.routeCriticalAlerts.ok === false) {
+        return fulfillJson(route, resolved.routeCriticalAlerts);
+      }
+
+      const payload = (request.postDataJSON() as Record<string, unknown> | null) ?? {};
+      const note = (payload.note as string | undefined)?.trim() ?? null;
+      const limit = Number.parseInt(String(payload.limit ?? ""), 10);
+      const staleAfterSeconds = Number.parseInt(String(payload.staleAfterSeconds ?? ""), 10);
+      const routableAlerts = currentPlatformAlerts
+        .filter(
+          (alert) =>
+            alert.status === "open" &&
+            alert.severity === "critical" &&
+            alert.routingStatus !== "routed"
+        )
+        .slice(0, Number.isFinite(limit) && limit > 0 ? limit : 10);
+
+      const routedAlerts = routableAlerts.map((alert) => {
+        const existingRoutingTargetId = alert.routingTargetId;
+        const reviewCaseId = existingRoutingTargetId ?? nextAlertReviewCaseId();
+        alert.routingStatus = "routed";
+        alert.routingTargetType = "review_case";
+        alert.routingTargetId = reviewCaseId;
+        alert.routedAt = isoAt(0);
+        alert.routedByOperatorId = "ops_e2e";
+        alert.routingNote = note;
+        alert.updatedAt = isoAt(0);
+
+        return {
+          alert: cloneAdminData(normalizePlatformAlertGovernanceState(alert)),
+          reviewCase: {
+            id: reviewCaseId,
+            status: "pending_review",
+            type: "alert_review",
+            reasonCode: "platform_alert_routing",
+            assignedOperatorId: alert.ownerOperatorId ?? "ops_e2e"
+          },
+          reviewCaseReused: Boolean(existingRoutingTargetId),
+          routingStateReused: false
+        };
+      });
+
+      return fulfillJson(route, {
+        ...resolved.routeCriticalAlerts,
+        data: {
+          routedAlerts,
+          limit: Number.isFinite(limit) && limit > 0 ? limit : 10,
+          remainingUnroutedCriticalAlertCount: countRemainingUnroutedCriticalAlerts(),
+          staleAfterSeconds:
+            Number.isFinite(staleAfterSeconds) && staleAfterSeconds > 0
+              ? staleAfterSeconds
+              : 180
+        }
+      });
+    }
+
+    if (
+      /\/operations\/internal\/alerts\/[^/]+\/assign-owner$/.test(pathname) &&
+      method === "POST"
+    ) {
+      if (resolved.assignAlertOwner.ok === false) {
+        return fulfillJson(route, resolved.assignAlertOwner);
+      }
+
+      const alertId = pathname.split("/").slice(-2)[0] ?? "";
+      const payload = (request.postDataJSON() as Record<string, unknown> | null) ?? {};
+      const ownerOperatorId = String(payload.ownerOperatorId ?? "").trim() || "ops_e2e";
+      const note = (payload.note as string | undefined)?.trim() ?? null;
+      const alert = findPlatformAlert(alertId);
+
+      if (alert) {
+        alert.ownerOperatorId = ownerOperatorId;
+        alert.ownerAssignedAt = isoAt(0);
+        alert.ownerAssignedByOperatorId = "ops_e2e";
+        alert.ownershipNote = note;
+        alert.updatedAt = isoAt(0);
+        normalizePlatformAlertGovernanceState(alert);
+      }
+
+      return fulfillJson(route, {
+        ...resolved.assignAlertOwner,
+        data: {
+          alert: cloneAdminData(alert ?? platformAlert()),
+          stateReused: false
+        }
+      });
     }
 
     if (
       /\/operations\/internal\/alerts\/[^/]+\/acknowledge$/.test(pathname) &&
       method === "POST"
     ) {
-      return fulfillJson(route, resolved.acknowledgeAlert);
+      if (resolved.acknowledgeAlert.ok === false) {
+        return fulfillJson(route, resolved.acknowledgeAlert);
+      }
+
+      const alertId = pathname.split("/").slice(-2)[0] ?? "";
+      const payload = (request.postDataJSON() as Record<string, unknown> | null) ?? {};
+      const note = (payload.note as string | undefined)?.trim() ?? null;
+      const alert = findPlatformAlert(alertId);
+
+      if (alert) {
+        alert.acknowledgedAt = isoAt(0);
+        alert.acknowledgedByOperatorId = "ops_e2e";
+        alert.acknowledgementNote = note;
+        alert.updatedAt = isoAt(0);
+        normalizePlatformAlertGovernanceState(alert);
+      }
+
+      return fulfillJson(route, {
+        ...resolved.acknowledgeAlert,
+        data: {
+          alert: cloneAdminData(alert ?? platformAlert()),
+          stateReused: false
+        }
+      });
+    }
+
+    if (
+      /\/operations\/internal\/alerts\/[^/]+\/suppress$/.test(pathname) &&
+      method === "POST"
+    ) {
+      if (resolved.suppressAlert.ok === false) {
+        return fulfillJson(route, resolved.suppressAlert);
+      }
+
+      const alertId = pathname.split("/").slice(-2)[0] ?? "";
+      const payload = (request.postDataJSON() as Record<string, unknown> | null) ?? {};
+      const suppressedUntil = String(payload.suppressedUntil ?? "").trim() || isoAt(-4);
+      const note = (payload.note as string | undefined)?.trim() ?? null;
+      const alert = findPlatformAlert(alertId);
+
+      if (alert) {
+        alert.suppressedUntil = suppressedUntil;
+        alert.suppressedByOperatorId = "ops_e2e";
+        alert.suppressionNote = note;
+        alert.updatedAt = isoAt(0);
+        normalizePlatformAlertGovernanceState(alert);
+      }
+
+      return fulfillJson(route, {
+        ...resolved.suppressAlert,
+        data: {
+          alert: cloneAdminData(alert ?? platformAlert()),
+          stateReused: false
+        }
+      });
+    }
+
+    if (
+      /\/operations\/internal\/alerts\/[^/]+\/clear-suppression$/.test(pathname) &&
+      method === "POST"
+    ) {
+      if (resolved.clearAlertSuppression.ok === false) {
+        return fulfillJson(route, resolved.clearAlertSuppression);
+      }
+
+      const alertId = pathname.split("/").slice(-2)[0] ?? "";
+      const payload = (request.postDataJSON() as Record<string, unknown> | null) ?? {};
+      const note = (payload.note as string | undefined)?.trim() ?? null;
+      const alert = findPlatformAlert(alertId);
+
+      if (alert) {
+        alert.suppressedUntil = null;
+        alert.suppressedByOperatorId = null;
+        alert.suppressionNote = note;
+        alert.updatedAt = isoAt(0);
+        normalizePlatformAlertGovernanceState(alert);
+      }
+
+      return fulfillJson(route, {
+        ...resolved.clearAlertSuppression,
+        data: {
+          alert: cloneAdminData(alert ?? platformAlert()),
+          stateReused: false
+        }
+      });
     }
 
     if (
       /\/operations\/internal\/alerts\/[^/]+\/route-review-case$/.test(pathname) &&
       method === "POST"
     ) {
-      return fulfillJson(route, resolved.routeAlert);
+      if (resolved.routeAlert.ok === false) {
+        return fulfillJson(route, resolved.routeAlert);
+      }
+
+      const alertId = pathname.split("/").slice(-2)[0] ?? "";
+      const payload = (request.postDataJSON() as Record<string, unknown> | null) ?? {};
+      const note = (payload.note as string | undefined)?.trim() ?? null;
+      const alert = findPlatformAlert(alertId);
+      const existingRoutingTargetId = alert?.routingTargetId ?? null;
+      const reviewCaseId = existingRoutingTargetId ?? nextAlertReviewCaseId();
+
+      if (alert) {
+        alert.routingStatus = "routed";
+        alert.routingTargetType = "review_case";
+        alert.routingTargetId = reviewCaseId;
+        alert.routedAt = isoAt(0);
+        alert.routedByOperatorId = "ops_e2e";
+        alert.routingNote = note;
+        alert.updatedAt = isoAt(0);
+        normalizePlatformAlertGovernanceState(alert);
+      }
+
+      return fulfillJson(route, {
+        ...resolved.routeAlert,
+        data: {
+          alert: cloneAdminData(alert ?? platformAlert()),
+          reviewCase: {
+            id: reviewCaseId,
+            status: "pending_review",
+            type: "alert_review",
+            reasonCode: "delivery_failure",
+            assignedOperatorId: alert?.ownerOperatorId ?? "ops_e2e"
+          },
+          reviewCaseReused: Boolean(existingRoutingTargetId),
+          routingStateReused: false
+        }
+      });
     }
 
     if (
       /\/operations\/internal\/alerts\/[^/]+\/retry-deliveries$/.test(pathname) &&
       method === "POST"
     ) {
-      return fulfillJson(route, resolved.retryDeliveries);
+      if (resolved.retryDeliveries.ok === false) {
+        return fulfillJson(route, resolved.retryDeliveries);
+      }
+
+      const alertId = pathname.split("/").slice(-2)[0] ?? "";
+      const alert = findPlatformAlert(alertId);
+
+      if (alert?.deliverySummary) {
+        alert.deliverySummary.pendingCount = Math.max(
+          Number(alert.deliverySummary.pendingCount ?? 0),
+          1
+        );
+        alert.deliverySummary.failedCount = Math.max(
+          Number(alert.deliverySummary.failedCount ?? 1) - 1,
+          0
+        );
+        alert.deliverySummary.lastAttemptedAt = isoAt(0);
+        alert.deliverySummary.lastStatus = "pending";
+        alert.deliverySummary.lastEventType = "delivery_retry_requested";
+        alert.deliverySummary.lastErrorMessage = null;
+        alert.updatedAt = isoAt(0);
+      }
+
+      const deliveryTarget = Array.isArray(currentDeliveryHealth.targets)
+        ? currentDeliveryHealth.targets.find(
+            (target: Record<string, any>) =>
+              target.targetName === alert?.deliverySummary?.lastTargetName
+          ) ?? currentDeliveryHealth.targets[0]
+        : null;
+
+      if (deliveryTarget) {
+        deliveryTarget.pendingDeliveryCount = Number(deliveryTarget.pendingDeliveryCount ?? 0) + 1;
+        deliveryTarget.recentFailedCount = Math.max(
+          Number(deliveryTarget.recentFailedCount ?? 1) - 1,
+          0
+        );
+        deliveryTarget.lastAttemptedAt = isoAt(0);
+        deliveryTarget.lastErrorMessage = null;
+        deliveryTarget.healthStatus =
+          Number(deliveryTarget.recentFailedCount ?? 0) > 0 ? "warning" : "healthy";
+      }
+
+      return fulfillJson(route, {
+        ...resolved.retryDeliveries,
+        data: {
+          retriedDeliveryCount: Math.max(
+            Number(alert?.deliverySummary?.failedCount ?? 0),
+            1
+          )
+        }
+      });
     }
 
     if (pathname.endsWith("/release-readiness/internal/evidence") && method === "GET") {
