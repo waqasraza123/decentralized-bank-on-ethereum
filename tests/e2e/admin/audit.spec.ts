@@ -52,11 +52,30 @@ test("renders the empty audit state for unmatched filters and can clear back to 
 
   await page.goto("/audit");
   await page.getByLabel("Audit search").fill("does-not-exist");
+  const filteredAuditRequest = page.waitForRequest((request) => {
+    const url = new URL(request.url());
+    return (
+      request.method() === "GET" &&
+      url.pathname.endsWith("/audit-events/internal") &&
+      url.searchParams.get("search") === "does-not-exist"
+    );
+  });
+
   await page.getByRole("button", { name: "Apply filters" }).click();
+  await filteredAuditRequest;
 
-  await expect(page.getByRole("heading", { name: "No audit events matched" })).toBeVisible();
+  await expect(page.getByRole("status").filter({ hasText: "No audit events matched" })).toBeVisible();
 
+  const clearedAuditRequest = page.waitForRequest((request) => {
+    const url = new URL(request.url());
+    return (
+      request.method() === "GET" &&
+      url.pathname.endsWith("/audit-events/internal") &&
+      !url.searchParams.get("search")
+    );
+  });
   await page.getByRole("button", { name: "Clear filters" }).click();
+  await clearedAuditRequest;
   await expect(page.getByText("audit_event_1")).toBeVisible();
 });
 
