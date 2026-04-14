@@ -128,9 +128,9 @@ describe("wallet page", () => {
   });
 
   afterEach(() => {
+    cleanup();
     useUserStore.persist.clearStorage();
     useUserStore.setState({ user: null, token: null });
-    cleanup();
   });
 
   it("renders the managed wallet operations flow with live assets and balances", () => {
