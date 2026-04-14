@@ -17,7 +17,9 @@ test("submits a valid deposit request and shows the tracker state", async ({
   await page.getByRole("button", { name: "Show QR" }).click();
   await expect(page.getByRole("button", { name: "Hide QR" })).toBeVisible();
   await page.getByRole("button", { name: "Copy" }).click();
-  await expect(page.getByText("Deposit address copied")).toBeVisible();
+  await expect(
+    page.getByRole("status").filter({ hasText: "Deposit address copied" })
+  ).toBeVisible();
 
   await page.locator("#deposit-asset").selectOption("ETH");
   await page.locator("#deposit-amount").fill("1.25");
