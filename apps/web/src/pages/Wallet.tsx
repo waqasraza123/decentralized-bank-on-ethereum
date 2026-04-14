@@ -25,9 +25,9 @@ const Wallet = () => {
 
   return (
     <Layout>
-      <div className="space-y-6">
+      <div className="stb-page-stack">
         <section className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
-          <Card className="stb-surface rounded-[2rem] border-0 p-6">
+          <Card className="stb-surface stb-reveal rounded-[2rem] border-0 p-6">
             <div className="space-y-4">
               <div>
                 <p className="stb-section-kicker">
@@ -75,11 +75,12 @@ const Wallet = () => {
 
               {latestBalanceUpdate ? (
                 <div
-                  className={`rounded-[1.4rem] border p-4 text-sm ${
+                  className={`stb-trust-note text-sm ${
                     staleBalanceData
-                      ? "border-amber-200 bg-amber-50 text-amber-900"
-                      : "border-slate-200 bg-white/80 text-slate-700"
+                      ? "text-amber-900"
+                      : "text-slate-700"
                   }`}
+                  data-tone={staleBalanceData ? "warning" : "positive"}
                   role="status"
                 >
                   {staleBalanceData
@@ -106,7 +107,8 @@ const Wallet = () => {
 
               {balancesQuery.isError ? (
                 <div
-                  className="rounded-[1.4rem] border border-red-200 bg-red-50 p-4 text-sm text-red-700"
+                  className="stb-trust-note text-sm text-red-700"
+                  data-tone="critical"
                   role="alert"
                 >
                   {balancesQuery.error instanceof Error
@@ -118,7 +120,7 @@ const Wallet = () => {
                   {balances.map((balance) => (
                     <div
                       key={balance.asset.id}
-                      className="rounded-[1.4rem] border border-slate-200 bg-white/80 p-4"
+                      className="stb-section-frame p-4"
                     >
                       <div className="flex items-center justify-between gap-3">
                         <p className="text-sm font-semibold text-slate-950">
@@ -153,7 +155,7 @@ const Wallet = () => {
             </div>
           </Card>
 
-          <Card className="stb-surface rounded-[2rem] border-0 p-6">
+          <Card className="stb-surface stb-reveal rounded-[2rem] border-0 p-6" data-delay="1">
             <h2 className="text-xl font-semibold text-slate-950">
               {locale === "ar" ? "ما الذي سيحدث بعد ذلك" : "What happens next"}
             </h2>

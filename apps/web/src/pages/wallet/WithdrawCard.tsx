@@ -205,7 +205,7 @@ const WithdrawCard = ({
     : null;
 
   return (
-    <Card className="stb-surface rounded-[2rem] border-0">
+    <Card className="stb-surface stb-reveal rounded-[2rem] border-0" data-delay="3">
       <CardHeader className="space-y-3">
         <CardTitle className="text-2xl text-slate-950">
           {locale === "ar" ? "السحب" : "Withdraw"}
@@ -217,7 +217,7 @@ const WithdrawCard = ({
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
-        <div className="rounded-[1.5rem] bg-slate-950 p-5 text-white">
+        <div className="rounded-[1.5rem] bg-slate-950 p-5 text-white shadow-[0_28px_72px_rgba(10,18,28,0.22)]">
           <div className="flex items-center gap-2 text-sm font-semibold">
             <ShieldCheck className="h-4 w-4 text-amber-300" />
             {locale === "ar" ? "تسلسل السحب" : "Withdrawal sequence"}
@@ -229,7 +229,7 @@ const WithdrawCard = ({
           </div>
         </div>
 
-        <div className="rounded-[1.5rem] border border-amber-200 bg-amber-50 p-4">
+        <div className="stb-trust-note p-4 text-amber-900" data-tone="warning">
           <div className="flex items-center gap-2 text-sm font-medium text-amber-900">
             <AlertTriangle className="h-4 w-4" />
             {locale === "ar" ? "سلوك حجز الرصيد" : "Balance reservation behavior"}
@@ -248,7 +248,7 @@ const WithdrawCard = ({
             </label>
             <select
               id="withdraw-asset"
-              className="flex h-12 w-full rounded-2xl border border-input bg-white px-4 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+              className="stb-premium-input"
               value={selectedAssetSymbol}
               disabled={isAssetsLoading || assets.length === 0}
               onChange={(event) => setPreferredAssetSymbol(event.target.value)}
@@ -270,7 +270,7 @@ const WithdrawCard = ({
                 </option>
               ))}
             </select>
-            <div className="grid gap-2 rounded-[1.3rem] bg-white/85 px-4 py-3 text-sm text-slate-600 sm:grid-cols-2">
+            <div className="grid gap-2 rounded-[1.3rem] border border-slate-200/70 bg-white/85 px-4 py-3 text-sm text-slate-600 sm:grid-cols-2">
               <div>
                 {locale === "ar" ? "متاح:" : "Available:"}{" "}
                 <span className="font-semibold text-slate-950">
@@ -310,7 +310,7 @@ const WithdrawCard = ({
                 placeholder="0x..."
                 value={withdrawAddress}
                 onChange={(event) => setWithdrawAddress(event.target.value)}
-                className="h-12 rounded-2xl bg-white"
+                className="bg-white"
               />
             </div>
             <div className="space-y-2">
@@ -322,31 +322,31 @@ const WithdrawCard = ({
                 placeholder="25"
                 value={withdrawAmount}
                 onChange={(event) => setWithdrawAmount(event.target.value)}
-                className="h-12 rounded-2xl bg-white"
+                className="bg-white"
               />
             </div>
           </div>
 
-          <div className="rounded-[1.4rem] bg-slate-100 px-4 py-3 text-sm text-slate-700">
+          <div className="stb-trust-note text-sm text-slate-700" data-tone="neutral">
             {locale === "ar"
               ? "تأكد من الوجهة والمبلغ لأن الطلب سيدخل مسار مراجعة جاد وقد يظل معلقاً قبل الإرسال إلى الشبكة."
               : "Review the destination and amount carefully. The request enters a serious review path and may remain pending before network broadcast."}
           </div>
 
           {assetsErrorMessage ? (
-            <div className="rounded-[1.4rem] border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            <div className="stb-trust-note text-sm text-red-700" data-tone="critical">
               {assetsErrorMessage}
             </div>
           ) : null}
 
           {balancesErrorMessage ? (
-            <div className="rounded-[1.4rem] border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            <div className="stb-trust-note text-sm text-red-700" data-tone="critical">
               {balancesErrorMessage}
             </div>
           ) : null}
 
           {formError ? (
-            <div className="rounded-[1.4rem] border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            <div className="stb-trust-note text-sm text-red-700" data-tone="critical">
               {formError}
             </div>
           ) : null}
@@ -361,7 +361,7 @@ const WithdrawCard = ({
         </form>
 
         {latestRequest ? (
-          <div className="rounded-[1.6rem] border border-slate-200 bg-white/90 p-5">
+          <div className="stb-section-frame p-5">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
                 <p className="text-sm font-semibold text-slate-950">

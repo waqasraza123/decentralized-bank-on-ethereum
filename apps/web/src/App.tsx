@@ -35,9 +35,9 @@ const RouteFallback = () => {
       <div
         aria-busy="true"
         aria-live="polite"
-        className="w-full max-w-sm rounded-3xl border border-border/70 bg-card/80 p-6 text-center shadow-sm backdrop-blur"
+        className="stb-panel-shell w-full max-w-sm p-6 text-center"
       >
-        <div className="mx-auto h-10 w-10 animate-pulse rounded-full bg-muted" />
+        <div className="mx-auto h-10 w-10 animate-pulse rounded-full bg-emerald-100 shadow-[0_0_0_10px_rgba(17,128,106,0.08)]" />
         <p className="mt-4 text-sm font-medium text-foreground">
           {t("app.loadingTitle")}
         </p>

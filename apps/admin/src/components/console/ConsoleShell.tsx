@@ -67,6 +67,10 @@ export function ConsoleShell({
               </div>
               <p className="admin-kicker">Active workspace</p>
               <h2>{routeLabel}</h2>
+              <p className="admin-copy">
+                Governed actions, evidence, and operational state remain visible in one
+                reviewable surface.
+              </p>
             </div>
 
             <div className="admin-hero-side">

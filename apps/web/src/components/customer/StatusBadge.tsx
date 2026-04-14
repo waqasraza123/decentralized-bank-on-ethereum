@@ -14,7 +14,7 @@ export function StatusBadge({
   return (
     <span
       aria-label={`Status: ${label}`}
-      className={cn("stb-status-badge", className)}
+      className={cn("stb-status-badge shadow-[0_10px_24px_rgba(10,18,28,0.06)]", className)}
       data-tone={tone}
       role="status"
     >

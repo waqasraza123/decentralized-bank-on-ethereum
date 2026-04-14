@@ -61,9 +61,9 @@ const Index = () => {
 
   return (
     <Layout>
-      <div className="space-y-6">
+      <div className="stb-page-stack">
         <section className="grid gap-6 xl:grid-cols-[minmax(0,1.25fr)_minmax(360px,0.75fr)]">
-          <Card className="stb-surface overflow-hidden rounded-[2rem] border-0">
+          <Card className="stb-surface stb-reveal overflow-hidden rounded-[2rem] border-0">
             <div className="grid gap-6 p-6 lg:grid-cols-[minmax(0,1fr)_320px]">
               <div className="space-y-5">
                 <div className="space-y-3">
@@ -81,7 +81,7 @@ const Index = () => {
                 </div>
 
                 <div className="grid gap-4 sm:grid-cols-3">
-                  <div className="rounded-[1.4rem] bg-white/75 p-4">
+                  <div className="stb-section-frame p-4">
                     <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
                       {locale === "ar" ? "الأصول المتاحة" : "Available assets"}
                     </p>
@@ -89,7 +89,7 @@ const Index = () => {
                       {balancesQuery.isLoading ? "..." : balances.length}
                     </p>
                   </div>
-                  <div className="rounded-[1.4rem] bg-white/75 p-4">
+                  <div className="stb-section-frame p-4">
                     <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
                       {locale === "ar" ? "الحالات المعلقة" : "Pending states"}
                     </p>
@@ -109,11 +109,12 @@ const Index = () => {
 
                 {(latestBalanceUpdate || latestIntentUpdate) ? (
                   <div
-                    className={`rounded-[1.4rem] border p-4 text-sm ${
+                    className={`stb-trust-note text-sm ${
                       staleOperationalData
-                        ? "border-amber-200 bg-amber-50 text-amber-900"
-                        : "border-slate-200 bg-white/80 text-slate-700"
+                        ? "text-amber-900"
+                        : "text-slate-700"
                     }`}
+                    data-tone={staleOperationalData ? "warning" : "positive"}
                     role="status"
                   >
                     {staleOperationalData
@@ -127,7 +128,7 @@ const Index = () => {
                 ) : null}
 
                 <div className="grid gap-3 sm:grid-cols-2">
-                  <div className="rounded-[1.4rem] border border-slate-200 bg-white/80 p-4">
+                  <div className="stb-section-frame p-4">
                     <div className="flex items-center gap-2 text-sm font-medium text-slate-700">
                       <Wallet className="h-4 w-4 text-emerald-700" />
                       {locale === "ar" ? "عنوان المحفظة المُدار" : "Managed wallet address"}
@@ -141,7 +142,7 @@ const Index = () => {
                         : "This reference stays traceable across deposit, withdrawal, and review."}
                     </p>
                   </div>
-                  <div className="rounded-[1.4rem] border border-slate-200 bg-white/80 p-4">
+                  <div className="stb-section-frame p-4">
                     <div className="flex items-center gap-2 text-sm font-medium text-slate-700">
                       <ShieldCheck className="h-4 w-4 text-emerald-700" />
                       {locale === "ar" ? "طبقة الثقة" : "Trust layer"}
@@ -203,7 +204,7 @@ const Index = () => {
                     );
                   })
                 ) : (
-                  <div className="rounded-[1.25rem] border border-dashed border-white/18 p-4 text-sm text-white/68">
+                  <div className="rounded-[1.25rem] border border-dashed border-white/18 bg-white/5 p-4 text-sm text-white/68">
                     {t("dashboard.emptyHistory")}
                   </div>
                 )}
@@ -220,7 +221,7 @@ const Index = () => {
             </div>
           </Card>
 
-          <Card className="stb-surface rounded-[2rem] border-0 p-6">
+          <Card className="stb-surface stb-reveal rounded-[2rem] border-0 p-6" data-delay="1">
             <div className="space-y-5">
               <div>
                 <p className="stb-section-kicker">
@@ -243,7 +244,7 @@ const Index = () => {
                     : "Yield is presented as a controlled product with visible state, not speculative urgency."}
                 </p>
               </div>
-              <div className="rounded-[1.5rem] bg-slate-950 p-5 text-white">
+              <div className="rounded-[1.5rem] bg-slate-950 p-5 text-white shadow-[0_30px_80px_rgba(10,18,28,0.24)]">
                 <p className="text-sm font-semibold text-white">
                   {locale === "ar" ? "المتابعة التالية" : "Next review"}
                 </p>
@@ -268,7 +269,7 @@ const Index = () => {
         </section>
 
         {balancesQuery.isError ? (
-          <Card className="rounded-[1.6rem] border border-red-200 bg-red-50 p-5 text-sm text-red-700">
+          <Card className="stb-trust-note rounded-[1.6rem] border-0 p-5 text-sm text-red-700" data-tone="critical">
             {balancesQuery.error instanceof Error
               ? balancesQuery.error.message
               : t("dashboard.loadBalancesError")}
@@ -276,7 +277,7 @@ const Index = () => {
         ) : balances.length > 0 ? (
           <section className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
             {balances.map((balance) => (
-              <Card key={balance.asset.id} className="stb-surface rounded-[1.7rem] border-0 p-5">
+              <Card key={balance.asset.id} className="stb-surface stb-reveal rounded-[1.7rem] border-0 p-5" data-delay="2">
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <p className="text-sm font-semibold text-slate-900">
@@ -300,7 +301,7 @@ const Index = () => {
                     tone={hasPendingBalance(balance.pendingBalance) ? "warning" : "positive"}
                   />
                 </div>
-                <div className="mt-5 grid gap-3 rounded-[1.25rem] bg-white/75 p-4 text-sm text-slate-600">
+                <div className="mt-5 grid gap-3 rounded-[1.25rem] border border-slate-200/70 bg-white/75 p-4 text-sm text-slate-600">
                   <div className="flex items-center justify-between gap-3">
                     <span>{locale === "ar" ? "متاح" : "Available"}</span>
                     <span className="font-semibold text-slate-950">
@@ -327,14 +328,14 @@ const Index = () => {
             <h2 className="text-lg font-semibold text-slate-950">
               {t("dashboard.noBalancesTitle")}
             </h2>
-            <p className="mt-2 text-sm text-slate-600">
+            <p className="stb-empty-panel mt-3">
               {t("dashboard.noBalancesDescription")}
             </p>
           </Card>
         )}
 
         <section className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
-          <Card className="stb-surface rounded-[1.8rem] border-0 p-6">
+          <Card className="stb-surface stb-reveal rounded-[1.8rem] border-0 p-6" data-delay="2">
             <div className="flex items-center justify-between gap-4">
               <div>
                 <p className="stb-section-kicker">{t("dashboard.recentTransactions")}</p>
@@ -349,7 +350,7 @@ const Index = () => {
 
             <div className="mt-5 space-y-3">
               {historyQuery.isError ? (
-                <div className="rounded-[1.3rem] border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+                <div className="stb-trust-note text-sm text-red-700" data-tone="critical">
                   {historyQuery.error instanceof Error
                     ? historyQuery.error.message
                     : t("dashboard.historyError")}
@@ -397,14 +398,14 @@ const Index = () => {
                   );
                 })
               ) : (
-                <p className="rounded-[1.3rem] border border-dashed border-slate-300 p-4 text-sm text-slate-600">
+                <p className="stb-empty-panel">
                   {t("dashboard.emptyHistory")}
                 </p>
               )}
             </div>
           </Card>
 
-          <Card className="stb-surface rounded-[1.8rem] border-0 p-6">
+          <Card className="stb-surface stb-reveal rounded-[1.8rem] border-0 p-6" data-delay="3">
             <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
               <Landmark className="h-4 w-4 text-emerald-700" />
               {locale === "ar" ? "الثقة والسلامة" : "Trust & safety"}

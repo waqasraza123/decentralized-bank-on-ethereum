@@ -151,8 +151,8 @@ const Profile = () => {
 
   return (
     <Layout>
-      <div className="space-y-8">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+      <div className="stb-page-stack space-y-8">
+        <div className="stb-section-frame flex flex-col gap-4 p-6 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex items-center gap-6">
             <Avatar className="h-20 w-20 border border-border/70 bg-white/80">
               <AvatarImage src={undefined} />
@@ -167,7 +167,7 @@ const Profile = () => {
             </Avatar>
             <div className="space-y-2">
               <div className="flex flex-wrap items-center gap-3">
-                <h1 className="text-3xl font-semibold text-foreground">
+                <h1 className="stb-page-title text-3xl font-semibold text-foreground">
                   Customer Profile
                 </h1>
                 <Badge
@@ -201,7 +201,7 @@ const Profile = () => {
           </Alert>
         ) : (
           <>
-            <Alert className="border-apple-blue bg-apple-soft-blue">
+            <Alert variant="muted">
               <Shield className="h-4 w-4" />
               <AlertTitle>Truthful managed-account security surface</AlertTitle>
               <AlertDescription>
@@ -221,13 +221,13 @@ const Profile = () => {
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-5">
-                  <div className="rounded-xl border border-border/70 bg-white/70 p-4">
+                  <div className="stb-trust-note text-sm text-muted-foreground" data-tone="neutral">
                     <p className="text-sm text-muted-foreground">
                       {getAccountStatusSummary(profile.accountStatus, locale)}
                     </p>
                   </div>
                   <div className="grid gap-4 sm:grid-cols-2">
-                    <div className="rounded-xl border p-4">
+                    <div className="stb-section-frame p-4">
                       <p className="text-xs uppercase tracking-wide text-muted-foreground">
                         Customer ID
                       </p>
@@ -235,7 +235,7 @@ const Profile = () => {
                         {profile.customerId ?? t("profile.notProvisioned")}
                       </p>
                     </div>
-                    <div className="rounded-xl border p-4">
+                    <div className="stb-section-frame p-4">
                       <p className="text-xs uppercase tracking-wide text-muted-foreground">
                         Supabase User ID
                       </p>
@@ -243,7 +243,7 @@ const Profile = () => {
                         {profile.supabaseUserId}
                       </p>
                     </div>
-                    <div className="rounded-xl border p-4 sm:col-span-2">
+                    <div className="stb-section-frame p-4 sm:col-span-2">
                       <p className="text-xs uppercase tracking-wide text-muted-foreground">
                         Email
                       </p>
@@ -256,7 +256,7 @@ const Profile = () => {
                   {lifecycleEntries.length > 0 ? (
                     <div className="grid gap-3 sm:grid-cols-2">
                       {lifecycleEntries.map((entry) => (
-                        <div key={entry.label} className="rounded-xl border p-4">
+                        <div key={entry.label} className="stb-section-frame p-4">
                           <p className="text-xs uppercase tracking-wide text-muted-foreground">
                             {entry.label}
                           </p>
@@ -278,7 +278,7 @@ const Profile = () => {
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-5">
-                  <div className="rounded-xl border border-border/70 bg-white/70 p-4">
+                  <div className="stb-section-frame p-4">
                     <p className="text-xs uppercase tracking-wide text-muted-foreground">
                       Product-chain address
                     </p>
@@ -287,7 +287,7 @@ const Profile = () => {
                     </p>
                   </div>
                   <div className="grid gap-4">
-                    <div className="rounded-xl border p-4">
+                    <div className="stb-section-frame p-4">
                       <p className="text-sm font-medium text-foreground">
                         Platform-managed custody
                       </p>
@@ -296,7 +296,7 @@ const Profile = () => {
                         Browser wallet linking is intentionally not exposed here.
                       </p>
                     </div>
-                    <div className="rounded-xl border p-4">
+                    <div className="stb-section-frame p-4">
                       <p className="text-sm font-medium text-foreground">
                         No direct disconnect action
                       </p>
@@ -319,7 +319,7 @@ const Profile = () => {
                 </CardTitle>
               </CardHeader>
               <CardContent className="grid gap-4 md:grid-cols-3">
-                <div className="rounded-xl border p-4">
+                <div className="stb-section-frame p-4">
                   <div className="flex items-center gap-2 text-sm font-medium text-foreground">
                     <CheckCircle2 className="h-4 w-4 text-mint-700" />
                     Identity State
@@ -329,7 +329,7 @@ const Profile = () => {
                     currently marked as {formatAccountStatusLabel(profile.accountStatus, locale)}.
                   </p>
                 </div>
-                <div className="rounded-xl border p-4">
+                <div className="stb-section-frame p-4">
                   <div className="flex items-center gap-2 text-sm font-medium text-foreground">
                     <CheckCircle2 className="h-4 w-4 text-mint-700" />
                     Password Management
@@ -340,7 +340,7 @@ const Profile = () => {
                       : "This profile does not currently expose self-service password rotation, so the section below remains read-only."}
                   </p>
                 </div>
-                <div className="rounded-xl border p-4">
+                <div className="stb-section-frame p-4">
                   <div className="flex items-center gap-2 text-sm font-medium text-foreground">
                     <CheckCircle2 className="h-4 w-4 text-mint-700" />
                     Notifications
@@ -360,7 +360,7 @@ const Profile = () => {
                   <CardTitle>Password Management</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <div className="rounded-xl border border-border/70 bg-white/70 p-4">
+                  <div className="stb-trust-note text-sm text-muted-foreground" data-tone="neutral">
                     <p className="text-sm text-muted-foreground">
                       Security and account-risk notifications remain mandatory.
                       Updating the password changes only your authentication
@@ -369,7 +369,7 @@ const Profile = () => {
                   </div>
 
                   {passwordNotice ? (
-                    <Alert className="border-emerald-200 bg-emerald-50">
+                    <Alert variant="success">
                       <CheckCircle2 className="h-4 w-4" />
                       <AlertTitle>Password updated</AlertTitle>
                       <AlertDescription>{passwordNotice}</AlertDescription>
@@ -444,7 +444,7 @@ const Profile = () => {
                       </Button>
                     </>
                   ) : (
-                    <div className="rounded-xl border p-4">
+                    <div className="stb-section-frame p-4">
                       <p className="text-sm font-medium text-foreground">
                         Password rotation unavailable
                       </p>
@@ -463,7 +463,7 @@ const Profile = () => {
                   <CardTitle>Email Notification Preferences</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <div className="rounded-xl border border-border/70 bg-white/70 p-4">
+                  <div className="stb-trust-note text-sm text-muted-foreground" data-tone="neutral">
                     <p className="text-sm font-medium text-foreground">
                       Mandatory security notices
                     </p>
@@ -474,7 +474,7 @@ const Profile = () => {
                   </div>
 
                   {notificationNotice ? (
-                    <Alert className="border-emerald-200 bg-emerald-50">
+                    <Alert variant="success">
                       <CheckCircle2 className="h-4 w-4" />
                       <AlertTitle>Preferences saved</AlertTitle>
                       <AlertDescription>{notificationNotice}</AlertDescription>
@@ -519,7 +519,7 @@ const Profile = () => {
                       ].map((item) => (
                         <div
                           key={item.key}
-                          className="flex items-start justify-between gap-4 rounded-xl border p-4"
+                          className="stb-section-frame flex items-start justify-between gap-4 p-4"
                         >
                           <div className="space-y-1">
                             <p className="text-sm font-medium text-foreground">
@@ -558,7 +558,7 @@ const Profile = () => {
                       </Button>
                     </>
                   ) : (
-                    <div className="rounded-xl border p-4">
+                    <div className="stb-section-frame p-4">
                       <p className="text-sm font-medium text-foreground">
                         Notification preferences unavailable
                       </p>

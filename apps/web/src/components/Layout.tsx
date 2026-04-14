@@ -46,8 +46,12 @@ export const Layout = ({ children }: LayoutProps) => {
   return (
     <div className="stb-shell-bg min-h-screen text-slate-900">
       <div className="mx-auto flex min-h-screen w-full max-w-[1440px] flex-col px-4 pb-8 pt-4 sm:px-6 lg:px-8">
-        <header className="stb-inverse-surface relative overflow-hidden rounded-[2rem] px-5 py-5 sm:px-6">
+        <header className="stb-inverse-surface stb-reveal relative overflow-hidden rounded-[2.25rem] px-5 py-5 sm:px-6 sm:py-6">
           <div className="stb-grid-lines absolute inset-0 opacity-30" aria-hidden="true" />
+          <div
+            aria-hidden="true"
+            className="absolute inset-y-0 right-0 w-[34rem] bg-[radial-gradient(circle_at_top_right,rgba(114,233,212,0.18),transparent_28%),radial-gradient(circle_at_bottom_right,rgba(91,115,217,0.16),transparent_30%)]"
+          />
           <div className="relative z-10 flex flex-col gap-6">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
               <div className="flex flex-wrap items-center gap-4">
@@ -66,11 +70,11 @@ export const Layout = ({ children }: LayoutProps) => {
               </div>
               <div className="flex flex-wrap items-center gap-3">
                 <LanguageSwitcher tone="light" />
-                <div className="flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-white/84">
+                <div className="stb-data-chip border-white/12 bg-white/6 text-white/84">
                   <Bell className="h-4 w-4 text-white/70" />
                   <span>{locale === "ar" ? "لا توجد تنبيهات" : "No alerts"}</span>
                 </div>
-                <div className="flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-white/84">
+                <div className="stb-data-chip border-white/12 bg-white/6 text-white/84">
                   <CircleHelp className="h-4 w-4 text-white/70" />
                   <span>{locale === "ar" ? "المساعدة والأمان" : "Help & safety"}</span>
                 </div>
@@ -82,7 +86,7 @@ export const Layout = ({ children }: LayoutProps) => {
                 <p className="text-xs font-semibold uppercase tracking-[0.24em] text-emerald-300/90">
                   {locale === "ar" ? "الخدمات المصرفية على إيثيريوم" : "Ethereum banking workspace"}
                 </p>
-                <h1 className="stb-page-title text-3xl font-semibold text-white sm:text-4xl">
+                <h1 className="stb-page-title max-w-3xl text-3xl font-semibold text-white sm:text-4xl">
                   {currentSection}
                 </h1>
                 <p className="max-w-3xl text-sm leading-7 text-white/70 sm:text-base">
@@ -93,39 +97,39 @@ export const Layout = ({ children }: LayoutProps) => {
               </div>
 
               <div className="grid gap-3 sm:grid-cols-3">
-                <div className="rounded-[1.2rem] border border-white/10 bg-white/6 px-4 py-3">
+                <div className="stb-hero-stat">
                   <div className="flex items-center gap-2 text-xs uppercase tracking-[0.18em] text-white/54">
                     <Wallet className="h-3.5 w-3.5" />
                     {locale === "ar" ? "مرجع المحفظة" : "Wallet reference"}
                   </div>
-                  <p className="stb-ref mt-2 text-sm font-medium text-white">
+                  <strong className="stb-ref text-sm font-medium text-white">
                     <bdi>{formatShortAddress(user?.ethereumAddress, t("layout.noWallet"))}</bdi>
-                  </p>
+                  </strong>
                 </div>
-                <div className="rounded-[1.2rem] border border-white/10 bg-white/6 px-4 py-3">
+                <div className="stb-hero-stat">
                   <div className="flex items-center gap-2 text-xs uppercase tracking-[0.18em] text-white/54">
                     <Landmark className="h-3.5 w-3.5" />
                     {locale === "ar" ? "الحساب" : "Account"}
                   </div>
-                  <p className="mt-2 text-sm font-medium text-white">
+                  <strong className="text-sm font-medium text-white">
                     {user?.email ?? (locale === "ar" ? "غير متاح" : "Not available")}
-                  </p>
+                  </strong>
                 </div>
-                <div className="rounded-[1.2rem] border border-white/10 bg-white/6 px-4 py-3">
+                <div className="stb-hero-stat">
                   <div className="flex items-center gap-2 text-xs uppercase tracking-[0.18em] text-white/54">
                     <UserRound className="h-3.5 w-3.5" />
                     {locale === "ar" ? "آخر تحديث" : "Last updated"}
                   </div>
-                  <p className="mt-2 text-sm font-medium text-white">
+                  <strong className="text-sm font-medium text-white">
                     {formatDateLabel(new Date().toISOString(), locale)}
-                  </p>
+                  </strong>
                 </div>
               </div>
             </div>
           </div>
         </header>
 
-        <div className="mt-4 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+        <div className="stb-reveal mt-4 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between" data-delay="1">
           <nav className="stb-surface rounded-[1.4rem] p-2">
             <div className="flex flex-wrap items-center gap-2">
               {navItems.map((item) => {
@@ -136,10 +140,10 @@ export const Layout = ({ children }: LayoutProps) => {
                     key={item.path}
                     to={item.path}
                     className={cn(
-                      "rounded-[1rem] px-4 py-3 text-sm font-semibold transition-colors",
+                      "rounded-[1rem] px-4 py-3 text-sm font-semibold transition-[background-color,color,transform,box-shadow] duration-200",
                       isActive
-                        ? "bg-slate-950 text-white"
-                        : "text-slate-600 hover:bg-white/75 hover:text-slate-950"
+                        ? "bg-slate-950 text-white shadow-[0_14px_34px_rgba(10,18,28,0.18)]"
+                        : "text-slate-600 hover:-translate-y-0.5 hover:bg-white/75 hover:text-slate-950"
                     )}
                   >
                     {item.label}
@@ -153,7 +157,7 @@ export const Layout = ({ children }: LayoutProps) => {
             <Button
               asChild
               variant="outline"
-              className="rounded-full border-slate-200 bg-white/80 px-5"
+              className="border-slate-200 bg-white/80 px-5"
             >
               <Link to="/loans">
                 {locale === "ar" ? "القروض المُدارة" : "Managed loans"}

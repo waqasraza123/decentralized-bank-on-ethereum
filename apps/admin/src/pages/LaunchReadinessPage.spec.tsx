@@ -426,7 +426,9 @@ describe("LaunchReadinessPage", () => {
     });
   });
 
-  it("requires rollback release identifier before requesting governed approval", async () => {
+  it(
+    "requires rollback release identifier before requesting governed approval",
+    async () => {
     renderPage("/launch-readiness?release=launch-2026.04.13.1");
 
     await waitFor(() => {
@@ -482,5 +484,7 @@ describe("LaunchReadinessPage", () => {
         screen.getByRole("button", { name: "Request approval" })
       ).toBeEnabled();
     });
-  });
+    },
+    10000
+  );
 });

@@ -121,8 +121,8 @@ const Transactions = () => {
 
   return (
     <Layout>
-      <div className="space-y-6">
-        <Card className="stb-surface rounded-[2rem] border-0 p-6">
+      <div className="stb-page-stack">
+        <Card className="stb-surface stb-reveal rounded-[2rem] border-0 p-6">
           <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_440px] xl:items-end">
             <div>
               <p className="stb-section-kicker">{t("transactions.title")}</p>
@@ -139,7 +139,7 @@ const Transactions = () => {
               <label className="relative block">
                 <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                 <input
-                  className="h-12 w-full rounded-2xl border border-slate-200 bg-white pl-11 pr-4 text-sm outline-none ring-0 transition-shadow focus:shadow-[var(--stb-focus-ring)]"
+                  className="stb-premium-input pl-11 pr-4"
                   placeholder={locale === "ar" ? "ابحث بالمرجع أو العنوان..." : "Search by reference or address..."}
                   value={filters.search}
                   onChange={(event) =>
@@ -148,7 +148,7 @@ const Transactions = () => {
                 />
               </label>
               <select
-                className="h-12 rounded-2xl border border-slate-200 bg-white px-4 text-sm outline-none transition-shadow focus:shadow-[var(--stb-focus-ring)]"
+                className="stb-premium-input"
                 value={filters.type}
                 onChange={(event) =>
                   setFilters((current) => ({ ...current, type: event.target.value }))
@@ -162,7 +162,7 @@ const Transactions = () => {
                 ))}
               </select>
               <select
-                className="h-12 rounded-2xl border border-slate-200 bg-white px-4 text-sm outline-none transition-shadow focus:shadow-[var(--stb-focus-ring)]"
+                className="stb-premium-input"
                 value={filters.status}
                 onChange={(event) =>
                   setFilters((current) => ({ ...current, status: event.target.value }))
@@ -179,9 +179,10 @@ const Transactions = () => {
           </div>
         </Card>
 
-        <Card className="stb-surface rounded-[2rem] border-0 p-3 sm:p-4">
+        <Card className="stb-surface stb-reveal rounded-[2rem] border-0 p-3 sm:p-4" data-delay="1">
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[760px]">
+            <div className="stb-premium-table">
+              <table className="w-full min-w-[760px]">
               <thead>
                 <tr className="border-b border-slate-200 text-left">
                   <th className="px-4 py-4 text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
@@ -223,7 +224,7 @@ const Transactions = () => {
                   filteredTransactions.map((tx) => (
                     <tr
                       key={tx.id}
-                      className="border-b border-slate-100 last:border-0 hover:bg-white/65"
+                      className="stb-premium-row border-b border-slate-100 last:border-0"
                     >
                       <td className="px-4 py-4 text-sm font-semibold text-slate-950">
                         {tx.type}
@@ -243,7 +244,7 @@ const Transactions = () => {
                       <td className="px-4 py-4">
                         <button
                           type="button"
-                          className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-900 transition-colors hover:bg-slate-100"
+                          className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white/88 px-4 py-2 text-sm font-semibold text-slate-900 shadow-[0_10px_22px_rgba(10,18,28,0.05)] transition-[background-color,transform,box-shadow] duration-200 hover:-translate-y-0.5 hover:bg-white hover:shadow-[0_14px_28px_rgba(10,18,28,0.08)]"
                           onClick={() => setSelectedRow(tx)}
                         >
                           <Filter className="h-4 w-4" />
@@ -260,7 +261,8 @@ const Transactions = () => {
                   </tr>
                 )}
               </tbody>
-            </table>
+              </table>
+            </div>
           </div>
         </Card>
 
@@ -274,7 +276,7 @@ const Transactions = () => {
         ) : null}
 
         <Sheet open={Boolean(selectedRow)} onOpenChange={(open) => !open && setSelectedRow(null)}>
-          <SheetContent side="right" className="w-full max-w-2xl overflow-y-auto border-slate-200 bg-[#fbfaf7] sm:max-w-2xl">
+          <SheetContent side="right" className="stb-sheet-panel w-full max-w-2xl overflow-y-auto border-slate-200 sm:max-w-2xl">
             {selectedRow ? (
               <>
                 <SheetHeader className="border-b border-slate-200 pb-5 text-left">

@@ -12,7 +12,7 @@ export function TimelineList({ events, emptyLabel }: TimelineListProps) {
 
   if (events.length === 0) {
     return (
-      <p className="text-sm text-slate-500">
+      <p className="stb-empty-panel">
         {emptyLabel ?? (locale === "ar" ? "لا توجد أحداث بعد." : "No events yet.")}
       </p>
     );
@@ -45,7 +45,7 @@ export function TimelineList({ events, emptyLabel }: TimelineListProps) {
               {event.metadata.map((item) => (
                 <div
                   key={`${event.id}-${item.label}`}
-                  className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700"
+                  className="stb-data-chip bg-slate-100/88 px-3 py-1 text-xs font-medium text-slate-700"
                 >
                   <span className="mr-1 text-slate-500">{item.label}:</span>
                   <span className="stb-ref">{item.value}</span>
