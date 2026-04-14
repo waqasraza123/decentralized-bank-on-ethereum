@@ -5,8 +5,10 @@ import {
   IsOptional,
   IsString,
   Max,
+  MaxLength,
   Min
 } from "class-validator";
+import { OPERATOR_CASE_FILTER_VALUE_MAX_LENGTH } from "../../review-cases/dto/operator-case-input.validation";
 
 export class ListPlatformAlertsDto {
   @IsOptional()
@@ -47,6 +49,7 @@ export class ListPlatformAlertsDto {
 
   @IsOptional()
   @IsString()
+  @MaxLength(OPERATOR_CASE_FILTER_VALUE_MAX_LENGTH)
   ownerOperatorId?: string;
 
   @IsOptional()
