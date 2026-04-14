@@ -4,9 +4,16 @@ import {
   IsInt,
   IsOptional,
   IsString,
+  Matches,
   Max,
+  MaxLength,
   Min
 } from "class-validator";
+import {
+  OPERATOR_CASE_FILTER_VALUE_MAX_LENGTH,
+  OPERATOR_CASE_REASON_CODE_MAX_LENGTH,
+  OPERATOR_CASE_REASON_CODE_PATTERN
+} from "../../review-cases/dto/operator-case-input.validation";
 
 export class GetAccountHoldSummaryDto {
   @IsOptional()
@@ -27,14 +34,18 @@ export class GetAccountHoldSummaryDto {
 
   @IsOptional()
   @IsString()
+  @MaxLength(OPERATOR_CASE_REASON_CODE_MAX_LENGTH)
+  @Matches(OPERATOR_CASE_REASON_CODE_PATTERN)
   restrictionReasonCode?: string;
 
   @IsOptional()
   @IsString()
+  @MaxLength(OPERATOR_CASE_FILTER_VALUE_MAX_LENGTH)
   appliedByOperatorId?: string;
 
   @IsOptional()
   @IsString()
+  @MaxLength(OPERATOR_CASE_FILTER_VALUE_MAX_LENGTH)
   releasedByOperatorId?: string;
 
   @IsOptional()

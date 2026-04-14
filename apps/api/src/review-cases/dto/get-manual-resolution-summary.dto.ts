@@ -4,9 +4,16 @@ import {
   IsInt,
   IsOptional,
   IsString,
+  Matches,
   Max,
+  MaxLength,
   Min
 } from "class-validator";
+import {
+  OPERATOR_CASE_FILTER_VALUE_MAX_LENGTH,
+  OPERATOR_CASE_REASON_CODE_MAX_LENGTH,
+  OPERATOR_CASE_REASON_CODE_PATTERN
+} from "./operator-case-input.validation";
 
 export class GetManualResolutionSummaryDto {
   @IsOptional()
@@ -22,9 +29,12 @@ export class GetManualResolutionSummaryDto {
 
   @IsOptional()
   @IsString()
+  @MaxLength(OPERATOR_CASE_REASON_CODE_MAX_LENGTH)
+  @Matches(OPERATOR_CASE_REASON_CODE_PATTERN)
   manualResolutionReasonCode?: string;
 
   @IsOptional()
   @IsString()
+  @MaxLength(OPERATOR_CASE_FILTER_VALUE_MAX_LENGTH)
   manualResolvedByOperatorId?: string;
 }

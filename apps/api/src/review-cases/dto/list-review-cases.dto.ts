@@ -1,12 +1,21 @@
 import { Type } from "class-transformer";
 import {
+  IsEmail,
   IsIn,
   IsInt,
   IsOptional,
   IsString,
+  Matches,
   Max,
+  MaxLength,
   Min
 } from "class-validator";
+import {
+  OPERATOR_CASE_EMAIL_MAX_LENGTH,
+  OPERATOR_CASE_FILTER_VALUE_MAX_LENGTH,
+  OPERATOR_CASE_REASON_CODE_MAX_LENGTH,
+  OPERATOR_CASE_REASON_CODE_PATTERN
+} from "./operator-case-input.validation";
 
 export class ListReviewCasesDto {
   @IsOptional()
@@ -35,25 +44,32 @@ export class ListReviewCasesDto {
 
   @IsOptional()
   @IsString()
+  @MaxLength(OPERATOR_CASE_FILTER_VALUE_MAX_LENGTH)
   customerAccountId?: string;
 
   @IsOptional()
   @IsString()
+  @MaxLength(OPERATOR_CASE_FILTER_VALUE_MAX_LENGTH)
   transactionIntentId?: string;
 
   @IsOptional()
   @IsString()
+  @MaxLength(OPERATOR_CASE_REASON_CODE_MAX_LENGTH)
+  @Matches(OPERATOR_CASE_REASON_CODE_PATTERN)
   reasonCode?: string;
 
   @IsOptional()
   @IsString()
+  @MaxLength(OPERATOR_CASE_FILTER_VALUE_MAX_LENGTH)
   assignedOperatorId?: string;
 
   @IsOptional()
-  @IsString()
+  @IsEmail()
+  @MaxLength(OPERATOR_CASE_EMAIL_MAX_LENGTH)
   email?: string;
 
   @IsOptional()
   @IsString()
+  @MaxLength(OPERATOR_CASE_FILTER_VALUE_MAX_LENGTH)
   supabaseUserId?: string;
 }

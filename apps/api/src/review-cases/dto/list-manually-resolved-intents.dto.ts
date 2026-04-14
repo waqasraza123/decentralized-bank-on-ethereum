@@ -1,5 +1,21 @@
 import { Type } from "class-transformer";
-import { IsIn, IsInt, IsOptional, IsString, Max, Min } from "class-validator";
+import {
+  IsEmail,
+  IsIn,
+  IsInt,
+  IsOptional,
+  IsString,
+  Matches,
+  Max,
+  MaxLength,
+  Min
+} from "class-validator";
+import {
+  OPERATOR_CASE_EMAIL_MAX_LENGTH,
+  OPERATOR_CASE_FILTER_VALUE_MAX_LENGTH,
+  OPERATOR_CASE_REASON_CODE_MAX_LENGTH,
+  OPERATOR_CASE_REASON_CODE_PATTERN
+} from "./operator-case-input.validation";
 
 export class ListManuallyResolvedIntentsDto {
   @IsOptional()
@@ -15,21 +31,27 @@ export class ListManuallyResolvedIntentsDto {
 
   @IsOptional()
   @IsString()
+  @MaxLength(OPERATOR_CASE_FILTER_VALUE_MAX_LENGTH)
   customerAccountId?: string;
 
   @IsOptional()
   @IsString()
+  @MaxLength(OPERATOR_CASE_FILTER_VALUE_MAX_LENGTH)
   supabaseUserId?: string;
 
   @IsOptional()
-  @IsString()
+  @IsEmail()
+  @MaxLength(OPERATOR_CASE_EMAIL_MAX_LENGTH)
   email?: string;
 
   @IsOptional()
   @IsString()
+  @MaxLength(OPERATOR_CASE_REASON_CODE_MAX_LENGTH)
+  @Matches(OPERATOR_CASE_REASON_CODE_PATTERN)
   manualResolutionReasonCode?: string;
 
   @IsOptional()
   @IsString()
+  @MaxLength(OPERATOR_CASE_FILTER_VALUE_MAX_LENGTH)
   manualResolvedByOperatorId?: string;
 }

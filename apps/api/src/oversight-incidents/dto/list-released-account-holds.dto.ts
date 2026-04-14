@@ -1,12 +1,21 @@
 import { Type } from "class-transformer";
 import {
+  IsEmail,
   IsIn,
   IsInt,
   IsOptional,
   IsString,
+  Matches,
   Max,
+  MaxLength,
   Min
 } from "class-validator";
+import {
+  OPERATOR_CASE_EMAIL_MAX_LENGTH,
+  OPERATOR_CASE_FILTER_VALUE_MAX_LENGTH,
+  OPERATOR_CASE_REASON_CODE_MAX_LENGTH,
+  OPERATOR_CASE_REASON_CODE_PATTERN
+} from "../../review-cases/dto/operator-case-input.validation";
 
 export class ListReleasedAccountHoldsDto {
   @IsOptional()
@@ -34,14 +43,18 @@ export class ListReleasedAccountHoldsDto {
 
   @IsOptional()
   @IsString()
+  @MaxLength(OPERATOR_CASE_REASON_CODE_MAX_LENGTH)
+  @Matches(OPERATOR_CASE_REASON_CODE_PATTERN)
   restrictionReasonCode?: string;
 
   @IsOptional()
   @IsString()
+  @MaxLength(OPERATOR_CASE_FILTER_VALUE_MAX_LENGTH)
   appliedByOperatorId?: string;
 
   @IsOptional()
   @IsString()
+  @MaxLength(OPERATOR_CASE_FILTER_VALUE_MAX_LENGTH)
   releasedByOperatorId?: string;
 
   @IsOptional()
@@ -49,6 +62,7 @@ export class ListReleasedAccountHoldsDto {
   releaseDecisionStatus?: "approved";
 
   @IsOptional()
-  @IsString()
+  @IsEmail()
+  @MaxLength(OPERATOR_CASE_EMAIL_MAX_LENGTH)
   email?: string;
 }
