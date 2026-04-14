@@ -83,8 +83,8 @@ describe("CustomerAccountOperationsController", () => {
         filters: {
           eventType: "review_case.note_added",
           actorId: "ops_1",
-          dateFrom: "2026-04-01T00:00:00.000Z",
-          dateTo: "2026-04-14T00:00:00.000Z"
+          dateFrom: null,
+          dateTo: null
         }
       }
     );
@@ -98,9 +98,7 @@ describe("CustomerAccountOperationsController", () => {
         supabaseUserId: "supabase_1",
         limit: "25",
         eventType: "review_case.note_added",
-        actorId: "ops_1",
-        dateFrom: "2026-04-01T00:00:00.000Z",
-        dateTo: "2026-04-14T00:00:00.000Z"
+        actorId: "ops_1"
       })
       .expect(200);
 
@@ -111,9 +109,7 @@ describe("CustomerAccountOperationsController", () => {
       supabaseUserId: "supabase_1",
       limit: 25,
       eventType: "review_case.note_added",
-      actorId: "ops_1",
-      dateFrom: "2026-04-01T00:00:00.000Z",
-      dateTo: "2026-04-14T00:00:00.000Z"
+      actorId: "ops_1"
     });
     expect(response.body).toEqual({
       status: "success",
@@ -143,8 +139,8 @@ describe("CustomerAccountOperationsController", () => {
         filters: {
           eventType: "review_case.note_added",
           actorId: "ops_1",
-          dateFrom: "2026-04-01T00:00:00.000Z",
-          dateTo: "2026-04-14T00:00:00.000Z"
+          dateFrom: null,
+          dateTo: null
         }
       }
     });
