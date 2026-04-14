@@ -31,7 +31,7 @@ Request and complete the dual-control launch approval only after all required ev
 ## Expected Outcome
 
 - approval request is created with a truthful evidence snapshot
-- approval remains blocked if any proof is missing, failed, or stale
+- approval remains blocked if any proof is missing, failed, stale, or bound to the wrong rollback release
 - launch is approved only through the dual-control approval path
 
 ## Actual Outcome

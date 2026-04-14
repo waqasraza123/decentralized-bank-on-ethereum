@@ -157,7 +157,10 @@ function buildApproval(releaseIdentifier: string) {
           status: "passed" as const,
           latestEvidenceObservedAt: "2026-04-14T09:00:00.000Z",
           latestEvidenceEnvironment: "production_like",
-          latestEvidenceStatus: "passed" as const
+          latestEvidenceStatus: "passed" as const,
+          latestEvidenceReleaseIdentifier: releaseIdentifier,
+          latestEvidenceRollbackReleaseIdentifier: null,
+          latestEvidenceBackupReference: null
         }
       ]
     },
@@ -168,6 +171,7 @@ function buildApproval(releaseIdentifier: string) {
       missingEvidenceTypes: ["critical_alert_reescalation"],
       failedEvidenceTypes: [],
       staleEvidenceTypes: [],
+      metadataMismatches: [],
       maximumEvidenceAgeHours: 72,
       openBlockers: [],
       generatedAt: "2026-04-14T10:00:00.000Z"
@@ -418,6 +422,64 @@ describe("LaunchReadinessPage", () => {
     await waitFor(() => {
       expect(
         screen.getByRole("button", { name: "Record evidence" })
+      ).toBeEnabled();
+    });
+  });
+
+  it("requires rollback release identifier before requesting governed approval", async () => {
+    renderPage("/launch-readiness?release=launch-2026.04.13.1");
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Release scope")).toHaveValue(
+        "launch-2026.04.13.1"
+      );
+    });
+
+    fireEvent.change(screen.getByLabelText("Approval release identifier"), {
+      target: {
+        value: "launch-2026.04.13.1"
+      }
+    });
+    fireEvent.change(screen.getByLabelText("Approval summary"), {
+      target: {
+        value: "Production-like candidate is ready for governed approval."
+      }
+    });
+    for (const label of [
+      "Security configuration complete",
+      "Access and governance complete",
+      "Data and recovery complete",
+      "Platform health complete",
+      "Functional proof complete",
+      "Contract and chain proof complete",
+      "Final signoff complete",
+      "Residual risks explicitly accepted"
+    ]) {
+      fireEvent.click(screen.getByRole("checkbox", { name: label }));
+    }
+    fireEvent.click(
+      screen.getByRole("checkbox", {
+        name: /I verified the checklist attestations and current evidence before requesting approval/i
+      })
+    );
+
+    expect(
+      screen.getByRole("button", { name: "Request approval" })
+    ).toBeDisabled();
+    expect(screen.getByText(/rollback target required/i)).toBeVisible();
+    expect(
+      screen.getByText(/missing fields: rollback release identifier/i)
+    ).toBeVisible();
+
+    fireEvent.change(screen.getByLabelText("Approval rollback release identifier"), {
+      target: {
+        value: "launch-rollback-2026.04.12.4"
+      }
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: "Request approval" })
       ).toBeEnabled();
     });
   });

@@ -359,6 +359,14 @@ export function buildApprovalGateNotice(approval: ReleaseReadinessApproval | nul
     return null;
   }
 
+  if (approval.gate.metadataMismatches.length > 0) {
+    return {
+      tone: "critical" as const,
+      title: "Approval scope does not match stored evidence",
+      description: approval.gate.metadataMismatches.map((item) => item.reason).join(" ")
+    };
+  }
+
   if (approval.gate.staleEvidenceTypes.length > 0) {
     return {
       tone: "warning" as const,

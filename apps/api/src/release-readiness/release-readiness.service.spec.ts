@@ -84,6 +84,7 @@ function buildApprovalRecord(
       missingEvidenceTypes: [],
       failedEvidenceTypes: [],
       staleEvidenceTypes: [],
+      metadataMismatches: [],
       maximumEvidenceAgeHours: 72,
       openBlockers: [],
       generatedAt: "2026-04-08T12:00:00.000Z"
@@ -109,16 +110,19 @@ function buildPassedRequiredEvidenceRecords() {
     buildEvidenceRecord({
       id: "evidence_3",
       evidenceType: ReleaseReadinessEvidenceType.database_restore_drill,
+      backupReference: "snapshot-2026-04-08T08:00Z",
       runbookPath: "docs/runbooks/restore-and-rollback-drills.md"
     }),
     buildEvidenceRecord({
       id: "evidence_4",
       evidenceType: ReleaseReadinessEvidenceType.api_rollback_drill,
+      rollbackReleaseIdentifier: "release-2026-04-07.3",
       runbookPath: "docs/runbooks/restore-and-rollback-drills.md"
     }),
     buildEvidenceRecord({
       id: "evidence_5",
       evidenceType: ReleaseReadinessEvidenceType.worker_rollback_drill,
+      rollbackReleaseIdentifier: "release-2026-04-07.3",
       runbookPath: "docs/runbooks/restore-and-rollback-drills.md"
     }),
     buildEvidenceRecord({
@@ -603,6 +607,100 @@ describe("ReleaseReadinessService", () => {
     );
   });
 
+  it("rejects launch approval requests without rollback release identifier", async () => {
+    const { service, prismaService, transactionClient } = createService();
+    (prismaService.releaseReadinessApproval.findFirst as jest.Mock).mockResolvedValue(
+      null
+    );
+
+    await expect(
+      service.requestApproval(
+        {
+          releaseIdentifier: "release-2026-04-08.1",
+          environment: "production_like",
+          summary: "Launch posture reviewed.",
+          securityConfigurationComplete: true,
+          accessAndGovernanceComplete: true,
+          dataAndRecoveryComplete: true,
+          platformHealthComplete: true,
+          functionalProofComplete: true,
+          contractAndChainProofComplete: true,
+          finalSignoffComplete: true,
+          unresolvedRisksAccepted: true,
+          openBlockers: []
+        },
+        "ops_1",
+        "operations_admin"
+      )
+    ).rejects.toThrow(
+      "Launch approval requests require rollback release identifier."
+    );
+
+    expect(prismaService.releaseReadinessEvidence.findMany).not.toHaveBeenCalled();
+    expect(transactionClient.releaseReadinessApproval.create).not.toHaveBeenCalled();
+  });
+
+  it("blocks launch approval when rollback drill evidence targets a different rollback release", async () => {
+    const { service, prismaService, transactionClient } = createService();
+    const rollbackEvidenceTypes = new Set<ReleaseReadinessEvidenceType>([
+      ReleaseReadinessEvidenceType.api_rollback_drill,
+      ReleaseReadinessEvidenceType.worker_rollback_drill
+    ]);
+    (prismaService.releaseReadinessApproval.findFirst as jest.Mock).mockResolvedValue(
+      null
+    );
+    (prismaService.releaseReadinessEvidence.findMany as jest.Mock)
+      .mockResolvedValueOnce(
+        buildPassedRequiredEvidenceRecords().map((record) =>
+          rollbackEvidenceTypes.has(
+            record.evidenceType as ReleaseReadinessEvidenceType
+          )
+            ? {
+                ...record,
+                rollbackReleaseIdentifier: "release-2026-04-06.9"
+              }
+            : record
+        )
+      )
+      .mockResolvedValueOnce([buildEvidenceRecord()]);
+    (
+      transactionClient.releaseReadinessApproval.create as jest.Mock
+    ).mockResolvedValue(buildApprovalRecord());
+
+    const result = await service.requestApproval(
+      {
+        releaseIdentifier: "release-2026-04-08.1",
+        environment: "production_like",
+        rollbackReleaseIdentifier: "release-2026-04-07.3",
+        summary: "Launch posture reviewed.",
+        securityConfigurationComplete: true,
+        accessAndGovernanceComplete: true,
+        dataAndRecoveryComplete: true,
+        platformHealthComplete: true,
+        functionalProofComplete: true,
+        contractAndChainProofComplete: true,
+        finalSignoffComplete: true,
+        unresolvedRisksAccepted: true,
+        openBlockers: []
+      },
+      "ops_1",
+      "operations_admin"
+    );
+
+    expect(result.approval.gate.overallStatus).toBe("blocked");
+    expect(result.approval.gate.approvalEligible).toBe(false);
+    expect(result.approval.gate.metadataMismatches).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          evidenceType: ReleaseReadinessEvidenceType.api_rollback_drill
+        }),
+        expect.objectContaining({
+          evidenceType: ReleaseReadinessEvidenceType.worker_rollback_drill
+        })
+      ])
+    );
+  });
+
   it("blocks launch approval requests for operators outside the request roster", async () => {
     const { service } = createService();
 
@@ -778,6 +876,7 @@ describe("ReleaseReadinessService", () => {
           missingEvidenceTypes: [],
           failedEvidenceTypes: [],
           staleEvidenceTypes: [],
+          metadataMismatches: [],
           maximumEvidenceAgeHours: 72,
           openBlockers: [],
           generatedAt: "2026-04-08T13:00:00.000Z"
@@ -853,6 +952,7 @@ describe("ReleaseReadinessService", () => {
           ],
           failedEvidenceTypes: [],
           staleEvidenceTypes: [],
+          metadataMismatches: [],
           maximumEvidenceAgeHours: 72,
           openBlockers: [],
           generatedAt: "2026-04-08T13:00:00.000Z"

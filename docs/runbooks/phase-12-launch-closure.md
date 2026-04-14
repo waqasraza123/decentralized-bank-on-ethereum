@@ -373,6 +373,7 @@ Pass:
 
 - all required proofs have latest accepted `passed` evidence
 - evidence is fresh enough for approval policy
+- rollback drill evidence is bound to the same rollback release identifier recorded on the approval request
 - checklist attestations are complete
 - open blockers are empty
 - a separate approver identity approves the request
@@ -380,6 +381,7 @@ Pass:
 Fail:
 
 - any required proof is missing, failed, or stale
+- rollback drill evidence points at a different rollback target than the governed request
 - any checklist section is incomplete
 - requester and approver are the same identity
 - blockers remain open

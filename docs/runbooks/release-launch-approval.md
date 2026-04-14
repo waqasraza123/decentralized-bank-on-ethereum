@@ -47,8 +47,10 @@ The service snapshots the latest release-readiness evidence state and computes w
 Request policy:
 
 - only configured launch-request roles may create approval requests
+- rollback release identifier is required for every governed launch request
 - the requester cannot later approve or reject the same launch request
 - the approval gate records stale evidence separately from missing or failed evidence
+- the approval gate blocks if rollback drill evidence targets a different rollback release than the request
 
 ## Approval rule
 
@@ -56,6 +58,7 @@ Request policy:
 
 - every required release-readiness proof has a latest `passed` record
 - every required `passed` proof is still fresh enough for the configured maximum evidence age
+- rollback drill evidence metadata matches the requested rollback release identifier
 - every checklist attestation is complete
 - no open blockers remain
 

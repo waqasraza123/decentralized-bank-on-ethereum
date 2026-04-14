@@ -220,6 +220,12 @@ function listMissingEvidenceMetadataFields(draft: EvidenceDraft): string[] {
   });
 }
 
+function listMissingApprovalMetadataFields(draft: ApprovalDraft): string[] {
+  return draft.rollbackReleaseIdentifier.trim().length === 0
+    ? ["rollback release identifier"]
+    : [];
+}
+
 function stringifyLaunchClosureManifest(manifest: LaunchClosureManifest): string {
   return JSON.stringify(manifest, null, 2);
 }
@@ -794,6 +800,9 @@ export function LaunchReadinessPage() {
   const missingEvidenceMetadataFields = listMissingEvidenceMetadataFields(
     evidenceDraft
   );
+  const missingApprovalMetadataFields = listMissingApprovalMetadataFields(
+    approvalDraft
+  );
   const recordEvidenceDisabled =
     !evidenceConfirm ||
     recordEvidenceMutation.isPending ||
@@ -803,7 +812,8 @@ export function LaunchReadinessPage() {
     !approvalRequestConfirm ||
     requestApprovalMutation.isPending ||
     approvalDraft.releaseIdentifier.trim().length === 0 ||
-    approvalDraft.summary.trim().length === 0;
+    approvalDraft.summary.trim().length === 0 ||
+    missingApprovalMetadataFields.length > 0;
 
   return (
     <div className="admin-page-grid">
@@ -1301,12 +1311,26 @@ export function LaunchReadinessPage() {
                           />
                         )
                       },
+                      {
+                        label: "Rollback release",
+                        value: selectedApproval.rollbackReleaseIdentifier ?? "None",
+                        mono: Boolean(selectedApproval.rollbackReleaseIdentifier)
+                      },
                       { label: "Gate state", value: toTitleCase(selectedApproval.gate.overallStatus) },
                       {
                         label: "Stale evidence",
                         value:
                           selectedApproval.gate.staleEvidenceTypes.length > 0
                             ? selectedApproval.gate.staleEvidenceTypes.join(", ")
+                            : "None"
+                      },
+                      {
+                        label: "Metadata mismatches",
+                        value:
+                          selectedApproval.gate.metadataMismatches.length > 0
+                            ? selectedApproval.gate.metadataMismatches
+                                .map((item) => toTitleCase(item.evidenceType))
+                                .join(", ")
                             : "None"
                       },
                       { label: "Requested", value: formatDateTime(selectedApproval.requestedAt) },
@@ -1322,6 +1346,15 @@ export function LaunchReadinessPage() {
                       title={gateNotice.title}
                       description={gateNotice.description}
                       tone={gateNotice.tone}
+                    />
+                  ) : null}
+                  {selectedApproval.gate.metadataMismatches.length > 0 ? (
+                    <InlineNotice
+                      title="Evidence metadata mismatches"
+                      description={selectedApproval.gate.metadataMismatches
+                        .map((item) => item.reason)
+                        .join(" ")}
+                      tone="critical"
                     />
                   ) : null}
                 </ListCard>
@@ -1375,6 +1408,12 @@ export function LaunchReadinessPage() {
                           <strong>{toTitleCase(check.evidenceType)}</strong>
                           <span>{toTitleCase(check.status)}</span>
                           <span>{check.latestEvidenceEnvironment ?? "No environment"}</span>
+                          <span>
+                            {check.latestEvidenceRollbackReleaseIdentifier ??
+                              check.latestEvidenceBackupReference ??
+                              check.latestEvidenceReleaseIdentifier ??
+                              "No scoped metadata"}
+                          </span>
                           <span>
                             {stale
                               ? "Stale evidence"
@@ -1448,6 +1487,16 @@ export function LaunchReadinessPage() {
                     }
                   />
                 </div>
+
+                <InlineNotice
+                  title="Rollback target required"
+                  description={`Governed launch approval is bound to one rollback release identifier, and the latest rollback drill evidence must match it. Missing fields: ${
+                    missingApprovalMetadataFields.join(", ") || "none"
+                  }.`}
+                  tone={
+                    missingApprovalMetadataFields.length > 0 ? "warning" : "positive"
+                  }
+                />
 
                 <div className="admin-field">
                   <span>Summary</span>

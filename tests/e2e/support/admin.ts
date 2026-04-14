@@ -962,28 +962,40 @@ function launchApproval(status = "pending_approval") {
           status: "passed",
           latestEvidenceObservedAt: isoAt(3),
           latestEvidenceEnvironment: "staging",
-          latestEvidenceStatus: "passed"
+          latestEvidenceStatus: "passed",
+          latestEvidenceReleaseIdentifier: "2026.04.10-rc1",
+          latestEvidenceRollbackReleaseIdentifier: null,
+          latestEvidenceBackupReference: null
         },
         {
           evidenceType: "platform_alert_delivery_slo",
           status: "passed",
           latestEvidenceObservedAt: isoAt(2),
           latestEvidenceEnvironment: "staging",
-          latestEvidenceStatus: "passed"
+          latestEvidenceStatus: "passed",
+          latestEvidenceReleaseIdentifier: "2026.04.10-rc1",
+          latestEvidenceRollbackReleaseIdentifier: null,
+          latestEvidenceBackupReference: null
         },
         {
           evidenceType: "api_rollback_drill",
           status: "failed",
           latestEvidenceObservedAt: isoAt(72),
           latestEvidenceEnvironment: "staging",
-          latestEvidenceStatus: "failed"
+          latestEvidenceStatus: "failed",
+          latestEvidenceReleaseIdentifier: "2026.04.10-rc1",
+          latestEvidenceRollbackReleaseIdentifier: "2026.04.09",
+          latestEvidenceBackupReference: null
         },
         {
           evidenceType: "role_review",
           status: "pending",
           latestEvidenceObservedAt: null,
           latestEvidenceEnvironment: null,
-          latestEvidenceStatus: null
+          latestEvidenceStatus: null,
+          latestEvidenceReleaseIdentifier: null,
+          latestEvidenceRollbackReleaseIdentifier: null,
+          latestEvidenceBackupReference: null
         }
       ]
     },
@@ -994,6 +1006,7 @@ function launchApproval(status = "pending_approval") {
       missingEvidenceTypes: ["role_review"],
       failedEvidenceTypes: ["api_rollback_drill"],
       staleEvidenceTypes: ["api_rollback_drill"],
+      metadataMismatches: [],
       maximumEvidenceAgeHours: 24,
       openBlockers: ["Rollback evidence is stale."],
       generatedAt: isoAt(0)

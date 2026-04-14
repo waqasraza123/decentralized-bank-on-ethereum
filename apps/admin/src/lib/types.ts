@@ -1015,7 +1015,15 @@ export type ReleaseReadinessApprovalEvidenceSnapshot = {
     latestEvidenceObservedAt: string | null;
     latestEvidenceEnvironment: string | null;
     latestEvidenceStatus: string | null;
+    latestEvidenceReleaseIdentifier: string | null;
+    latestEvidenceRollbackReleaseIdentifier: string | null;
+    latestEvidenceBackupReference: string | null;
   }>;
+};
+
+export type ReleaseReadinessApprovalMetadataMismatch = {
+  evidenceType: string;
+  reason: string;
 };
 
 export type ReleaseReadinessApprovalGate = {
@@ -1025,6 +1033,7 @@ export type ReleaseReadinessApprovalGate = {
   missingEvidenceTypes: string[];
   failedEvidenceTypes: string[];
   staleEvidenceTypes: string[];
+  metadataMismatches: ReleaseReadinessApprovalMetadataMismatch[];
   maximumEvidenceAgeHours: number;
   openBlockers: string[];
   generatedAt: string;

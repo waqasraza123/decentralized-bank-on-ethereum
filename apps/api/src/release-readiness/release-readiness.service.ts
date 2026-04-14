@@ -123,7 +123,15 @@ type ReleaseReadinessApprovalEvidenceSnapshot = {
     latestEvidenceObservedAt: string | null;
     latestEvidenceEnvironment: ReleaseReadinessEnvironment | null;
     latestEvidenceStatus: ReleaseReadinessEvidenceStatus | null;
+    latestEvidenceReleaseIdentifier: string | null;
+    latestEvidenceRollbackReleaseIdentifier: string | null;
+    latestEvidenceBackupReference: string | null;
   }>;
+};
+
+type ReleaseReadinessApprovalMetadataMismatch = {
+  evidenceType: ReleaseReadinessEvidenceType;
+  reason: string;
 };
 
 type ReleaseReadinessApprovalGate = {
@@ -133,6 +141,7 @@ type ReleaseReadinessApprovalGate = {
   missingEvidenceTypes: ReleaseReadinessEvidenceType[];
   failedEvidenceTypes: ReleaseReadinessEvidenceType[];
   staleEvidenceTypes: ReleaseReadinessEvidenceType[];
+  metadataMismatches: ReleaseReadinessApprovalMetadataMismatch[];
   maximumEvidenceAgeHours: number;
   openBlockers: string[];
   generatedAt: string;
@@ -173,6 +182,11 @@ type ReleaseReadinessApprovalList = {
   limit: number;
   totalCount: number;
 };
+
+const rollbackScopedEvidenceTypes = new Set<ReleaseReadinessEvidenceType>([
+  ReleaseReadinessEvidenceType.api_rollback_drill,
+  ReleaseReadinessEvidenceType.worker_rollback_drill
+]);
 
 @Injectable()
 export class ReleaseReadinessService {
@@ -416,15 +430,77 @@ export class ReleaseReadinessService {
         status: check.status,
         latestEvidenceObservedAt: check.latestEvidence?.observedAt ?? null,
         latestEvidenceEnvironment: check.latestEvidence?.environment ?? null,
-        latestEvidenceStatus: check.latestEvidence?.status ?? null
+        latestEvidenceStatus: check.latestEvidence?.status ?? null,
+        latestEvidenceReleaseIdentifier: check.latestEvidence?.releaseIdentifier ?? null,
+        latestEvidenceRollbackReleaseIdentifier:
+          check.latestEvidence?.rollbackReleaseIdentifier ?? null,
+        latestEvidenceBackupReference: check.latestEvidence?.backupReference ?? null
       }))
     };
+  }
+
+  private buildApprovalMetadataMismatches(
+    summary: ReleaseReadinessSummary,
+    rollbackReleaseIdentifier: string | null
+  ): ReleaseReadinessApprovalMetadataMismatch[] {
+    const mismatches: ReleaseReadinessApprovalMetadataMismatch[] = [];
+
+    for (const check of summary.requiredChecks) {
+      const latestEvidence = check.latestEvidence;
+
+      if (!latestEvidence) {
+        continue;
+      }
+
+      const missingMetadata = validateReleaseReadinessEvidenceMetadata({
+        evidenceType: check.evidenceType,
+        releaseIdentifier: latestEvidence.releaseIdentifier,
+        rollbackReleaseIdentifier: latestEvidence.rollbackReleaseIdentifier,
+        backupReference: latestEvidence.backupReference
+      });
+
+      if (missingMetadata.length > 0) {
+        mismatches.push({
+          evidenceType: check.evidenceType,
+          reason: `Latest ${check.evidenceType} evidence is missing ${describeReleaseReadinessEvidenceMetadataRequirements(
+            check.evidenceType
+          ).join(", ")}.`
+        });
+        continue;
+      }
+
+      if (
+        rollbackScopedEvidenceTypes.has(check.evidenceType) &&
+        !rollbackReleaseIdentifier
+      ) {
+        mismatches.push({
+          evidenceType: check.evidenceType,
+          reason: `Approval is missing rollback release identifier required for ${check.evidenceType}.`
+        });
+        continue;
+      }
+
+      if (
+        rollbackScopedEvidenceTypes.has(check.evidenceType) &&
+        latestEvidence.rollbackReleaseIdentifier !== rollbackReleaseIdentifier
+      ) {
+        mismatches.push({
+          evidenceType: check.evidenceType,
+          reason: `Latest ${check.evidenceType} evidence targets rollback release ${
+            latestEvidence.rollbackReleaseIdentifier ?? "none"
+          } instead of ${rollbackReleaseIdentifier}.`
+        });
+      }
+    }
+
+    return mismatches;
   }
 
   private evaluateApprovalGate(
     summary: ReleaseReadinessSummary,
     checklist: ReleaseReadinessApprovalChecklist,
-    status: ReleaseReadinessApprovalStatus
+    status: ReleaseReadinessApprovalStatus,
+    rollbackReleaseIdentifier: string | null
   ): ReleaseReadinessApprovalGate {
     const missingChecklistItems = releaseReadinessChecklistSections
       .filter((section) => !checklist[section.key])
@@ -449,11 +525,16 @@ export class ReleaseReadinessService {
         );
       })
       .map((check) => check.evidenceType);
+    const metadataMismatches = this.buildApprovalMetadataMismatches(
+      summary,
+      rollbackReleaseIdentifier
+    );
     const openBlockers = [...checklist.openBlockers];
     const approvalEligible =
       missingChecklistItems.length === 0 &&
       missingEvidenceTypes.length === 0 &&
       failedEvidenceTypes.length === 0 &&
+      metadataMismatches.length === 0 &&
       staleEvidenceTypes.length === 0 &&
       openBlockers.length === 0;
 
@@ -477,6 +558,7 @@ export class ReleaseReadinessService {
       missingEvidenceTypes,
       failedEvidenceTypes,
       staleEvidenceTypes,
+      metadataMismatches,
       maximumEvidenceAgeHours: this.maxEvidenceAgeHours,
       openBlockers,
       generatedAt: summary.generatedAt
@@ -486,13 +568,51 @@ export class ReleaseReadinessService {
   private mapStoredApprovalEvidenceSnapshot(
     record: ReleaseReadinessApprovalRecord
   ): ReleaseReadinessApprovalEvidenceSnapshot {
-    return record.evidenceSnapshot as unknown as ReleaseReadinessApprovalEvidenceSnapshot;
+    const snapshot =
+      record.evidenceSnapshot as unknown as Partial<ReleaseReadinessApprovalEvidenceSnapshot>;
+
+    return {
+      generatedAt: snapshot.generatedAt ?? record.updatedAt.toISOString(),
+      overallStatus: snapshot.overallStatus ?? "warning",
+      summary: snapshot.summary ?? {
+        requiredCheckCount: 0,
+        passedCheckCount: 0,
+        failedCheckCount: 0,
+        pendingCheckCount: 0
+      },
+      requiredChecks: (snapshot.requiredChecks ?? []).map((check) => ({
+        evidenceType: check.evidenceType,
+        status: check.status,
+        latestEvidenceObservedAt: check.latestEvidenceObservedAt ?? null,
+        latestEvidenceEnvironment: check.latestEvidenceEnvironment ?? null,
+        latestEvidenceStatus: check.latestEvidenceStatus ?? null,
+        latestEvidenceReleaseIdentifier: check.latestEvidenceReleaseIdentifier ?? null,
+        latestEvidenceRollbackReleaseIdentifier:
+          check.latestEvidenceRollbackReleaseIdentifier ?? null,
+        latestEvidenceBackupReference: check.latestEvidenceBackupReference ?? null
+      }))
+    };
   }
 
   private mapStoredApprovalGate(
     record: ReleaseReadinessApprovalRecord
   ): ReleaseReadinessApprovalGate {
-    return record.blockerSnapshot as unknown as ReleaseReadinessApprovalGate;
+    const gate =
+      record.blockerSnapshot as unknown as Partial<ReleaseReadinessApprovalGate>;
+
+    return {
+      overallStatus: gate.overallStatus ?? "blocked",
+      approvalEligible: gate.approvalEligible ?? false,
+      missingChecklistItems: gate.missingChecklistItems ?? [],
+      missingEvidenceTypes: gate.missingEvidenceTypes ?? [],
+      failedEvidenceTypes: gate.failedEvidenceTypes ?? [],
+      staleEvidenceTypes: gate.staleEvidenceTypes ?? [],
+      metadataMismatches: gate.metadataMismatches ?? [],
+      maximumEvidenceAgeHours:
+        gate.maximumEvidenceAgeHours ?? this.maxEvidenceAgeHours,
+      openBlockers: gate.openBlockers ?? [],
+      generatedAt: gate.generatedAt ?? record.updatedAt.toISOString()
+    };
   }
 
   private mapApprovalProjection(
@@ -508,7 +628,12 @@ export class ReleaseReadinessService {
     const gate =
       record.status === ReleaseReadinessApprovalStatus.pending_approval &&
       currentSummary
-        ? this.evaluateApprovalGate(currentSummary, checklist, record.status)
+        ? this.evaluateApprovalGate(
+            currentSummary,
+            checklist,
+            record.status,
+            record.rollbackReleaseIdentifier ?? null
+          )
         : this.mapStoredApprovalGate(record);
 
     return {
@@ -776,6 +901,12 @@ export class ReleaseReadinessService {
     const normalizedOperatorRole = this.assertCanRequest(operatorRole);
     const checklist = this.buildApprovalChecklist(dto);
 
+    if (!rollbackReleaseIdentifier) {
+      throw new BadRequestException(
+        "Launch approval requests require rollback release identifier."
+      );
+    }
+
     const [existingPendingApproval, readinessSummary] = await Promise.all([
       this.prismaService.releaseReadinessApproval.findFirst({
         where: {
@@ -800,7 +931,8 @@ export class ReleaseReadinessService {
     const gate = this.evaluateApprovalGate(
       readinessSummary,
       checklist,
-      ReleaseReadinessApprovalStatus.pending_approval
+      ReleaseReadinessApprovalStatus.pending_approval,
+      rollbackReleaseIdentifier
     );
 
     const approval = await this.prismaService.$transaction(async (transaction) => {
@@ -891,7 +1023,8 @@ export class ReleaseReadinessService {
     const gate = this.evaluateApprovalGate(
       readinessSummary,
       checklist,
-      ReleaseReadinessApprovalStatus.pending_approval
+      ReleaseReadinessApprovalStatus.pending_approval,
+      approval.rollbackReleaseIdentifier ?? null
     );
 
     if (!gate.approvalEligible) {
@@ -905,7 +1038,8 @@ export class ReleaseReadinessService {
     const approvedGate = this.evaluateApprovalGate(
       readinessSummary,
       checklist,
-      ReleaseReadinessApprovalStatus.approved
+      ReleaseReadinessApprovalStatus.approved,
+      approval.rollbackReleaseIdentifier ?? null
     );
 
     const updatedApproval = await this.prismaService.$transaction(
@@ -988,7 +1122,8 @@ export class ReleaseReadinessService {
     const rejectedGate = this.evaluateApprovalGate(
       readinessSummary,
       checklist,
-      ReleaseReadinessApprovalStatus.rejected
+      ReleaseReadinessApprovalStatus.rejected,
+      approval.rollbackReleaseIdentifier ?? null
     );
     const rejectionNote = dto.rejectionNote.trim();
 
