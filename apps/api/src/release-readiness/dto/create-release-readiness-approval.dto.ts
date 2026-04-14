@@ -5,13 +5,22 @@ import {
   IsIn,
   IsOptional,
   IsString,
+  Matches,
   MaxLength
 } from "class-validator";
+import { OPERATOR_CASE_NOTE_CONTENT_PATTERN } from "../../review-cases/dto/operator-case-input.validation";
 import { releaseReadinessEnvironments } from "./create-release-readiness-evidence.dto";
+import {
+  RELEASE_READINESS_IDENTIFIER_MAX_LENGTH,
+  RELEASE_READINESS_NOTE_MAX_LENGTH,
+  RELEASE_READINESS_OPEN_BLOCKER_MAX_LENGTH,
+  RELEASE_READINESS_SUMMARY_MAX_LENGTH
+} from "./release-readiness-input.validation";
 
 export class CreateReleaseReadinessApprovalDto {
   @IsString()
-  @MaxLength(200)
+  @MaxLength(RELEASE_READINESS_IDENTIFIER_MAX_LENGTH)
+  @Matches(OPERATOR_CASE_NOTE_CONTENT_PATTERN)
   releaseIdentifier!: string;
 
   @IsIn(releaseReadinessEnvironments)
@@ -19,16 +28,19 @@ export class CreateReleaseReadinessApprovalDto {
 
   @IsOptional()
   @IsString()
-  @MaxLength(200)
+  @MaxLength(RELEASE_READINESS_IDENTIFIER_MAX_LENGTH)
+  @Matches(OPERATOR_CASE_NOTE_CONTENT_PATTERN)
   rollbackReleaseIdentifier?: string;
 
   @IsString()
-  @MaxLength(1000)
+  @MaxLength(RELEASE_READINESS_SUMMARY_MAX_LENGTH)
+  @Matches(OPERATOR_CASE_NOTE_CONTENT_PATTERN)
   summary!: string;
 
   @IsOptional()
   @IsString()
-  @MaxLength(4000)
+  @MaxLength(RELEASE_READINESS_NOTE_MAX_LENGTH)
+  @Matches(OPERATOR_CASE_NOTE_CONTENT_PATTERN)
   requestNote?: string;
 
   @IsBoolean()
@@ -59,11 +71,13 @@ export class CreateReleaseReadinessApprovalDto {
   @IsArray()
   @ArrayMaxSize(25)
   @IsString({ each: true })
-  @MaxLength(500, { each: true })
+  @MaxLength(RELEASE_READINESS_OPEN_BLOCKER_MAX_LENGTH, { each: true })
+  @Matches(OPERATOR_CASE_NOTE_CONTENT_PATTERN, { each: true })
   openBlockers?: string[];
 
   @IsOptional()
   @IsString()
-  @MaxLength(4000)
+  @MaxLength(RELEASE_READINESS_NOTE_MAX_LENGTH)
+  @Matches(OPERATOR_CASE_NOTE_CONTENT_PATTERN)
   residualRiskNote?: string;
 }

@@ -6,6 +6,7 @@ import {
   IsObject,
   IsOptional,
   IsString,
+  Matches,
   MaxLength
 } from "class-validator";
 import type {
@@ -13,6 +14,14 @@ import type {
   ReleaseReadinessEvidenceStatus,
   ReleaseReadinessEvidenceType
 } from "@prisma/client";
+import { OPERATOR_CASE_NOTE_CONTENT_PATTERN } from "../../review-cases/dto/operator-case-input.validation";
+import {
+  RELEASE_READINESS_EVIDENCE_LINK_MAX_LENGTH,
+  RELEASE_READINESS_IDENTIFIER_MAX_LENGTH,
+  RELEASE_READINESS_NOTE_MAX_LENGTH,
+  RELEASE_READINESS_RUNBOOK_PATH_MAX_LENGTH,
+  RELEASE_READINESS_SUMMARY_MAX_LENGTH
+} from "./release-readiness-input.validation";
 
 export const releaseReadinessEvidenceTypes = [
   "platform_alert_delivery_slo",
@@ -53,38 +62,45 @@ export class CreateReleaseReadinessEvidenceDto {
 
   @IsOptional()
   @IsString()
-  @MaxLength(200)
+  @MaxLength(RELEASE_READINESS_IDENTIFIER_MAX_LENGTH)
+  @Matches(OPERATOR_CASE_NOTE_CONTENT_PATTERN)
   releaseIdentifier?: string;
 
   @IsOptional()
   @IsString()
-  @MaxLength(200)
+  @MaxLength(RELEASE_READINESS_IDENTIFIER_MAX_LENGTH)
+  @Matches(OPERATOR_CASE_NOTE_CONTENT_PATTERN)
   rollbackReleaseIdentifier?: string;
 
   @IsOptional()
   @IsString()
-  @MaxLength(200)
+  @MaxLength(RELEASE_READINESS_IDENTIFIER_MAX_LENGTH)
+  @Matches(OPERATOR_CASE_NOTE_CONTENT_PATTERN)
   backupReference?: string;
 
   @IsString()
-  @MaxLength(1000)
+  @MaxLength(RELEASE_READINESS_SUMMARY_MAX_LENGTH)
+  @Matches(OPERATOR_CASE_NOTE_CONTENT_PATTERN)
   summary!: string;
 
   @IsOptional()
   @IsString()
-  @MaxLength(4000)
+  @MaxLength(RELEASE_READINESS_NOTE_MAX_LENGTH)
+  @Matches(OPERATOR_CASE_NOTE_CONTENT_PATTERN)
   note?: string;
 
   @IsOptional()
   @IsString()
-  @MaxLength(200)
+  @MaxLength(RELEASE_READINESS_RUNBOOK_PATH_MAX_LENGTH)
+  @Matches(OPERATOR_CASE_NOTE_CONTENT_PATTERN)
   runbookPath?: string;
 
   @IsOptional()
   @IsArray()
   @ArrayMaxSize(20)
   @IsString({ each: true })
-  @MaxLength(500, { each: true })
+  @MaxLength(RELEASE_READINESS_EVIDENCE_LINK_MAX_LENGTH, { each: true })
+  @Matches(OPERATOR_CASE_NOTE_CONTENT_PATTERN, { each: true })
   evidenceLinks?: string[];
 
   @IsOptional()
