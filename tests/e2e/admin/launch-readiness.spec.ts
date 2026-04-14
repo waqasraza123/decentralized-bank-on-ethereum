@@ -73,6 +73,9 @@ test("records evidence and requests governed approval from the launch workspace"
     .getByLabel("Approval request note")
     .fill("Evidence reviewed from the operator console.");
   await page
+    .getByLabel("Approval rollback release identifier")
+    .fill("launch-rollback-2026.04.12.4");
+  await page
     .getByRole("checkbox", { name: "Security configuration complete" })
     .check();
   await page
@@ -110,6 +113,7 @@ test("records evidence and requests governed approval from the launch workspace"
   await expectJsonRequest(requestApprovalRequest, {
     releaseIdentifier: "launch-2026.04.13.1",
     environment: "production_like",
+    rollbackReleaseIdentifier: "launch-rollback-2026.04.12.4",
     summary:
       "All accepted proof is current and the release candidate is ready for dual control.",
     requestNote: "Evidence reviewed from the operator console.",

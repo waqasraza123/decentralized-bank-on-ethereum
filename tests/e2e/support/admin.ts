@@ -2977,6 +2977,7 @@ export function buildAdminScenario(
           id: "approval_2",
           releaseIdentifier: "launch-2026.04.13.1",
           environment: "production_like",
+          rollbackReleaseIdentifier: "launch-rollback-2026.04.12.4",
           summary: "Launch candidate ready for governed approval.",
           requestNote: "All evidence reviewed from the operator console.",
           checklist: {
@@ -2991,6 +2992,59 @@ export function buildAdminScenario(
             openBlockers: [],
             residualRiskNote: "Residual launch risks accepted by the requester."
           },
+          evidenceSnapshot: {
+            generatedAt: isoAt(0),
+            overallStatus: "healthy",
+            summary: {
+              requiredCheckCount: 4,
+              passedCheckCount: 4,
+              failedCheckCount: 0,
+              pendingCheckCount: 0
+            },
+            requiredChecks: [
+              {
+                evidenceType: "end_to_end_finance_flows",
+                status: "passed",
+                latestEvidenceObservedAt: isoAt(3),
+                latestEvidenceEnvironment: "production_like",
+                latestEvidenceStatus: "passed",
+                latestEvidenceReleaseIdentifier: "launch-2026.04.13.1",
+                latestEvidenceRollbackReleaseIdentifier: null,
+                latestEvidenceBackupReference: null
+              },
+              {
+                evidenceType: "platform_alert_delivery_slo",
+                status: "passed",
+                latestEvidenceObservedAt: isoAt(2),
+                latestEvidenceEnvironment: "production_like",
+                latestEvidenceStatus: "passed",
+                latestEvidenceReleaseIdentifier: "launch-2026.04.13.1",
+                latestEvidenceRollbackReleaseIdentifier: null,
+                latestEvidenceBackupReference: null
+              },
+              {
+                evidenceType: "api_rollback_drill",
+                status: "passed",
+                latestEvidenceObservedAt: isoAt(1),
+                latestEvidenceEnvironment: "production_like",
+                latestEvidenceStatus: "passed",
+                latestEvidenceReleaseIdentifier: "launch-2026.04.13.1",
+                latestEvidenceRollbackReleaseIdentifier:
+                  "launch-rollback-2026.04.12.4",
+                latestEvidenceBackupReference: "snapshot-2026-04-13T09:00Z"
+              },
+              {
+                evidenceType: "role_review",
+                status: "passed",
+                latestEvidenceObservedAt: isoAt(1),
+                latestEvidenceEnvironment: "production_like",
+                latestEvidenceStatus: "passed",
+                latestEvidenceReleaseIdentifier: "launch-2026.04.13.1",
+                latestEvidenceRollbackReleaseIdentifier: null,
+                latestEvidenceBackupReference: null
+              }
+            ]
+          },
           gate: {
             overallStatus: "ready",
             approvalEligible: true,
@@ -2998,6 +3052,7 @@ export function buildAdminScenario(
             missingEvidenceTypes: [],
             failedEvidenceTypes: [],
             staleEvidenceTypes: [],
+            metadataMismatches: [],
             maximumEvidenceAgeHours: 24,
             openBlockers: [],
             generatedAt: isoAt(0)
