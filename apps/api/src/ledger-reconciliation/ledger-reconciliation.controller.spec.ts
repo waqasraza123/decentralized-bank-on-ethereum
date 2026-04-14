@@ -1,0 +1,156 @@
+jest.mock("@stealth-trails-bank/config/api", () => ({
+  loadInternalOperatorRuntimeConfig: () => ({
+    internalOperatorApiKey: "test-operator-key"
+  }),
+  loadProductChainRuntimeConfig: () => ({
+    productChainId: 8453
+  })
+}));
+
+import { INestApplication } from "@nestjs/common";
+import { Test } from "@nestjs/testing";
+import request from "supertest";
+import { InternalOperatorApiKeyGuard } from "../auth/guards/internal-operator-api-key.guard";
+import { LedgerReconciliationController } from "./ledger-reconciliation.controller";
+import { LedgerReconciliationService } from "./ledger-reconciliation.service";
+
+describe("LedgerReconciliationController", () => {
+  let app: INestApplication;
+  const ledgerReconciliationService = {
+    listScanRuns: jest.fn(),
+    listMismatches: jest.fn()
+  };
+
+  beforeAll(async () => {
+    const moduleRef = await Test.createTestingModule({
+      controllers: [LedgerReconciliationController],
+      providers: [
+        InternalOperatorApiKeyGuard,
+        {
+          provide: LedgerReconciliationService,
+          useValue: ledgerReconciliationService
+        }
+      ]
+    }).compile();
+
+    app = moduleRef.createNestApplication();
+    await app.init();
+  });
+
+  afterAll(async () => {
+    await app.close();
+  });
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it("rejects malformed ledger reconciliation run filters", async () => {
+    await request(app.getHttpServer())
+      .get("/ledger/internal/reconciliation/runs")
+      .set("x-operator-api-key", "test-operator-key")
+      .set("x-operator-id", "ops_1")
+      .query({
+        workerId: "a".repeat(201)
+      })
+      .expect(400);
+
+    expect(ledgerReconciliationService.listScanRuns).not.toHaveBeenCalled();
+  });
+
+  it("passes governed ledger reconciliation run filters through", async () => {
+    ledgerReconciliationService.listScanRuns.mockResolvedValue({
+      runs: [],
+      limit: 25
+    });
+
+    const response = await request(app.getHttpServer())
+      .get("/ledger/internal/reconciliation/runs")
+      .set("x-operator-api-key", "test-operator-key")
+      .set("x-operator-id", "ops_1")
+      .query({
+        limit: "25",
+        status: "succeeded",
+        triggerSource: "worker",
+        scope: "transaction_intent",
+        customerAccountId: "account_1",
+        transactionIntentId: "intent_1",
+        workerId: "worker_1"
+      })
+      .expect(200);
+
+    expect(ledgerReconciliationService.listScanRuns).toHaveBeenCalledWith({
+      limit: 25,
+      status: "succeeded",
+      triggerSource: "worker",
+      scope: "transaction_intent",
+      customerAccountId: "account_1",
+      transactionIntentId: "intent_1",
+      workerId: "worker_1"
+    });
+    expect(response.body).toEqual({
+      status: "success",
+      message: "Ledger reconciliation scan runs retrieved successfully.",
+      data: {
+        runs: [],
+        limit: 25
+      }
+    });
+  });
+
+  it("rejects malformed ledger reconciliation mismatch filters", async () => {
+    await request(app.getHttpServer())
+      .get("/ledger/internal/reconciliation/mismatches")
+      .set("x-operator-api-key", "test-operator-key")
+      .set("x-operator-id", "ops_1")
+      .query({
+        reasonCode: "Mismatch Found",
+        email: "invalid-email"
+      })
+      .expect(400);
+
+    expect(ledgerReconciliationService.listMismatches).not.toHaveBeenCalled();
+  });
+
+  it("passes governed ledger reconciliation mismatch filters through", async () => {
+    ledgerReconciliationService.listMismatches.mockResolvedValue({
+      mismatches: [],
+      limit: 20
+    });
+
+    const response = await request(app.getHttpServer())
+      .get("/ledger/internal/reconciliation/mismatches")
+      .set("x-operator-api-key", "test-operator-key")
+      .set("x-operator-id", "ops_1")
+      .query({
+        limit: "20",
+        status: "open",
+        scope: "transaction_intent",
+        recommendedAction: "open_review_case",
+        reasonCode: "customer_asset_balance_projection_unrepairable",
+        customerAccountId: "account_1",
+        transactionIntentId: "intent_1",
+        email: "user@example.com"
+      })
+      .expect(200);
+
+    expect(ledgerReconciliationService.listMismatches).toHaveBeenCalledWith({
+      limit: 20,
+      status: "open",
+      scope: "transaction_intent",
+      recommendedAction: "open_review_case",
+      reasonCode: "customer_asset_balance_projection_unrepairable",
+      customerAccountId: "account_1",
+      transactionIntentId: "intent_1",
+      email: "user@example.com"
+    });
+    expect(response.body).toEqual({
+      status: "success",
+      message: "Ledger reconciliation mismatches retrieved successfully.",
+      data: {
+        mismatches: [],
+        limit: 20
+      }
+    });
+  });
+});

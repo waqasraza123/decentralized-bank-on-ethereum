@@ -5,8 +5,10 @@ import {
   IsOptional,
   IsString,
   Max,
+  MaxLength,
   Min
 } from "class-validator";
+import { OPERATOR_CASE_FILTER_VALUE_MAX_LENGTH } from "../../review-cases/dto/operator-case-input.validation";
 
 export class ListLedgerReconciliationRunsDto {
   @IsOptional()
@@ -30,13 +32,16 @@ export class ListLedgerReconciliationRunsDto {
 
   @IsOptional()
   @IsString()
+  @MaxLength(OPERATOR_CASE_FILTER_VALUE_MAX_LENGTH)
   customerAccountId?: string;
 
   @IsOptional()
   @IsString()
+  @MaxLength(OPERATOR_CASE_FILTER_VALUE_MAX_LENGTH)
   transactionIntentId?: string;
 
   @IsOptional()
   @IsString()
+  @MaxLength(OPERATOR_CASE_FILTER_VALUE_MAX_LENGTH)
   workerId?: string;
 }
