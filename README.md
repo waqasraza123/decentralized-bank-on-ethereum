@@ -169,7 +169,8 @@ Run these from the repository root unless noted otherwise.
 | `pnpm compile`                            | Run compile tasks where defined                                       |
 | `pnpm release:readiness:probe -- --help`  | Run a Phase 12 drill probe and optionally record evidence             |
 | `pnpm release:readiness:verify -- --help` | Run Phase 12 automated proof suites or manual review attestations     |
-| `pnpm safe-push`                          | Run the repo push guard (`build` + `test`) and push only if it passes |
+| `pnpm push --validate-before-push`        | Run repo push validation and push only if it passes                   |
+| `pnpm safe-push`                          | Alias for `pnpm push --validate-before-push`                          |
 
 ### Package-scoped examples
 

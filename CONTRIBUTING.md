@@ -146,9 +146,9 @@ If the database is behind, apply migrations first:
 pnpm --filter @stealth-trails-bank/api prisma:deploy
 ~~~
 
-## Push guard
+## Push workflow
 
-This repo includes a versioned pre-push guard so broken builds or failing tests do not get pushed.
+This repo includes a versioned pre-push hook, but it is non-blocking. Normal `git push` is allowed.
 
 Enable it once per clone:
 
@@ -156,22 +156,19 @@ Enable it once per clone:
 pnpm setup:hooks
 ~~~
 
-After that, normal `git push` runs the repo's push verification automatically.
-
-The enforced verification is:
+If you want to validate before pushing, use the explicit wrapper command:
 
 ~~~bash
-pnpm build
-pnpm test
+pnpm push --validate-before-push
 ~~~
 
-If you want one explicit command that works well from terminal-driven AI tools too, use:
+That command runs the repo push verification and then pushes only if it passes.
+
+For compatibility, `pnpm safe-push` remains available and does the same thing.
 
 ~~~bash
 pnpm safe-push
 ~~~
-
-That command runs the same verification and only pushes if it passes.
 
 ## Phase 12 drill execution
 
