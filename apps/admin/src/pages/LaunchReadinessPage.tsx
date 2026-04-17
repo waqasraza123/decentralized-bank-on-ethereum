@@ -136,6 +136,13 @@ type ApprovalDraft = {
   openBlockers: string;
 } & Record<(typeof approvalChecklistFields)[number]["key"], boolean>;
 
+const staleApprovalMutationMessage =
+  "Launch approval changed after it was loaded. Refresh approval data and retry.";
+
+function isStaleApprovalMutationMessage(message: string | null | undefined) {
+  return message === staleApprovalMutationMessage;
+}
+
 function formatLaunchClosureStatusLabel(
   status: "ready" | "blocked" | "approved" | "rejected" | "in_progress"
 ) {
@@ -365,6 +372,9 @@ export function LaunchReadinessPage() {
     null
   );
   const [actionError, setActionError] = useState<string | null>(null);
+  const [approvalRefreshConflict, setApprovalRefreshConflict] = useState<
+    string | null
+  >(null);
   const [launchClosureManifestDraft, setLaunchClosureManifestDraft] = useState(
     stringifyLaunchClosureManifest(buildLaunchClosureManifestTemplate())
   );
@@ -570,9 +580,32 @@ export function LaunchReadinessPage() {
         queryKey: ["released-releases", session?.baseUrl]
       }),
       queryClient.invalidateQueries({
+        queryKey: ["launch-closure-status", session?.baseUrl]
+      }),
+      queryClient.invalidateQueries({
         queryKey: ["launch-closure-packs", session?.baseUrl]
       })
     ]);
+  }
+
+  async function refreshApprovalWorkspace() {
+    setApprovalRefreshConflict(null);
+    setActionError(null);
+    setDecisionFlash("Approval workspace refreshed.");
+    await refreshData();
+  }
+
+  function handleApprovalMutationError(error: unknown, fallbackMessage: string) {
+    const message = readApiErrorMessage(error, fallbackMessage);
+
+    if (isStaleApprovalMutationMessage(message)) {
+      setApprovalRefreshConflict(message);
+      setActionError(null);
+      return;
+    }
+
+    setApprovalRefreshConflict(null);
+    setActionError(message);
   }
 
   const recordEvidenceMutation = useMutation({
@@ -663,12 +696,14 @@ export function LaunchReadinessPage() {
     onSuccess: async () => {
       setDecisionFlash("Approval recorded.");
       setActionError(null);
+      setApprovalRefreshConflict(null);
       setGovernedConfirm(false);
       await refreshData();
     },
     onError: (error) => {
-      setActionError(
-        readApiErrorMessage(error, "Failed to approve release readiness item.")
+      handleApprovalMutationError(
+        error,
+        "Failed to approve release readiness item."
       );
     }
   });
@@ -689,6 +724,7 @@ export function LaunchReadinessPage() {
         `Approval rebound to ${result.approval.launchClosurePack?.id}.`
       );
       setActionError(null);
+      setApprovalRefreshConflict(null);
       setGovernedConfirm(false);
       await refreshData();
       updateSearchParams({
@@ -697,8 +733,9 @@ export function LaunchReadinessPage() {
       });
     },
     onError: (error) => {
-      setActionError(
-        readApiErrorMessage(error, "Failed to rebind launch approval pack.")
+      handleApprovalMutationError(
+        error,
+        "Failed to rebind launch approval pack."
       );
     }
   });
@@ -712,12 +749,14 @@ export function LaunchReadinessPage() {
     onSuccess: async () => {
       setDecisionFlash("Rejection recorded.");
       setActionError(null);
+      setApprovalRefreshConflict(null);
       setGovernedConfirm(false);
       await refreshData();
     },
     onError: (error) => {
-      setActionError(
-        readApiErrorMessage(error, "Failed to reject release readiness item.")
+      handleApprovalMutationError(
+        error,
+        "Failed to reject release readiness item."
       );
     }
   });
@@ -2052,6 +2091,25 @@ export function LaunchReadinessPage() {
                         description={decisionFlash}
                         tone="positive"
                       />
+                    ) : null}
+                    {approvalRefreshConflict ? (
+                      <div className="admin-detail-stack">
+                        <InlineNotice
+                          title="Approval snapshot is stale"
+                          description="The selected approval changed since this workspace loaded. Refresh the approval workspace to reload the latest state and retry the action."
+                          tone="warning"
+                        />
+                        <div className="admin-action-buttons">
+                          <button
+                            type="button"
+                            className="admin-secondary-button"
+                            disabled={decisionPending}
+                            onClick={() => void refreshApprovalWorkspace()}
+                          >
+                            Refresh approval workspace
+                          </button>
+                        </div>
+                      </div>
                     ) : null}
                     {actionError ? (
                       <InlineNotice

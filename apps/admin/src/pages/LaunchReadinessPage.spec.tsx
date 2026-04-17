@@ -7,6 +7,7 @@ import {
   operatorSessionStorageKey
 } from "@/state/operator-session";
 import {
+  approveReleaseReadinessApproval,
   getLaunchClosureStatus,
   getReleaseReadinessSummary,
   listLaunchClosurePacks,
@@ -14,7 +15,8 @@ import {
   listReleaseReadinessApprovals,
   listReleaseReadinessEvidence,
   listReleasedReleases,
-  rebindReleaseReadinessApprovalPack
+  rebindReleaseReadinessApprovalPack,
+  rejectReleaseReadinessApproval
 } from "@/lib/api";
 
 vi.mock("@/lib/api", () => ({
@@ -385,6 +387,13 @@ describe("LaunchReadinessPage", () => {
         }
       })
     );
+    vi.mocked(approveReleaseReadinessApproval).mockResolvedValue({
+      approval: {
+        ...buildApproval("launch-2026.04.13.2"),
+        id: "launch-2026.04.13.2-approval",
+        status: "approved"
+      }
+    });
     vi.mocked(listLaunchClosurePacks).mockImplementation(async (_session, params) => {
       const releaseIdentifier =
         typeof params.releaseIdentifier === "string"
@@ -660,6 +669,50 @@ describe("LaunchReadinessPage", () => {
     expect(
       screen.queryByRole("button", { name: "Rebind to latest pack" })
     ).not.toBeInTheDocument();
+  });
+
+  it("shows an explicit refresh recovery flow for stale approval conflicts", async () => {
+    vi.mocked(rejectReleaseReadinessApproval).mockRejectedValueOnce(
+      new Error(
+        "Launch approval changed after it was loaded. Refresh approval data and retry."
+      )
+    );
+
+    renderPage("/launch-readiness?release=launch-2026.04.13.2");
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Reject release" })).toBeVisible();
+    });
+
+    fireEvent.click(
+      screen.getByRole("checkbox", {
+        name: /I reviewed failed checks, stale evidence, and open blockers before deciding/i
+      })
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Reject release" }));
+
+    expect(
+      await screen.findByText("Approval snapshot is stale")
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        /Refresh the approval workspace to reload the latest state and retry the action/i
+      )
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText("Action failed")
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Refresh approval workspace" })
+    ).toBeVisible();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Refresh approval workspace" })
+    );
+
+    expect(
+      await screen.findByText("Approval workspace refreshed.")
+    ).toBeInTheDocument();
   });
 
   it("requires rollback metadata before recording rollback drill evidence", async () => {
