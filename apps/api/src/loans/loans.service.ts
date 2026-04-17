@@ -34,6 +34,7 @@ import {
   type CustomerAccountProjection,
   type CustomerWalletProjection
 } from "../auth/auth.service";
+import { LedgerService } from "../ledger/ledger.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { CreateLoanApplicationDto } from "./dto/create-loan-application.dto";
 import { ListOperatorLoanAgreementsDto } from "./dto/list-operator-loan-agreements.dto";
@@ -166,7 +167,8 @@ export class LoansService {
 
   constructor(
     private readonly prismaService: PrismaService,
-    private readonly authService: AuthService
+    private readonly authService: AuthService,
+    private readonly ledgerService: LedgerService
   ) {
     const runtimeConfig = loadOptionalBlockchainContractWriteRuntimeConfig();
     this.provider = createJsonRpcProvider(runtimeConfig.rpcUrl);
@@ -1903,6 +1905,39 @@ export class LoansService {
 
   async fundAgreement(loanAgreementId: string, workerId: string) {
     const result = await this.prismaService.$transaction(async (transaction) => {
+      const currentAgreement = await transaction.loanAgreement.findUnique({
+        where: {
+          id: loanAgreementId
+        },
+        select: {
+          id: true,
+          status: true,
+          borrowAssetId: true,
+          principalAmount: true,
+          serviceFeeAmount: true,
+          borrowAsset: {
+            select: {
+              chainId: true
+            }
+          }
+        }
+      });
+
+      if (!currentAgreement) {
+        throw new NotFoundException("Loan agreement not found.");
+      }
+
+      const ledgerResult = await this.ledgerService.recordLoanDisbursement(
+        transaction,
+        {
+          loanAgreementId: currentAgreement.id,
+          assetId: currentAgreement.borrowAssetId,
+          chainId: currentAgreement.borrowAsset.chainId,
+          principalAmount: currentAgreement.principalAmount,
+          serviceFeeAmount: currentAgreement.serviceFeeAmount
+        }
+      );
+
       const agreement = await transaction.loanAgreement.update({
         where: {
           id: loanAgreementId
@@ -1929,7 +1964,17 @@ export class LoansService {
         actorType: "worker",
         actorId: workerId,
         eventType: "funded",
-        note: "Funding workflow completed and the agreement is active."
+        note: "Funding workflow completed and the agreement is active.",
+        metadata: {
+          ledgerJournalId: ledgerResult.ledgerJournalId,
+          principalReceivableLedgerAccountId:
+            ledgerResult.principalReceivableLedgerAccountId,
+          serviceFeeReceivableLedgerAccountId:
+            ledgerResult.serviceFeeReceivableLedgerAccountId,
+          serviceFeeIncomeLedgerAccountId:
+            ledgerResult.serviceFeeIncomeLedgerAccountId,
+          creditLedgerAccountId: ledgerResult.creditLedgerAccountId
+        }
       });
 
       return agreement;
@@ -2081,20 +2126,6 @@ export class LoansService {
     }
 
     const updated = await this.prismaService.$transaction(async (transaction) => {
-      const refreshedBalance = await transaction.customerAssetBalance.update({
-        where: {
-          customerAccountId_assetId: {
-            customerAccountId: agreement.customerAccountId,
-            assetId: agreement.borrowAssetId
-          }
-        },
-        data: {
-          availableBalance: {
-            decrement: dueAmount
-          }
-        }
-      });
-
       const repayment = await transaction.loanRepaymentEvent.create({
         data: {
           loanAgreementId,
@@ -2109,6 +2140,20 @@ export class LoansService {
           settledAt: new Date()
         }
       });
+
+      const ledgerResult = await this.ledgerService.recordLoanRepayment(
+        transaction,
+        {
+          loanAgreementId,
+          loanRepaymentEventId: repayment.id,
+          customerAccountId: agreement.customerAccountId,
+          assetId: agreement.borrowAssetId,
+          chainId: agreement.borrowAsset.chainId,
+          principalAmount: dueInstallment.scheduledPrincipalAmount,
+          serviceFeeAmount: dueInstallment.scheduledServiceFeeAmount,
+          totalAmount: dueAmount
+        }
+      );
 
       const installment = await transaction.loanInstallment.update({
         where: {
@@ -2184,11 +2229,20 @@ export class LoansService {
         actorType: "worker",
         actorId: workerId,
         eventType: "autopay_settled",
-        note: "Managed autopay collected a scheduled installment."
+        note: "Managed autopay collected a scheduled installment.",
+        metadata: {
+          repaymentId: repayment.id,
+          ledgerJournalId: ledgerResult.ledgerJournalId,
+          debitLedgerAccountId: ledgerResult.debitLedgerAccountId,
+          principalReceivableLedgerAccountId:
+            ledgerResult.principalReceivableLedgerAccountId,
+          serviceFeeReceivableLedgerAccountId:
+            ledgerResult.serviceFeeReceivableLedgerAccountId,
+          availableBalance: ledgerResult.availableBalance
+        }
       });
 
       return {
-        refreshedBalance,
         repayment,
         installment,
         status: loanStatus

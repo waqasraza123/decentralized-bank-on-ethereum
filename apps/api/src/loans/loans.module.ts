@@ -3,6 +3,7 @@ import { InternalOperatorApiKeyGuard } from "../auth/guards/internal-operator-ap
 import { InternalWorkerApiKeyGuard } from "../auth/guards/internal-worker-api-key.guard";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { AuthService } from "../auth/auth.service";
+import { LedgerService } from "../ledger/ledger.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { CustomerLoansController } from "./customer-loans.controller";
 import { LoansService } from "./loans.service";
@@ -17,6 +18,7 @@ import { WorkerLoansController } from "./worker-loans.controller";
   ],
   providers: [
     LoansService,
+    LedgerService,
     PrismaService,
     AuthService,
     JwtAuthGuard,

@@ -423,21 +423,29 @@ model LedgerAccount {
 }
 
 model LedgerJournal {
-  id                  String            @id @default(cuid())
-  transactionIntentId String
-  transactionIntent   TransactionIntent @relation(fields: [transactionIntentId], references: [id])
-  journalType         LedgerJournalType
-  chainId             Int
-  assetId             String
-  asset               Asset             @relation(fields: [assetId], references: [id])
-  postedAt            DateTime          @default(now())
-  createdAt           DateTime          @default(now())
-  ledgerPostings      LedgerPosting[]
+  id                   String              @id @default(cuid())
+  transactionIntentId  String?
+  transactionIntent    TransactionIntent?  @relation(fields: [transactionIntentId], references: [id])
+  loanAgreementId      String?
+  loanAgreement        LoanAgreement?      @relation(fields: [loanAgreementId], references: [id])
+  loanRepaymentEventId String?
+  loanRepaymentEvent   LoanRepaymentEvent? @relation(fields: [loanRepaymentEventId], references: [id])
+  journalType          LedgerJournalType
+  chainId              Int
+  assetId              String
+  asset                Asset               @relation(fields: [assetId], references: [id])
+  postedAt             DateTime            @default(now())
+  createdAt            DateTime            @default(now())
+  ledgerPostings       LedgerPosting[]
 
   @@index([journalType, chainId])
   @@index([assetId])
   @@index([transactionIntentId])
+  @@index([loanAgreementId])
+  @@index([loanRepaymentEventId])
   @@unique([transactionIntentId, journalType])
+  @@unique([loanAgreementId, journalType])
+  @@unique([loanRepaymentEventId, journalType])
 }
 
 model LedgerPosting {
@@ -703,6 +711,7 @@ model LoanAgreement {
   liquidationCases          LoanLiquidationCase[]
   statements                LoanStatement[]
   events                    LoanEvent[]
+  ledgerJournals            LedgerJournal[]
 
   @@index([customerAccountId, status, updatedAt])
   @@index([status, nextDueAt])
@@ -751,6 +760,7 @@ model LoanRepaymentEvent {
   failureReason              String?
   createdAt                  DateTime              @default(now())
   settledAt                  DateTime?
+  ledgerJournals             LedgerJournal[]
 
   @@index([loanAgreementId, createdAt])
   @@index([installmentId, createdAt])
