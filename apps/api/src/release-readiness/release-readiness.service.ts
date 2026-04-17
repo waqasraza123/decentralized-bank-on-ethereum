@@ -240,6 +240,12 @@ type ReleaseReadinessApprovalList = {
   totalCount: number;
 };
 
+type ReleaseReadinessApprovalLineageResult = {
+  approval: ReleaseReadinessApprovalProjection;
+  lineage: ReleaseReadinessApprovalProjection[];
+  currentMutationToken: string;
+};
+
 type ReleaseLaunchClosurePackProjection = {
   id: string;
   releaseIdentifier: string;
@@ -2248,22 +2254,71 @@ export class ReleaseReadinessService {
       throw new NotFoundException("Release readiness approval request was not found.");
     }
 
-    const [currentSummary, latestPack] =
-      approval.status === ReleaseReadinessApprovalStatus.pending_approval
-        ? await Promise.all([
-            this.getSummary({
-              releaseIdentifier: approval.releaseIdentifier,
-              environment: approval.environment
-            }),
-            this.getLatestLaunchClosurePackForScope(
-              approval.releaseIdentifier,
-              approval.environment
-            )
-          ])
-        : [undefined, null];
+    const [projection] = await this.hydrateApprovalProjections([approval]);
 
     return {
-      approval: this.mapApprovalProjection(approval, currentSummary, latestPack)
+      approval: projection
+    };
+  }
+
+  async getApprovalLineage(
+    approvalId: string
+  ): Promise<ReleaseReadinessApprovalLineageResult> {
+    const approval = await this.prismaService.releaseReadinessApproval.findUnique({
+      where: {
+        id: approvalId
+      }
+    });
+
+    if (!approval) {
+      throw new NotFoundException("Release readiness approval request was not found.");
+    }
+
+    const lineageRecords: ReleaseReadinessApprovalRecord[] = [approval];
+    const seenIds = new Set<string>([approval.id]);
+
+    let cursor = approval;
+    while (cursor.supersedesApprovalId) {
+      const previous = await this.prismaService.releaseReadinessApproval.findUnique({
+        where: {
+          id: cursor.supersedesApprovalId
+        }
+      });
+
+      if (!previous || seenIds.has(previous.id)) {
+        break;
+      }
+
+      lineageRecords.unshift(previous);
+      seenIds.add(previous.id);
+      cursor = previous;
+    }
+
+    cursor = approval;
+    while (cursor.supersededByApprovalId) {
+      const next = await this.prismaService.releaseReadinessApproval.findUnique({
+        where: {
+          id: cursor.supersededByApprovalId
+        }
+      });
+
+      if (!next || seenIds.has(next.id)) {
+        break;
+      }
+
+      lineageRecords.push(next);
+      seenIds.add(next.id);
+      cursor = next;
+    }
+
+    const lineage = await this.hydrateApprovalProjections(lineageRecords);
+    const currentApproval =
+      lineage.find((item) => item.id === approval.id) ?? lineage[0];
+
+    return {
+      approval: currentApproval,
+      lineage,
+      currentMutationToken: currentApproval.updatedAt
     };
   }
 
@@ -2284,6 +2339,16 @@ export class ReleaseReadinessService {
       })
     ]);
 
+    return {
+      approvals: await this.hydrateApprovalProjections(approvals),
+      limit,
+      totalCount
+    };
+  }
+
+  private async hydrateApprovalProjections(
+    approvals: ReleaseReadinessApprovalRecord[]
+  ): Promise<ReleaseReadinessApprovalProjection[]> {
     const pendingApprovalScopeKeys = [
       ...new Set(
         approvals
@@ -2327,23 +2392,17 @@ export class ReleaseReadinessService {
       })
     );
 
-    return {
-      approvals: approvals.map((record) =>
-        this.mapApprovalProjection(
-          record,
-          record.status === ReleaseReadinessApprovalStatus.pending_approval
-            ? currentSummaries.get(
-                `${record.releaseIdentifier}:${record.environment}`
-              )
-            : undefined,
-          record.status === ReleaseReadinessApprovalStatus.pending_approval
-            ? latestPacks.get(`${record.releaseIdentifier}:${record.environment}`) ??
-              null
-            : null
-        )
-      ),
-      limit,
-      totalCount
-    };
+    return approvals.map((record) =>
+      this.mapApprovalProjection(
+        record,
+        record.status === ReleaseReadinessApprovalStatus.pending_approval
+          ? currentSummaries.get(`${record.releaseIdentifier}:${record.environment}`)
+          : undefined,
+        record.status === ReleaseReadinessApprovalStatus.pending_approval
+          ? latestPacks.get(`${record.releaseIdentifier}:${record.environment}`) ??
+            null
+          : null
+      )
+    );
   }
 }

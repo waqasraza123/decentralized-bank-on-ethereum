@@ -1231,6 +1231,42 @@ describe("ReleaseReadinessService", () => {
     );
   });
 
+  it("returns the full approval lineage ordered from oldest to newest", async () => {
+    const { service, prismaService } = createService();
+    (prismaService.releaseReadinessApproval.findUnique as jest.Mock)
+      .mockResolvedValueOnce(
+        buildApprovalRecord({
+          id: "approval_2",
+          status: ReleaseReadinessApprovalStatus.superseded,
+          supersedesApprovalId: "approval_1",
+          supersededByApprovalId: "approval_3"
+        })
+      )
+      .mockResolvedValueOnce(
+        buildApprovalRecord({
+          id: "approval_1",
+          status: ReleaseReadinessApprovalStatus.superseded
+        })
+      )
+      .mockResolvedValueOnce(
+        buildApprovalRecord({
+          id: "approval_3",
+          status: ReleaseReadinessApprovalStatus.approved,
+          supersedesApprovalId: "approval_2"
+        })
+      );
+
+    const result = await service.getApprovalLineage("approval_2");
+
+    expect(result.approval.id).toBe("approval_2");
+    expect(result.currentMutationToken).toBe(approvalExpectedUpdatedAt);
+    expect(result.lineage.map((approval) => approval.id)).toEqual([
+      "approval_1",
+      "approval_2",
+      "approval_3"
+    ]);
+  });
+
   it("keeps launch approval blocked when the latest evidence belongs to another release", async () => {
     const { service, prismaService, transactionClient } = createService();
     (prismaService.releaseReadinessApproval.findFirst as jest.Mock).mockResolvedValue(

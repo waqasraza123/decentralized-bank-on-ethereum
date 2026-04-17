@@ -1130,6 +1130,12 @@ export type ReleaseReadinessApprovalList = {
   totalCount: number;
 };
 
+export type ReleaseReadinessApprovalLineage = {
+  approval: ReleaseReadinessApproval;
+  lineage: ReleaseReadinessApproval[];
+  currentMutationToken: string;
+};
+
 export type LaunchClosureManifest = {
   releaseIdentifier: string;
   environment: "staging" | "production_like" | "production";

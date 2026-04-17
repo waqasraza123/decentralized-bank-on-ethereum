@@ -5,6 +5,7 @@ import {
   approveReleaseReadinessApproval,
   createReleaseReadinessEvidence,
   getLaunchClosureStatus,
+  getReleaseReadinessApprovalLineage,
   getReleaseReadinessSummary,
   listLaunchClosurePacks,
   listPendingReleases,
@@ -20,7 +21,8 @@ import {
 import type {
   LaunchClosureManifest,
   LaunchClosurePackFile,
-  ReleaseLaunchClosurePack
+  ReleaseLaunchClosurePack,
+  ReleaseReadinessApproval
 } from "@/lib/types";
 import {
   formatCount,
@@ -449,6 +451,13 @@ export function LaunchReadinessPage() {
     enabled: Boolean(session)
   });
 
+  const approvalLineageQuery = useQuery({
+    queryKey: ["launch-approval-lineage", session?.baseUrl, selectedApprovalId],
+    queryFn: () =>
+      getReleaseReadinessApprovalLineage(session!, selectedApprovalId!),
+    enabled: Boolean(session && selectedApprovalId)
+  });
+
   const pendingReleasesQuery = useQuery({
     queryKey: ["pending-releases", session?.baseUrl],
     queryFn: () => listPendingReleases(session!, { limit: 20 }),
@@ -574,6 +583,9 @@ export function LaunchReadinessPage() {
         queryKey: ["launch-approvals-catalog", session?.baseUrl]
       }),
       queryClient.invalidateQueries({
+        queryKey: ["launch-approval-lineage", session?.baseUrl]
+      }),
+      queryClient.invalidateQueries({
         queryKey: ["pending-releases", session?.baseUrl]
       }),
       queryClient.invalidateQueries({
@@ -690,7 +702,7 @@ export function LaunchReadinessPage() {
   const approveMutation = useMutation({
     mutationFn: () =>
       approveReleaseReadinessApproval(session!, selectedApprovalId!, {
-        expectedUpdatedAt: selectedApproval!.updatedAt,
+        expectedUpdatedAt: selectedApprovalMutationToken!,
         approvalNote: trimToUndefined(actionNote)
       }),
     onSuccess: async () => {
@@ -716,7 +728,7 @@ export function LaunchReadinessPage() {
         {
           launchClosurePackId:
             selectedApproval!.launchClosureDrift!.latestPack!.id,
-          expectedUpdatedAt: selectedApproval!.updatedAt
+          expectedUpdatedAt: selectedApprovalMutationToken!
         }
       ),
     onSuccess: async (result) => {
@@ -743,7 +755,7 @@ export function LaunchReadinessPage() {
   const rejectMutation = useMutation({
     mutationFn: () =>
       rejectReleaseReadinessApproval(session!, selectedApprovalId!, {
-        expectedUpdatedAt: selectedApproval!.updatedAt,
+        expectedUpdatedAt: selectedApprovalMutationToken!,
         rejectionNote: actionNote.trim() || "Rejected from operator console."
       }),
     onSuccess: async () => {
@@ -903,7 +915,15 @@ export function LaunchReadinessPage() {
       (check) => check.evidenceType === selectedEvidence?.evidenceType
     ) ?? null;
   const selectedApproval =
-    scopedApprovals.find((approval) => approval.id === selectedApprovalId) ?? null;
+    approvalLineageQuery.data?.approval ??
+    scopedApprovals.find((approval) => approval.id === selectedApprovalId) ??
+    null;
+  const selectedApprovalLineage: ReleaseReadinessApproval[] =
+    approvalLineageQuery.data?.lineage ?? (selectedApproval ? [selectedApproval] : []);
+  const selectedApprovalMutationToken =
+    approvalLineageQuery.data?.currentMutationToken ??
+    selectedApproval?.updatedAt ??
+    null;
   const selectedLaunchClosureFile =
     launchClosureFiles.find(
       (file) => file.relativePath === selectedLaunchClosureFilePath
@@ -1423,6 +1443,34 @@ export function LaunchReadinessPage() {
           main={
             selectedApproval ? (
               <>
+                <ListCard title="Approval lineage">
+                  <div className="admin-list">
+                    {selectedApprovalLineage.map((approval) => (
+                      <button
+                        key={approval.id}
+                        type="button"
+                        className={`admin-list-row selectable ${
+                          selectedApprovalId === approval.id ? "selected" : ""
+                        }`}
+                        onClick={() =>
+                          updateSearchParams({
+                            approval: approval.id,
+                            release: approval.releaseIdentifier
+                          })
+                        }
+                      >
+                        <strong>{approval.id}</strong>
+                        <span>{toTitleCase(approval.status)}</span>
+                        <span>{formatDateTime(approval.updatedAt)}</span>
+                        <AdminStatusBadge
+                          label={toTitleCase(approval.gate.overallStatus)}
+                          tone={mapStatusToTone(approval.gate.overallStatus)}
+                        />
+                      </button>
+                    ))}
+                  </div>
+                </ListCard>
+
                 <ListCard title="Selected approval">
                   <DetailList
                     items={[

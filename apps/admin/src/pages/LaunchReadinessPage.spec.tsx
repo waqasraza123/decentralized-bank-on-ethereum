@@ -8,6 +8,7 @@ import {
 } from "@/state/operator-session";
 import {
   approveReleaseReadinessApproval,
+  getReleaseReadinessApprovalLineage,
   getLaunchClosureStatus,
   getReleaseReadinessSummary,
   listLaunchClosurePacks,
@@ -21,6 +22,7 @@ import {
 
 vi.mock("@/lib/api", () => ({
   getReleaseReadinessSummary: vi.fn(),
+  getReleaseReadinessApprovalLineage: vi.fn(),
   listReleaseReadinessEvidence: vi.fn(),
   listReleaseReadinessApprovals: vi.fn(),
   listPendingReleases: vi.fn(),
@@ -352,6 +354,32 @@ describe("LaunchReadinessPage", () => {
     vi.mocked(getLaunchClosureStatus).mockResolvedValue({
       ...buildLaunchClosureStatus(null)
     });
+    vi.mocked(getReleaseReadinessApprovalLineage).mockImplementation(
+      async (_session, approvalId) => {
+        const releaseIdentifier = approvalId.replace(/-approval$/, "");
+        const currentApproval = {
+          ...buildApproval(releaseIdentifier),
+          id: approvalId
+        };
+
+        return {
+          approval: currentApproval,
+          lineage:
+            approvalId === "launch-2026.04.13.2-approval"
+              ? [
+                  {
+                    ...buildApproval("launch-2026.04.13.1"),
+                    id: "launch-2026.04.13.1-approval",
+                    supersededByApprovalId: approvalId,
+                    status: "superseded" as const
+                  },
+                  currentApproval
+                ]
+              : [currentApproval],
+          currentMutationToken: currentApproval.updatedAt
+        };
+      }
+    );
     vi.mocked(rebindReleaseReadinessApprovalPack).mockImplementation(
       async (_session, approvalId, payload) => ({
         approval: {
@@ -635,7 +663,49 @@ describe("LaunchReadinessPage", () => {
     });
   });
 
+  it("renders the selected approval lineage from the dedicated lineage endpoint", async () => {
+    renderPage("/launch-readiness?release=launch-2026.04.13.2");
+
+    expect(await screen.findByText("Approval lineage")).toBeInTheDocument();
+    expect(vi.mocked(getReleaseReadinessApprovalLineage)).toHaveBeenCalledWith(
+      expect.objectContaining({
+        operatorId: "ops_1"
+      }),
+      "launch-2026.04.13.2-approval"
+    );
+    expect(
+      await screen.findByRole("button", { name: /launch-2026.04.13.1-approval/i })
+    ).toBeInTheDocument();
+    expect(
+      await screen.findByRole("button", { name: /launch-2026.04.13.2-approval/i })
+    ).toBeInTheDocument();
+  });
+
   it("keeps superseded approvals read-only for historical review", async () => {
+    vi.mocked(getReleaseReadinessApprovalLineage).mockResolvedValueOnce({
+      approval: {
+        ...buildApproval("launch-2026.04.13.1"),
+        id: "launch-2026.04.13.1-approval",
+        status: "superseded" as const,
+        supersededByApprovalId: "launch-2026.04.13.1-approval-rebound",
+        supersededByOperatorId: "ops_2",
+        supersededByOperatorRole: "operations_admin",
+        supersededAt: "2026-04-14T11:00:00.000Z"
+      },
+      lineage: [
+        {
+          ...buildApproval("launch-2026.04.13.1"),
+          id: "launch-2026.04.13.1-approval",
+          status: "superseded" as const,
+          supersededByApprovalId: "launch-2026.04.13.1-approval-rebound",
+          supersededByOperatorId: "ops_2",
+          supersededByOperatorRole: "operations_admin",
+          supersededAt: "2026-04-14T11:00:00.000Z"
+        }
+      ],
+      currentMutationToken: "2026-04-14T10:00:00.000Z"
+    });
+
     vi.mocked(listReleaseReadinessApprovals).mockResolvedValueOnce({
       approvals: [
         {

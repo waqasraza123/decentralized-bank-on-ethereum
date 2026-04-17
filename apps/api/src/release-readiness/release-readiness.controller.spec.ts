@@ -73,6 +73,7 @@ describe("ReleaseReadinessController", () => {
     recordEvidence: jest.fn(),
     listApprovals: jest.fn(),
     getApproval: jest.fn(),
+    getApprovalLineage: jest.fn(),
     requestApproval: jest.fn(),
     rebindApprovalToLaunchClosurePack: jest.fn(),
     approveApproval: jest.fn(),
@@ -536,6 +537,51 @@ describe("ReleaseReadinessController", () => {
         approval: {
           id: "approval_1"
         }
+      }
+    });
+  });
+
+  it("returns approval lineage through the dedicated endpoint", async () => {
+    releaseReadinessService.getApprovalLineage.mockResolvedValue({
+      approval: {
+        id: "approval_2"
+      },
+      lineage: [
+        {
+          id: "approval_1"
+        },
+        {
+          id: "approval_2"
+        }
+      ],
+      currentMutationToken: "2026-04-10T12:00:00.000Z"
+    });
+
+    const response = await request(app.getHttpServer())
+      .get("/release-readiness/internal/approvals/approval_2/lineage")
+      .set("x-operator-api-key", "test-operator-key")
+      .set("x-operator-id", "ops_2")
+      .expect(200);
+
+    expect(releaseReadinessService.getApprovalLineage).toHaveBeenCalledWith(
+      "approval_2"
+    );
+    expect(response.body).toEqual({
+      status: "success",
+      message: "Release readiness approval lineage retrieved successfully.",
+      data: {
+        approval: {
+          id: "approval_2"
+        },
+        lineage: [
+          {
+            id: "approval_1"
+          },
+          {
+            id: "approval_2"
+          }
+        ],
+        currentMutationToken: "2026-04-10T12:00:00.000Z"
       }
     });
   });

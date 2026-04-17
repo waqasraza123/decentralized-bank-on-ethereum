@@ -161,6 +161,21 @@ export class ReleaseReadinessController {
     };
   }
 
+  @Get("approvals/:approvalId/lineage")
+  async getApprovalLineage(
+    @Param("approvalId") approvalId: string
+  ): Promise<CustomJsonResponse> {
+    const result = await this.releaseReadinessService.getApprovalLineage(
+      approvalId
+    );
+
+    return {
+      status: "success",
+      message: "Release readiness approval lineage retrieved successfully.",
+      data: result
+    };
+  }
+
   @Post("approvals")
   async requestApproval(
     @Body(
