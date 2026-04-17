@@ -731,8 +731,13 @@ test("managed mode broadcasts queued deposits and leaves withdrawals for manual 
     async settleWithdrawalIntent() {
       throw new Error("no monitored withdrawals expected");
     },
-    async failWithdrawalIntent() {
-      throw new Error("withdrawals should stay queued for manual handling");
+    async failWithdrawalIntent(intentId: string, payload: {
+      failureCode: string;
+      failureCategory?: string;
+    }) {
+      operations.push(
+        `failWithdrawalIntent:${intentId}:${payload.failureCode}:${payload.failureCategory}`
+      );
     },
     async reportWorkerHeartbeat() {
       throw new Error("worker heartbeat reporting is handled outside the orchestrator");
@@ -791,13 +796,10 @@ test("managed mode broadcasts queued deposits and leaves withdrawals for manual 
   await orchestrator.runOnce();
 
   assert.deepEqual(operations, [
-    "recordDepositBroadcast:deposit_1:0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    "recordDepositBroadcast:deposit_1:0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "failWithdrawalIntent:withdrawal_1:managed_withdrawal_signer_unavailable:manual_intervention_required"
   ]);
-  assert.equal(warnings.length, 1);
-  assert.equal(
-    warnings[0]?.event,
-    "managed_withdrawal_requires_manual_intervention"
-  );
+  assert.equal(warnings.length, 0);
 });
 
 test("managed mode permanently fails malformed deposit intents", async () => {
@@ -2960,8 +2962,18 @@ test("managed mode routes policy-controlled manual failures into the interventio
       async settleWithdrawalIntent() {
         throw new Error("not expected");
       },
-      async failWithdrawalIntent() {
-        throw new Error("policy-controlled manual failures should stay operator-visible");
+      async failWithdrawalIntent(intentId: string, payload: {
+        failureCode: string;
+        failureCategory?: string;
+      }) {
+        warnings.push({
+          event: "manual_intervention_recorded",
+          metadata: {
+            intentId,
+            failureCode: payload.failureCode,
+            failureCategory: payload.failureCategory
+          }
+        });
       },
       async reportWorkerHeartbeat() {
         throw new Error("worker heartbeat reporting is handled outside the orchestrator");
@@ -3002,13 +3014,10 @@ test("managed mode routes policy-controlled manual failures into the interventio
   await orchestrator.runOnce();
 
   assert.equal(warnings.length, 1);
+  assert.equal(warnings[0]?.event, "manual_intervention_recorded");
   assert.equal(
-    warnings[0]?.event,
-    "managed_withdrawal_requires_manual_intervention"
-  );
-  assert.equal(
-    warnings[0]?.metadata.reason,
-    "Configured executor is not authorized by the wallet."
+    warnings[0]?.metadata.failureCode,
+    "policy_controlled_wallet_executor_mismatch"
   );
 });
 
@@ -3083,8 +3092,18 @@ test("managed mode logs retryable withdrawal execution failures without failing 
       async settleWithdrawalIntent() {
         throw new Error("not expected");
       },
-      async failWithdrawalIntent() {
-        throw new Error("retryable failures must not mark the intent failed");
+      async failWithdrawalIntent(intentId: string, payload: {
+        failureCode: string;
+        failureCategory?: string;
+      }) {
+        errors.push({
+          event: "retryable_failure_recorded",
+          metadata: {
+            intentId,
+            failureCode: payload.failureCode,
+            failureCategory: payload.failureCategory
+          }
+        });
       },
       async reportWorkerHeartbeat() {
         throw new Error("worker heartbeat reporting is handled outside the orchestrator");
@@ -3124,11 +3143,12 @@ test("managed mode logs retryable withdrawal execution failures without failing 
 
   await orchestrator.runOnce();
 
-  assert.equal(errors.length, 1);
+  assert.equal(errors.length, 2);
   assert.equal(
     errors[0]?.event,
     "managed_withdrawal_execution_failed_retryable"
   );
+  assert.equal(errors[1]?.event, "retryable_failure_recorded");
 });
 
 test("monitor mode logs pending confirmation when a withdrawal receipt is still unavailable", async () => {

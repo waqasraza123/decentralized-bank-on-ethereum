@@ -15,13 +15,17 @@ import {
   BlockchainTransactionStatus,
   PolicyDecision,
   Prisma,
+  ReviewCaseType,
   TransactionIntentStatus,
   TransactionIntentType,
+  WithdrawalExecutionFailureCategory,
+  WalletCustodyType,
   WalletStatus
 } from "@prisma/client";
 import { assertOperatorRoleAuthorized } from "../auth/internal-operator-role-policy";
 import { LedgerService } from "../ledger/ledger.service";
 import { PrismaService } from "../prisma/prisma.service";
+import { ReviewCasesService } from "../review-cases/review-cases.service";
 import { ConfirmWithdrawalIntentDto } from "./dto/confirm-withdrawal-intent.dto";
 import { CreateWithdrawalIntentDto } from "./dto/create-withdrawal-intent.dto";
 import { DecideWithdrawalIntentDto } from "./dto/decide-withdrawal-intent.dto";
@@ -49,80 +53,151 @@ type WithdrawalIntentContext = {
   assetDecimals: number;
 };
 
+const latestBlockchainTransactionSelect = {
+  id: true,
+  txHash: true,
+  nonce: true,
+  serializedTransaction: true,
+  status: true,
+  fromAddress: true,
+  toAddress: true,
+  broadcastAt: true,
+  createdAt: true,
+  updatedAt: true,
+  confirmedAt: true
+} satisfies Prisma.BlockchainTransactionSelect;
+
+const customerIntentInclude = {
+  asset: {
+    select: {
+      id: true,
+      symbol: true,
+      displayName: true,
+      decimals: true,
+      chainId: true
+    }
+  },
+  sourceWallet: {
+    select: {
+      id: true,
+      address: true,
+      custodyType: true
+    }
+  }
+} satisfies Prisma.TransactionIntentInclude;
+
+const withdrawalIntentReviewInclude = {
+  asset: {
+    select: {
+      id: true,
+      symbol: true,
+      displayName: true,
+      decimals: true,
+      chainId: true
+    }
+  },
+  sourceWallet: {
+    select: {
+      id: true,
+      address: true,
+      custodyType: true
+    }
+  },
+  customerAccount: {
+    select: {
+      id: true,
+      customerId: true,
+      customer: {
+        select: {
+          id: true,
+          supabaseUserId: true,
+          email: true,
+          firstName: true,
+          lastName: true
+        }
+      }
+    }
+  },
+  blockchainTransactions: {
+    orderBy: {
+      createdAt: "desc"
+    },
+    take: 1,
+    select: latestBlockchainTransactionSelect
+  }
+} satisfies Prisma.TransactionIntentInclude;
+
 type CustomerIntentRecord = Prisma.TransactionIntentGetPayload<{
-  include: {
-    asset: {
-      select: {
-        id: true;
-        symbol: true;
-        displayName: true;
-        decimals: true;
-        chainId: true;
-      };
-    };
-    sourceWallet: {
-      select: {
-        id: true;
-        address: true;
-        custodyType: true;
-      };
-    };
-  };
+  include: typeof customerIntentInclude;
 }>;
 
-type InternalIntentRecord = Prisma.TransactionIntentGetPayload<{
-  include: {
-    asset: {
-      select: {
-        id: true;
-        symbol: true;
-        displayName: true;
-        decimals: true;
-        chainId: true;
-      };
-    };
-    sourceWallet: {
-      select: {
-        id: true;
-        address: true;
-        custodyType: true;
-      };
-    };
-    customerAccount: {
-      select: {
-        id: true;
-        customerId: true;
-        customer: {
-          select: {
-            id: true;
-            supabaseUserId: true;
-            email: true;
-            firstName: true;
-            lastName: true;
-          };
-        };
-      };
-    };
-    blockchainTransactions: {
-      orderBy: {
-        createdAt: "desc";
-      };
-      take: 1;
-      select: {
-        id: true;
-        txHash: true;
-        nonce: true;
-        serializedTransaction: true;
-        status: true;
-        fromAddress: true;
-        toAddress: true;
-        createdAt: true;
-        updatedAt: true;
-        confirmedAt: true;
-      };
-    };
+type InternalIntentRecord = {
+  id: string;
+  customerAccountId: string | null;
+  assetId: string;
+  sourceWalletId: string | null;
+  destinationWalletId: string | null;
+  externalAddress: string | null;
+  chainId: number;
+  intentType: TransactionIntentType;
+  status: TransactionIntentStatus;
+  policyDecision: PolicyDecision;
+  requestedAmount: Prisma.Decimal;
+  settledAmount: Prisma.Decimal | null;
+  idempotencyKey: string;
+  failureCode: string | null;
+  failureReason: string | null;
+  executionFailureCategory: WithdrawalExecutionFailureCategory | null;
+  executionFailureObservedAt: Date | null;
+  executionClaimedAt: Date | null;
+  executionClaimedByWorkerId: string | null;
+  manualInterventionRequiredAt: Date | null;
+  manualInterventionReviewCaseId: string | null;
+  manuallyResolvedAt: Date | null;
+  manualResolutionReasonCode: string | null;
+  manualResolutionNote: string | null;
+  manualResolvedByOperatorId: string | null;
+  manualResolutionOperatorRole: string | null;
+  manualResolutionReviewCaseId: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+  asset: {
+    id: string;
+    symbol: string;
+    displayName: string;
+    decimals: number;
+    chainId: number;
   };
-}>;
+  sourceWallet: {
+    id: string;
+    address: string;
+    custodyType: WalletCustodyType;
+  } | null;
+  customerAccount: {
+    id: string;
+    customerId: string;
+    customer: {
+      id: string;
+      supabaseUserId: string;
+      email: string;
+      firstName: string | null;
+      lastName: string | null;
+    };
+  } | null;
+  blockchainTransactions: Array<{
+    id: string;
+    txHash: string | null;
+    nonce: number | null;
+    serializedTransaction: string | null;
+    status: BlockchainTransactionStatus;
+    fromAddress: string | null;
+    toAddress: string | null;
+    broadcastAt?: Date | null;
+    createdAt: Date;
+    updatedAt: Date;
+    confirmedAt: Date | null;
+  }>;
+};
 
 type LatestBlockchainTransactionProjection = {
   id: string;
@@ -132,6 +207,7 @@ type LatestBlockchainTransactionProjection = {
   status: BlockchainTransactionStatus;
   fromAddress: string | null;
   toAddress: string | null;
+  broadcastAt: string | null;
   createdAt: string;
   updatedAt: string;
   confirmedAt: string | null;
@@ -162,6 +238,10 @@ type TransactionIntentProjection = {
   idempotencyKey: string;
   failureCode: string | null;
   failureReason: string | null;
+  executionFailureCategory: WithdrawalExecutionFailureCategory | null;
+  executionFailureObservedAt: string | null;
+  manualInterventionRequiredAt: string | null;
+  manualInterventionReviewCaseId: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -257,6 +337,18 @@ type WithdrawalTransitionActor = {
   replayReason: string | null;
 };
 
+type WithdrawalExecutionFailureResolution = {
+  failureCategory: WithdrawalExecutionFailureCategory;
+  nextIntentStatus: TransactionIntentStatus;
+  nextBlockchainStatus: BlockchainTransactionStatus | null;
+  releaseReservation: boolean;
+  openManualInterventionReviewCase: boolean;
+  auditAction:
+    | "transaction_intent.withdrawal.execution_retryable_failure"
+    | "transaction_intent.withdrawal.execution_failed"
+    | "transaction_intent.withdrawal.manual_intervention_required";
+};
+
 @Injectable()
 export class WithdrawalIntentsService {
   private readonly productChainId: number;
@@ -265,7 +357,8 @@ export class WithdrawalIntentsService {
 
   constructor(
     private readonly prismaService: PrismaService,
-    private readonly ledgerService: LedgerService
+    private readonly ledgerService: LedgerService,
+    private readonly reviewCasesService: ReviewCasesService
   ) {
     this.productChainId = loadProductChainRuntimeConfig().productChainId;
     const sensitiveActionPolicyConfig =
@@ -306,6 +399,71 @@ export class WithdrawalIntentsService {
     }
 
     return "worker_runtime";
+  }
+
+  private normalizeWithdrawalFailureCategory(
+    value: WithdrawalExecutionFailureCategory | undefined,
+    currentStatus: TransactionIntentStatus
+  ): WithdrawalExecutionFailureCategory {
+    if (value) {
+      return value;
+    }
+
+    if (currentStatus === TransactionIntentStatus.broadcast) {
+      return WithdrawalExecutionFailureCategory.permanent;
+    }
+
+    return WithdrawalExecutionFailureCategory.permanent;
+  }
+
+  private resolveWithdrawalExecutionFailureResolution(args: {
+    currentStatus: TransactionIntentStatus;
+    currentBlockchainStatus: BlockchainTransactionStatus | null;
+    failureCategory: WithdrawalExecutionFailureCategory;
+  }): WithdrawalExecutionFailureResolution {
+    if (
+      args.failureCategory === WithdrawalExecutionFailureCategory.retryable
+    ) {
+      if (args.currentStatus !== TransactionIntentStatus.queued) {
+        throw new ConflictException(
+          "Retryable withdrawal failures are only allowed before broadcast."
+        );
+      }
+
+      return {
+        failureCategory: args.failureCategory,
+        nextIntentStatus: TransactionIntentStatus.queued,
+        nextBlockchainStatus: args.currentBlockchainStatus,
+        releaseReservation: false,
+        openManualInterventionReviewCase: false,
+        auditAction:
+          "transaction_intent.withdrawal.execution_retryable_failure"
+      };
+    }
+
+    if (
+      args.failureCategory ===
+      WithdrawalExecutionFailureCategory.manual_intervention_required
+    ) {
+      return {
+        failureCategory: args.failureCategory,
+        nextIntentStatus: args.currentStatus,
+        nextBlockchainStatus: args.currentBlockchainStatus,
+        releaseReservation: false,
+        openManualInterventionReviewCase: true,
+        auditAction:
+          "transaction_intent.withdrawal.manual_intervention_required"
+      };
+    }
+
+    return {
+      failureCategory: WithdrawalExecutionFailureCategory.permanent,
+      nextIntentStatus: TransactionIntentStatus.failed,
+      nextBlockchainStatus: BlockchainTransactionStatus.failed,
+      releaseReservation: true,
+      openManualInterventionReviewCase: false,
+      auditAction: "transaction_intent.withdrawal.execution_failed"
+    };
   }
 
   private normalizeAssetSymbol(assetSymbol: string): string {
@@ -367,7 +525,39 @@ export class WithdrawalIntentsService {
   }
 
   private mapIntentProjection(
-    intent: CustomerIntentRecord
+    intent: {
+      id: string;
+      customerAccountId: string | null;
+      asset: {
+        id: string;
+        symbol: string;
+        displayName: string;
+        decimals: number;
+        chainId: number;
+      };
+      sourceWalletId: string | null;
+      sourceWallet: {
+        address: string;
+        custodyType: WalletCustodyType;
+      } | null;
+      destinationWalletId: string | null;
+      externalAddress: string | null;
+      chainId: number;
+      intentType: TransactionIntentType;
+      status: TransactionIntentStatus;
+      policyDecision: PolicyDecision;
+      requestedAmount: Prisma.Decimal;
+      settledAmount: Prisma.Decimal | null;
+      idempotencyKey: string;
+      failureCode: string | null;
+      failureReason: string | null;
+      executionFailureCategory?: WithdrawalExecutionFailureCategory | null;
+      executionFailureObservedAt?: Date | null;
+      manualInterventionRequiredAt?: Date | null;
+      manualInterventionReviewCaseId?: string | null;
+      createdAt: Date;
+      updatedAt: Date;
+    }
   ): TransactionIntentProjection {
     return {
       id: intent.id,
@@ -394,6 +584,13 @@ export class WithdrawalIntentsService {
       idempotencyKey: intent.idempotencyKey,
       failureCode: intent.failureCode,
       failureReason: intent.failureReason,
+      executionFailureCategory: intent.executionFailureCategory ?? null,
+      executionFailureObservedAt:
+        intent.executionFailureObservedAt?.toISOString() ?? null,
+      manualInterventionRequiredAt:
+        intent.manualInterventionRequiredAt?.toISOString() ?? null,
+      manualInterventionReviewCaseId:
+        intent.manualInterventionReviewCaseId ?? null,
       createdAt: intent.createdAt.toISOString(),
       updatedAt: intent.updatedAt.toISOString()
     };
@@ -416,6 +613,7 @@ export class WithdrawalIntentsService {
       status: latestBlockchainTransaction.status,
       fromAddress: latestBlockchainTransaction.fromAddress,
       toAddress: latestBlockchainTransaction.toAddress,
+      broadcastAt: latestBlockchainTransaction.broadcastAt?.toISOString() ?? null,
       createdAt: latestBlockchainTransaction.createdAt.toISOString(),
       updatedAt: latestBlockchainTransaction.updatedAt.toISOString(),
       confirmedAt: latestBlockchainTransaction.confirmedAt?.toISOString() ?? null
@@ -551,24 +749,7 @@ export class WithdrawalIntentsService {
       where: {
         idempotencyKey
       },
-      include: {
-        asset: {
-          select: {
-            id: true,
-            symbol: true,
-            displayName: true,
-            decimals: true,
-            chainId: true
-          }
-        },
-        sourceWallet: {
-          select: {
-            id: true,
-            address: true,
-            custodyType: true
-          }
-        }
-      }
+      include: customerIntentInclude
     });
   }
 
@@ -581,57 +762,7 @@ export class WithdrawalIntentsService {
         intentType: TransactionIntentType.withdrawal,
         chainId: this.productChainId
       },
-      include: {
-        asset: {
-          select: {
-            id: true,
-            symbol: true,
-            displayName: true,
-            decimals: true,
-            chainId: true
-          }
-        },
-        sourceWallet: {
-          select: {
-            id: true,
-            address: true,
-            custodyType: true
-          }
-        },
-        customerAccount: {
-          select: {
-            id: true,
-            customerId: true,
-            customer: {
-              select: {
-                id: true,
-                supabaseUserId: true,
-                email: true,
-                firstName: true,
-                lastName: true
-              }
-            }
-          }
-        },
-        blockchainTransactions: {
-          orderBy: {
-            createdAt: "desc"
-          },
-          take: 1,
-          select: {
-            id: true,
-            txHash: true,
-            nonce: true,
-            serializedTransaction: true,
-            status: true,
-            fromAddress: true,
-            toAddress: true,
-            createdAt: true,
-            updatedAt: true,
-            confirmedAt: true
-          }
-        }
-      }
+      include: withdrawalIntentReviewInclude
     });
   }
 
@@ -1315,7 +1446,13 @@ export class WithdrawalIntentsService {
           data: {
             status: TransactionIntentStatus.queued,
             failureCode: null,
-            failureReason: null
+            failureReason: null,
+            executionFailureCategory: null,
+            executionFailureObservedAt: null,
+            manualInterventionRequiredAt: null,
+            manualInterventionReviewCaseId: null,
+            executionClaimedAt: null,
+            executionClaimedByWorkerId: null
           }
         });
 
@@ -2257,6 +2394,7 @@ export class WithdrawalIntentsService {
             data: {
               txHash: dto.txHash,
               status: BlockchainTransactionStatus.broadcast,
+              broadcastAt: new Date(),
               fromAddress: normalizedFromAddress,
               toAddress: normalizedToAddress
             }
@@ -2272,6 +2410,7 @@ export class WithdrawalIntentsService {
               status: BlockchainTransactionStatus.broadcast,
               fromAddress: normalizedFromAddress,
               toAddress: normalizedToAddress,
+              broadcastAt: new Date(),
               confirmedAt: null
             }
           });
@@ -2285,8 +2424,12 @@ export class WithdrawalIntentsService {
             status: TransactionIntentStatus.broadcast,
             failureCode: null,
             failureReason: null,
+            executionFailureCategory: null,
+            executionFailureObservedAt: null,
             executionClaimedAt: null,
-            executionClaimedByWorkerId: null
+            executionClaimedByWorkerId: null,
+            manualInterventionRequiredAt: null,
+            manualInterventionReviewCaseId: null
           }
         });
 
@@ -2441,10 +2584,13 @@ export class WithdrawalIntentsService {
       existingIntent.blockchainTransactions[0] ?? null;
 
     if (
-      existingIntent.status === TransactionIntentStatus.failed &&
-      existingIntent.policyDecision === PolicyDecision.approved &&
       existingIntent.failureCode === failureCode &&
       existingIntent.failureReason === failureReason &&
+      existingIntent.executionFailureCategory ===
+        (dto.failureCategory ?? existingIntent.executionFailureCategory) &&
+      (existingIntent.status === TransactionIntentStatus.failed ||
+        existingIntent.status === TransactionIntentStatus.queued ||
+        existingIntent.status === TransactionIntentStatus.broadcast) &&
       (!dto.txHash || latestBlockchainTransaction?.txHash === dto.txHash)
     ) {
       return {
@@ -2465,61 +2611,12 @@ export class WithdrawalIntentsService {
 
     const updatedIntent = await this.prismaService.$transaction(
       async (transaction) => {
+        const observedAt = new Date();
         const currentIntent = await transaction.transactionIntent.findFirst({
           where: {
             id: existingIntent.id
           },
-          include: {
-            asset: {
-              select: {
-                id: true,
-                symbol: true,
-                displayName: true,
-                decimals: true,
-                chainId: true
-              }
-            },
-            sourceWallet: {
-              select: {
-                id: true,
-                address: true,
-            custodyType: true
-              }
-            },
-            customerAccount: {
-              select: {
-                id: true,
-                customerId: true,
-                customer: {
-                  select: {
-                    id: true,
-                    supabaseUserId: true,
-                    email: true,
-                    firstName: true,
-                    lastName: true
-                  }
-                }
-              }
-            },
-            blockchainTransactions: {
-              orderBy: {
-                createdAt: "desc"
-              },
-              take: 1,
-              select: {
-                id: true,
-                txHash: true,
-                nonce: true,
-                serializedTransaction: true,
-                status: true,
-                fromAddress: true,
-                toAddress: true,
-                createdAt: true,
-                updatedAt: true,
-                confirmedAt: true
-              }
-            }
-          }
+          include: withdrawalIntentReviewInclude
         });
 
         if (!currentIntent) {
@@ -2529,17 +2626,30 @@ export class WithdrawalIntentsService {
         const currentLatestBlockchainTransaction =
           currentIntent.blockchainTransactions[0] ?? null;
 
+        const failureCategory = this.normalizeWithdrawalFailureCategory(
+          dto.failureCategory,
+          currentIntent.status
+        );
+
         if (
-          currentIntent.status === TransactionIntentStatus.failed &&
-          currentIntent.policyDecision === PolicyDecision.approved &&
           currentIntent.failureCode === failureCode &&
           currentIntent.failureReason === failureReason &&
+          currentIntent.executionFailureCategory === failureCategory &&
+          (currentIntent.status === TransactionIntentStatus.failed ||
+            currentIntent.status === TransactionIntentStatus.queued ||
+            currentIntent.status === TransactionIntentStatus.broadcast) &&
           (!dto.txHash || currentLatestBlockchainTransaction?.txHash === dto.txHash)
         ) {
           return currentIntent;
         }
 
         this.assertWithdrawalIntentCanFailExecution(currentIntent);
+
+        const resolution = this.resolveWithdrawalExecutionFailureResolution({
+          currentStatus: currentIntent.status,
+          currentBlockchainStatus: currentLatestBlockchainTransaction?.status ?? null,
+          failureCategory
+        });
 
         if (
           dto.txHash &&
@@ -2569,7 +2679,9 @@ export class WithdrawalIntentsService {
             },
             data: {
               txHash: dto.txHash ?? currentLatestBlockchainTransaction.txHash,
-              status: BlockchainTransactionStatus.failed,
+              status:
+                resolution.nextBlockchainStatus ??
+                currentLatestBlockchainTransaction.status,
               fromAddress: normalizedFromAddress,
               toAddress: normalizedToAddress
             }
@@ -2582,7 +2694,9 @@ export class WithdrawalIntentsService {
               txHash: dto.txHash ?? null,
               nonce: null,
               serializedTransaction: null,
-              status: BlockchainTransactionStatus.failed,
+              status:
+                resolution.nextBlockchainStatus ??
+                BlockchainTransactionStatus.created,
               fromAddress: normalizedFromAddress,
               toAddress: normalizedToAddress,
               confirmedAt: null
@@ -2590,23 +2704,52 @@ export class WithdrawalIntentsService {
           });
         }
 
-        const balanceTransition =
-          await this.ledgerService.releaseWithdrawalReservation(transaction, {
-            customerAccountId: currentIntent.customerAccount!.id,
-            assetId: currentIntent.asset.id,
-            amount: currentIntent.requestedAmount
-          });
+        const manualInterventionReviewCase =
+          resolution.openManualInterventionReviewCase
+            ? await this.reviewCasesService.openOrReuseReviewCase(transaction, {
+                customerId: currentIntent.customerAccount!.customer.id,
+                customerAccountId: currentIntent.customerAccount!.id,
+                transactionIntentId: currentIntent.id,
+                type: ReviewCaseType.manual_intervention,
+                reasonCode: `withdrawal_execution:${failureCode}`,
+                notes: failureReason,
+                actorType: actor.actorType,
+                actorId: actor.actorId,
+                auditAction: "review_case.manual_intervention.opened",
+                auditMetadata: {
+                  intentType: "withdrawal",
+                  failureCode,
+                  failureReason,
+                  failureCategory,
+                  executionChannel: this.resolveExecutionChannel(actor)
+                }
+              })
+            : null;
+
+        const balanceTransition = resolution.releaseReservation
+          ? await this.ledgerService.releaseWithdrawalReservation(transaction, {
+              customerAccountId: currentIntent.customerAccount!.id,
+              assetId: currentIntent.asset.id,
+              amount: currentIntent.requestedAmount
+            })
+          : null;
 
         await transaction.transactionIntent.update({
           where: {
             id: currentIntent.id
           },
           data: {
-            status: TransactionIntentStatus.failed,
+            status: resolution.nextIntentStatus,
             failureCode,
             failureReason,
+            executionFailureCategory: failureCategory,
+            executionFailureObservedAt: observedAt,
             executionClaimedAt: null,
-            executionClaimedByWorkerId: null
+            executionClaimedByWorkerId: null,
+            manualInterventionRequiredAt:
+              resolution.openManualInterventionReviewCase ? observedAt : null,
+            manualInterventionReviewCaseId:
+              manualInterventionReviewCase?.reviewCase.id ?? null
           }
         });
 
@@ -2615,7 +2758,7 @@ export class WithdrawalIntentsService {
             customerId: currentIntent.customerAccount!.customer.id,
             actorType: actor.actorType,
             actorId: actor.actorId,
-            action: "transaction_intent.withdrawal.execution_failed",
+            action: resolution.auditAction,
             targetType: "TransactionIntent",
             targetId: currentIntent.id,
             metadata: {
@@ -2632,12 +2775,15 @@ export class WithdrawalIntentsService {
               fromAddress: normalizedFromAddress,
               toAddress: normalizedToAddress,
               previousStatus: currentIntent.status,
-              newStatus: TransactionIntentStatus.failed,
+              newStatus: resolution.nextIntentStatus,
               failureCode,
               failureReason,
+              failureCategory,
               operatorRole: actor.actorRole,
-              availableBalance: balanceTransition.availableBalance,
-              pendingBalance: balanceTransition.pendingBalance,
+              availableBalance: balanceTransition?.availableBalance ?? null,
+              pendingBalance: balanceTransition?.pendingBalance ?? null,
+              manualInterventionReviewCaseId:
+                manualInterventionReviewCase?.reviewCase.id ?? null,
               executionChannel: this.resolveExecutionChannel(actor),
               reconciliationReplay: actor.reconciliationReplay,
               replayReason: actor.replayReason
@@ -2649,57 +2795,7 @@ export class WithdrawalIntentsService {
           where: {
             id: currentIntent.id
           },
-          include: {
-            asset: {
-              select: {
-                id: true,
-                symbol: true,
-                displayName: true,
-                decimals: true,
-                chainId: true
-              }
-            },
-            sourceWallet: {
-              select: {
-                id: true,
-                address: true,
-            custodyType: true
-              }
-            },
-            customerAccount: {
-              select: {
-                id: true,
-                customerId: true,
-                customer: {
-                  select: {
-                    id: true,
-                    supabaseUserId: true,
-                    email: true,
-                    firstName: true,
-                    lastName: true
-                  }
-                }
-              }
-            },
-            blockchainTransactions: {
-              orderBy: {
-                createdAt: "desc"
-              },
-              take: 1,
-              select: {
-                id: true,
-                txHash: true,
-                nonce: true,
-                serializedTransaction: true,
-                status: true,
-                fromAddress: true,
-                toAddress: true,
-                createdAt: true,
-                updatedAt: true,
-                confirmedAt: true
-              }
-            }
-          }
+          include: withdrawalIntentReviewInclude
         });
 
         if (!refreshedIntent) {
@@ -3369,7 +3465,10 @@ export class WithdrawalIntentsService {
           },
           data: {
             status: TransactionIntentStatus.settled,
-            settledAmount: currentIntent.requestedAmount
+            settledAmount: currentIntent.requestedAmount,
+            executionFailureCategory: null,
+            executionFailureObservedAt: null,
+            manualInterventionRequiredAt: null
           }
         });
 

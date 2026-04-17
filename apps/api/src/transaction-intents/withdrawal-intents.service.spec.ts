@@ -8,6 +8,7 @@ import {
 } from "@prisma/client";
 import { LedgerService } from "../ledger/ledger.service";
 import { PrismaService } from "../prisma/prisma.service";
+import { ReviewCasesService } from "../review-cases/review-cases.service";
 import { WithdrawalIntentsService } from "./withdrawal-intents.service";
 
 function buildCustomerIntentRecord(overrides: Record<string, unknown> = {}) {
@@ -91,12 +92,21 @@ function createService() {
     settleConfirmedWithdrawal: jest.fn()
   } as unknown as LedgerService;
 
-  const service = new WithdrawalIntentsService(prismaService, ledgerService);
+  const reviewCasesService = {
+    openOrReuseReviewCase: jest.fn()
+  } as unknown as ReviewCasesService;
+
+  const service = new WithdrawalIntentsService(
+    prismaService,
+    ledgerService,
+    reviewCasesService
+  );
 
   return {
     service,
     prismaService,
-    ledgerService
+    ledgerService,
+    reviewCasesService
   };
 }
 

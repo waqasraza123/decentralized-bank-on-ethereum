@@ -76,6 +76,7 @@ const transactionIntentInclude = {
       status: true,
       fromAddress: true,
       toAddress: true,
+      broadcastAt: true,
       createdAt: true,
       updatedAt: true,
       confirmedAt: true
@@ -160,6 +161,10 @@ type TreasuryOverviewResult = {
     policyDecision: string;
     requestedAmount: string;
     settledAmount: string | null;
+    executionFailureCategory: string | null;
+    executionFailureObservedAt: string | null;
+    manualInterventionRequiredAt: string | null;
+    manualInterventionReviewCaseId: string | null;
     externalAddress: string | null;
     createdAt: string;
     updatedAt: string;
@@ -190,6 +195,7 @@ type TreasuryOverviewResult = {
       status: string;
       fromAddress: string | null;
       toAddress: string | null;
+      broadcastAt: string | null;
       createdAt: string;
       updatedAt: string;
       confirmedAt: string | null;
@@ -357,6 +363,13 @@ export class TreasuryService {
       policyDecision: record.policyDecision,
       requestedAmount: record.requestedAmount.toString(),
       settledAmount: record.settledAmount?.toString() ?? null,
+      executionFailureCategory: record.executionFailureCategory ?? null,
+      executionFailureObservedAt:
+        record.executionFailureObservedAt?.toISOString() ?? null,
+      manualInterventionRequiredAt:
+        record.manualInterventionRequiredAt?.toISOString() ?? null,
+      manualInterventionReviewCaseId:
+        record.manualInterventionReviewCaseId ?? null,
       externalAddress: record.externalAddress ?? null,
       createdAt: record.createdAt.toISOString(),
       updatedAt: record.updatedAt.toISOString(),
@@ -392,6 +405,7 @@ export class TreasuryService {
             status: latestTransaction.status,
             fromAddress: latestTransaction.fromAddress ?? null,
             toAddress: latestTransaction.toAddress ?? null,
+            broadcastAt: latestTransaction.broadcastAt?.toISOString() ?? null,
             createdAt: latestTransaction.createdAt.toISOString(),
             updatedAt: latestTransaction.updatedAt.toISOString(),
             confirmedAt: latestTransaction.confirmedAt?.toISOString() ?? null

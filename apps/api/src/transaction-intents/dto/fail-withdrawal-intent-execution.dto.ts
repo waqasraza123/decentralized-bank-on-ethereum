@@ -1,4 +1,6 @@
+import { WithdrawalExecutionFailureCategory } from "@prisma/client";
 import {
+  IsEnum,
   IsOptional,
   IsString,
   Matches,
@@ -25,6 +27,10 @@ export class FailWithdrawalIntentExecutionDto {
   @MinLength(TRANSACTION_INTENT_FAILURE_REASON_MIN_LENGTH)
   @MaxLength(TRANSACTION_INTENT_FAILURE_REASON_MAX_LENGTH)
   readonly failureReason!: string;
+
+  @IsOptional()
+  @IsEnum(WithdrawalExecutionFailureCategory)
+  readonly failureCategory?: WithdrawalExecutionFailureCategory;
 
   @IsOptional()
   @IsString()

@@ -45,6 +45,7 @@ export type LatestBlockchainTransaction = {
   status: string;
   fromAddress: string | null;
   toAddress: string | null;
+  broadcastAt: string | null;
   createdAt: string;
   updatedAt: string;
   confirmedAt: string | null;
@@ -59,6 +60,10 @@ export type TransactionIntent = {
   settledAmount: string | null;
   failureCode: string | null;
   failureReason: string | null;
+  executionFailureCategory: string | null;
+  executionFailureObservedAt: string | null;
+  manualInterventionRequiredAt: string | null;
+  manualInterventionReviewCaseId: string | null;
   manuallyResolvedAt: string | null;
   manualResolutionReasonCode: string | null;
   manualResolutionNote: string | null;
@@ -517,6 +522,10 @@ export type TreasuryOverview = {
     policyDecision: string;
     requestedAmount: string;
     settledAmount: string | null;
+    executionFailureCategory: string | null;
+    executionFailureObservedAt: string | null;
+    manualInterventionRequiredAt: string | null;
+    manualInterventionReviewCaseId: string | null;
     externalAddress: string | null;
     createdAt: string;
     updatedAt: string;
@@ -547,6 +556,7 @@ export type TreasuryOverview = {
       status: string;
       fromAddress: string | null;
       toAddress: string | null;
+      broadcastAt: string | null;
       createdAt: string;
       updatedAt: string;
       confirmedAt: string | null;
@@ -900,10 +910,13 @@ export type OperationsStatus = {
   withdrawalExecutionHealth: {
     status: "healthy" | "warning" | "critical";
     queuedManagedWithdrawalCount: number;
+    signedWithdrawalCount: number;
     broadcastingWithdrawalCount: number;
     pendingConfirmationWithdrawalCount: number;
     failedManagedWithdrawalCount: number;
+    retryableWithdrawalFailureCount: number;
     manualInterventionWithdrawalCount: number;
+    unresolvedReserveMismatchCount: number;
   };
   chainHealth: {
     status: "healthy" | "warning" | "critical";

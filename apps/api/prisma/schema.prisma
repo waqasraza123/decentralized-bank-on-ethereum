@@ -142,8 +142,13 @@ model TransactionIntent {
   idempotencyKey               String                  @unique
   failureCode                  String?
   failureReason                String?
+  executionFailureCategory     WithdrawalExecutionFailureCategory?
+  executionFailureObservedAt   DateTime?
   executionClaimedAt           DateTime?
   executionClaimedByWorkerId   String?
+  manualInterventionRequiredAt DateTime?
+  manualInterventionReviewCaseId String?
+  manualInterventionReviewCase ReviewCase?             @relation("ManualInterventionReviewCase", fields: [manualInterventionReviewCaseId], references: [id])
   manuallyResolvedAt           DateTime?
   manualResolutionReasonCode   String?
   manualResolutionNote         String?
@@ -164,6 +169,9 @@ model TransactionIntent {
   @@index([chainId, externalAddress])
   @@index([status, manuallyResolvedAt])
   @@index([status, executionClaimedAt])
+  @@index([executionFailureCategory, updatedAt])
+  @@index([manualInterventionRequiredAt, updatedAt])
+  @@index([manualInterventionReviewCaseId])
   @@index([manualResolvedByOperatorId, manuallyResolvedAt])
   @@index([manualResolutionReasonCode, manuallyResolvedAt])
   ledgerJournal                LedgerJournal?
@@ -181,6 +189,7 @@ model BlockchainTransaction {
   status              BlockchainTransactionStatus
   fromAddress         String?
   toAddress           String?
+  broadcastAt         DateTime?
   createdAt           DateTime                    @default(now())
   updatedAt           DateTime                    @updatedAt
   confirmedAt         DateTime?
@@ -208,6 +217,7 @@ model ReviewCase {
   createdAt           DateTime           @default(now())
   updatedAt           DateTime           @updatedAt
   events              ReviewCaseEvent[]
+  manualInterventionIntents TransactionIntent[] @relation("ManualInterventionReviewCase")
   restrictionReleaseReviews CustomerAccountRestriction[] @relation("RestrictionReleaseReviewCase")
   ledgerReconciliationMismatches LedgerReconciliationMismatch[]
 
@@ -329,6 +339,12 @@ enum BlockchainTransactionStatus {
   failed
   replaced
   dropped
+}
+
+enum WithdrawalExecutionFailureCategory {
+  retryable
+  permanent
+  manual_intervention_required
 }
 
 enum ReviewCaseStatus {

@@ -35,6 +35,7 @@ import { InternalOperatorApiKeyGuard } from "../auth/guards/internal-operator-ap
 import { InternalWorkerApiKeyGuard } from "../auth/guards/internal-worker-api-key.guard";
 import { LedgerService } from "../ledger/ledger.service";
 import { PrismaService } from "../prisma/prisma.service";
+import { ReviewCasesService } from "../review-cases/review-cases.service";
 import { FinanceFlowIntegrationHarness } from "../test-utils/finance-flow-integration-harness";
 import { createIntegrationTestApp } from "../test-utils/create-integration-test-app";
 import { TransactionIntentsInternalController } from "./transaction-intents-internal.controller";
@@ -92,6 +93,12 @@ describe("Finance flows integration", () => {
         {
           provide: LedgerService,
           useValue: harness.ledgerService
+        },
+        {
+          provide: ReviewCasesService,
+          useValue: {
+            openOrReuseReviewCase: jest.fn()
+          }
         }
       ]
     });

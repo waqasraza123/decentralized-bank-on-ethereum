@@ -395,6 +395,9 @@ describe("OperationsMonitoringService", () => {
       .mockResolvedValueOnce(1)
       .mockResolvedValueOnce(2)
       .mockResolvedValueOnce(3)
+      .mockResolvedValueOnce(3)
+      .mockResolvedValueOnce(0)
+      .mockResolvedValueOnce(0)
       .mockResolvedValueOnce(3);
     (prismaService.transactionIntent.findFirst as jest.Mock).mockResolvedValue({
       createdAt: new Date("2026-04-06T09:50:00.000Z")
@@ -410,7 +413,8 @@ describe("OperationsMonitoringService", () => {
     );
     (prismaService.ledgerReconciliationMismatch.count as jest.Mock)
       .mockResolvedValueOnce(6)
-      .mockResolvedValueOnce(2);
+      .mockResolvedValueOnce(2)
+      .mockResolvedValueOnce(0);
     (prismaService.ledgerReconciliationScanRun.count as jest.Mock).mockResolvedValue(
       1
     );
@@ -455,10 +459,11 @@ describe("OperationsMonitoringService", () => {
 
     expect(result.workerHealth.status).toBe("warning");
     expect(result.queueHealth.status).toBe("warning");
-    expect(result.withdrawalExecutionHealth.status).toBe("warning");
-    expect(result.withdrawalExecutionHealth.broadcastingWithdrawalCount).toBe(1);
+    expect(result.withdrawalExecutionHealth.status).toBe("critical");
+    expect(result.withdrawalExecutionHealth.signedWithdrawalCount).toBe(1);
+    expect(result.withdrawalExecutionHealth.broadcastingWithdrawalCount).toBe(2);
     expect(result.withdrawalExecutionHealth.pendingConfirmationWithdrawalCount).toBe(
-      2
+      3
     );
     expect(result.withdrawalExecutionHealth.failedManagedWithdrawalCount).toBe(3);
     expect(result.chainHealth.status).toBe("warning");
@@ -489,6 +494,9 @@ describe("OperationsMonitoringService", () => {
       .mockResolvedValueOnce(1)
       .mockResolvedValueOnce(3)
       .mockResolvedValueOnce(4)
+      .mockResolvedValueOnce(4)
+      .mockResolvedValueOnce(0)
+      .mockResolvedValueOnce(0)
       .mockResolvedValueOnce(0);
     (prismaService.transactionIntent.findFirst as jest.Mock).mockResolvedValue(null);
     (prismaService.blockchainTransaction.count as jest.Mock)
@@ -499,6 +507,7 @@ describe("OperationsMonitoringService", () => {
       null
     );
     (prismaService.ledgerReconciliationMismatch.count as jest.Mock)
+      .mockResolvedValueOnce(0)
       .mockResolvedValueOnce(0)
       .mockResolvedValueOnce(0);
     (prismaService.ledgerReconciliationScanRun.count as jest.Mock).mockResolvedValue(
@@ -532,11 +541,13 @@ describe("OperationsMonitoringService", () => {
 
     expect(result.queueHealth.manualWithdrawalBacklogCount).toBe(0);
     expect(result.withdrawalExecutionHealth.queuedManagedWithdrawalCount).toBe(2);
-    expect(result.withdrawalExecutionHealth.broadcastingWithdrawalCount).toBe(1);
+    expect(result.withdrawalExecutionHealth.signedWithdrawalCount).toBe(1);
+    expect(result.withdrawalExecutionHealth.broadcastingWithdrawalCount).toBe(3);
     expect(result.withdrawalExecutionHealth.pendingConfirmationWithdrawalCount).toBe(
-      3
+      4
     );
     expect(result.withdrawalExecutionHealth.failedManagedWithdrawalCount).toBe(4);
+    expect(result.withdrawalExecutionHealth.retryableWithdrawalFailureCount).toBe(0);
     expect(result.withdrawalExecutionHealth.manualInterventionWithdrawalCount).toBe(
       0
     );

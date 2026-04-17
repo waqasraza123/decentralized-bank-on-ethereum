@@ -142,10 +142,13 @@ export function OperationsPage() {
             </p>
             <p className="admin-copy">
               Managed withdrawals: {formatCount(operations.withdrawalExecutionHealth.queuedManagedWithdrawalCount)}{" "}
-              queued / {formatCount(operations.withdrawalExecutionHealth.broadcastingWithdrawalCount)}{" "}
+              queued / {formatCount(operations.withdrawalExecutionHealth.signedWithdrawalCount)} signed /{" "}
+              {formatCount(operations.withdrawalExecutionHealth.broadcastingWithdrawalCount)}{" "}
               broadcasting / {formatCount(operations.withdrawalExecutionHealth.pendingConfirmationWithdrawalCount)} pending confirmation /{" "}
               {formatCount(operations.withdrawalExecutionHealth.failedManagedWithdrawalCount)} failed /{" "}
-              {formatCount(operations.withdrawalExecutionHealth.manualInterventionWithdrawalCount)} manual
+              {formatCount(operations.withdrawalExecutionHealth.retryableWithdrawalFailureCount)} retryable /{" "}
+              {formatCount(operations.withdrawalExecutionHealth.manualInterventionWithdrawalCount)} manual /{" "}
+              {formatCount(operations.withdrawalExecutionHealth.unresolvedReserveMismatchCount)} reserve mismatches
             </p>
           </div>
           <div className="admin-list-card">

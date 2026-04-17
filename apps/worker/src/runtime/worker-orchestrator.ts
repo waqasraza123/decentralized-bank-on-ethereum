@@ -51,6 +51,7 @@ function createEmptyIterationMetrics(): WorkerIterationMetrics {
   return {
     queuedDepositCount: 0,
     queuedWithdrawalCount: 0,
+    signedWithdrawalCount: 0,
     broadcastDepositCount: 0,
     broadcastWithdrawalCount: 0,
     confirmedDepositReadyToSettleCount: 0,
@@ -63,6 +64,7 @@ function createEmptyIterationMetrics(): WorkerIterationMetrics {
     withdrawalSettledCount: 0,
     depositFailedCount: 0,
     withdrawalFailedCount: 0,
+    retryableWithdrawalFailureCount: 0,
     manualWithdrawalBacklogCount: 0,
     awaitingFundingLoanCount: 0,
     fundedLoanCount: 0,
@@ -405,6 +407,14 @@ export class WorkerOrchestrator {
     metrics: WorkerIterationMetrics
   ): Promise<void> {
     for (const intent of result.intents) {
+      if (
+        intent.executionFailureCategory === "manual_intervention_required" ||
+        intent.manualInterventionRequiredAt
+      ) {
+        metrics.manualWithdrawalBacklogCount += 1;
+        continue;
+      }
+
       if (intent.sourceWalletCustodyType === "platform_managed") {
         await this.processPlatformManagedQueuedWithdrawal(intent, metrics);
         continue;
@@ -434,11 +444,13 @@ export class WorkerOrchestrator {
     }
 
     if (!this.deps.withdrawalBroadcaster.canManageWallet(intent.sourceWalletAddress)) {
-      this.recordManualWithdrawalIntervention(
-        intent,
-        metrics,
-        "No managed signer is configured for the withdrawal source wallet."
-      );
+      await this.deps.internalApiClient.failWithdrawalIntent(intent.id, {
+        failureCode: "managed_withdrawal_signer_unavailable",
+        failureReason:
+          "No managed signer is configured for the withdrawal source wallet.",
+        failureCategory: "manual_intervention_required"
+      });
+      metrics.manualWithdrawalBacklogCount += 1;
       return;
     }
 
@@ -460,11 +472,13 @@ export class WorkerOrchestrator {
     metrics: WorkerIterationMetrics
   ): Promise<void> {
     if (!this.deps.policyControlledWithdrawalBroadcaster) {
-      this.recordManualWithdrawalIntervention(
-        intent,
-        metrics,
-        "Policy-controlled withdrawal execution is not configured in this worker runtime."
-      );
+      await this.deps.internalApiClient.failWithdrawalIntent(intent.id, {
+        failureCode: "policy_controlled_withdrawal_runtime_unconfigured",
+        failureReason:
+          "Policy-controlled withdrawal execution is not configured in this worker runtime.",
+        failureCategory: "manual_intervention_required"
+      });
+      metrics.manualWithdrawalBacklogCount += 1;
       return;
     }
 
@@ -515,6 +529,7 @@ export class WorkerOrchestrator {
         latestBlockchainTransaction.fromAddress &&
         latestBlockchainTransaction.toAddress
       ) {
+        args.metrics.signedWithdrawalCount += 1;
         await args.broadcaster.broadcastSignedTransaction(
           latestBlockchainTransaction.serializedTransaction
         );
@@ -541,6 +556,7 @@ export class WorkerOrchestrator {
         await this.deps.internalApiClient.failWithdrawalIntent(args.intent.id, {
           failureCode: args.invalidSignedStateFailureCode,
           failureReason: args.invalidSignedStateFailureReason,
+          failureCategory: "permanent",
           txHash: latestBlockchainTransaction.txHash ?? undefined,
           fromAddress: latestBlockchainTransaction.fromAddress ?? undefined,
           toAddress: latestBlockchainTransaction.toAddress ?? undefined
@@ -572,6 +588,7 @@ export class WorkerOrchestrator {
         claimedLatestBlockchainTransaction.fromAddress &&
         claimedLatestBlockchainTransaction.toAddress
       ) {
+        args.metrics.signedWithdrawalCount += 1;
         await args.broadcaster.broadcastSignedTransaction(
           claimedLatestBlockchainTransaction.serializedTransaction
         );
@@ -598,6 +615,7 @@ export class WorkerOrchestrator {
         await this.deps.internalApiClient.failWithdrawalIntent(claimedIntent.id, {
           failureCode: args.invalidSignedStateFailureCode,
           failureReason: args.invalidSignedStateFailureReason,
+          failureCategory: "permanent",
           txHash: claimedLatestBlockchainTransaction.txHash ?? undefined,
           fromAddress:
             claimedLatestBlockchainTransaction.fromAddress ?? undefined,
@@ -631,17 +649,21 @@ export class WorkerOrchestrator {
     } catch (error) {
       if (error instanceof ManagedExecutionIntentError) {
         if (args.manualFailureCodes.has(error.failure.failureCode)) {
-          this.recordManualWithdrawalIntervention(
-            args.intent,
-            args.metrics,
-            error.failure.failureReason
-          );
+          await this.deps.internalApiClient.failWithdrawalIntent(args.intent.id, {
+            failureCode: error.failure.failureCode,
+            failureReason: error.failure.failureReason,
+            failureCategory: "manual_intervention_required",
+            fromAddress: error.failure.fromAddress,
+            toAddress: error.failure.toAddress
+          });
+          args.metrics.manualWithdrawalBacklogCount += 1;
           return;
         }
 
         await this.deps.internalApiClient.failWithdrawalIntent(args.intent.id, {
           failureCode: error.failure.failureCode,
           failureReason: error.failure.failureReason,
+          failureCategory: "permanent",
           fromAddress: error.failure.fromAddress,
           toAddress: error.failure.toAddress
         });
@@ -661,6 +683,15 @@ export class WorkerOrchestrator {
         requestedAmount: args.intent.requestedAmount,
         error
       });
+      await this.deps.internalApiClient.failWithdrawalIntent(args.intent.id, {
+        failureCode: "managed_withdrawal_retryable_error",
+        failureReason:
+          error instanceof Error && error.message.trim()
+            ? error.message
+            : "Managed withdrawal execution encountered a retryable runtime error.",
+        failureCategory: "retryable"
+      });
+      args.metrics.retryableWithdrawalFailureCount += 1;
     }
   }
 

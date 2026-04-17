@@ -6,6 +6,7 @@ export type BlockchainTransactionProjection = {
   status: string;
   fromAddress: string | null;
   toAddress: string | null;
+  broadcastAt?: string | null;
   createdAt: string;
   updatedAt: string;
   confirmedAt: string | null;
@@ -32,6 +33,10 @@ export type WorkerIntentProjection = {
   chainId: number;
   status: string;
   requestedAmount: string;
+  executionFailureCategory?: string | null;
+  executionFailureObservedAt?: string | null;
+  manualInterventionRequiredAt?: string | null;
+  manualInterventionReviewCaseId?: string | null;
   latestBlockchainTransaction: BlockchainTransactionProjection | null;
 };
 
@@ -106,6 +111,7 @@ export type ConfirmIntentPayload = {
 export type FailIntentPayload = {
   failureCode: string;
   failureReason: string;
+  failureCategory?: "retryable" | "permanent" | "manual_intervention_required";
   txHash?: string;
   fromAddress?: string;
   toAddress?: string;
@@ -173,6 +179,7 @@ export type WorkerLogger = {
 export type WorkerIterationMetrics = {
   queuedDepositCount: number;
   queuedWithdrawalCount: number;
+  signedWithdrawalCount: number;
   broadcastDepositCount: number;
   broadcastWithdrawalCount: number;
   confirmedDepositReadyToSettleCount: number;
@@ -185,6 +192,7 @@ export type WorkerIterationMetrics = {
   withdrawalSettledCount: number;
   depositFailedCount: number;
   withdrawalFailedCount: number;
+  retryableWithdrawalFailureCount: number;
   manualWithdrawalBacklogCount: number;
   awaitingFundingLoanCount: number;
   fundedLoanCount: number;

@@ -426,8 +426,40 @@ export function TreasuryPage() {
                           value: selectedActivity.settledAmount ?? "Pending"
                         },
                         {
+                          label: "Execution failure category",
+                          value:
+                            selectedActivity.executionFailureCategory
+                              ? toTitleCase(selectedActivity.executionFailureCategory)
+                              : "None"
+                        },
+                        {
+                          label: "Manual intervention case",
+                          value:
+                            selectedActivity.manualInterventionReviewCaseId ?? "None",
+                          mono: true
+                        },
+                        {
                           label: "Policy decision",
                           value: toTitleCase(selectedActivity.policyDecision)
+                        },
+                        {
+                          label: "Latest tx hash",
+                          value:
+                            selectedActivity.latestBlockchainTransaction?.txHash ??
+                            "Not recorded",
+                          mono: Boolean(selectedActivity.latestBlockchainTransaction?.txHash)
+                        },
+                        {
+                          label: "Broadcast at",
+                          value: formatDateTime(
+                            selectedActivity.latestBlockchainTransaction?.broadcastAt ?? null
+                          )
+                        },
+                        {
+                          label: "Confirmed at",
+                          value: formatDateTime(
+                            selectedActivity.latestBlockchainTransaction?.confirmedAt ?? null
+                          )
                         },
                         {
                           label: "External address",

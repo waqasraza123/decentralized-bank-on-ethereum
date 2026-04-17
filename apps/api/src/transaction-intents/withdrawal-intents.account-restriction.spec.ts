@@ -5,6 +5,7 @@ import {
 } from "@prisma/client";
 import { LedgerService } from "../ledger/ledger.service";
 import { PrismaService } from "../prisma/prisma.service";
+import { ReviewCasesService } from "../review-cases/review-cases.service";
 import { WithdrawalIntentsService } from "./withdrawal-intents.service";
 
 describe("WithdrawalIntentsService account restriction checks", () => {
@@ -34,7 +35,12 @@ describe("WithdrawalIntentsService account restriction checks", () => {
     } as unknown as PrismaService;
 
     const ledgerService = {} as LedgerService;
-    const service = new WithdrawalIntentsService(prismaService, ledgerService);
+    const reviewCasesService = {} as ReviewCasesService;
+    const service = new WithdrawalIntentsService(
+      prismaService,
+      ledgerService,
+      reviewCasesService
+    );
 
     await expect(
       service.createWithdrawalIntent("supabase_1", {

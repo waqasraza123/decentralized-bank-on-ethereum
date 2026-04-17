@@ -36,6 +36,7 @@ import {
   ReviewCaseType,
   TransactionIntentStatus,
   TransactionIntentType,
+  WithdrawalExecutionFailureCategory,
   WalletKind,
   WalletStatus,
   WorkerRuntimeEnvironment,
@@ -276,10 +277,13 @@ type OperationsStatusResult = {
   withdrawalExecutionHealth: {
     status: OperationsSectionStatus;
     queuedManagedWithdrawalCount: number;
+    signedWithdrawalCount: number;
     broadcastingWithdrawalCount: number;
     pendingConfirmationWithdrawalCount: number;
     failedManagedWithdrawalCount: number;
+    retryableWithdrawalFailureCount: number;
     manualInterventionWithdrawalCount: number;
+    unresolvedReserveMismatchCount: number;
   };
   chainHealth: {
     status: OperationsSectionStatus;
@@ -1717,9 +1721,13 @@ export class OperationsMonitoringService {
       workerRecords,
       queuedDepositCount,
       queuedWithdrawalCount,
+      signedWithdrawalCount,
       broadcastingWithdrawalCount,
       pendingConfirmationWithdrawalCount,
       failedManagedWithdrawalCount,
+      retryableWithdrawalFailureCount,
+      manualInterventionWithdrawalCount,
+      unresolvedReserveMismatchCount,
       agedQueuedCount,
       oldestQueuedIntent,
       criticalLaggingBroadcastCount,
@@ -1758,6 +1766,7 @@ export class OperationsMonitoringService {
         where: {
           intentType: TransactionIntentType.withdrawal,
           status: TransactionIntentStatus.queued,
+          executionFailureCategory: null,
           policyDecision: PolicyDecision.approved,
           blockchainTransactions: {
             some: {
@@ -1774,6 +1783,18 @@ export class OperationsMonitoringService {
       this.prismaService.transactionIntent.count({
         where: {
           intentType: TransactionIntentType.withdrawal,
+          status: TransactionIntentStatus.queued,
+          policyDecision: PolicyDecision.approved,
+          blockchainTransactions: {
+            some: {
+              status: BlockchainTransactionStatus.signed
+            }
+          }
+        }
+      }),
+      this.prismaService.transactionIntent.count({
+        where: {
+          intentType: TransactionIntentType.withdrawal,
           status: TransactionIntentStatus.broadcast,
           policyDecision: PolicyDecision.approved
         }
@@ -1783,6 +1804,33 @@ export class OperationsMonitoringService {
           intentType: TransactionIntentType.withdrawal,
           status: TransactionIntentStatus.failed,
           policyDecision: PolicyDecision.approved
+        }
+      }),
+      this.prismaService.transactionIntent.count({
+        where: {
+          intentType: TransactionIntentType.withdrawal,
+          status: TransactionIntentStatus.queued,
+          policyDecision: PolicyDecision.approved,
+          executionFailureCategory: WithdrawalExecutionFailureCategory.retryable
+        }
+      }),
+      this.prismaService.transactionIntent.count({
+        where: {
+          intentType: TransactionIntentType.withdrawal,
+          policyDecision: PolicyDecision.approved,
+          executionFailureCategory:
+            WithdrawalExecutionFailureCategory.manual_intervention_required
+        }
+      }),
+      this.prismaService.ledgerReconciliationMismatch.count({
+        where: {
+          status: LedgerReconciliationMismatchStatus.open,
+          scope: "customer_balance",
+          transactionIntent: {
+            is: {
+              intentType: TransactionIntentType.withdrawal
+            }
+          }
         }
       }),
       this.prismaService.transactionIntent.count({
@@ -1962,15 +2010,19 @@ export class OperationsMonitoringService {
     if (
       manualWithdrawalBacklogCount >= 10 ||
       failedManagedWithdrawalCount >= 10 ||
-      pendingConfirmationWithdrawalCount >= 10
+      pendingConfirmationWithdrawalCount >= 10 ||
+      unresolvedReserveMismatchCount > 0
     ) {
       withdrawalExecutionStatus = "critical";
     } else if (
       queuedWithdrawalCount > 0 ||
+      signedWithdrawalCount > 0 ||
       broadcastingWithdrawalCount > 0 ||
       pendingConfirmationWithdrawalCount > 0 ||
       failedManagedWithdrawalCount > 0 ||
-      manualWithdrawalBacklogCount > 0
+      retryableWithdrawalFailureCount > 0 ||
+      manualWithdrawalBacklogCount > 0 ||
+      manualInterventionWithdrawalCount > 0
     ) {
       withdrawalExecutionStatus = "warning";
     }
@@ -1979,10 +2031,14 @@ export class OperationsMonitoringService {
       {
         status: withdrawalExecutionStatus,
         queuedManagedWithdrawalCount: queuedWithdrawalCount,
+        signedWithdrawalCount,
         broadcastingWithdrawalCount,
         pendingConfirmationWithdrawalCount,
         failedManagedWithdrawalCount,
-        manualInterventionWithdrawalCount: manualWithdrawalBacklogCount
+        retryableWithdrawalFailureCount,
+        manualInterventionWithdrawalCount:
+          manualInterventionWithdrawalCount + manualWithdrawalBacklogCount,
+        unresolvedReserveMismatchCount
       };
 
     let chainStatus: OperationsSectionStatus = "healthy";
