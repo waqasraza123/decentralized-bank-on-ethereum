@@ -1136,6 +1136,12 @@ export type ReleaseReadinessApprovalList = {
   totalCount: number;
 };
 
+export type ReleaseReadinessApprovalLineageIncidentList = {
+  incidents: ReleaseReadinessApproval[];
+  limit: number;
+  totalCount: number;
+};
+
 export type ReleaseReadinessApprovalLineage = {
   approval: ReleaseReadinessApproval;
   lineage: ReleaseReadinessApproval[];

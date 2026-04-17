@@ -470,6 +470,66 @@ describe("ReleaseReadinessService", () => {
     });
   });
 
+  it("lists only approval lineage incidents from the hydrated approval list", async () => {
+    const { service, prismaService } = createService();
+    const healthyApproval = buildApprovalRecord({
+      id: "approval_healthy"
+    });
+    const incidentApproval = buildApprovalRecord({
+      id: "approval_incident",
+      releaseIdentifier: "release-2026-04-08.2",
+      supersededByApprovalId: "approval_replacement"
+    });
+
+    (
+      prismaService.releaseReadinessApproval.findMany as jest.Mock
+    ).mockResolvedValue([healthyApproval, incidentApproval]);
+    (prismaService.releaseReadinessApproval.count as jest.Mock).mockResolvedValue(2);
+    (
+      prismaService.releaseReadinessEvidence.findMany as jest.Mock
+    ).mockResolvedValue(buildPassedRequiredEvidenceRecords());
+    (prismaService.releaseReadinessApproval.findUnique as jest.Mock).mockImplementation(
+      async ({ where }: { where: { id: string } }) => {
+        if (where.id === "approval_healthy") {
+          return healthyApproval;
+        }
+
+        if (where.id === "approval_incident") {
+          return incidentApproval;
+        }
+
+        return null;
+      }
+    );
+    (prismaService.releaseReadinessApproval.findFirst as jest.Mock).mockImplementation(
+      async ({ where }: { where: { supersedesApprovalId?: string | null } }) => {
+        if (where.supersedesApprovalId === "approval_incident") {
+          return buildApprovalRecord({
+            id: "approval_replacement",
+            releaseIdentifier: "release-2026-04-08.2",
+            supersedesApprovalId: "approval_incident"
+          });
+        }
+
+        return null;
+      }
+    );
+
+    const result = await service.listApprovalLineageIncidents({
+      limit: 20
+    });
+
+    expect(result.incidents).toHaveLength(1);
+    expect(result.incidents[0]?.id).toBe("approval_incident");
+    expect(result.incidents[0]?.lineageSummary).toEqual({
+      status: "critical",
+      issueCount: 1,
+      actionableApprovalId: "approval_incident",
+      isActionable: true
+    });
+    expect(result.totalCount).toBe(1);
+  });
+
   it("derives readiness summary from the latest evidence per required check", async () => {
     const { service, prismaService } = createService();
     (

@@ -72,6 +72,7 @@ describe("ReleaseReadinessController", () => {
     getEvidence: jest.fn(),
     recordEvidence: jest.fn(),
     listApprovals: jest.fn(),
+    listApprovalLineageIncidents: jest.fn(),
     getApproval: jest.fn(),
     getApprovalLineage: jest.fn(),
     getApprovalRecoveryTarget: jest.fn(),
@@ -597,6 +598,63 @@ describe("ReleaseReadinessController", () => {
           tailApprovalId: "approval_1",
           actionableApprovalId: null
         }
+      }
+    });
+  });
+
+  it("returns approval lineage incidents through the dedicated endpoint", async () => {
+    releaseReadinessService.listApprovalLineageIncidents.mockResolvedValue({
+      incidents: [
+        {
+          id: "approval_1",
+          releaseIdentifier: "launch-2026.04.10.1",
+          lineageSummary: {
+            status: "critical",
+            issueCount: 2,
+            actionableApprovalId: "approval_2",
+            isActionable: false
+          }
+        }
+      ],
+      limit: 20,
+      totalCount: 1
+    });
+
+    const response = await request(app.getHttpServer())
+      .get("/release-readiness/internal/approvals/lineage-incidents")
+      .set("x-operator-api-key", "test-operator-key")
+      .set("x-operator-id", "ops_2")
+      .query({
+        limit: "20",
+        environment: "production_like"
+      })
+      .expect(200);
+
+    expect(
+      releaseReadinessService.listApprovalLineageIncidents
+    ).toHaveBeenCalledWith({
+      limit: 20,
+      environment: "production_like"
+    });
+    expect(response.body).toEqual({
+      status: "success",
+      message:
+        "Release readiness approval lineage incidents retrieved successfully.",
+      data: {
+        incidents: [
+          {
+            id: "approval_1",
+            releaseIdentifier: "launch-2026.04.10.1",
+            lineageSummary: {
+              status: "critical",
+              issueCount: 2,
+              actionableApprovalId: "approval_2",
+              isActionable: false
+            }
+          }
+        ],
+        limit: 20,
+        totalCount: 1
       }
     });
   });

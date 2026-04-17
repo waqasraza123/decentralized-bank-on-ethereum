@@ -20,6 +20,7 @@ import {
   LaunchClosureManifestDto
 } from "./dto/launch-closure.dto";
 import { ListReleaseLaunchClosurePacksDto } from "./dto/list-release-launch-closure-packs.dto";
+import { ListReleaseReadinessApprovalLineageIncidentsDto } from "./dto/list-release-readiness-approval-lineage-incidents.dto";
 import { ListReleaseReadinessApprovalsDto } from "./dto/list-release-readiness-approvals.dto";
 import { ListReleaseReadinessEvidenceDto } from "./dto/list-release-readiness-evidence.dto";
 import {
@@ -144,6 +145,27 @@ export class ReleaseReadinessController {
     return {
       status: "success",
       message: "Release readiness approvals retrieved successfully.",
+      data: result
+    };
+  }
+
+  @Get("approvals/lineage-incidents")
+  async listApprovalLineageIncidents(
+    @Query(
+      new ValidationPipe({
+        transform: true,
+        whitelist: true,
+        forbidNonWhitelisted: true
+      })
+    )
+    query: ListReleaseReadinessApprovalLineageIncidentsDto
+  ): Promise<CustomJsonResponse> {
+    const result =
+      await this.releaseReadinessService.listApprovalLineageIncidents(query);
+
+    return {
+      status: "success",
+      message: "Release readiness approval lineage incidents retrieved successfully.",
       data: result
     };
   }

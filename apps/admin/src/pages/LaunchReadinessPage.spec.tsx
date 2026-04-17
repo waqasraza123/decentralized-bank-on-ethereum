@@ -14,6 +14,7 @@ import {
   getReleaseReadinessSummary,
   listLaunchClosurePacks,
   listPendingReleases,
+  listReleaseReadinessApprovalLineageIncidents,
   listReleaseReadinessApprovals,
   listReleaseReadinessEvidence,
   listReleasedReleases,
@@ -25,6 +26,7 @@ vi.mock("@/lib/api", () => ({
   getReleaseReadinessSummary: vi.fn(),
   getReleaseReadinessApprovalLineage: vi.fn(),
   getReleaseReadinessApprovalRecoveryTarget: vi.fn(),
+  listReleaseReadinessApprovalLineageIncidents: vi.fn(),
   listReleaseReadinessEvidence: vi.fn(),
   listReleaseReadinessApprovals: vi.fn(),
   listPendingReleases: vi.fn(),
@@ -355,6 +357,11 @@ describe("LaunchReadinessPage", () => {
     );
     vi.mocked(listPendingReleases).mockResolvedValue({
       releases: [],
+      limit: 20,
+      totalCount: 0
+    });
+    vi.mocked(listReleaseReadinessApprovalLineageIncidents).mockResolvedValue({
+      incidents: [],
       limit: 20,
       totalCount: 0
     });
@@ -784,6 +791,38 @@ describe("LaunchReadinessPage", () => {
     expect(
       screen.getByText("Continue with launch-2026.04.13.1-approval-replacement")
     ).toBeInTheDocument();
+  });
+
+  it("loads the cross-release lineage incident feed", async () => {
+    vi.mocked(listReleaseReadinessApprovalLineageIncidents).mockResolvedValue({
+      incidents: [
+        {
+          ...buildApproval("launch-2026.04.13.9"),
+          id: "launch-2026.04.13.9-approval-stale",
+          lineageSummary: {
+            status: "warning",
+            issueCount: 0,
+            actionableApprovalId: "launch-2026.04.13.9-approval-current",
+            isActionable: false
+          }
+        }
+      ],
+      limit: 20,
+      totalCount: 1
+    });
+
+    renderPage("/launch-readiness");
+
+    await waitFor(() => {
+      expect(
+        vi.mocked(listReleaseReadinessApprovalLineageIncidents)
+      ).toHaveBeenCalledWith(
+        expect.any(Object),
+        {
+          limit: 20
+        }
+      );
+    });
   });
 
   it("renders the selected approval lineage from the dedicated lineage endpoint", async () => {

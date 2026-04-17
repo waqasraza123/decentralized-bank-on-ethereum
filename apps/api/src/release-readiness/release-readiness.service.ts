@@ -22,6 +22,7 @@ import { PrismaService } from "../prisma/prisma.service";
 import { CreateReleaseReadinessApprovalDto } from "./dto/create-release-readiness-approval.dto";
 import { CreateReleaseReadinessEvidenceDto } from "./dto/create-release-readiness-evidence.dto";
 import { ListReleaseLaunchClosurePacksDto } from "./dto/list-release-launch-closure-packs.dto";
+import { ListReleaseReadinessApprovalLineageIncidentsDto } from "./dto/list-release-readiness-approval-lineage-incidents.dto";
 import { ListReleaseReadinessApprovalsDto } from "./dto/list-release-readiness-approvals.dto";
 import { ListReleaseReadinessEvidenceDto } from "./dto/list-release-readiness-evidence.dto";
 import {
@@ -242,6 +243,12 @@ type ReleaseReadinessApprovalMutationResult = {
 
 type ReleaseReadinessApprovalList = {
   approvals: ReleaseReadinessApprovalProjection[];
+  limit: number;
+  totalCount: number;
+};
+
+type ReleaseReadinessApprovalLineageIncidentList = {
+  incidents: ReleaseReadinessApprovalProjection[];
   limit: number;
   totalCount: number;
 };
@@ -2690,6 +2697,32 @@ export class ReleaseReadinessService {
       }),
       limit,
       totalCount
+    };
+  }
+
+  async listApprovalLineageIncidents(
+    query: ListReleaseReadinessApprovalLineageIncidentsDto
+  ): Promise<ReleaseReadinessApprovalLineageIncidentList> {
+    const limit = query.limit ?? 10;
+    const where = this.buildApprovalWhere(query);
+    const approvals = await this.prismaService.releaseReadinessApproval.findMany({
+      where,
+      orderBy: [{ requestedAt: "desc" }, { createdAt: "desc" }]
+    });
+    const hydrated = await this.hydrateApprovalProjections(approvals, {
+      includeLineageSummary: true
+    });
+    const incidents = hydrated.filter(
+      (approval) =>
+        approval.lineageSummary &&
+        (approval.lineageSummary.status !== "healthy" ||
+          !approval.lineageSummary.isActionable)
+    );
+
+    return {
+      incidents: incidents.slice(0, limit),
+      limit,
+      totalCount: incidents.length
     };
   }
 

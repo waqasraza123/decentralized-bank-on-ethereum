@@ -10,6 +10,7 @@ import {
   getReleaseReadinessSummary,
   listLaunchClosurePacks,
   listPendingReleases,
+  listReleaseReadinessApprovalLineageIncidents,
   listReleaseReadinessApprovals,
   listReleaseReadinessEvidence,
   listReleasedReleases,
@@ -458,6 +459,15 @@ export function LaunchReadinessPage() {
     enabled: Boolean(session)
   });
 
+  const approvalLineageIncidentsQuery = useQuery({
+    queryKey: ["launch-approval-lineage-incidents", session?.baseUrl],
+    queryFn: () =>
+      listReleaseReadinessApprovalLineageIncidents(session!, {
+        limit: 20
+      }),
+    enabled: Boolean(session)
+  });
+
   const approvalLineageQuery = useQuery({
     queryKey: ["launch-approval-lineage", session?.baseUrl, selectedApprovalId],
     queryFn: () =>
@@ -588,6 +598,9 @@ export function LaunchReadinessPage() {
       }),
       queryClient.invalidateQueries({
         queryKey: ["launch-approvals-catalog", session?.baseUrl]
+      }),
+      queryClient.invalidateQueries({
+        queryKey: ["launch-approval-lineage-incidents", session?.baseUrl]
       }),
       queryClient.invalidateQueries({
         queryKey: ["launch-approval-lineage", session?.baseUrl]
@@ -894,6 +907,7 @@ export function LaunchReadinessPage() {
     evidenceCatalogQuery.isLoading ||
     approvalsQuery.isLoading ||
     approvalsCatalogQuery.isLoading ||
+    approvalLineageIncidentsQuery.isLoading ||
     pendingReleasesQuery.isLoading ||
     releasedReleasesQuery.isLoading
   ) {
@@ -911,6 +925,7 @@ export function LaunchReadinessPage() {
     evidenceCatalogQuery.isError ||
     approvalsQuery.isError ||
     approvalsCatalogQuery.isError ||
+    approvalLineageIncidentsQuery.isError ||
     pendingReleasesQuery.isError ||
     releasedReleasesQuery.isError
   ) {
@@ -933,6 +948,8 @@ export function LaunchReadinessPage() {
   const criticalApprovalLineageCount = approvalsWithLineageIncidents.filter(
     (approval) => approval.lineageSummary?.status === "critical"
   ).length;
+  const crossReleaseLineageIncidents =
+    approvalLineageIncidentsQuery.data?.incidents ?? [];
   const releaseScopeOptions = [
     ...new Set(
       [
@@ -1531,6 +1548,58 @@ export function LaunchReadinessPage() {
                     </div>
                   ))}
                 </div>
+              </ListCard>
+
+              <ListCard title="Cross-release lineage incidents">
+                {crossReleaseLineageIncidents.length > 0 ? (
+                  <div className="admin-list">
+                    {crossReleaseLineageIncidents.map((approval) => (
+                      <button
+                        key={approval.id}
+                        type="button"
+                        className="admin-list-row selectable"
+                        onClick={() =>
+                          updateSearchParams({
+                            approval: approval.id,
+                            release: approval.releaseIdentifier
+                          })
+                        }
+                      >
+                        <strong>{approval.releaseIdentifier}</strong>
+                        <span>{approval.id}</span>
+                        <AdminStatusBadge
+                          label={
+                            approval.lineageSummary
+                              ? formatApprovalLineageSummaryLabel(
+                                  approval.lineageSummary.status
+                                )
+                              : "Lineage Unknown"
+                          }
+                          tone={mapStatusToTone(approval.lineageSummary?.status)}
+                        />
+                        <span>
+                          {approval.lineageSummary?.issueCount
+                            ? `${formatCount(approval.lineageSummary.issueCount)} issue${
+                                approval.lineageSummary.issueCount === 1 ? "" : "s"
+                              }`
+                            : "Action moved"}
+                        </span>
+                        {approval.lineageSummary?.actionableApprovalId &&
+                        !approval.lineageSummary.isActionable ? (
+                          <span>
+                            Continue with {approval.lineageSummary.actionableApprovalId}
+                          </span>
+                        ) : null}
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <InlineNotice
+                    tone="positive"
+                    title="No cross-release lineage incidents"
+                    description="The latest incident feed does not contain unhealthy or non-actionable approval chains."
+                  />
+                )}
               </ListCard>
             </>
           }
