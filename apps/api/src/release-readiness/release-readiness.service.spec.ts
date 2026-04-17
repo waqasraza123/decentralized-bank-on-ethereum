@@ -92,6 +92,8 @@ function buildApprovalRecord(
       openBlockers: [],
       generatedAt: "2026-04-08T12:00:00.000Z"
     },
+    decisionDriftSnapshot: null,
+    decisionDriftCapturedAt: null,
     requestedAt: new Date("2026-04-08T12:00:00.000Z"),
     approvedAt: null,
     rejectedAt: null,
@@ -1005,6 +1007,55 @@ describe("ReleaseReadinessService", () => {
     expect(transactionClient.releaseReadinessApproval.update).not.toHaveBeenCalled();
   });
 
+  it("reuses stored decision drift snapshots for non-pending approvals", async () => {
+    const { service, prismaService } = createService();
+    (prismaService.releaseReadinessApproval.findUnique as jest.Mock).mockResolvedValue(
+      buildApprovalRecord({
+        status: ReleaseReadinessApprovalStatus.approved,
+        approvedByOperatorId: "approver_1",
+        approvedByOperatorRole: "risk_manager",
+        approvedAt: new Date("2026-04-08T13:00:00.000Z"),
+        decisionDriftSnapshot: {
+          changed: true,
+          critical: true,
+          blockingReasons: ["A newer launch-closure pack (pack_2) is available for this release scope."],
+          currentOverallStatus: "ready",
+          summaryDelta: {
+            passedCheckCount: 2,
+            failedCheckCount: 0,
+            pendingCheckCount: -2
+          },
+          missingEvidenceTypesAdded: [],
+          missingEvidenceTypesResolved: ["critical_alert_reescalation"],
+          failedEvidenceTypesAdded: [],
+          failedEvidenceTypesResolved: [],
+          staleEvidenceTypesAdded: [],
+          staleEvidenceTypesResolved: [],
+          openBlockersAdded: [],
+          openBlockersResolved: [],
+          newerPackAvailable: true,
+          latestPack: {
+            id: "pack_2",
+            version: 2,
+            artifactChecksumSha256: "checksum_2"
+          }
+        },
+        decisionDriftCapturedAt: new Date("2026-04-08T13:00:00.000Z")
+      })
+    );
+
+    const result = await service.getApproval("approval_1");
+
+    expect(result.approval.status).toBe("approved");
+    expect(result.approval.launchClosureDrift).toEqual(
+      expect.objectContaining({
+        changed: true,
+        critical: true,
+        newerPackAvailable: true
+      })
+    );
+  });
+
   it("keeps launch approval blocked when the latest evidence belongs to another release", async () => {
     const { service, prismaService, transactionClient } = createService();
     (prismaService.releaseReadinessApproval.findFirst as jest.Mock).mockResolvedValue(
@@ -1387,7 +1438,29 @@ describe("ReleaseReadinessService", () => {
           maximumEvidenceAgeHours: 72,
           openBlockers: [],
           generatedAt: "2026-04-08T13:00:00.000Z"
-        }
+        },
+        decisionDriftSnapshot: {
+          changed: false,
+          critical: false,
+          blockingReasons: [],
+          currentOverallStatus: "ready",
+          summaryDelta: {
+            passedCheckCount: 0,
+            failedCheckCount: 0,
+            pendingCheckCount: 0
+          },
+          missingEvidenceTypesAdded: [],
+          missingEvidenceTypesResolved: [],
+          failedEvidenceTypesAdded: [],
+          failedEvidenceTypesResolved: [],
+          staleEvidenceTypesAdded: [],
+          staleEvidenceTypesResolved: [],
+          openBlockersAdded: [],
+          openBlockersResolved: [],
+          newerPackAvailable: false,
+          latestPack: null
+        },
+        decisionDriftCapturedAt: new Date("2026-04-08T13:00:00.000Z")
       })
     );
 
@@ -1404,12 +1477,23 @@ describe("ReleaseReadinessService", () => {
       expect.objectContaining({
         data: expect.objectContaining({
           status: "approved",
-          approvedByOperatorId: "approver_1"
+          approvedByOperatorId: "approver_1",
+          decisionDriftSnapshot: expect.objectContaining({
+            changed: false,
+            critical: false
+          }),
+          decisionDriftCapturedAt: expect.any(Date)
         })
       })
     );
     expect(result.approval.status).toBe("approved");
     expect(result.approval.gate.overallStatus).toBe("approved");
+    expect(result.approval.launchClosureDrift).toEqual(
+      expect.objectContaining({
+        changed: false,
+        critical: false
+      })
+    );
   });
 
   it("blocks approval for operator roles outside the launch-approval roster", async () => {
@@ -1463,7 +1547,29 @@ describe("ReleaseReadinessService", () => {
           maximumEvidenceAgeHours: 72,
           openBlockers: [],
           generatedAt: "2026-04-08T13:00:00.000Z"
-        }
+        },
+        decisionDriftSnapshot: {
+          changed: true,
+          critical: true,
+          blockingReasons: ["Missing evidence was introduced for critical_alert_reescalation."],
+          currentOverallStatus: "blocked",
+          summaryDelta: {
+            passedCheckCount: -1,
+            failedCheckCount: 0,
+            pendingCheckCount: 1
+          },
+          missingEvidenceTypesAdded: ["critical_alert_reescalation"],
+          missingEvidenceTypesResolved: [],
+          failedEvidenceTypesAdded: [],
+          failedEvidenceTypesResolved: [],
+          staleEvidenceTypesAdded: [],
+          staleEvidenceTypesResolved: [],
+          openBlockersAdded: [],
+          openBlockersResolved: [],
+          newerPackAvailable: false,
+          latestPack: null
+        },
+        decisionDriftCapturedAt: new Date("2026-04-08T13:00:00.000Z")
       })
     );
 
@@ -1478,6 +1584,12 @@ describe("ReleaseReadinessService", () => {
 
     expect(result.approval.status).toBe("rejected");
     expect(result.approval.gate.overallStatus).toBe("rejected");
+    expect(result.approval.launchClosureDrift).toEqual(
+      expect.objectContaining({
+        changed: true,
+        critical: true
+      })
+    );
   });
 
   it("blocks self-rejection so the requester cannot reject their own launch request", async () => {

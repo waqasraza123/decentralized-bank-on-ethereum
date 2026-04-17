@@ -1408,6 +1408,8 @@ model ReleaseReadinessApproval {
   residualRiskNote              String?
   evidenceSnapshot              Json
   blockerSnapshot               Json
+  decisionDriftSnapshot         Json?
+  decisionDriftCapturedAt       DateTime?
   requestedAt                   DateTime                       @default(now())
   approvedAt                    DateTime?
   rejectedAt                    DateTime?

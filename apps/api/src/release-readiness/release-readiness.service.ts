@@ -760,6 +760,41 @@ export class ReleaseReadinessService {
     };
   }
 
+  private mapStoredLaunchClosureDrift(
+    record: ReleaseReadinessApprovalRecord
+  ): ReleaseReadinessApprovalProjection["launchClosureDrift"] {
+    const drift =
+      record.decisionDriftSnapshot as unknown as Partial<
+        NonNullable<ReleaseReadinessApprovalProjection["launchClosureDrift"]>
+      > | null;
+
+    if (!drift) {
+      return null;
+    }
+
+    return {
+      changed: drift.changed ?? false,
+      critical: drift.critical ?? false,
+      blockingReasons: drift.blockingReasons ?? [],
+      currentOverallStatus: drift.currentOverallStatus ?? "blocked",
+      summaryDelta: {
+        passedCheckCount: drift.summaryDelta?.passedCheckCount ?? 0,
+        failedCheckCount: drift.summaryDelta?.failedCheckCount ?? 0,
+        pendingCheckCount: drift.summaryDelta?.pendingCheckCount ?? 0
+      },
+      missingEvidenceTypesAdded: drift.missingEvidenceTypesAdded ?? [],
+      missingEvidenceTypesResolved: drift.missingEvidenceTypesResolved ?? [],
+      failedEvidenceTypesAdded: drift.failedEvidenceTypesAdded ?? [],
+      failedEvidenceTypesResolved: drift.failedEvidenceTypesResolved ?? [],
+      staleEvidenceTypesAdded: drift.staleEvidenceTypesAdded ?? [],
+      staleEvidenceTypesResolved: drift.staleEvidenceTypesResolved ?? [],
+      openBlockersAdded: drift.openBlockersAdded ?? [],
+      openBlockersResolved: drift.openBlockersResolved ?? [],
+      newerPackAvailable: drift.newerPackAvailable ?? false,
+      latestPack: drift.latestPack ?? null
+    };
+  }
+
   private listAddedItems<T extends string>(baseline: T[], current: T[]): T[] {
     const baselineSet = new Set(baseline);
 
@@ -989,11 +1024,10 @@ export class ReleaseReadinessService {
       checklist,
       evidenceSnapshot,
       gate,
-      launchClosureDrift: this.buildLaunchClosureDrift(
-        record,
-        currentSummary,
-        latestPack
-      ),
+      launchClosureDrift:
+        record.status === ReleaseReadinessApprovalStatus.pending_approval
+          ? this.buildLaunchClosureDrift(record, currentSummary, latestPack)
+          : this.mapStoredLaunchClosureDrift(record),
       requestedAt: record.requestedAt.toISOString(),
       approvedAt: record.approvedAt?.toISOString() ?? null,
       rejectedAt: record.rejectedAt?.toISOString() ?? null,
@@ -1771,6 +1805,7 @@ export class ReleaseReadinessService {
       ReleaseReadinessApprovalStatus.approved,
       approval.rollbackReleaseIdentifier ?? null
     );
+    const decisionDriftCapturedAt = new Date();
 
     const updatedApproval = await this.prismaService.$transaction(
       async (transaction) => {
@@ -1785,7 +1820,10 @@ export class ReleaseReadinessService {
             approvalNote: approvalNote ?? undefined,
             approvedAt: new Date(),
             evidenceSnapshot: evidenceSnapshot as unknown as Prisma.InputJsonValue,
-            blockerSnapshot: approvedGate as unknown as Prisma.InputJsonValue
+            blockerSnapshot: approvedGate as unknown as Prisma.InputJsonValue,
+            decisionDriftSnapshot:
+              launchClosureDrift as unknown as Prisma.InputJsonValue,
+            decisionDriftCapturedAt
           }
         });
 
@@ -1802,7 +1840,8 @@ export class ReleaseReadinessService {
               approvedByOperatorRole: approvedOperatorRole,
               approvalNote,
               gate: approvedGate,
-              launchClosureDrift
+              launchClosureDrift,
+              decisionDriftCapturedAt: decisionDriftCapturedAt.toISOString()
             } as Prisma.InputJsonValue
           }
         });
@@ -1984,6 +2023,7 @@ export class ReleaseReadinessService {
       latestPack
     );
     const rejectionNote = dto.rejectionNote.trim();
+    const decisionDriftCapturedAt = new Date();
 
     const updatedApproval = await this.prismaService.$transaction(
       async (transaction) => {
@@ -1998,7 +2038,10 @@ export class ReleaseReadinessService {
             rejectionNote,
             rejectedAt: new Date(),
             evidenceSnapshot: evidenceSnapshot as unknown as Prisma.InputJsonValue,
-            blockerSnapshot: rejectedGate as unknown as Prisma.InputJsonValue
+            blockerSnapshot: rejectedGate as unknown as Prisma.InputJsonValue,
+            decisionDriftSnapshot:
+              launchClosureDrift as unknown as Prisma.InputJsonValue,
+            decisionDriftCapturedAt
           }
         });
 
@@ -2015,7 +2058,8 @@ export class ReleaseReadinessService {
               rejectedByOperatorRole: rejectedOperatorRole,
               rejectionNote,
               gate: rejectedGate,
-              launchClosureDrift
+              launchClosureDrift,
+              decisionDriftCapturedAt: decisionDriftCapturedAt.toISOString()
             } as Prisma.InputJsonValue
           }
         });
