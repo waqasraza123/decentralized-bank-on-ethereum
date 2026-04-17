@@ -16,6 +16,13 @@ export class ApproveReleaseReadinessApprovalDto {
   approvalNote?: string;
 }
 
+export class RebindReleaseReadinessApprovalPackDto {
+  @IsString()
+  @MaxLength(RELEASE_READINESS_NOTE_MAX_LENGTH)
+  @Matches(OPERATOR_CASE_NOTE_CONTENT_PATTERN)
+  launchClosurePackId!: string;
+}
+
 export class RejectReleaseReadinessApprovalDto {
   @IsString()
   @MaxLength(RELEASE_READINESS_NOTE_MAX_LENGTH)

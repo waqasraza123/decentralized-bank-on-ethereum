@@ -74,6 +74,7 @@ describe("ReleaseReadinessController", () => {
     listApprovals: jest.fn(),
     getApproval: jest.fn(),
     requestApproval: jest.fn(),
+    rebindApprovalToLaunchClosurePack: jest.fn(),
     approveApproval: jest.fn(),
     rejectApproval: jest.fn()
   };
@@ -463,6 +464,39 @@ describe("ReleaseReadinessController", () => {
       .expect(400);
 
     expect(releaseReadinessService.approveApproval).not.toHaveBeenCalled();
+  });
+
+  it("rebinds a pending approval to a newer launch-closure pack", async () => {
+    releaseReadinessService.rebindApprovalToLaunchClosurePack.mockResolvedValue({
+      approval: {
+        id: "approval_1",
+        launchClosurePack: {
+          id: "pack_2",
+          version: 2,
+          artifactChecksumSha256: "checksum_2"
+        }
+      }
+    });
+
+    const response = await request(app.getHttpServer())
+      .post("/release-readiness/internal/approvals/approval_1/rebind-pack")
+      .set("x-operator-api-key", "test-operator-key")
+      .set("x-operator-id", "ops_1")
+      .set("x-operator-role", "operations_admin")
+      .send({
+        launchClosurePackId: "pack_2"
+      })
+      .expect(201);
+
+    expect(
+      releaseReadinessService.rebindApprovalToLaunchClosurePack
+    ).toHaveBeenCalledWith(
+      "approval_1",
+      "pack_2",
+      "ops_1",
+      "operations_admin"
+    );
+    expect(response.body.data.approval.launchClosurePack.id).toBe("pack_2");
   });
 
   it("passes governed approval decisions through", async () => {

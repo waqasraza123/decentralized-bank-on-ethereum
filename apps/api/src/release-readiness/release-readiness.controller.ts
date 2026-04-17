@@ -24,6 +24,7 @@ import { ListReleaseReadinessApprovalsDto } from "./dto/list-release-readiness-a
 import { ListReleaseReadinessEvidenceDto } from "./dto/list-release-readiness-evidence.dto";
 import {
   ApproveReleaseReadinessApprovalDto,
+  RebindReleaseReadinessApprovalPackDto,
   RejectReleaseReadinessApprovalDto
 } from "./dto/release-readiness-approval.dto";
 import {
@@ -206,6 +207,32 @@ export class ReleaseReadinessController {
     return {
       status: "success",
       message: "Release readiness approval completed successfully.",
+      data: result
+    };
+  }
+
+  @Post("approvals/:approvalId/rebind-pack")
+  async rebindApprovalPack(
+    @Param("approvalId") approvalId: string,
+    @Body(
+      new ValidationPipe({
+        whitelist: true,
+        forbidNonWhitelisted: true
+      })
+    )
+    dto: RebindReleaseReadinessApprovalPackDto,
+    @Request() request: InternalOperatorRequest
+  ): Promise<CustomJsonResponse> {
+    const result = await this.releaseReadinessService.rebindApprovalToLaunchClosurePack(
+      approvalId,
+      dto.launchClosurePackId,
+      request.internalOperator.operatorId,
+      request.internalOperator.operatorRole
+    );
+
+    return {
+      status: "success",
+      message: "Release readiness approval pack rebound successfully.",
       data: result
     };
   }

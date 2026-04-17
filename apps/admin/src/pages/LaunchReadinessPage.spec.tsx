@@ -13,7 +13,8 @@ import {
   listPendingReleases,
   listReleaseReadinessApprovals,
   listReleaseReadinessEvidence,
-  listReleasedReleases
+  listReleasedReleases,
+  rebindReleaseReadinessApprovalPack
 } from "@/lib/api";
 
 vi.mock("@/lib/api", () => ({
@@ -26,6 +27,7 @@ vi.mock("@/lib/api", () => ({
   listLaunchClosurePacks: vi.fn(),
   createReleaseReadinessEvidence: vi.fn(),
   requestReleaseReadinessApproval: vi.fn(),
+  rebindReleaseReadinessApprovalPack: vi.fn(),
   approveReleaseReadinessApproval: vi.fn(),
   rejectReleaseReadinessApproval: vi.fn(),
   validateLaunchClosureManifest: vi.fn(),
@@ -343,6 +345,40 @@ describe("LaunchReadinessPage", () => {
     vi.mocked(getLaunchClosureStatus).mockResolvedValue({
       ...buildLaunchClosureStatus(null)
     });
+    vi.mocked(rebindReleaseReadinessApprovalPack).mockImplementation(
+      async (_session, approvalId, payload) => ({
+        approval: {
+          ...buildApproval("launch-2026.04.13.2"),
+          id: approvalId,
+          launchClosurePack: {
+            id: payload.launchClosurePackId,
+            version: 4,
+            artifactChecksumSha256: "checksum-launch-2026.04.13.2-v4"
+          },
+          launchClosureDrift: {
+            changed: false,
+            critical: false,
+            blockingReasons: [],
+            currentOverallStatus: "ready",
+            summaryDelta: {
+              passedCheckCount: 0,
+              failedCheckCount: 0,
+              pendingCheckCount: 0
+            },
+            missingEvidenceTypesAdded: [],
+            missingEvidenceTypesResolved: [],
+            failedEvidenceTypesAdded: [],
+            failedEvidenceTypesResolved: [],
+            staleEvidenceTypesAdded: [],
+            staleEvidenceTypesResolved: [],
+            openBlockersAdded: [],
+            openBlockersResolved: [],
+            newerPackAvailable: false,
+            latestPack: null
+          }
+        }
+      })
+    );
     vi.mocked(listLaunchClosurePacks).mockImplementation(async (_session, params) => {
       const releaseIdentifier =
         typeof params.releaseIdentifier === "string"
@@ -551,6 +587,36 @@ describe("LaunchReadinessPage", () => {
     );
     expect(screen.getByRole("button", { name: "Approve release" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Reject release" })).toBeEnabled();
+  });
+
+  it("rebinds a blocked approval to the latest stored pack from the console", async () => {
+    vi.mocked(getLaunchClosureStatus).mockImplementation(async (_session, params) =>
+      buildLaunchClosureStatus(
+        typeof params.releaseIdentifier === "string"
+          ? params.releaseIdentifier
+          : null
+      )
+    );
+
+    renderPage("/launch-readiness?release=launch-2026.04.13.2");
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Rebind to latest pack" })).toBeVisible();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Rebind to latest pack" }));
+
+    await waitFor(() => {
+      expect(vi.mocked(rebindReleaseReadinessApprovalPack)).toHaveBeenCalledWith(
+        expect.objectContaining({
+          operatorId: "ops_1"
+        }),
+        "launch-2026.04.13.2-approval",
+        {
+          launchClosurePackId: "launch-2026.04.13.2-pack-v4"
+        }
+      );
+    });
   });
 
   it("requires rollback metadata before recording rollback drill evidence", async () => {

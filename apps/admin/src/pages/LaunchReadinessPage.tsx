@@ -11,6 +11,7 @@ import {
   listReleaseReadinessApprovals,
   listReleaseReadinessEvidence,
   listReleasedReleases,
+  rebindReleaseReadinessApprovalPack,
   rejectReleaseReadinessApproval,
   scaffoldLaunchClosurePack,
   validateLaunchClosureManifest,
@@ -671,6 +672,35 @@ export function LaunchReadinessPage() {
     }
   });
 
+  const rebindApprovalPackMutation = useMutation({
+    mutationFn: () =>
+      rebindReleaseReadinessApprovalPack(
+        session!,
+        selectedApprovalId!,
+        {
+          launchClosurePackId:
+            selectedApproval!.launchClosureDrift!.latestPack!.id
+        }
+      ),
+    onSuccess: async (result) => {
+      setDecisionFlash(
+        `Approval rebound to ${result.approval.launchClosurePack?.id}.`
+      );
+      setActionError(null);
+      setGovernedConfirm(false);
+      await refreshData();
+      updateSearchParams({
+        approval: result.approval.id,
+        release: result.approval.releaseIdentifier
+      });
+    },
+    onError: (error) => {
+      setActionError(
+        readApiErrorMessage(error, "Failed to rebind launch approval pack.")
+      );
+    }
+  });
+
   const rejectMutation = useMutation({
     mutationFn: () =>
       rejectReleaseReadinessApproval(session!, selectedApprovalId!, {
@@ -837,7 +867,10 @@ export function LaunchReadinessPage() {
       (file) => file.relativePath === selectedLaunchClosureFilePath
     ) ?? null;
   const gateNotice = buildApprovalGateNotice(selectedApproval);
-  const decisionPending = approveMutation.isPending || rejectMutation.isPending;
+  const decisionPending =
+    approveMutation.isPending ||
+    rejectMutation.isPending ||
+    rebindApprovalPackMutation.isPending;
   const approvalDriftBlocksDecision = Boolean(
     selectedApproval?.launchClosureDrift?.critical
   );
@@ -1806,6 +1839,22 @@ export function LaunchReadinessPage() {
                             description={`Latest stored pack is ${selectedApproval.launchClosureDrift.latestPack?.id} (v${selectedApproval.launchClosureDrift.latestPack?.version}). The selected approval is still bound to ${selectedApproval.launchClosurePack?.id}.`}
                             tone="warning"
                           />
+                        ) : null}
+
+                        {selectedApproval.launchClosureDrift.critical &&
+                        selectedApproval.launchClosureDrift.latestPack ? (
+                          <div className="admin-action-buttons">
+                            <button
+                              type="button"
+                              className="admin-secondary-button"
+                              disabled={decisionPending}
+                              onClick={() => rebindApprovalPackMutation.mutate()}
+                            >
+                              {rebindApprovalPackMutation.isPending
+                                ? "Rebinding..."
+                                : "Rebind to latest pack"}
+                            </button>
+                          </div>
                         ) : null}
 
                         <div className="admin-list">

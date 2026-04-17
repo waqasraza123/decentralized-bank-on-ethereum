@@ -555,6 +555,20 @@ export async function approveReleaseReadinessApproval(
   });
 }
 
+export async function rebindReleaseReadinessApprovalPack(
+  session: OperatorSession,
+  approvalId: string,
+  payload: {
+    launchClosurePackId: string;
+  }
+): Promise<{ approval: ReleaseReadinessApprovalList["approvals"][number] }> {
+  return requestData(session, {
+    method: "POST",
+    url: `/release-readiness/internal/approvals/${approvalId}/rebind-pack`,
+    data: payload
+  });
+}
+
 export async function rejectReleaseReadinessApproval(
   session: OperatorSession,
   approvalId: string,

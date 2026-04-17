@@ -1816,6 +1816,124 @@ export class ReleaseReadinessService {
     };
   }
 
+  async rebindApprovalToLaunchClosurePack(
+    approvalId: string,
+    launchClosurePackId: string,
+    operatorId: string,
+    operatorRole: string | undefined
+  ): Promise<ReleaseReadinessApprovalMutationResult> {
+    const normalizedOperatorRole = this.assertCanRequest(operatorRole);
+    const approval = await this.prismaService.releaseReadinessApproval.findUnique({
+      where: {
+        id: approvalId
+      }
+    });
+
+    if (!approval) {
+      throw new NotFoundException("Release readiness approval request was not found.");
+    }
+
+    if (approval.status !== ReleaseReadinessApprovalStatus.pending_approval) {
+      throw new ConflictException(
+        "Only pending launch approvals can be rebound to a new launch-closure pack."
+      );
+    }
+
+    const nextPackId = launchClosurePackId.trim();
+
+    if (approval.launchClosurePackId === nextPackId) {
+      throw new ConflictException(
+        "Launch approval already references the requested launch-closure pack."
+      );
+    }
+
+    const [launchClosurePack, readinessSummary] = await Promise.all([
+      this.prismaService.releaseLaunchClosurePack.findUnique({
+        where: {
+          id: nextPackId
+        }
+      }),
+      this.getSummary({
+        releaseIdentifier: approval.releaseIdentifier,
+        environment: approval.environment
+      })
+    ]);
+
+    if (!launchClosurePack) {
+      throw new NotFoundException("Launch-closure pack was not found.");
+    }
+
+    if (
+      launchClosurePack.releaseIdentifier !== approval.releaseIdentifier ||
+      launchClosurePack.environment !== approval.environment
+    ) {
+      throw new BadRequestException(
+        "Launch approval rebind requires a launch-closure pack for the same release identifier and environment."
+      );
+    }
+
+    const checklist = this.mapApprovalChecklist(approval);
+    const evidenceSnapshot = this.buildApprovalEvidenceSnapshot(readinessSummary);
+    const gate = this.evaluateApprovalGate(
+      readinessSummary,
+      checklist,
+      ReleaseReadinessApprovalStatus.pending_approval,
+      approval.rollbackReleaseIdentifier ?? null
+    );
+
+    const updatedApproval = await this.prismaService.$transaction(
+      async (transaction) => {
+        const nextApproval = await transaction.releaseReadinessApproval.update({
+          where: {
+            id: approval.id
+          },
+          data: {
+            launchClosurePackId: launchClosurePack.id,
+            launchClosurePackVersion: launchClosurePack.version,
+            launchClosurePackChecksumSha256:
+              launchClosurePack.artifactChecksumSha256,
+            evidenceSnapshot: evidenceSnapshot as unknown as Prisma.InputJsonValue,
+            blockerSnapshot: gate as unknown as Prisma.InputJsonValue
+          }
+        });
+
+        await transaction.auditEvent.create({
+          data: {
+            actorType: "operator",
+            actorId: operatorId,
+            action: "release_readiness.approval_pack_rebound",
+            targetType: "ReleaseReadinessApproval",
+            targetId: nextApproval.id,
+            metadata: {
+              releaseIdentifier: nextApproval.releaseIdentifier,
+              environment: nextApproval.environment,
+              previousLaunchClosurePackId: approval.launchClosurePackId,
+              previousLaunchClosurePackVersion: approval.launchClosurePackVersion,
+              previousLaunchClosurePackChecksumSha256:
+                approval.launchClosurePackChecksumSha256,
+              nextLaunchClosurePackId: launchClosurePack.id,
+              nextLaunchClosurePackVersion: launchClosurePack.version,
+              nextLaunchClosurePackChecksumSha256:
+                launchClosurePack.artifactChecksumSha256,
+              operatorRole: normalizedOperatorRole,
+              gate
+            } as Prisma.InputJsonValue
+          }
+        });
+
+        return nextApproval;
+      }
+    );
+
+    return {
+      approval: this.mapApprovalProjection(
+        updatedApproval,
+        readinessSummary,
+        launchClosurePack
+      )
+    };
+  }
+
   async rejectApproval(
     approvalId: string,
     dto: RejectReleaseReadinessApprovalDto,

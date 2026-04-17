@@ -922,6 +922,89 @@ describe("ReleaseReadinessService", () => {
     );
   });
 
+  it("rebinds a pending approval to a newer scoped launch-closure pack", async () => {
+    const { service, prismaService, transactionClient } = createService();
+    (prismaService.releaseReadinessApproval.findUnique as jest.Mock).mockResolvedValue(
+      buildApprovalRecord()
+    );
+    (prismaService.releaseLaunchClosurePack.findUnique as jest.Mock).mockResolvedValue(
+      buildLaunchClosurePackRecord({
+        id: "pack_2",
+        version: 2,
+        artifactChecksumSha256: "checksum_2"
+      })
+    );
+    (prismaService.releaseReadinessEvidence.findMany as jest.Mock)
+      .mockResolvedValueOnce(buildPassedRequiredEvidenceRecords())
+      .mockResolvedValueOnce([buildEvidenceRecord()]);
+    (
+      transactionClient.releaseReadinessApproval.update as jest.Mock
+    ).mockResolvedValue(
+      buildApprovalRecord({
+        launchClosurePackId: "pack_2",
+        launchClosurePackVersion: 2,
+        launchClosurePackChecksumSha256: "checksum_2",
+        blockerSnapshot: {
+          overallStatus: "ready",
+          approvalEligible: true,
+          missingChecklistItems: [],
+          missingEvidenceTypes: [],
+          failedEvidenceTypes: [],
+          staleEvidenceTypes: [],
+          metadataMismatches: [],
+          maximumEvidenceAgeHours: 72,
+          openBlockers: [],
+          generatedAt: "2026-04-08T12:00:00.000Z"
+        }
+      })
+    );
+
+    const result = await service.rebindApprovalToLaunchClosurePack(
+      "approval_1",
+      "pack_2",
+      "ops_1",
+      "operations_admin"
+    );
+
+    expect(transactionClient.releaseReadinessApproval.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          launchClosurePackId: "pack_2",
+          launchClosurePackVersion: 2,
+          launchClosurePackChecksumSha256: "checksum_2"
+        })
+      })
+    );
+    expect(transactionClient.auditEvent.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          action: "release_readiness.approval_pack_rebound"
+        })
+      })
+    );
+    expect(result.approval.launchClosurePack?.id).toBe("pack_2");
+  });
+
+  it("rejects rebind when the approval already references the requested pack", async () => {
+    const { service, prismaService, transactionClient } = createService();
+    (prismaService.releaseReadinessApproval.findUnique as jest.Mock).mockResolvedValue(
+      buildApprovalRecord()
+    );
+
+    await expect(
+      service.rebindApprovalToLaunchClosurePack(
+        "approval_1",
+        "pack_1",
+        "ops_1",
+        "operations_admin"
+      )
+    ).rejects.toThrow(
+      "Launch approval already references the requested launch-closure pack."
+    );
+
+    expect(transactionClient.releaseReadinessApproval.update).not.toHaveBeenCalled();
+  });
+
   it("keeps launch approval blocked when the latest evidence belongs to another release", async () => {
     const { service, prismaService, transactionClient } = createService();
     (prismaService.releaseReadinessApproval.findFirst as jest.Mock).mockResolvedValue(
