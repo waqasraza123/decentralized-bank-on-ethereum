@@ -683,6 +683,53 @@ describe("LaunchReadinessPage", () => {
     });
   });
 
+  it("pins approval actions to the actionable lineage node", async () => {
+    vi.mocked(getReleaseReadinessApprovalLineage).mockResolvedValueOnce({
+      approval: {
+        ...buildApproval("launch-2026.04.13.2"),
+        id: "launch-2026.04.13.2-approval"
+      },
+      lineage: [
+        {
+          ...buildApproval("launch-2026.04.13.2"),
+          id: "launch-2026.04.13.2-approval"
+        },
+        {
+          ...buildApproval("launch-2026.04.13.2"),
+          id: "launch-2026.04.13.2-approval-replacement"
+        }
+      ],
+      currentMutationToken: "2026-04-14T10:00:00.000Z",
+      integrity: {
+        status: "critical" as const,
+        issues: [
+          {
+            code: "multiple_pending_approvals" as const,
+            approvalId: "launch-2026.04.13.2-approval",
+            relatedApprovalId: null,
+            description:
+              "Approval launch-2026.04.13.2-approval is pending while another approval in the same lineage is also pending."
+          }
+        ],
+        headApprovalId: "launch-2026.04.13.2-approval-replacement",
+        tailApprovalId: "launch-2026.04.13.2-approval",
+        actionableApprovalId: "launch-2026.04.13.2-approval-replacement"
+      }
+    });
+
+    renderPage("/launch-readiness?release=launch-2026.04.13.2");
+
+    expect(
+      await screen.findByText("Approval actions are pinned to the actionable lineage node")
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "View actionable approval" })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Rebind to latest pack" })
+    ).toBeDisabled();
+  });
+
   it("renders the selected approval lineage from the dedicated lineage endpoint", async () => {
     renderPage("/launch-readiness?release=launch-2026.04.13.2");
 

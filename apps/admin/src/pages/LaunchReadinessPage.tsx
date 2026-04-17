@@ -940,6 +940,13 @@ export function LaunchReadinessPage() {
   const gateNotice = buildApprovalGateNotice(selectedApproval);
   const selectedApprovalIsPending =
     selectedApproval?.status === "pending_approval";
+  const selectedApprovalIsActionable =
+    selectedApproval?.id ===
+    selectedApprovalLineageIntegrity.actionableApprovalId;
+  const approvalLineageBlocksDecision =
+    selectedApprovalIsPending &&
+    (selectedApprovalLineageIntegrity.status !== "healthy" ||
+      !selectedApprovalIsActionable);
   const decisionPending =
     approveMutation.isPending ||
     rejectMutation.isPending ||
@@ -2052,7 +2059,7 @@ export function LaunchReadinessPage() {
                             <button
                               type="button"
                               className="admin-secondary-button"
-                              disabled={decisionPending}
+                              disabled={decisionPending || approvalLineageBlocksDecision}
                               onClick={() => rebindApprovalPackMutation.mutate()}
                             >
                               {rebindApprovalPackMutation.isPending
@@ -2180,6 +2187,38 @@ export function LaunchReadinessPage() {
 
                     {selectedApprovalIsPending ? (
                       <>
+                        {approvalLineageBlocksDecision ? (
+                          <div className="admin-detail-stack">
+                            <InlineNotice
+                              title="Approval actions are pinned to the actionable lineage node"
+                              description={
+                                selectedApprovalLineageIntegrity.actionableApprovalId
+                                  ? `The selected approval is not the current actionable approval. Continue with ${selectedApprovalLineageIntegrity.actionableApprovalId} after refreshing the workspace if needed.`
+                                  : "This approval lineage has unresolved integrity issues. Resolve the lineage state before approving, rejecting, or rebinding."
+                              }
+                              tone="warning"
+                            />
+                            {selectedApprovalLineageIntegrity.actionableApprovalId ? (
+                              <div className="admin-action-buttons">
+                                <button
+                                  type="button"
+                                  className="admin-secondary-button"
+                                  disabled={decisionPending}
+                                  onClick={() =>
+                                    updateSearchParams({
+                                      approval:
+                                        selectedApprovalLineageIntegrity.actionableApprovalId,
+                                      release: selectedApproval.releaseIdentifier
+                                    })
+                                  }
+                                >
+                                  View actionable approval
+                                </button>
+                              </div>
+                            ) : null}
+                          </div>
+                        ) : null}
+
                         <div className="admin-field">
                           <span>Approval note</span>
                           <textarea
@@ -2250,7 +2289,8 @@ export function LaunchReadinessPage() {
                           disabled={
                             !governedConfirm ||
                             decisionPending ||
-                            approvalDriftBlocksDecision
+                            approvalDriftBlocksDecision ||
+                            approvalLineageBlocksDecision
                           }
                           onClick={() => approveMutation.mutate()}
                         >
@@ -2259,7 +2299,11 @@ export function LaunchReadinessPage() {
                         <button
                           type="button"
                           className="admin-danger-button"
-                          disabled={!governedConfirm || decisionPending}
+                          disabled={
+                            !governedConfirm ||
+                            decisionPending ||
+                            approvalLineageBlocksDecision
+                          }
                           onClick={() => rejectMutation.mutate()}
                         >
                           {rejectMutation.isPending ? "Rejecting..." : "Reject release"}

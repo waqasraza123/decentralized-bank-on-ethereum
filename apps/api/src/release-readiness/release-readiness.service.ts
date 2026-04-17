@@ -270,6 +270,12 @@ type ReleaseReadinessApprovalLineageResult = {
   integrity: ReleaseReadinessApprovalLineageIntegrity;
 };
 
+type ReleaseReadinessApprovalLookupClient = {
+  releaseReadinessApproval: {
+    findUnique(args: Prisma.ReleaseReadinessApprovalFindUniqueArgs): Promise<ReleaseReadinessApprovalRecord | null>;
+  };
+};
+
 type ReleaseLaunchClosurePackProjection = {
   id: string;
   releaseIdentifier: string;
@@ -1093,6 +1099,211 @@ export class ReleaseReadinessService {
     }
   }
 
+  private async collectApprovalLineageRecords(
+    client: ReleaseReadinessApprovalLookupClient,
+    approval: ReleaseReadinessApprovalRecord
+  ): Promise<{
+    lineageRecords: ReleaseReadinessApprovalRecord[];
+    issues: ReleaseReadinessApprovalLineageIssue[];
+  }> {
+    const lineageRecords: ReleaseReadinessApprovalRecord[] = [approval];
+    const seenIds = new Set<string>([approval.id]);
+    const issues: ReleaseReadinessApprovalLineageIssue[] = [];
+
+    let cursor = approval;
+    while (cursor.supersedesApprovalId) {
+      const previous = await client.releaseReadinessApproval.findUnique({
+        where: {
+          id: cursor.supersedesApprovalId
+        }
+      });
+
+      if (!previous) {
+        issues.push({
+          code: "missing_previous_approval",
+          approvalId: cursor.id,
+          relatedApprovalId: cursor.supersedesApprovalId,
+          description: `Approval ${cursor.id} references missing previous approval ${cursor.supersedesApprovalId}.`
+        });
+        break;
+      }
+
+      if (seenIds.has(previous.id)) {
+        issues.push({
+          code: "cycle_detected",
+          approvalId: cursor.id,
+          relatedApprovalId: previous.id,
+          description: `Approval lineage cycles back to ${previous.id}.`
+        });
+        break;
+      }
+
+      if (previous.supersededByApprovalId !== cursor.id) {
+        issues.push({
+          code: "broken_forward_link",
+          approvalId: previous.id,
+          relatedApprovalId: cursor.id,
+          description: `Approval ${previous.id} does not point forward to ${cursor.id}.`
+        });
+      }
+
+      lineageRecords.unshift(previous);
+      seenIds.add(previous.id);
+      cursor = previous;
+    }
+
+    cursor = approval;
+    while (cursor.supersededByApprovalId) {
+      const next = await client.releaseReadinessApproval.findUnique({
+        where: {
+          id: cursor.supersededByApprovalId
+        }
+      });
+
+      if (!next) {
+        issues.push({
+          code: "missing_next_approval",
+          approvalId: cursor.id,
+          relatedApprovalId: cursor.supersededByApprovalId,
+          description: `Approval ${cursor.id} references missing replacement approval ${cursor.supersededByApprovalId}.`
+        });
+        break;
+      }
+
+      if (seenIds.has(next.id)) {
+        issues.push({
+          code: "cycle_detected",
+          approvalId: cursor.id,
+          relatedApprovalId: next.id,
+          description: `Approval lineage cycles forward to ${next.id}.`
+        });
+        break;
+      }
+
+      if (next.supersedesApprovalId !== cursor.id) {
+        issues.push({
+          code: "broken_backward_link",
+          approvalId: next.id,
+          relatedApprovalId: cursor.id,
+          description: `Approval ${next.id} does not point back to ${cursor.id}.`
+        });
+      }
+
+      lineageRecords.push(next);
+      seenIds.add(next.id);
+      cursor = next;
+    }
+
+    return {
+      lineageRecords,
+      issues
+    };
+  }
+
+  private buildApprovalLineageIntegrityFromRecords(
+    lineage: ReleaseReadinessApprovalRecord[],
+    seededIssues: ReleaseReadinessApprovalLineageIssue[]
+  ): ReleaseReadinessApprovalLineageIntegrity {
+    const issues = [...seededIssues];
+    const head = lineage[lineage.length - 1] ?? null;
+    const tail = lineage[0] ?? null;
+    const scopeKey =
+      lineage.length > 0
+        ? `${lineage[0]!.releaseIdentifier}:${lineage[0]!.environment}`
+        : null;
+    const pendingApprovals = lineage.filter(
+      (approval) => approval.status === ReleaseReadinessApprovalStatus.pending_approval
+    );
+
+    for (const approval of lineage) {
+      if (
+        scopeKey &&
+        `${approval.releaseIdentifier}:${approval.environment}` !== scopeKey
+      ) {
+        issues.push({
+          code: "scope_mismatch",
+          approvalId: approval.id,
+          relatedApprovalId: null,
+          description: `Approval ${approval.id} belongs to ${approval.releaseIdentifier}/${approval.environment}, which does not match the lineage scope ${lineage[0]!.releaseIdentifier}/${lineage[0]!.environment}.`
+        });
+      }
+    }
+
+    if (pendingApprovals.length > 1) {
+      for (const approval of pendingApprovals) {
+        issues.push({
+          code: "multiple_pending_approvals",
+          approvalId: approval.id,
+          relatedApprovalId: null,
+          description: `Approval ${approval.id} is pending while another approval in the same lineage is also pending.`
+        });
+      }
+    }
+
+    if (head?.status === ReleaseReadinessApprovalStatus.superseded) {
+      issues.push({
+        code: "superseded_head",
+        approvalId: head.id,
+        relatedApprovalId: head.supersededByApprovalId,
+        description: `Latest approval ${head.id} is superseded but has no valid replacement in the loaded lineage.`
+      });
+    }
+
+    const uniqueIssues = issues.filter(
+      (issue, index, collection) =>
+        collection.findIndex(
+          (candidate) =>
+            candidate.code === issue.code &&
+            candidate.approvalId === issue.approvalId &&
+            candidate.relatedApprovalId === issue.relatedApprovalId
+        ) === index
+    );
+
+    return {
+      status: uniqueIssues.length > 0 ? "critical" : "healthy",
+      issues: uniqueIssues,
+      headApprovalId: head?.id ?? null,
+      tailApprovalId: tail?.id ?? null,
+      actionableApprovalId:
+        pendingApprovals.length === 1 ? pendingApprovals[0]!.id : null
+    };
+  }
+
+  private async assertApprovalActionableInLineage(
+    client: ReleaseReadinessApprovalLookupClient,
+    approval: ReleaseReadinessApprovalRecord
+  ) {
+    const { lineageRecords, issues } = await this.collectApprovalLineageRecords(
+      client,
+      approval
+    );
+    const integrity = this.buildApprovalLineageIntegrityFromRecords(
+      lineageRecords,
+      issues
+    );
+
+    if (integrity.status !== "healthy") {
+      if (
+        integrity.actionableApprovalId &&
+        integrity.actionableApprovalId !== approval.id
+      ) {
+        throw new ConflictException(
+          `Selected launch approval is no longer actionable. Refresh and continue with ${integrity.actionableApprovalId}.`
+        );
+      }
+
+      throw new ConflictException(
+        "Launch approval lineage integrity must be healthy before this action can proceed. Refresh approval data and resolve lineage issues."
+      );
+    }
+
+    if (integrity.actionableApprovalId !== approval.id) {
+      throw new ConflictException(
+        `Selected launch approval is no longer actionable. Refresh and continue with ${integrity.actionableApprovalId}.`
+      );
+    }
+  }
+
   private mapLaunchClosurePackProjection(
     record: ReleaseLaunchClosurePackRecord
   ): ReleaseLaunchClosurePackProjection {
@@ -1886,6 +2097,7 @@ export class ReleaseReadinessService {
           currentApproval,
           dto.expectedUpdatedAt
         );
+        await this.assertApprovalActionableInLineage(transaction, currentApproval);
 
         const nextApproval = await transaction.releaseReadinessApproval.update({
           where: {
@@ -2047,6 +2259,8 @@ export class ReleaseReadinessService {
             "Launch approval lineage already contains a replacement approval."
           );
         }
+
+        await this.assertApprovalActionableInLineage(transaction, rebindableApproval);
 
         const nextApproval = await transaction.releaseReadinessApproval.create({
           data: {
@@ -2218,6 +2432,7 @@ export class ReleaseReadinessService {
           currentApproval,
           dto.expectedUpdatedAt
         );
+        await this.assertApprovalActionableInLineage(transaction, currentApproval);
 
         const nextApproval = await transaction.releaseReadinessApproval.update({
           where: {
@@ -2298,98 +2513,18 @@ export class ReleaseReadinessService {
       throw new NotFoundException("Release readiness approval request was not found.");
     }
 
-    const lineageRecords: ReleaseReadinessApprovalRecord[] = [approval];
-    const seenIds = new Set<string>([approval.id]);
-    const issues: ReleaseReadinessApprovalLineageIssue[] = [];
-
-    let cursor = approval;
-    while (cursor.supersedesApprovalId) {
-      const previous = await this.prismaService.releaseReadinessApproval.findUnique({
-        where: {
-          id: cursor.supersedesApprovalId
-        }
-      });
-
-      if (!previous) {
-        issues.push({
-          code: "missing_previous_approval",
-          approvalId: cursor.id,
-          relatedApprovalId: cursor.supersedesApprovalId,
-          description: `Approval ${cursor.id} references missing previous approval ${cursor.supersedesApprovalId}.`
-        });
-        break;
-      }
-
-      if (seenIds.has(previous.id)) {
-        issues.push({
-          code: "cycle_detected",
-          approvalId: cursor.id,
-          relatedApprovalId: previous.id,
-          description: `Approval lineage cycles back to ${previous.id}.`
-        });
-        break;
-      }
-
-      if (previous.supersededByApprovalId !== cursor.id) {
-        issues.push({
-          code: "broken_forward_link",
-          approvalId: previous.id,
-          relatedApprovalId: cursor.id,
-          description: `Approval ${previous.id} does not point forward to ${cursor.id}.`
-        });
-      }
-
-      lineageRecords.unshift(previous);
-      seenIds.add(previous.id);
-      cursor = previous;
-    }
-
-    cursor = approval;
-    while (cursor.supersededByApprovalId) {
-      const next = await this.prismaService.releaseReadinessApproval.findUnique({
-        where: {
-          id: cursor.supersededByApprovalId
-        }
-      });
-
-      if (!next) {
-        issues.push({
-          code: "missing_next_approval",
-          approvalId: cursor.id,
-          relatedApprovalId: cursor.supersededByApprovalId,
-          description: `Approval ${cursor.id} references missing replacement approval ${cursor.supersededByApprovalId}.`
-        });
-        break;
-      }
-
-      if (seenIds.has(next.id)) {
-        issues.push({
-          code: "cycle_detected",
-          approvalId: cursor.id,
-          relatedApprovalId: next.id,
-          description: `Approval lineage cycles forward to ${next.id}.`
-        });
-        break;
-      }
-
-      if (next.supersedesApprovalId !== cursor.id) {
-        issues.push({
-          code: "broken_backward_link",
-          approvalId: next.id,
-          relatedApprovalId: cursor.id,
-          description: `Approval ${next.id} does not point back to ${cursor.id}.`
-        });
-      }
-
-      lineageRecords.push(next);
-      seenIds.add(next.id);
-      cursor = next;
-    }
+    const { lineageRecords, issues } = await this.collectApprovalLineageRecords(
+      this.prismaService,
+      approval
+    );
 
     const lineage = await this.hydrateApprovalProjections(lineageRecords);
     const currentApproval =
       lineage.find((item) => item.id === approval.id) ?? lineage[0];
-    const integrity = this.buildApprovalLineageIntegrity(lineage, issues);
+    const integrity = this.buildApprovalLineageIntegrityFromRecords(
+      lineageRecords,
+      issues
+    );
 
     return {
       approval: currentApproval,
@@ -2483,72 +2618,4 @@ export class ReleaseReadinessService {
     );
   }
 
-  private buildApprovalLineageIntegrity(
-    lineage: ReleaseReadinessApprovalProjection[],
-    seededIssues: ReleaseReadinessApprovalLineageIssue[]
-  ): ReleaseReadinessApprovalLineageIntegrity {
-    const issues = [...seededIssues];
-    const head = lineage[lineage.length - 1] ?? null;
-    const tail = lineage[0] ?? null;
-    const scopeKey =
-      lineage.length > 0
-        ? `${lineage[0]!.releaseIdentifier}:${lineage[0]!.environment}`
-        : null;
-    const pendingApprovals = lineage.filter(
-      (approval) => approval.status === ReleaseReadinessApprovalStatus.pending_approval
-    );
-
-    for (const approval of lineage) {
-      if (
-        scopeKey &&
-        `${approval.releaseIdentifier}:${approval.environment}` !== scopeKey
-      ) {
-        issues.push({
-          code: "scope_mismatch",
-          approvalId: approval.id,
-          relatedApprovalId: null,
-          description: `Approval ${approval.id} belongs to ${approval.releaseIdentifier}/${approval.environment}, which does not match the lineage scope ${lineage[0]!.releaseIdentifier}/${lineage[0]!.environment}.`
-        });
-      }
-    }
-
-    if (pendingApprovals.length > 1) {
-      for (const approval of pendingApprovals) {
-        issues.push({
-          code: "multiple_pending_approvals",
-          approvalId: approval.id,
-          relatedApprovalId: null,
-          description: `Approval ${approval.id} is pending while another approval in the same lineage is also pending.`
-        });
-      }
-    }
-
-    if (head?.status === ReleaseReadinessApprovalStatus.superseded) {
-      issues.push({
-        code: "superseded_head",
-        approvalId: head.id,
-        relatedApprovalId: head.supersededByApprovalId,
-        description: `Latest approval ${head.id} is superseded but has no valid replacement in the loaded lineage.`
-      });
-    }
-
-    const uniqueIssues = issues.filter(
-      (issue, index, collection) =>
-        collection.findIndex(
-          (candidate) =>
-            candidate.code === issue.code &&
-            candidate.approvalId === issue.approvalId &&
-            candidate.relatedApprovalId === issue.relatedApprovalId
-        ) === index
-    );
-
-    return {
-      status: uniqueIssues.length > 0 ? "critical" : "healthy",
-      issues: uniqueIssues,
-      headApprovalId: head?.id ?? null,
-      tailApprovalId: tail?.id ?? null,
-      actionableApprovalId:
-        pendingApprovals.length === 1 ? pendingApprovals[0]!.id : null
-    };
-  }
 }

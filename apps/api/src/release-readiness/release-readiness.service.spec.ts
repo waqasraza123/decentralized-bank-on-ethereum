@@ -1182,6 +1182,47 @@ describe("ReleaseReadinessService", () => {
     expect(transactionClient.releaseReadinessApproval.update).not.toHaveBeenCalled();
   });
 
+  it("rejects rebind when lineage integrity for the selected approval is unhealthy", async () => {
+    const { service, prismaService, transactionClient } = createService();
+    (prismaService.releaseReadinessApproval.findUnique as jest.Mock).mockResolvedValue(
+      buildApprovalRecord()
+    );
+    (prismaService.releaseLaunchClosurePack.findUnique as jest.Mock).mockResolvedValue(
+      buildLaunchClosurePackRecord({
+        id: "pack_2",
+        version: 2,
+        artifactChecksumSha256: "checksum_2"
+      })
+    );
+    (prismaService.releaseReadinessEvidence.findMany as jest.Mock)
+      .mockResolvedValueOnce(buildPassedRequiredEvidenceRecords())
+      .mockResolvedValueOnce([buildEvidenceRecord()]);
+    (
+      transactionClient.releaseReadinessApproval.findUnique as jest.Mock
+    )
+      .mockResolvedValueOnce(
+        buildApprovalRecord({
+          supersedesApprovalId: "approval_missing"
+        })
+      )
+      .mockResolvedValueOnce(null);
+
+    await expect(
+      service.rebindApprovalToLaunchClosurePack(
+        "approval_1",
+        "pack_2",
+        approvalExpectedUpdatedAt,
+        "ops_1",
+        "operations_admin"
+      )
+    ).rejects.toThrow(
+      "Launch approval lineage integrity must be healthy before this action can proceed. Refresh approval data and resolve lineage issues."
+    );
+
+    expect(transactionClient.releaseReadinessApproval.create).not.toHaveBeenCalled();
+    expect(transactionClient.releaseReadinessApproval.update).not.toHaveBeenCalled();
+  });
+
   it("reuses stored decision drift snapshots for non-pending approvals", async () => {
     const { service, prismaService } = createService();
     (prismaService.releaseReadinessApproval.findUnique as jest.Mock).mockResolvedValue(
@@ -1794,6 +1835,41 @@ describe("ReleaseReadinessService", () => {
     expect(transactionClient.releaseReadinessApproval.update).not.toHaveBeenCalled();
   });
 
+  it("blocks approval when lineage integrity for the selected approval is unhealthy", async () => {
+    const { service, prismaService, transactionClient } = createService();
+    (prismaService.releaseReadinessApproval.findUnique as jest.Mock).mockResolvedValue(
+      buildApprovalRecord()
+    );
+    (prismaService.releaseReadinessEvidence.findMany as jest.Mock)
+      .mockResolvedValueOnce(buildPassedRequiredEvidenceRecords())
+      .mockResolvedValueOnce([buildEvidenceRecord()]);
+    (
+      transactionClient.releaseReadinessApproval.findUnique as jest.Mock
+    )
+      .mockResolvedValueOnce(
+        buildApprovalRecord({
+          supersedesApprovalId: "approval_missing"
+        })
+      )
+      .mockResolvedValueOnce(null);
+
+    await expect(
+      service.approveApproval(
+        "approval_1",
+        {
+          expectedUpdatedAt: approvalExpectedUpdatedAt,
+          approvalNote: "Approved for launch."
+        },
+        "approver_1",
+        "risk_manager"
+      )
+    ).rejects.toThrow(
+      "Launch approval lineage integrity must be healthy before this action can proceed. Refresh approval data and resolve lineage issues."
+    );
+
+    expect(transactionClient.releaseReadinessApproval.update).not.toHaveBeenCalled();
+  });
+
   it("blocks approval for operator roles outside the launch-approval roster", async () => {
     const { service } = createService();
 
@@ -1927,6 +2003,45 @@ describe("ReleaseReadinessService", () => {
       )
     ).rejects.toThrow(
       "Launch approval changed after it was loaded. Refresh approval data and retry."
+    );
+
+    expect(transactionClient.releaseReadinessApproval.update).not.toHaveBeenCalled();
+  });
+
+  it("blocks rejection when lineage integrity for the selected approval is unhealthy", async () => {
+    const { service, prismaService, transactionClient } = createService();
+    (prismaService.releaseReadinessApproval.findUnique as jest.Mock).mockResolvedValue(
+      buildApprovalRecord()
+    );
+    (prismaService.releaseReadinessEvidence.findMany as jest.Mock)
+      .mockResolvedValueOnce([
+        buildEvidenceRecord({
+          evidenceType: ReleaseReadinessEvidenceType.platform_alert_delivery_slo
+        })
+      ])
+      .mockResolvedValueOnce([buildEvidenceRecord()]);
+    (
+      transactionClient.releaseReadinessApproval.findUnique as jest.Mock
+    )
+      .mockResolvedValueOnce(
+        buildApprovalRecord({
+          supersedesApprovalId: "approval_missing"
+        })
+      )
+      .mockResolvedValueOnce(null);
+
+    await expect(
+      service.rejectApproval(
+        "approval_1",
+        {
+          expectedUpdatedAt: approvalExpectedUpdatedAt,
+          rejectionNote: "Rejected from console."
+        },
+        "approver_1",
+        "risk_manager"
+      )
+    ).rejects.toThrow(
+      "Launch approval lineage integrity must be healthy before this action can proceed. Refresh approval data and resolve lineage issues."
     );
 
     expect(transactionClient.releaseReadinessApproval.update).not.toHaveBeenCalled();
