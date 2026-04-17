@@ -1089,6 +1089,8 @@ export type ReleaseReadinessApproval = {
   gate: ReleaseReadinessApprovalGate;
   launchClosureDrift: {
     changed: boolean;
+    critical: boolean;
+    blockingReasons: string[];
     currentOverallStatus: "ready" | "blocked" | "approved" | "rejected" | "in_progress";
     summaryDelta: {
       passedCheckCount: number;

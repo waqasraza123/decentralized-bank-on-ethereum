@@ -838,6 +838,9 @@ export function LaunchReadinessPage() {
     ) ?? null;
   const gateNotice = buildApprovalGateNotice(selectedApproval);
   const decisionPending = approveMutation.isPending || rejectMutation.isPending;
+  const approvalDriftBlocksDecision = Boolean(
+    selectedApproval?.launchClosureDrift?.critical
+  );
   const launchClosurePending =
     validateLaunchClosureMutation.isPending ||
     scaffoldLaunchClosureMutation.isPending;
@@ -1753,11 +1756,23 @@ export function LaunchReadinessPage() {
                               : "Current launch-closure posture still matches the stored approval snapshot."
                           }
                           tone={
-                            selectedApproval.launchClosureDrift.changed
-                              ? "warning"
-                              : "positive"
+                            selectedApproval.launchClosureDrift.critical
+                              ? "critical"
+                              : selectedApproval.launchClosureDrift.changed
+                                ? "warning"
+                                : "positive"
                           }
                         />
+
+                        {selectedApproval.launchClosureDrift.critical ? (
+                          <InlineNotice
+                            title="Approval is blocked by critical drift"
+                            description={selectedApproval.launchClosureDrift.blockingReasons.join(
+                              " "
+                            )}
+                            tone="critical"
+                          />
+                        ) : null}
 
                         <DetailList
                           items={[
@@ -1949,7 +1964,11 @@ export function LaunchReadinessPage() {
                       <button
                         type="button"
                         className="admin-primary-button"
-                        disabled={!governedConfirm || decisionPending}
+                        disabled={
+                          !governedConfirm ||
+                          decisionPending ||
+                          approvalDriftBlocksDecision
+                        }
                         onClick={() => approveMutation.mutate()}
                       >
                         {approveMutation.isPending ? "Approving..." : "Approve release"}

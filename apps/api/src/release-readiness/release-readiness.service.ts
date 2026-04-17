@@ -195,6 +195,8 @@ type ReleaseReadinessApprovalProjection = {
   gate: ReleaseReadinessApprovalGate;
   launchClosureDrift: {
     changed: boolean;
+    critical: boolean;
+    blockingReasons: string[];
     currentOverallStatus: LaunchClosureStatusProjection["overallStatus"];
     summaryDelta: {
       passedCheckCount: number;
@@ -878,9 +880,36 @@ export class ReleaseReadinessService {
       openBlockersResolved.length > 0 ||
       latestPackProjection !== null ||
       currentOverallStatus !== storedGate.overallStatus;
+    const blockingReasons = [
+      ...(latestPackProjection
+        ? [
+            `A newer launch-closure pack (${latestPackProjection.id}) is available for this release scope.`
+          ]
+        : []),
+      ...missingEvidenceTypesAdded.map(
+        (evidenceType) => `Missing evidence was introduced for ${evidenceType}.`
+      ),
+      ...failedEvidenceTypesAdded.map(
+        (evidenceType) => `Failed evidence is now present for ${evidenceType}.`
+      ),
+      ...staleEvidenceTypesAdded.map(
+        (evidenceType) => `Evidence became stale for ${evidenceType}.`
+      ),
+      ...openBlockersAdded.map(
+        (blocker) => `A new open blocker was introduced: ${blocker}.`
+      ),
+      ...(currentOverallStatus === "blocked"
+        ? [
+            "Current live launch-closure posture is blocked and no longer matches the bound approval artifact."
+          ]
+        : [])
+    ];
+    const critical = blockingReasons.length > 0;
 
     return {
       changed,
+      critical,
+      blockingReasons,
       currentOverallStatus,
       summaryDelta,
       missingEvidenceTypesAdded,
@@ -894,6 +923,20 @@ export class ReleaseReadinessService {
       newerPackAvailable: latestPackProjection !== null,
       latestPack: latestPackProjection
     };
+  }
+
+  private assertApprovalDriftDoesNotBlock(
+    drift: ReleaseReadinessApprovalProjection["launchClosureDrift"]
+  ): void {
+    if (!drift?.critical) {
+      return;
+    }
+
+    throw new ConflictException(
+      `Launch approval is blocked until the bound launch-closure pack is refreshed for current live posture. ${drift.blockingReasons.join(
+        " "
+      )}`
+    );
   }
 
   private mapApprovalProjection(
@@ -1702,12 +1745,23 @@ export class ReleaseReadinessService {
       ReleaseReadinessApprovalStatus.pending_approval,
       approval.rollbackReleaseIdentifier ?? null
     );
+    const latestPack = await this.getLatestLaunchClosurePackForScope(
+      approval.releaseIdentifier,
+      approval.environment
+    );
+    const launchClosureDrift = this.buildLaunchClosureDrift(
+      approval,
+      readinessSummary,
+      latestPack
+    );
 
     if (!gate.approvalEligible) {
       throw new ConflictException(
         "Launch approval is blocked until checklist gaps, failed or stale evidence, and open blockers are remediated."
       );
     }
+
+    this.assertApprovalDriftDoesNotBlock(launchClosureDrift);
 
     const approvalNote = this.normalizeOptionalString(dto.approvalNote);
     const evidenceSnapshot = this.buildApprovalEvidenceSnapshot(readinessSummary);
@@ -1747,7 +1801,8 @@ export class ReleaseReadinessService {
               environment: nextApproval.environment,
               approvedByOperatorRole: approvedOperatorRole,
               approvalNote,
-              gate: approvedGate
+              gate: approvedGate,
+              launchClosureDrift
             } as Prisma.InputJsonValue
           }
         });
@@ -1801,6 +1856,15 @@ export class ReleaseReadinessService {
       ReleaseReadinessApprovalStatus.rejected,
       approval.rollbackReleaseIdentifier ?? null
     );
+    const latestPack = await this.getLatestLaunchClosurePackForScope(
+      approval.releaseIdentifier,
+      approval.environment
+    );
+    const launchClosureDrift = this.buildLaunchClosureDrift(
+      approval,
+      readinessSummary,
+      latestPack
+    );
     const rejectionNote = dto.rejectionNote.trim();
 
     const updatedApproval = await this.prismaService.$transaction(
@@ -1832,7 +1896,8 @@ export class ReleaseReadinessService {
               environment: nextApproval.environment,
               rejectedByOperatorRole: rejectedOperatorRole,
               rejectionNote,
-              gate: rejectedGate
+              gate: rejectedGate,
+              launchClosureDrift
             } as Prisma.InputJsonValue
           }
         });

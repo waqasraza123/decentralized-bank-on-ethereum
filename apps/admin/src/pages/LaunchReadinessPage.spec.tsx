@@ -185,6 +185,10 @@ function buildApproval(releaseIdentifier: string) {
     },
     launchClosureDrift: {
       changed: true,
+      critical: true,
+      blockingReasons: [
+        "A newer launch-closure pack is available for this release scope."
+      ],
       currentOverallStatus: "ready" as const,
       summaryDelta: {
         passedCheckCount: 2,
@@ -535,10 +539,18 @@ describe("LaunchReadinessPage", () => {
     });
 
     expect(screen.getByText("Newer pack available")).toBeVisible();
+    expect(screen.getByText("Approval is blocked by critical drift")).toBeVisible();
     expect(screen.getByText(/missing evidence resolved/i)).toBeVisible();
     expect(screen.getAllByText(/critical_alert_reescalation/i).length).toBeGreaterThan(
       0
     );
+    fireEvent.click(
+      screen.getByRole("checkbox", {
+        name: /I reviewed failed checks, stale evidence, and open blockers before deciding/i
+      })
+    );
+    expect(screen.getByRole("button", { name: "Approve release" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Reject release" })).toBeEnabled();
   });
 
   it("requires rollback metadata before recording rollback drill evidence", async () => {

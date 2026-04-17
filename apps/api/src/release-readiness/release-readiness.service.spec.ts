@@ -815,6 +815,7 @@ describe("ReleaseReadinessService", () => {
     expect(result.approval.launchClosureDrift).toEqual(
       expect.objectContaining({
         changed: false,
+        critical: false,
         newerPackAvailable: false
       })
     );
@@ -865,6 +866,7 @@ describe("ReleaseReadinessService", () => {
     expect(result.approval.launchClosureDrift).toEqual(
       expect.objectContaining({
         changed: true,
+        critical: true,
         currentOverallStatus: "ready",
         missingEvidenceTypesResolved: ["critical_alert_reescalation"],
         newerPackAvailable: true,
@@ -874,6 +876,49 @@ describe("ReleaseReadinessService", () => {
           artifactChecksumSha256: "checksum_2"
         })
       })
+    );
+  });
+
+  it("blocks approval when critical drift exists against the bound launch-closure pack", async () => {
+    const { service, prismaService } = createService();
+    (prismaService.releaseReadinessApproval.findUnique as jest.Mock).mockResolvedValue(
+      buildApprovalRecord({
+        blockerSnapshot: {
+          overallStatus: "blocked",
+          approvalEligible: false,
+          missingChecklistItems: [],
+          missingEvidenceTypes: ["critical_alert_reescalation"],
+          failedEvidenceTypes: [],
+          staleEvidenceTypes: [],
+          metadataMismatches: [],
+          maximumEvidenceAgeHours: 72,
+          openBlockers: [],
+          generatedAt: "2026-04-08T12:00:00.000Z"
+        }
+      })
+    );
+    (prismaService.releaseReadinessEvidence.findMany as jest.Mock)
+      .mockResolvedValueOnce(buildPassedRequiredEvidenceRecords())
+      .mockResolvedValueOnce([buildEvidenceRecord()]);
+    (prismaService.releaseLaunchClosurePack.findFirst as jest.Mock).mockResolvedValue(
+      buildLaunchClosurePackRecord({
+        id: "pack_2",
+        version: 2,
+        artifactChecksumSha256: "checksum_2"
+      })
+    );
+
+    await expect(
+      service.approveApproval(
+        "approval_1",
+        {
+          approvalNote: "Approved"
+        },
+        "approver_1",
+        "risk_manager"
+      )
+    ).rejects.toThrow(
+      "Launch approval is blocked until the bound launch-closure pack is refreshed for current live posture."
     );
   });
 
