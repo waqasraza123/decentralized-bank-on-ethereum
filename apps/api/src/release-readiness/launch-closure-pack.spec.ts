@@ -10,6 +10,7 @@ import {
   renderLaunchClosureValidationSummary,
   scaffoldLaunchClosurePack,
   validateLaunchClosureManifest,
+  type LaunchClosureDynamicStatusInput,
   type LaunchClosureManifest
 } from "./launch-closure-pack";
 
@@ -60,6 +61,52 @@ function buildManifest(): LaunchClosureManifest {
   };
 }
 
+function buildStatusSnapshot(): LaunchClosureDynamicStatusInput {
+  return {
+    generatedAt: "2026-04-10T12:00:00.000Z",
+    releaseIdentifier: "launch-2026.04.10.1",
+    environment: "production_like",
+    overallStatus: "blocked",
+    maximumEvidenceAgeHours: 72,
+    externalChecks: [
+      {
+        evidenceType: "platform_alert_delivery_slo",
+        status: "passed",
+        acceptedEnvironments: ["staging", "production_like", "production"],
+        latestEvidenceObservedAt: "2026-04-10T11:00:00.000Z",
+        latestEvidenceEnvironment: "production_like"
+      },
+      {
+        evidenceType: "critical_alert_reescalation",
+        status: "pending",
+        acceptedEnvironments: ["staging", "production_like", "production"]
+      }
+    ],
+    latestApproval: {
+      status: "pending_approval",
+      summary: "Production-like launch candidate ready for final governed review.",
+      requestNote: "All accepted evidence must be current before approval.",
+      residualRiskNote: "No accepted residual risks remain open at request time.",
+      rollbackReleaseIdentifier: "launch-rollback-2026.04.09.4",
+      checklist: {
+        securityConfigurationComplete: true,
+        accessAndGovernanceComplete: true,
+        dataAndRecoveryComplete: false,
+        platformHealthComplete: true,
+        functionalProofComplete: false,
+        contractAndChainProofComplete: true,
+        finalSignoffComplete: false,
+        unresolvedRisksAccepted: false
+      },
+      gateOverallStatus: "blocked",
+      missingEvidenceTypes: ["critical_alert_reescalation"],
+      failedEvidenceTypes: [],
+      staleEvidenceTypes: [],
+      openBlockers: ["Awaiting critical alert re-escalation proof"]
+    }
+  };
+}
+
 describe("launch-closure-pack", () => {
   it("validates dual-control and alert identifiers", () => {
     const manifest = buildManifest();
@@ -85,12 +132,16 @@ describe("launch-closure-pack", () => {
       const result = scaffoldLaunchClosurePack({
         manifest,
         repoRoot,
-        outputDir
+        outputDir,
+        statusSnapshot: buildStatusSnapshot()
       });
 
       expect(result.files).toContain(path.join(outputDir, "execution-plan.md"));
       expect(result.files).toContain(
         path.join(outputDir, "approval-request.template.json")
+      );
+      expect(result.files).toContain(
+        path.join(outputDir, "current-status-summary.md")
       );
 
       const executionPlan = readFileSync(
@@ -102,6 +153,10 @@ describe("launch-closure-pack", () => {
         "utf8"
       );
       const validationSummary = renderLaunchClosureValidationSummary(manifest);
+      const currentStatus = readFileSync(
+        path.join(outputDir, "current-status-summary.md"),
+        "utf8"
+      );
 
       expect(executionPlan).toContain("pnpm release:readiness:probe --");
       expect(executionPlan).toContain("--probe worker_rollback_drill");
@@ -109,7 +164,12 @@ describe("launch-closure-pack", () => {
       expect(executionPlan).toContain("pnpm release:readiness:verify --");
       expect(executionPlan).toContain("curl -sS -X POST");
       expect(approvalRequest).toContain('"releaseIdentifier": "launch-2026.04.10.1"');
-      expect(approvalRequest).toContain('"securityConfigurationComplete": false');
+      expect(approvalRequest).toContain('"securityConfigurationComplete": true');
+      expect(approvalRequest).toContain(
+        '"openBlockers": [\n    "Awaiting critical alert re-escalation proof"\n  ]'
+      );
+      expect(currentStatus).toContain("Current Launch-Closure Status Snapshot");
+      expect(currentStatus).toContain("critical_alert_reescalation");
       expect(validationSummary).toContain(
         "database_restore_drill: accepted only in staging, production_like, production"
       );
@@ -124,7 +184,7 @@ describe("launch-closure-pack", () => {
   it("previews launch-closure artifacts without writing files", () => {
     const manifest = buildManifest();
 
-    const result = previewLaunchClosurePack(manifest);
+    const result = previewLaunchClosurePack(manifest, buildStatusSnapshot());
 
     expect(result.outputSubpath).toBe(
       path.join("artifacts", "release-launch", "launch-2026.04.10.1-production_like")
@@ -141,6 +201,10 @@ describe("launch-closure-pack", () => {
         expect.objectContaining({
           relativePath: "execution-plan.md",
           content: expect.stringContaining("pnpm release:readiness:probe --")
+        }),
+        expect.objectContaining({
+          relativePath: "current-status-summary.md",
+          content: expect.stringContaining("Approval posture")
         }),
         expect.objectContaining({
           relativePath: path.join("evidence", "08-final-governed-launch-approval.md"),

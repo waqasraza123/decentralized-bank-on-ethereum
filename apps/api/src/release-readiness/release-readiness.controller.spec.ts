@@ -97,6 +97,16 @@ describe("ReleaseReadinessController", () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    releaseReadinessService.getLaunchClosureStatus.mockResolvedValue({
+      generatedAt: "2026-04-10T12:00:00.000Z",
+      releaseIdentifier: "launch-2026.04.10.1",
+      environment: "production_like",
+      overallStatus: "blocked",
+      maximumEvidenceAgeHours: 72,
+      externalChecks: [],
+      latestApproval: null,
+      summaryMarkdown: "Scoped launch-closure status."
+    });
   });
 
   it("passes scoped release-readiness summary filters through", async () => {
@@ -587,6 +597,81 @@ describe("ReleaseReadinessController", () => {
   });
 
   it("scaffolds launch-closure previews when the manifest is valid", async () => {
+    releaseReadinessService.getLaunchClosureStatus.mockResolvedValue({
+      generatedAt: "2026-04-10T12:00:00.000Z",
+      releaseIdentifier: "launch-2026.04.10.1",
+      environment: "production_like",
+      overallStatus: "blocked",
+      maximumEvidenceAgeHours: 72,
+      externalChecks: [
+        {
+          evidenceType: "critical_alert_reescalation",
+          label: "Critical Alert Re-escalation Cadence",
+          status: "pending",
+          acceptedEnvironments: ["staging", "production_like", "production"],
+          latestEvidence: null
+        }
+      ],
+      latestApproval: {
+        id: "approval_1",
+        releaseIdentifier: "launch-2026.04.10.1",
+        environment: "production_like",
+        rollbackReleaseIdentifier: "launch-rollback-2026.04.09.4",
+        status: "pending_approval",
+        summary: "Production-like launch candidate ready for final governed review.",
+        requestNote: "All accepted evidence must be current before approval.",
+        approvalNote: null,
+        rejectionNote: null,
+        requestedByOperatorId: "ops_requester_1",
+        requestedByOperatorRole: "operations_admin",
+        approvedByOperatorId: null,
+        approvedByOperatorRole: null,
+        rejectedByOperatorId: null,
+        rejectedByOperatorRole: null,
+        checklist: {
+          securityConfigurationComplete: true,
+          accessAndGovernanceComplete: true,
+          dataAndRecoveryComplete: false,
+          platformHealthComplete: true,
+          functionalProofComplete: false,
+          contractAndChainProofComplete: true,
+          finalSignoffComplete: false,
+          unresolvedRisksAccepted: false,
+          openBlockers: ["Awaiting critical alert re-escalation proof"],
+          residualRiskNote: "No accepted residual risks remain open at request time."
+        },
+        evidenceSnapshot: {
+          generatedAt: "2026-04-10T12:00:00.000Z",
+          overallStatus: "warning",
+          summary: {
+            requiredCheckCount: 10,
+            passedCheckCount: 1,
+            failedCheckCount: 0,
+            pendingCheckCount: 9
+          },
+          requiredChecks: []
+        },
+        gate: {
+          overallStatus: "blocked",
+          approvalEligible: false,
+          missingChecklistItems: [],
+          missingEvidenceTypes: ["critical_alert_reescalation"],
+          failedEvidenceTypes: [],
+          staleEvidenceTypes: [],
+          metadataMismatches: [],
+          maximumEvidenceAgeHours: 72,
+          openBlockers: ["Awaiting critical alert re-escalation proof"],
+          generatedAt: "2026-04-10T12:00:00.000Z"
+        },
+        requestedAt: "2026-04-10T12:00:00.000Z",
+        approvedAt: null,
+        rejectedAt: null,
+        createdAt: "2026-04-10T12:00:00.000Z",
+        updatedAt: "2026-04-10T12:00:00.000Z"
+      },
+      summaryMarkdown: "Scoped launch-closure status."
+    });
+
     const response = await request(app.getHttpServer())
       .post("/release-readiness/internal/launch-closure/scaffold")
       .set("x-operator-api-key", "test-operator-key")
@@ -602,6 +687,10 @@ describe("ReleaseReadinessController", () => {
     expect(response.body.data.outputSubpath).toContain(
       "launch-2026.04.10.1-production_like"
     );
+    expect(releaseReadinessService.getLaunchClosureStatus).toHaveBeenCalledWith({
+      releaseIdentifier: "launch-2026.04.10.1",
+      environment: "production_like"
+    });
     expect(response.body.data.files).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -609,6 +698,10 @@ describe("ReleaseReadinessController", () => {
         }),
         expect.objectContaining({
           relativePath: "execution-plan.md"
+        }),
+        expect.objectContaining({
+          relativePath: "current-status-summary.md",
+          content: expect.stringContaining("critical_alert_reescalation")
         })
       ])
     );

@@ -77,6 +77,7 @@ export type LaunchClosurePackPreview = {
 };
 
 export type LaunchClosureDynamicStatusInput = {
+  generatedAt?: string;
   releaseIdentifier?: string | null;
   environment?: LaunchClosureEnvironment | null;
   overallStatus?: "ready" | "blocked" | "approved" | "rejected" | "in_progress";
@@ -90,6 +91,20 @@ export type LaunchClosureDynamicStatusInput = {
   }>;
   latestApproval?: {
     status: string;
+    summary?: string;
+    requestNote?: string | null;
+    residualRiskNote?: string | null;
+    rollbackReleaseIdentifier?: string | null;
+    checklist?: {
+      securityConfigurationComplete: boolean;
+      accessAndGovernanceComplete: boolean;
+      dataAndRecoveryComplete: boolean;
+      platformHealthComplete: boolean;
+      functionalProofComplete: boolean;
+      contractAndChainProofComplete: boolean;
+      finalSignoffComplete: boolean;
+      unresolvedRisksAccepted: boolean;
+    };
     gateOverallStatus?: string;
     missingEvidenceTypes?: string[];
     failedEvidenceTypes?: string[];
@@ -201,24 +216,36 @@ function buildVerifyCommand(args: string[]): string {
 }
 
 function buildApprovalRequestBody(
-  manifest: LaunchClosureManifest
+  manifest: LaunchClosureManifest,
+  status?: LaunchClosureDynamicStatusInput
 ): Record<string, unknown> {
+  const checklist = status?.latestApproval?.checklist;
+
   return {
     releaseIdentifier: manifest.releaseIdentifier,
     environment: manifest.environment,
-    rollbackReleaseIdentifier: manifest.artifacts.approvalRollbackReleaseId,
-    summary: manifest.notes.launchSummary,
-    requestNote: manifest.notes.requestNote ?? "",
-    securityConfigurationComplete: false,
-    accessAndGovernanceComplete: false,
-    dataAndRecoveryComplete: false,
-    platformHealthComplete: false,
-    functionalProofComplete: false,
-    contractAndChainProofComplete: false,
-    finalSignoffComplete: false,
-    unresolvedRisksAccepted: false,
-    openBlockers: [],
-    residualRiskNote: manifest.notes.residualRiskNote ?? ""
+    rollbackReleaseIdentifier:
+      status?.latestApproval?.rollbackReleaseIdentifier ??
+      manifest.artifacts.approvalRollbackReleaseId,
+    summary: status?.latestApproval?.summary ?? manifest.notes.launchSummary,
+    requestNote:
+      status?.latestApproval?.requestNote ?? manifest.notes.requestNote ?? "",
+    securityConfigurationComplete:
+      checklist?.securityConfigurationComplete ?? false,
+    accessAndGovernanceComplete:
+      checklist?.accessAndGovernanceComplete ?? false,
+    dataAndRecoveryComplete: checklist?.dataAndRecoveryComplete ?? false,
+    platformHealthComplete: checklist?.platformHealthComplete ?? false,
+    functionalProofComplete: checklist?.functionalProofComplete ?? false,
+    contractAndChainProofComplete:
+      checklist?.contractAndChainProofComplete ?? false,
+    finalSignoffComplete: checklist?.finalSignoffComplete ?? false,
+    unresolvedRisksAccepted: checklist?.unresolvedRisksAccepted ?? false,
+    openBlockers: status?.latestApproval?.openBlockers ?? [],
+    residualRiskNote:
+      status?.latestApproval?.residualRiskNote ??
+      manifest.notes.residualRiskNote ??
+      ""
   };
 }
 
@@ -235,9 +262,62 @@ function buildApprovalCurlCommand(manifest: LaunchClosureManifest): string {
 }
 
 function buildApprovalBodyTemplate(
-  manifest: LaunchClosureManifest
+  manifest: LaunchClosureManifest,
+  status?: LaunchClosureDynamicStatusInput
 ): string {
-  return jsonStringify(buildApprovalRequestBody(manifest));
+  return jsonStringify(buildApprovalRequestBody(manifest, status));
+}
+
+function renderCurrentStatusSnapshot(
+  manifest: LaunchClosureManifest,
+  status: LaunchClosureDynamicStatusInput
+): string {
+  return `# Current Launch-Closure Status Snapshot
+
+## Scope
+
+- Release identifier: \`${status.releaseIdentifier ?? manifest.releaseIdentifier}\`
+- Environment: \`${status.environment ?? manifest.environment}\`
+- Generated at: \`${status.generatedAt ?? new Date().toISOString()}\`
+- Operational status: \`${status.overallStatus ?? "blocked"}\`
+- Evidence freshness window: \`${status.maximumEvidenceAgeHours ?? "unknown"}\` hours
+
+## External checks
+
+${(status.externalChecks ?? [])
+  .map(
+    (check) =>
+      `- \`${check.evidenceType}\`: ${check.status} (accepted in ${check.acceptedEnvironments.join(
+        ", "
+      )})${
+        check.latestEvidenceObservedAt && check.latestEvidenceEnvironment
+          ? `; latest evidence ${check.latestEvidenceObservedAt} in ${check.latestEvidenceEnvironment}`
+          : "; no accepted evidence recorded in scope"
+      }`
+  )
+  .join("\n")}
+
+## Approval posture
+
+${
+  status.latestApproval
+    ? [
+        `- Latest approval status: \`${status.latestApproval.status}\``,
+        `- Approval gate: \`${status.latestApproval.gateOverallStatus ?? "n/a"}\``,
+        `- Missing evidence: ${
+          status.latestApproval.missingEvidenceTypes?.join(", ") || "none"
+        }`,
+        `- Failed evidence: ${
+          status.latestApproval.failedEvidenceTypes?.join(", ") || "none"
+        }`,
+        `- Stale evidence: ${
+          status.latestApproval.staleEvidenceTypes?.join(", ") || "none"
+        }`,
+        `- Open blockers: ${status.latestApproval.openBlockers?.join("; ") || "none"}`
+      ].join("\n")
+    : "- No governed approval request exists yet for this release scope."
+}
+`;
 }
 
 function buildLaunchClosureArtifacts(
@@ -966,6 +1046,7 @@ export function scaffoldLaunchClosurePack(args: {
   repoRoot: string;
   outputDir?: string;
   force?: boolean;
+  statusSnapshot?: LaunchClosureDynamicStatusInput;
 }): LaunchClosurePackResult {
   const validation = validateLaunchClosureManifest(args.manifest);
 
@@ -987,7 +1068,7 @@ export function scaffoldLaunchClosurePack(args: {
     recursive: true
   });
 
-  const preview = previewLaunchClosurePack(args.manifest);
+  const preview = previewLaunchClosurePack(args.manifest, args.statusSnapshot);
   const files: string[] = [];
 
   const writeArtifact = (file: LaunchClosurePackFile) => {
@@ -1010,7 +1091,8 @@ export function scaffoldLaunchClosurePack(args: {
 }
 
 export function previewLaunchClosurePack(
-  manifest: LaunchClosureManifest
+  manifest: LaunchClosureManifest,
+  statusSnapshot?: LaunchClosureDynamicStatusInput
 ): LaunchClosurePackPreview {
   return {
     outputSubpath: buildOutputSubpath(manifest),
@@ -1033,8 +1115,16 @@ export function previewLaunchClosurePack(
       },
       {
         relativePath: "approval-request.template.json",
-        content: buildApprovalBodyTemplate(manifest)
+        content: buildApprovalBodyTemplate(manifest, statusSnapshot)
       },
+      ...(statusSnapshot
+        ? [
+            {
+              relativePath: "current-status-summary.md",
+              content: renderCurrentStatusSnapshot(manifest, statusSnapshot)
+            }
+          ]
+        : []),
       ...buildLaunchClosureArtifacts(manifest).map((artifact) => ({
         relativePath: path.join("evidence", artifact.filename),
         content: renderEvidenceTemplate(manifest, artifact)

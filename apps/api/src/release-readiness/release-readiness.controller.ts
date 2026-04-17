@@ -286,7 +286,7 @@ export class ReleaseReadinessController {
   }
 
   @Post("launch-closure/scaffold")
-  scaffoldLaunchClosurePack(
+  async scaffoldLaunchClosurePack(
     @Body(
       new ValidationPipe({
         whitelist: true,
@@ -294,14 +294,72 @@ export class ReleaseReadinessController {
       })
     )
     dto: LaunchClosureManifestDto
-  ): CustomJsonResponse {
+  ): Promise<CustomJsonResponse> {
     const validation = validateLaunchClosureManifestPayload(dto.manifest);
 
     if (validation.errors.length > 0) {
       throw new BadRequestException(validation.errors.join(" "));
     }
 
-    const preview = previewLaunchClosurePack(dto.manifest);
+    const statusSnapshot =
+      await this.releaseReadinessService.getLaunchClosureStatus({
+        releaseIdentifier: dto.manifest.releaseIdentifier,
+        environment: dto.manifest.environment
+      });
+    const preview = previewLaunchClosurePack(dto.manifest, {
+      generatedAt: statusSnapshot.generatedAt,
+      releaseIdentifier: statusSnapshot.releaseIdentifier,
+      environment: dto.manifest.environment,
+      overallStatus: statusSnapshot.overallStatus,
+      maximumEvidenceAgeHours: statusSnapshot.maximumEvidenceAgeHours,
+      externalChecks: statusSnapshot.externalChecks.map((check) => ({
+        evidenceType: check.evidenceType,
+        status: check.status,
+        acceptedEnvironments: check.acceptedEnvironments,
+        latestEvidenceObservedAt: check.latestEvidence?.observedAt ?? null,
+        latestEvidenceEnvironment: check.latestEvidence?.environment ?? null
+      })),
+      latestApproval: statusSnapshot.latestApproval
+        ? {
+            status: statusSnapshot.latestApproval.status,
+            summary: statusSnapshot.latestApproval.summary,
+            requestNote: statusSnapshot.latestApproval.requestNote,
+            residualRiskNote:
+              statusSnapshot.latestApproval.checklist.residualRiskNote,
+            rollbackReleaseIdentifier:
+              statusSnapshot.latestApproval.rollbackReleaseIdentifier,
+            checklist: {
+              securityConfigurationComplete:
+                statusSnapshot.latestApproval.checklist
+                  .securityConfigurationComplete,
+              accessAndGovernanceComplete:
+                statusSnapshot.latestApproval.checklist
+                  .accessAndGovernanceComplete,
+              dataAndRecoveryComplete:
+                statusSnapshot.latestApproval.checklist.dataAndRecoveryComplete,
+              platformHealthComplete:
+                statusSnapshot.latestApproval.checklist.platformHealthComplete,
+              functionalProofComplete:
+                statusSnapshot.latestApproval.checklist.functionalProofComplete,
+              contractAndChainProofComplete:
+                statusSnapshot.latestApproval.checklist
+                  .contractAndChainProofComplete,
+              finalSignoffComplete:
+                statusSnapshot.latestApproval.checklist.finalSignoffComplete,
+              unresolvedRisksAccepted:
+                statusSnapshot.latestApproval.checklist.unresolvedRisksAccepted
+            },
+            gateOverallStatus: statusSnapshot.latestApproval.gate.overallStatus,
+            missingEvidenceTypes:
+              statusSnapshot.latestApproval.gate.missingEvidenceTypes,
+            failedEvidenceTypes:
+              statusSnapshot.latestApproval.gate.failedEvidenceTypes,
+            staleEvidenceTypes:
+              statusSnapshot.latestApproval.gate.staleEvidenceTypes,
+            openBlockers: statusSnapshot.latestApproval.gate.openBlockers
+          }
+        : null
+    });
 
     return {
       status: "success",
