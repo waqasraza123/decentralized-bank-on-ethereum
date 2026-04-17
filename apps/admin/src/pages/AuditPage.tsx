@@ -25,6 +25,7 @@ import {
   WorkspaceLayout
 } from "@/components/console/primitives";
 import { mapAuditEntriesToTimeline, mapStatusToTone, useConfiguredSessionGuard } from "./shared";
+import type { AuditEventListEntry, JsonValue } from "@/lib/types";
 
 type AuditFilterDraft = {
   search: string;
@@ -84,6 +85,97 @@ function countActiveAuditFilters(filters: AuditFilterDraft): number {
   return auditFilterKeys.reduce((count, key) => {
     return filters[key].trim().length > 0 ? count + 1 : count;
   }, 0);
+}
+
+type BlockedApprovalMutationMetadata = {
+  attemptedAction: string;
+  reason: string;
+  selectedApprovalId: string;
+  actionableApprovalId: string | null;
+  headApprovalId: string | null;
+  tailApprovalId: string | null;
+  integrityStatus: string;
+  integrityIssues: Array<{
+    code: string;
+    approvalId: string;
+    relatedApprovalId: string | null;
+    description: string;
+  }>;
+};
+
+function isJsonObject(value: JsonValue | null): value is Record<string, JsonValue> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function readString(value: JsonValue | undefined): string | null {
+  return typeof value === "string" ? value : null;
+}
+
+function parseBlockedApprovalMutationMetadata(
+  event: AuditEventListEntry
+): BlockedApprovalMutationMetadata | null {
+  if (event.action !== "release_readiness.approval_mutation_blocked") {
+    return null;
+  }
+
+  if (!isJsonObject(event.metadata)) {
+    return null;
+  }
+
+  const integrityIssuesValue = event.metadata.integrityIssues;
+  const integrityIssues = Array.isArray(integrityIssuesValue)
+    ? integrityIssuesValue
+        .map((issue) => {
+          if (!isJsonObject(issue)) {
+            return null;
+          }
+
+          const code = readString(issue.code);
+          const approvalId = readString(issue.approvalId);
+          const description = readString(issue.description);
+
+          if (!code || !approvalId || !description) {
+            return null;
+          }
+
+          return {
+            code,
+            approvalId,
+            relatedApprovalId: readString(issue.relatedApprovalId),
+            description
+          };
+        })
+        .filter(
+          (
+            issue
+          ): issue is {
+            code: string;
+            approvalId: string;
+            relatedApprovalId: string | null;
+            description: string;
+          } => Boolean(issue)
+        )
+    : [];
+
+  const attemptedAction = readString(event.metadata.attemptedAction);
+  const reason = readString(event.metadata.reason);
+  const selectedApprovalId = readString(event.metadata.selectedApprovalId);
+  const integrityStatus = readString(event.metadata.integrityStatus);
+
+  if (!attemptedAction || !reason || !selectedApprovalId || !integrityStatus) {
+    return null;
+  }
+
+  return {
+    attemptedAction,
+    reason,
+    selectedApprovalId,
+    actionableApprovalId: readString(event.metadata.actionableApprovalId),
+    headApprovalId: readString(event.metadata.headApprovalId),
+    tailApprovalId: readString(event.metadata.tailApprovalId),
+    integrityStatus,
+    integrityIssues
+  };
 }
 
 export function AuditPage() {
@@ -147,6 +239,9 @@ export function AuditPage() {
 
   const events = auditQuery.data!.events;
   const selectedEvent = events.find((event) => event.id === selectedEventId) ?? null;
+  const blockedApprovalMutationMetadata = selectedEvent
+    ? parseBlockedApprovalMutationMetadata(selectedEvent)
+    : null;
   const appliedFilters = createAuditFilterDraft(searchParams);
   const activeFilterCount = countActiveAuditFilters(appliedFilters);
 
@@ -282,6 +377,95 @@ export function AuditPage() {
                     />
                   )}
                 </ListCard>
+
+                {blockedApprovalMutationMetadata ? (
+                  <ListCard title="Blocked approval mutation">
+                    <DetailList
+                      items={[
+                        {
+                          label: "Attempted action",
+                          value: toTitleCase(
+                            blockedApprovalMutationMetadata.attemptedAction.replaceAll(
+                              "_",
+                              " "
+                            )
+                          )
+                        },
+                        {
+                          label: "Reason",
+                          value: toTitleCase(
+                            blockedApprovalMutationMetadata.reason.replaceAll("_", " ")
+                          )
+                        },
+                        {
+                          label: "Selected approval",
+                          value: blockedApprovalMutationMetadata.selectedApprovalId,
+                          mono: true
+                        },
+                        {
+                          label: "Actionable approval",
+                          value:
+                            blockedApprovalMutationMetadata.actionableApprovalId ??
+                            "No actionable approval",
+                          mono: Boolean(
+                            blockedApprovalMutationMetadata.actionableApprovalId
+                          )
+                        },
+                        {
+                          label: "Lineage head",
+                          value:
+                            blockedApprovalMutationMetadata.headApprovalId ??
+                            "Unavailable",
+                          mono: Boolean(blockedApprovalMutationMetadata.headApprovalId)
+                        },
+                        {
+                          label: "Lineage tail",
+                          value:
+                            blockedApprovalMutationMetadata.tailApprovalId ??
+                            "Unavailable",
+                          mono: Boolean(blockedApprovalMutationMetadata.tailApprovalId)
+                        },
+                        {
+                          label: "Integrity status",
+                          value: (
+                            <AdminStatusBadge
+                              label={toTitleCase(
+                                blockedApprovalMutationMetadata.integrityStatus
+                              )}
+                              tone={mapStatusToTone(
+                                blockedApprovalMutationMetadata.integrityStatus
+                              )}
+                            />
+                          )
+                        }
+                      ]}
+                    />
+                    <InlineNotice
+                      title="Launch approval mutation was blocked"
+                      description={
+                        blockedApprovalMutationMetadata.actionableApprovalId
+                          ? `Operators should continue with ${blockedApprovalMutationMetadata.actionableApprovalId} after refreshing lineage state.`
+                          : "No actionable approval is currently available for this lineage. Resolve integrity issues before retrying."
+                      }
+                      tone="warning"
+                    />
+                    {blockedApprovalMutationMetadata.integrityIssues.length > 0 ? (
+                      <div className="admin-list">
+                        {blockedApprovalMutationMetadata.integrityIssues.map((issue) => (
+                          <div
+                            key={`${issue.code}:${issue.approvalId}:${issue.relatedApprovalId ?? "none"}`}
+                            className="admin-list-row"
+                          >
+                            <strong>{issue.approvalId}</strong>
+                            <span>{toTitleCase(issue.code.replaceAll("_", " "))}</span>
+                            <span>{issue.description}</span>
+                            <AdminStatusBadge label="Blocked" tone="critical" />
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
+                  </ListCard>
+                ) : null}
 
                 <ListCard title="Event metadata">
                   <div className="admin-field">
