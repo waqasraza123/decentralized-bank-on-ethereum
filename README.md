@@ -1,5 +1,11 @@
 # Stealth Trails Bank
 
+## Screenshots
+
+![alt text](<.github/screenshots/Screenshot 2026-04-10 at 8.58.46 PM.jpg>) ![alt text](<.github/screenshots/Screenshot 2026-04-10 at 8.59.31 PM.jpg>) ![alt text](<.github/screenshots/Screenshot 2026-04-10 at 8.59.40 PM.jpg>) ![alt text](<.github/screenshots/Screenshot 2026-04-10 at 8.59.50 PM.jpg>) ![alt text](<.github/screenshots/Screenshot 2026-04-10 at 9.00.14 PM.jpg>) ![alt text](<.github/screenshots/Screenshot 2026-04-10 at 9.00.32 PM.jpg>) ![alt text](<.github/screenshots/Screenshot 2026-04-10 at 9.00.47 PM.jpg>) ![alt text](<.github/screenshots/Screenshot 2026-04-10 at 9.00.57 PM.jpg>)
+
+## Description
+
 Stealth Trails Bank is a monorepo for a blockchain-backed banking platform.
 
 This repository is not only a website and an API. It is the working product codebase for a system that is moving from prototype banking flows into a production-grade platform with:
@@ -13,10 +19,6 @@ This repository is not only a website and an API. It is the working product code
 - durable auditability around important state transitions
 
 The repo is being built in controlled stages so the platform can move forward without losing correctness in the areas that matter most for money movement.
-
-## Screenshots
-
-![alt text](<.github/screenshots/Screenshot 2026-04-10 at 8.58.46 PM.jpg>) ![alt text](<.github/screenshots/Screenshot 2026-04-10 at 8.59.31 PM.jpg>) ![alt text](<.github/screenshots/Screenshot 2026-04-10 at 8.59.40 PM.jpg>) ![alt text](<.github/screenshots/Screenshot 2026-04-10 at 8.59.50 PM.jpg>) ![alt text](<.github/screenshots/Screenshot 2026-04-10 at 9.00.14 PM.jpg>) ![alt text](<.github/screenshots/Screenshot 2026-04-10 at 9.00.32 PM.jpg>) ![alt text](<.github/screenshots/Screenshot 2026-04-10 at 9.00.47 PM.jpg>) ![alt text](<.github/screenshots/Screenshot 2026-04-10 at 9.00.57 PM.jpg>)
 
 ## What exists today
 
@@ -159,18 +161,18 @@ Run these from the repository root unless noted otherwise.
 
 ### Root commands
 
-| Command                                   | Purpose                                                               |
-| ----------------------------------------- | --------------------------------------------------------------------- |
-| `pnpm dev`                                | Start repo development tasks                                          |
-| `pnpm dev:preflight`                      | Validate local dev wiring and Prisma migration state before startup   |
-| `pnpm build`                              | Build workspace packages that define a build script                   |
-| `pnpm test`                               | Run workspace tests                                                   |
-| `pnpm lint`                               | Run lint tasks where defined                                          |
-| `pnpm compile`                            | Run compile tasks where defined                                       |
-| `pnpm release:readiness:probe -- --help`  | Run a Phase 12 drill probe and optionally record evidence             |
-| `pnpm release:readiness:verify -- --help` | Run Phase 12 automated proof suites or manual review attestations     |
-| `pnpm push --validate-before-push`        | Run repo push validation and push only if it passes                   |
-| `pnpm safe-push`                          | Alias for `pnpm push --validate-before-push`                          |
+| Command                                   | Purpose                                                             |
+| ----------------------------------------- | ------------------------------------------------------------------- |
+| `pnpm dev`                                | Start repo development tasks                                        |
+| `pnpm dev:preflight`                      | Validate local dev wiring and Prisma migration state before startup |
+| `pnpm build`                              | Build workspace packages that define a build script                 |
+| `pnpm test`                               | Run workspace tests                                                 |
+| `pnpm lint`                               | Run lint tasks where defined                                        |
+| `pnpm compile`                            | Run compile tasks where defined                                     |
+| `pnpm release:readiness:probe -- --help`  | Run a Phase 12 drill probe and optionally record evidence           |
+| `pnpm release:readiness:verify -- --help` | Run Phase 12 automated proof suites or manual review attestations   |
+| `pnpm push --validate-before-push`        | Run repo push validation and push only if it passes                 |
+| `pnpm safe-push`                          | Alias for `pnpm push --validate-before-push`                        |
 
 ### Package-scoped examples
 
