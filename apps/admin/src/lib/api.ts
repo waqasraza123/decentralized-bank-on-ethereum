@@ -569,11 +569,13 @@ export async function rejectReleaseReadinessApproval(
 }
 
 export async function getLaunchClosureStatus(
-  session: OperatorSession
+  session: OperatorSession,
+  params: Record<string, string | undefined> = {}
 ): Promise<LaunchClosureStatus> {
   return requestData(session, {
     method: "GET",
-    url: "/release-readiness/internal/launch-closure/status"
+    url: "/release-readiness/internal/launch-closure/status",
+    params
   });
 }
 

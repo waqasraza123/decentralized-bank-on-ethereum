@@ -76,6 +76,28 @@ export type LaunchClosurePackPreview = {
   files: LaunchClosurePackFile[];
 };
 
+export type LaunchClosureDynamicStatusInput = {
+  releaseIdentifier?: string | null;
+  environment?: LaunchClosureEnvironment | null;
+  overallStatus?: "ready" | "blocked" | "approved" | "rejected" | "in_progress";
+  maximumEvidenceAgeHours?: number;
+  externalChecks?: Array<{
+    evidenceType: string;
+    status: "passed" | "failed" | "pending" | "stale";
+    acceptedEnvironments: string[];
+    latestEvidenceObservedAt?: string | null;
+    latestEvidenceEnvironment?: string | null;
+  }>;
+  latestApproval?: {
+    status: string;
+    gateOverallStatus?: string;
+    missingEvidenceTypes?: string[];
+    failedEvidenceTypes?: string[];
+    staleEvidenceTypes?: string[];
+    openBlockers?: string[];
+  } | null;
+};
+
 type LaunchClosureArtifact = {
   filename: string;
   title: string;
@@ -685,9 +707,71 @@ ${artifact.expectedOutcome.map((value) => `- ${value}`).join("\n")}
 `;
 }
 
-function renderStatusSummary(): string {
+function renderStatusSummary(status?: LaunchClosureDynamicStatusInput): string {
+  const releaseScope =
+    status?.releaseIdentifier && status.releaseIdentifier.length > 0
+      ? `- Release identifier: ${status.releaseIdentifier}`
+      : "- Release identifier: not scoped";
+  const environmentScope = status?.environment
+    ? `- Environment: ${status.environment}`
+    : "- Environment: accepted environments across all release evidence";
+  const approvalAgeLine =
+    typeof status?.maximumEvidenceAgeHours === "number"
+      ? `- Evidence freshness window for governed approval: ${status.maximumEvidenceAgeHours} hours`
+      : null;
+  const dynamicExternalChecks =
+    status?.externalChecks && status.externalChecks.length > 0
+      ? status.externalChecks.map((check) => {
+          const suffix =
+            check.latestEvidenceObservedAt && check.latestEvidenceEnvironment
+              ? ` Latest evidence: ${check.latestEvidenceObservedAt} in ${check.latestEvidenceEnvironment}.`
+              : "";
+
+          return `- ${check.evidenceType}: ${check.status}. Accepted environments: ${check.acceptedEnvironments.join(", ")}.${suffix}`;
+        })
+      : externalOnlyReleaseReadinessChecks.map(
+          (check) =>
+            `- ${check.evidenceType}: ${check.description} Accepted environments: ${check.acceptedEnvironments.join(", ")}`
+        );
+  const latestApprovalLines = status?.latestApproval
+    ? [
+        `- Latest approval status: ${status.latestApproval.status}`,
+        `- Approval gate: ${status.latestApproval.gateOverallStatus ?? "n/a"}`,
+        ...(status.latestApproval.missingEvidenceTypes?.length
+          ? [
+              `- Missing evidence: ${status.latestApproval.missingEvidenceTypes.join(", ")}`
+            ]
+          : []),
+        ...(status.latestApproval.failedEvidenceTypes?.length
+          ? [
+              `- Failed evidence: ${status.latestApproval.failedEvidenceTypes.join(", ")}`
+            ]
+          : []),
+        ...(status.latestApproval.staleEvidenceTypes?.length
+          ? [
+              `- Stale evidence: ${status.latestApproval.staleEvidenceTypes.join(", ")}`
+            ]
+          : []),
+        ...(status.latestApproval.openBlockers?.length
+          ? [
+              `- Open blockers: ${status.latestApproval.openBlockers.join("; ")}`
+            ]
+          : [])
+      ]
+    : [
+        status?.releaseIdentifier
+          ? "- No governed approval request exists yet for this scoped release."
+          : "- Scope the status by release identifier to inspect governed approval posture for one launch candidate."
+      ];
+
   return [
     "# Launch-Closure Status",
+    "",
+    "## Scope",
+    releaseScope,
+    environmentScope,
+    ...(status?.overallStatus ? [`- Operational status: ${status.overallStatus}`] : []),
+    ...(approvalAgeLine ? [approvalAgeLine] : []),
     "",
     "## Repo-local proof already in place",
     ...localSatisfiedChecks.map(
@@ -698,10 +782,7 @@ function renderStatusSummary(): string {
     ),
     "",
     "## Remaining operational checks",
-    ...externalOnlyReleaseReadinessChecks.map(
-      (check) =>
-        `- ${check.evidenceType}: ${check.description} Accepted environments: ${check.acceptedEnvironments.join(", ")}`
-    ),
+    ...dynamicExternalChecks,
     "",
     "## Local dry-run truth",
     ...localDryRunOnlyChecks.map(
@@ -710,7 +791,8 @@ function renderStatusSummary(): string {
     ),
     "",
     "## Approval truth",
-    "- Launch approval remains blocked until every required proof has latest passed evidence in an accepted environment and every checklist item is complete."
+    "- Launch approval remains blocked until every required proof has latest passed evidence in an accepted environment and every checklist item is complete.",
+    ...latestApprovalLines
   ].join("\n");
 }
 
@@ -961,8 +1043,10 @@ export function previewLaunchClosurePack(
   };
 }
 
-export function renderLaunchClosureStatusSummary(): string {
-  return renderStatusSummary();
+export function renderLaunchClosureStatusSummary(
+  status?: LaunchClosureDynamicStatusInput
+): string {
+  return renderStatusSummary(status);
 }
 
 export function renderLaunchClosureValidationSummary(

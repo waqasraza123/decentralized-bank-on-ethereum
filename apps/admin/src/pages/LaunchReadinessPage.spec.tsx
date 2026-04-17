@@ -257,6 +257,13 @@ describe("LaunchReadinessPage", () => {
       totalCount: 0
     });
     vi.mocked(getLaunchClosureStatus).mockResolvedValue({
+      generatedAt: "2026-04-14T10:00:00.000Z",
+      releaseIdentifier: null,
+      environment: null,
+      overallStatus: "blocked",
+      maximumEvidenceAgeHours: 72,
+      externalChecks: [],
+      latestApproval: null,
       summaryMarkdown: "Launch-closure status."
     });
     vi.mocked(getReleaseReadinessSummary).mockImplementation(
@@ -319,6 +326,17 @@ describe("LaunchReadinessPage", () => {
       );
     });
 
+    await waitFor(() => {
+      expect(vi.mocked(getLaunchClosureStatus)).toHaveBeenCalledWith(
+        expect.objectContaining({
+          operatorId: "ops_1"
+        }),
+        {
+          releaseIdentifier: "launch-2026.04.13.1"
+        }
+      );
+    });
+
     expect(screen.getByLabelText("Release scope")).toHaveValue(
       "launch-2026.04.13.1"
     );
@@ -363,6 +381,17 @@ describe("LaunchReadinessPage", () => {
         }),
         {
           limit: 20,
+          releaseIdentifier: "launch-2026.04.13.2"
+        }
+      );
+    });
+
+    await waitFor(() => {
+      expect(vi.mocked(getLaunchClosureStatus)).toHaveBeenCalledWith(
+        expect.objectContaining({
+          operatorId: "ops_1"
+        }),
+        {
           releaseIdentifier: "launch-2026.04.13.2"
         }
       );

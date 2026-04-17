@@ -34,6 +34,7 @@ import {
   ApproveReleaseReadinessApprovalDto,
   RejectReleaseReadinessApprovalDto
 } from "./dto/release-readiness-approval.dto";
+import { renderLaunchClosureStatusSummary } from "./launch-closure-pack";
 
 type ReleaseReadinessEvidenceRecord =
   Prisma.ReleaseReadinessEvidenceGetPayload<{}>;
@@ -192,6 +193,25 @@ type ReleaseReadinessApprovalList = {
   approvals: ReleaseReadinessApprovalProjection[];
   limit: number;
   totalCount: number;
+};
+
+type LaunchClosureOperationalCheck = {
+  evidenceType: ReleaseReadinessEvidenceType;
+  label: string;
+  status: "passed" | "failed" | "pending" | "stale";
+  acceptedEnvironments: ReleaseReadinessEnvironment[];
+  latestEvidence: ReleaseReadinessEvidenceProjection | null;
+};
+
+type LaunchClosureStatusProjection = {
+  generatedAt: string;
+  releaseIdentifier: string | null;
+  environment: ReleaseReadinessEnvironment | null;
+  overallStatus: "ready" | "blocked" | "approved" | "rejected" | "in_progress";
+  maximumEvidenceAgeHours: number;
+  externalChecks: LaunchClosureOperationalCheck[];
+  latestApproval: ReleaseReadinessApprovalProjection | null;
+  summaryMarkdown: string;
 };
 
 const rollbackScopedEvidenceTypes = new Set<ReleaseReadinessEvidenceType>([
@@ -940,6 +960,109 @@ export class ReleaseReadinessService {
       recentEvidence: recentEvidence.map((record) =>
         this.mapEvidenceProjection(record)
       )
+    };
+  }
+
+  async getLaunchClosureStatus(
+    scope?: ReleaseReadinessSummaryScope,
+    operatorContext?: {
+      operatorId?: string | null;
+      operatorRole?: string | null;
+    }
+  ): Promise<LaunchClosureStatusProjection> {
+    const summary = await this.getSummary(scope, operatorContext);
+    const latestApprovalRecord = summary.releaseIdentifier
+      ? await this.prismaService.releaseReadinessApproval.findFirst({
+          where: {
+            releaseIdentifier: summary.releaseIdentifier,
+            ...(summary.environment ? { environment: summary.environment } : {})
+          },
+          orderBy: [{ requestedAt: "desc" }, { createdAt: "desc" }]
+        })
+      : null;
+    const latestApproval = latestApprovalRecord
+      ? this.mapApprovalProjection(latestApprovalRecord, summary)
+      : null;
+
+    const externalChecks: LaunchClosureOperationalCheck[] =
+      summary.requiredChecks
+        .filter((check) =>
+          !check.acceptedEnvironments.includes(
+            ReleaseReadinessEnvironment.development
+          ) &&
+          !check.acceptedEnvironments.includes(ReleaseReadinessEnvironment.ci)
+        )
+        .map((check) => {
+          const isStale =
+            check.status === "passed" &&
+            check.latestEvidence?.observedAt &&
+            Date.now() - new Date(check.latestEvidence.observedAt).getTime() >
+              this.maxEvidenceAgeHours * 60 * 60 * 1000;
+
+          return {
+            evidenceType: check.evidenceType,
+            label: check.label,
+            status: isStale ? "stale" : check.status,
+            acceptedEnvironments: [...check.acceptedEnvironments],
+            latestEvidence: check.latestEvidence
+          };
+        });
+
+    const hasBlockingChecks = externalChecks.some(
+      (check) =>
+        check.status === "failed" ||
+        check.status === "pending" ||
+        check.status === "stale"
+    );
+    const overallStatus: LaunchClosureStatusProjection["overallStatus"] =
+      latestApproval?.status === ReleaseReadinessApprovalStatus.approved
+        ? "approved"
+        : latestApproval?.status === ReleaseReadinessApprovalStatus.rejected
+          ? "rejected"
+          : latestApproval?.gate.approvalEligible
+            ? "ready"
+            : hasBlockingChecks ||
+                latestApproval?.gate.overallStatus === "blocked"
+              ? "blocked"
+              : summary.releaseIdentifier
+                ? "in_progress"
+                : "blocked";
+
+    return {
+      generatedAt: summary.generatedAt,
+      releaseIdentifier: summary.releaseIdentifier,
+      environment: summary.environment,
+      overallStatus,
+      maximumEvidenceAgeHours: this.maxEvidenceAgeHours,
+      externalChecks,
+      latestApproval,
+      summaryMarkdown: renderLaunchClosureStatusSummary({
+        releaseIdentifier: summary.releaseIdentifier,
+        environment: summary.environment as
+          | "staging"
+          | "production_like"
+          | "production"
+          | null,
+        overallStatus,
+        maximumEvidenceAgeHours: this.maxEvidenceAgeHours,
+        externalChecks: externalChecks.map((check) => ({
+          evidenceType: check.evidenceType,
+          status: check.status,
+          acceptedEnvironments: check.acceptedEnvironments,
+          latestEvidenceObservedAt: check.latestEvidence?.observedAt ?? null,
+          latestEvidenceEnvironment: check.latestEvidence?.environment ?? null
+        })),
+        latestApproval: latestApproval
+          ? {
+              status: latestApproval.status,
+              gateOverallStatus: latestApproval.gate.overallStatus,
+              missingEvidenceTypes: latestApproval.gate.missingEvidenceTypes,
+              failedEvidenceTypes: latestApproval.gate.failedEvidenceTypes,
+              staleEvidenceTypes: latestApproval.gate.staleEvidenceTypes,
+              openBlockers: latestApproval.gate.openBlockers
+            }
+          : null
+      })
     };
   }
 

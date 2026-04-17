@@ -64,6 +64,7 @@ describe("ReleaseReadinessController", () => {
   let app: INestApplication;
   const releaseReadinessService = {
     getSummary: jest.fn(),
+    getLaunchClosureStatus: jest.fn(),
     listEvidence: jest.fn(),
     getEvidence: jest.fn(),
     recordEvidence: jest.fn(),
@@ -525,6 +526,43 @@ describe("ReleaseReadinessController", () => {
     expect(response.body.data.validation.errors).toEqual([]);
     expect(response.body.data.summaryMarkdown).toContain(
       "Launch-Closure Manifest Validation"
+    );
+  });
+
+  it("passes scoped launch-closure status filters through", async () => {
+    releaseReadinessService.getLaunchClosureStatus.mockResolvedValue({
+      generatedAt: "2026-04-10T12:00:00.000Z",
+      releaseIdentifier: "launch-2026.04.10.1",
+      environment: "production_like",
+      overallStatus: "blocked",
+      maximumEvidenceAgeHours: 72,
+      externalChecks: [],
+      latestApproval: null,
+      summaryMarkdown: "Scoped launch-closure status."
+    });
+
+    const response = await request(app.getHttpServer())
+      .get("/release-readiness/internal/launch-closure/status")
+      .set("x-operator-api-key", "test-operator-key")
+      .set("x-operator-id", "ops_1")
+      .query({
+        releaseIdentifier: "launch-2026.04.10.1",
+        environment: "production_like"
+      })
+      .expect(200);
+
+    expect(releaseReadinessService.getLaunchClosureStatus).toHaveBeenCalledWith(
+      {
+        releaseIdentifier: "launch-2026.04.10.1",
+        environment: "production_like"
+      },
+      {
+        operatorId: "ops_1",
+        operatorRole: undefined
+      }
+    );
+    expect(response.body.data.summaryMarkdown).toContain(
+      "Scoped launch-closure status."
     );
   });
 

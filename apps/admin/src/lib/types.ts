@@ -1152,6 +1152,19 @@ export type LaunchClosurePackFile = {
 };
 
 export type LaunchClosureStatus = {
+  generatedAt: string;
+  releaseIdentifier: string | null;
+  environment: string | null;
+  overallStatus: "ready" | "blocked" | "approved" | "rejected" | "in_progress";
+  maximumEvidenceAgeHours: number;
+  externalChecks: Array<{
+    evidenceType: string;
+    label: string;
+    status: "passed" | "failed" | "pending" | "stale";
+    acceptedEnvironments: string[];
+    latestEvidence: ReleaseReadinessEvidence | null;
+  }>;
+  latestApproval: ReleaseReadinessApproval | null;
   summaryMarkdown: string;
 };
 

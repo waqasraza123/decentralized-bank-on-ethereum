@@ -437,8 +437,15 @@ export function LaunchReadinessPage() {
   });
 
   const launchClosureStatusQuery = useQuery({
-    queryKey: ["launch-closure-status", session?.baseUrl],
-    queryFn: () => getLaunchClosureStatus(session!),
+    queryKey: [
+      "launch-closure-status",
+      session?.baseUrl,
+      selectedReleaseIdentifier ?? "all"
+    ],
+    queryFn: () =>
+      getLaunchClosureStatus(session!, {
+        releaseIdentifier: selectedReleaseIdentifier ?? undefined
+      }),
     enabled: Boolean(session)
   });
 

@@ -15,7 +15,10 @@ import { CustomJsonResponse } from "../types/CustomJsonResponse";
 import { CreateReleaseReadinessApprovalDto } from "./dto/create-release-readiness-approval.dto";
 import { CreateReleaseReadinessEvidenceDto } from "./dto/create-release-readiness-evidence.dto";
 import { GetReleaseReadinessSummaryDto } from "./dto/get-release-readiness-summary.dto";
-import { LaunchClosureManifestDto } from "./dto/launch-closure.dto";
+import {
+  GetLaunchClosureStatusDto,
+  LaunchClosureManifestDto
+} from "./dto/launch-closure.dto";
 import { ListReleaseReadinessApprovalsDto } from "./dto/list-release-readiness-approvals.dto";
 import { ListReleaseReadinessEvidenceDto } from "./dto/list-release-readiness-evidence.dto";
 import {
@@ -24,7 +27,6 @@ import {
 } from "./dto/release-readiness-approval.dto";
 import {
   previewLaunchClosurePack,
-  renderLaunchClosureStatusSummary,
   renderLaunchClosureValidationSummary,
   validateLaunchClosureManifest as validateLaunchClosureManifestPayload
 } from "./launch-closure-pack";
@@ -235,13 +237,29 @@ export class ReleaseReadinessController {
   }
 
   @Get("launch-closure/status")
-  getLaunchClosureStatus(): CustomJsonResponse {
+  async getLaunchClosureStatus(
+    @Query(
+      new ValidationPipe({
+        transform: true,
+        whitelist: true,
+        forbidNonWhitelisted: true
+      })
+    )
+    query: GetLaunchClosureStatusDto,
+    @Request() request: InternalOperatorRequest
+  ): Promise<CustomJsonResponse> {
+    const result = await this.releaseReadinessService.getLaunchClosureStatus(
+      query,
+      {
+        operatorId: request.internalOperator.operatorId,
+        operatorRole: request.internalOperator.operatorRole
+      }
+    );
+
     return {
       status: "success",
       message: "Launch-closure status retrieved successfully.",
-      data: {
-        summaryMarkdown: renderLaunchClosureStatusSummary()
-      }
+      data: result
     };
   }
 

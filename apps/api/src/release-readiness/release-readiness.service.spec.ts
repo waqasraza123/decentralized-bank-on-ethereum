@@ -522,6 +522,56 @@ describe("ReleaseReadinessService", () => {
     });
   });
 
+  it("builds scoped launch-closure status from release evidence and approval state", async () => {
+    const { service, prismaService } = createService();
+    const evidenceRecords = buildPassedRequiredEvidenceRecords().slice(0, 5);
+
+    (prismaService.releaseReadinessEvidence.findMany as jest.Mock)
+      .mockResolvedValueOnce(evidenceRecords)
+      .mockResolvedValueOnce(evidenceRecords.slice(0, 3));
+    (prismaService.releaseReadinessApproval.findFirst as jest.Mock).mockResolvedValue(
+      buildApprovalRecord({
+        releaseIdentifier: "release-2026-04-08.1",
+        blockerSnapshot: {
+          overallStatus: "blocked",
+          approvalEligible: false,
+          missingChecklistItems: [],
+          missingEvidenceTypes: ["role_review"],
+          failedEvidenceTypes: [],
+          staleEvidenceTypes: [],
+          metadataMismatches: [],
+          maximumEvidenceAgeHours: 72,
+          openBlockers: [],
+          generatedAt: "2026-04-08T12:00:00.000Z"
+        }
+      })
+    );
+
+    const result = await service.getLaunchClosureStatus({
+      releaseIdentifier: "release-2026-04-08.1",
+      environment: ReleaseReadinessEnvironment.production_like
+    });
+
+    expect(result.releaseIdentifier).toBe("release-2026-04-08.1");
+    expect(result.environment).toBe(ReleaseReadinessEnvironment.production_like);
+    expect(result.externalChecks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          evidenceType: ReleaseReadinessEvidenceType.platform_alert_delivery_slo,
+          status: "passed"
+        }),
+        expect.objectContaining({
+          evidenceType: ReleaseReadinessEvidenceType.role_review,
+          status: "pending"
+        })
+      ])
+    );
+    expect(result.latestApproval?.gate.missingEvidenceTypes).toContain("role_review");
+    expect(result.summaryMarkdown).toContain(
+      "Release identifier: release-2026-04-08.1"
+    );
+  });
+
   it("requests launch approval and snapshots checklist blockers from live evidence", async () => {
     const { service, prismaService, transactionClient } = createService();
     (prismaService.releaseReadinessApproval.findFirst as jest.Mock).mockResolvedValue(
