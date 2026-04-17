@@ -657,6 +657,7 @@ export function LaunchReadinessPage() {
   const approveMutation = useMutation({
     mutationFn: () =>
       approveReleaseReadinessApproval(session!, selectedApprovalId!, {
+        expectedUpdatedAt: selectedApproval!.updatedAt,
         approvalNote: trimToUndefined(actionNote)
       }),
     onSuccess: async () => {
@@ -679,7 +680,8 @@ export function LaunchReadinessPage() {
         selectedApprovalId!,
         {
           launchClosurePackId:
-            selectedApproval!.launchClosureDrift!.latestPack!.id
+            selectedApproval!.launchClosureDrift!.latestPack!.id,
+          expectedUpdatedAt: selectedApproval!.updatedAt
         }
       ),
     onSuccess: async (result) => {
@@ -704,6 +706,7 @@ export function LaunchReadinessPage() {
   const rejectMutation = useMutation({
     mutationFn: () =>
       rejectReleaseReadinessApproval(session!, selectedApprovalId!, {
+        expectedUpdatedAt: selectedApproval!.updatedAt,
         rejectionNote: actionNote.trim() || "Rejected from operator console."
       }),
     onSuccess: async () => {

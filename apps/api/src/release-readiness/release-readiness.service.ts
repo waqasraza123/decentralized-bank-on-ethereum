@@ -1052,6 +1052,17 @@ export class ReleaseReadinessService {
       .digest("hex");
   }
 
+  private assertExpectedApprovalVersion(
+    approval: ReleaseReadinessApprovalRecord,
+    expectedUpdatedAt: string
+  ) {
+    if (approval.updatedAt.toISOString() !== expectedUpdatedAt) {
+      throw new ConflictException(
+        "Launch approval changed after it was loaded. Refresh approval data and retry."
+      );
+    }
+  }
+
   private mapLaunchClosurePackProjection(
     record: ReleaseLaunchClosurePackRecord
   ): ReleaseLaunchClosurePackProjection {
@@ -1819,6 +1830,33 @@ export class ReleaseReadinessService {
 
     const updatedApproval = await this.prismaService.$transaction(
       async (transaction) => {
+        const currentApproval =
+          await transaction.releaseReadinessApproval.findUnique({
+            where: {
+              id: approval.id
+            }
+          });
+
+        if (!currentApproval) {
+          throw new NotFoundException(
+            "Release readiness approval request was not found."
+          );
+        }
+
+        if (
+          currentApproval.status !==
+          ReleaseReadinessApprovalStatus.pending_approval
+        ) {
+          throw new ConflictException(
+            "Only pending launch approvals can be approved."
+          );
+        }
+
+        this.assertExpectedApprovalVersion(
+          currentApproval,
+          dto.expectedUpdatedAt
+        );
+
         const nextApproval = await transaction.releaseReadinessApproval.update({
           where: {
             id: approval.id
@@ -1868,6 +1906,7 @@ export class ReleaseReadinessService {
   async rebindApprovalToLaunchClosurePack(
     approvalId: string,
     launchClosurePackId: string,
+    expectedUpdatedAt: string,
     operatorId: string,
     operatorRole: string | undefined
   ): Promise<ReleaseReadinessApprovalMutationResult> {
@@ -1954,6 +1993,11 @@ export class ReleaseReadinessService {
             "Only pending launch approvals can be rebound to a new launch-closure pack."
           );
         }
+
+        this.assertExpectedApprovalVersion(
+          rebindableApproval,
+          expectedUpdatedAt
+        );
 
         if (rebindableApproval.supersededByApprovalId) {
           throw new ConflictException(
@@ -2118,6 +2162,33 @@ export class ReleaseReadinessService {
 
     const updatedApproval = await this.prismaService.$transaction(
       async (transaction) => {
+        const currentApproval =
+          await transaction.releaseReadinessApproval.findUnique({
+            where: {
+              id: approval.id
+            }
+          });
+
+        if (!currentApproval) {
+          throw new NotFoundException(
+            "Release readiness approval request was not found."
+          );
+        }
+
+        if (
+          currentApproval.status !==
+          ReleaseReadinessApprovalStatus.pending_approval
+        ) {
+          throw new ConflictException(
+            "Only pending launch approvals can be rejected."
+          );
+        }
+
+        this.assertExpectedApprovalVersion(
+          currentApproval,
+          dto.expectedUpdatedAt
+        );
+
         const nextApproval = await transaction.releaseReadinessApproval.update({
           where: {
             id: approval.id

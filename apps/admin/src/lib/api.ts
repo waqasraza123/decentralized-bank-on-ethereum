@@ -545,8 +545,9 @@ export async function approveReleaseReadinessApproval(
   session: OperatorSession,
   approvalId: string,
   payload: {
+    expectedUpdatedAt: string;
     approvalNote?: string;
-  } = {}
+  }
 ): Promise<{ approval: ReleaseReadinessApprovalList["approvals"][number] }> {
   return requestData(session, {
     method: "POST",
@@ -560,6 +561,7 @@ export async function rebindReleaseReadinessApprovalPack(
   approvalId: string,
   payload: {
     launchClosurePackId: string;
+    expectedUpdatedAt: string;
   }
 ): Promise<{ approval: ReleaseReadinessApprovalList["approvals"][number] }> {
   return requestData(session, {
@@ -573,6 +575,7 @@ export async function rejectReleaseReadinessApproval(
   session: OperatorSession,
   approvalId: string,
   payload: {
+    expectedUpdatedAt: string;
     rejectionNote: string;
   }
 ): Promise<{ approval: ReleaseReadinessApprovalList["approvals"][number] }> {

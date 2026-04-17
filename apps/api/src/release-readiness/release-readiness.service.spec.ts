@@ -7,6 +7,8 @@ import {
 import { PrismaService } from "../prisma/prisma.service";
 import { ReleaseReadinessService } from "./release-readiness.service";
 
+const approvalExpectedUpdatedAt = "2026-04-08T12:00:00.000Z";
+
 function buildEvidenceRecord(
   overrides: Partial<Record<string, unknown>> = {}
 ) {
@@ -921,6 +923,7 @@ describe("ReleaseReadinessService", () => {
       service.approveApproval(
         "approval_1",
         {
+          expectedUpdatedAt: approvalExpectedUpdatedAt,
           approvalNote: "Approved"
         },
         "approver_1",
@@ -979,6 +982,7 @@ describe("ReleaseReadinessService", () => {
     const result = await service.rebindApprovalToLaunchClosurePack(
       "approval_1",
       "pack_2",
+      approvalExpectedUpdatedAt,
       "ops_1",
       "operations_admin"
     );
@@ -1040,6 +1044,7 @@ describe("ReleaseReadinessService", () => {
       service.rebindApprovalToLaunchClosurePack(
         "approval_1",
         "pack_1",
+        approvalExpectedUpdatedAt,
         "ops_1",
         "operations_admin"
       )
@@ -1079,6 +1084,7 @@ describe("ReleaseReadinessService", () => {
       service.rebindApprovalToLaunchClosurePack(
         "approval_1",
         "pack_2",
+        approvalExpectedUpdatedAt,
         "ops_1",
         "operations_admin"
       )
@@ -1122,11 +1128,54 @@ describe("ReleaseReadinessService", () => {
       service.rebindApprovalToLaunchClosurePack(
         "approval_1",
         "pack_2",
+        approvalExpectedUpdatedAt,
         "ops_1",
         "operations_admin"
       )
     ).rejects.toThrow(
       "Launch approval lineage already contains a replacement approval."
+    );
+
+    expect(transactionClient.releaseReadinessApproval.create).not.toHaveBeenCalled();
+    expect(transactionClient.releaseReadinessApproval.update).not.toHaveBeenCalled();
+  });
+
+  it("rejects rebind when the approval snapshot is stale", async () => {
+    const { service, prismaService, transactionClient } = createService();
+    (prismaService.releaseReadinessApproval.findUnique as jest.Mock).mockResolvedValue(
+      buildApprovalRecord()
+    );
+    (prismaService.releaseLaunchClosurePack.findUnique as jest.Mock).mockResolvedValue(
+      buildLaunchClosurePackRecord({
+        id: "pack_2",
+        version: 2,
+        artifactChecksumSha256: "checksum_2"
+      })
+    );
+    (prismaService.releaseReadinessEvidence.findMany as jest.Mock)
+      .mockResolvedValueOnce(buildPassedRequiredEvidenceRecords())
+      .mockResolvedValueOnce([buildEvidenceRecord()]);
+    (
+      transactionClient.releaseReadinessApproval.findUnique as jest.Mock
+    ).mockResolvedValue(
+      buildApprovalRecord({
+        updatedAt: new Date("2026-04-08T12:05:00.000Z")
+      })
+    );
+    (
+      transactionClient.releaseReadinessApproval.findFirst as jest.Mock
+    ).mockResolvedValue(null);
+
+    await expect(
+      service.rebindApprovalToLaunchClosurePack(
+        "approval_1",
+        "pack_2",
+        approvalExpectedUpdatedAt,
+        "ops_1",
+        "operations_admin"
+      )
+    ).rejects.toThrow(
+      "Launch approval changed after it was loaded. Refresh approval data and retry."
     );
 
     expect(transactionClient.releaseReadinessApproval.create).not.toHaveBeenCalled();
@@ -1464,6 +1513,7 @@ describe("ReleaseReadinessService", () => {
       service.approveApproval(
         "approval_1",
         {
+          expectedUpdatedAt: approvalExpectedUpdatedAt,
           approvalNote: "Approved"
         },
         "approver_1",
@@ -1484,6 +1534,7 @@ describe("ReleaseReadinessService", () => {
       service.approveApproval(
         "approval_1",
         {
+          expectedUpdatedAt: approvalExpectedUpdatedAt,
           approvalNote: "Approved"
         },
         "ops_1",
@@ -1519,6 +1570,7 @@ describe("ReleaseReadinessService", () => {
       service.approveApproval(
         "approval_1",
         {
+          expectedUpdatedAt: approvalExpectedUpdatedAt,
           approvalNote: "Approved"
         },
         "approver_1",
@@ -1544,6 +1596,9 @@ describe("ReleaseReadinessService", () => {
     (prismaService.releaseReadinessEvidence.findMany as jest.Mock)
       .mockResolvedValueOnce(buildPassedRequiredEvidenceRecords())
       .mockResolvedValueOnce([buildEvidenceRecord()]);
+    (
+      transactionClient.releaseReadinessApproval.findUnique as jest.Mock
+    ).mockResolvedValue(buildApprovalRecord());
     (
       transactionClient.releaseReadinessApproval.update as jest.Mock
     ).mockResolvedValue(
@@ -1593,6 +1648,7 @@ describe("ReleaseReadinessService", () => {
     const result = await service.approveApproval(
       "approval_1",
       {
+        expectedUpdatedAt: approvalExpectedUpdatedAt,
         approvalNote: "Approved for launch."
       },
       "approver_1",
@@ -1622,6 +1678,39 @@ describe("ReleaseReadinessService", () => {
     );
   });
 
+  it("rejects approval when the approval snapshot is stale", async () => {
+    const { service, prismaService, transactionClient } = createService();
+    (prismaService.releaseReadinessApproval.findUnique as jest.Mock).mockResolvedValue(
+      buildApprovalRecord()
+    );
+    (prismaService.releaseReadinessEvidence.findMany as jest.Mock)
+      .mockResolvedValueOnce(buildPassedRequiredEvidenceRecords())
+      .mockResolvedValueOnce([buildEvidenceRecord()]);
+    (
+      transactionClient.releaseReadinessApproval.findUnique as jest.Mock
+    ).mockResolvedValue(
+      buildApprovalRecord({
+        updatedAt: new Date("2026-04-08T12:05:00.000Z")
+      })
+    );
+
+    await expect(
+      service.approveApproval(
+        "approval_1",
+        {
+          expectedUpdatedAt: approvalExpectedUpdatedAt,
+          approvalNote: "Approved for launch."
+        },
+        "approver_1",
+        "risk_manager"
+      )
+    ).rejects.toThrow(
+      "Launch approval changed after it was loaded. Refresh approval data and retry."
+    );
+
+    expect(transactionClient.releaseReadinessApproval.update).not.toHaveBeenCalled();
+  });
+
   it("blocks approval for operator roles outside the launch-approval roster", async () => {
     const { service } = createService();
 
@@ -1629,6 +1718,7 @@ describe("ReleaseReadinessService", () => {
       service.approveApproval(
         "approval_1",
         {
+          expectedUpdatedAt: approvalExpectedUpdatedAt,
           approvalNote: "Approved for launch."
         },
         "ops_1",
@@ -1651,6 +1741,9 @@ describe("ReleaseReadinessService", () => {
         })
       ])
       .mockResolvedValueOnce([buildEvidenceRecord()]);
+    (
+      transactionClient.releaseReadinessApproval.findUnique as jest.Mock
+    ).mockResolvedValue(buildApprovalRecord());
     (
       transactionClient.releaseReadinessApproval.update as jest.Mock
     ).mockResolvedValue(
@@ -1702,6 +1795,7 @@ describe("ReleaseReadinessService", () => {
     const result = await service.rejectApproval(
       "approval_1",
       {
+        expectedUpdatedAt: approvalExpectedUpdatedAt,
         rejectionNote: "Rollback drill evidence is missing."
       },
       "approver_1",
@@ -1718,6 +1812,43 @@ describe("ReleaseReadinessService", () => {
     );
   });
 
+  it("rejects rejection when the approval snapshot is stale", async () => {
+    const { service, prismaService, transactionClient } = createService();
+    (prismaService.releaseReadinessApproval.findUnique as jest.Mock).mockResolvedValue(
+      buildApprovalRecord()
+    );
+    (prismaService.releaseReadinessEvidence.findMany as jest.Mock)
+      .mockResolvedValueOnce([
+        buildEvidenceRecord({
+          evidenceType: ReleaseReadinessEvidenceType.platform_alert_delivery_slo
+        })
+      ])
+      .mockResolvedValueOnce([buildEvidenceRecord()]);
+    (
+      transactionClient.releaseReadinessApproval.findUnique as jest.Mock
+    ).mockResolvedValue(
+      buildApprovalRecord({
+        updatedAt: new Date("2026-04-08T12:05:00.000Z")
+      })
+    );
+
+    await expect(
+      service.rejectApproval(
+        "approval_1",
+        {
+          expectedUpdatedAt: approvalExpectedUpdatedAt,
+          rejectionNote: "Rollback drill evidence is missing."
+        },
+        "approver_1",
+        "risk_manager"
+      )
+    ).rejects.toThrow(
+      "Launch approval changed after it was loaded. Refresh approval data and retry."
+    );
+
+    expect(transactionClient.releaseReadinessApproval.update).not.toHaveBeenCalled();
+  });
+
   it("blocks self-rejection so the requester cannot reject their own launch request", async () => {
     const { service, prismaService } = createService();
     (prismaService.releaseReadinessApproval.findUnique as jest.Mock).mockResolvedValue(
@@ -1728,6 +1859,7 @@ describe("ReleaseReadinessService", () => {
       service.rejectApproval(
         "approval_1",
         {
+          expectedUpdatedAt: approvalExpectedUpdatedAt,
           rejectionNote: "Rejected"
         },
         "ops_1",
@@ -1753,6 +1885,7 @@ describe("ReleaseReadinessService", () => {
       service.approveApproval(
         "approval_1",
         {
+          expectedUpdatedAt: approvalExpectedUpdatedAt,
           approvalNote: "Approved for launch."
         },
         "approver_2",

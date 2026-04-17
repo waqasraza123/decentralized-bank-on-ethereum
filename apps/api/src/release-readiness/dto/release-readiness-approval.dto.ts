@@ -1,4 +1,10 @@
-import { IsOptional, IsString, Matches, MaxLength } from "class-validator";
+import {
+  IsDateString,
+  IsOptional,
+  IsString,
+  Matches,
+  MaxLength
+} from "class-validator";
 import { OPERATOR_CASE_NOTE_CONTENT_PATTERN } from "../../review-cases/dto/operator-case-input.validation";
 import { RELEASE_READINESS_NOTE_MAX_LENGTH } from "./release-readiness-input.validation";
 
@@ -10,6 +16,9 @@ export const releaseReadinessApprovalStatuses = [
 ] as const;
 
 export class ApproveReleaseReadinessApprovalDto {
+  @IsDateString()
+  expectedUpdatedAt!: string;
+
   @IsOptional()
   @IsString()
   @MaxLength(RELEASE_READINESS_NOTE_MAX_LENGTH)
@@ -18,6 +27,9 @@ export class ApproveReleaseReadinessApprovalDto {
 }
 
 export class RebindReleaseReadinessApprovalPackDto {
+  @IsDateString()
+  expectedUpdatedAt!: string;
+
   @IsString()
   @MaxLength(RELEASE_READINESS_NOTE_MAX_LENGTH)
   @Matches(OPERATOR_CASE_NOTE_CONTENT_PATTERN)
@@ -25,6 +37,9 @@ export class RebindReleaseReadinessApprovalPackDto {
 }
 
 export class RejectReleaseReadinessApprovalDto {
+  @IsDateString()
+  expectedUpdatedAt!: string;
+
   @IsString()
   @MaxLength(RELEASE_READINESS_NOTE_MAX_LENGTH)
   @Matches(OPERATOR_CASE_NOTE_CONTENT_PATTERN)

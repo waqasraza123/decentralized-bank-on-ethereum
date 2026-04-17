@@ -619,7 +619,8 @@ describe("LaunchReadinessPage", () => {
         }),
         "launch-2026.04.13.2-approval",
         {
-          launchClosurePackId: "launch-2026.04.13.2-pack-v4"
+          launchClosurePackId: "launch-2026.04.13.2-pack-v4",
+          expectedUpdatedAt: "2026-04-14T10:00:00.000Z"
         }
       );
     });

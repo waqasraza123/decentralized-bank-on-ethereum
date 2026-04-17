@@ -226,6 +226,7 @@ export class ReleaseReadinessController {
     const result = await this.releaseReadinessService.rebindApprovalToLaunchClosurePack(
       approvalId,
       dto.launchClosurePackId,
+      dto.expectedUpdatedAt,
       request.internalOperator.operatorId,
       request.internalOperator.operatorRole
     );

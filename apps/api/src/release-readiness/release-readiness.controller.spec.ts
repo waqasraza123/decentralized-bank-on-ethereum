@@ -459,6 +459,7 @@ describe("ReleaseReadinessController", () => {
       .set("x-operator-api-key", "test-operator-key")
       .set("x-operator-id", "ops_2")
       .send({
+        expectedUpdatedAt: "2026-04-10T12:00:00.000Z",
         approvalNote: "   "
       })
       .expect(400);
@@ -484,7 +485,8 @@ describe("ReleaseReadinessController", () => {
       .set("x-operator-id", "ops_1")
       .set("x-operator-role", "operations_admin")
       .send({
-        launchClosurePackId: "pack_2"
+        launchClosurePackId: "pack_2",
+        expectedUpdatedAt: "2026-04-10T12:00:00.000Z"
       })
       .expect(201);
 
@@ -493,6 +495,7 @@ describe("ReleaseReadinessController", () => {
     ).toHaveBeenCalledWith(
       "approval_1",
       "pack_2",
+      "2026-04-10T12:00:00.000Z",
       "ops_1",
       "operations_admin"
     );
@@ -512,6 +515,7 @@ describe("ReleaseReadinessController", () => {
       .set("x-operator-id", "ops_2")
       .set("x-operator-role", "compliance_lead")
       .send({
+        expectedUpdatedAt: "2026-04-10T12:00:00.000Z",
         approvalNote: "Approved after verifying current accepted evidence."
       })
       .expect(201);
@@ -519,6 +523,7 @@ describe("ReleaseReadinessController", () => {
     expect(releaseReadinessService.approveApproval).toHaveBeenCalledWith(
       "approval_1",
       {
+        expectedUpdatedAt: "2026-04-10T12:00:00.000Z",
         approvalNote: "Approved after verifying current accepted evidence."
       },
       "ops_2",
@@ -541,6 +546,7 @@ describe("ReleaseReadinessController", () => {
       .set("x-operator-api-key", "test-operator-key")
       .set("x-operator-id", "ops_2")
       .send({
+        expectedUpdatedAt: "2026-04-10T12:00:00.000Z",
         rejectionNote: "   "
       })
       .expect(400);
@@ -561,6 +567,7 @@ describe("ReleaseReadinessController", () => {
       .set("x-operator-id", "ops_2")
       .set("x-operator-role", "compliance_lead")
       .send({
+        expectedUpdatedAt: "2026-04-10T12:00:00.000Z",
         rejectionNote: "Critical evidence is stale and must be refreshed."
       })
       .expect(201);
@@ -568,6 +575,7 @@ describe("ReleaseReadinessController", () => {
     expect(releaseReadinessService.rejectApproval).toHaveBeenCalledWith(
       "approval_1",
       {
+        expectedUpdatedAt: "2026-04-10T12:00:00.000Z",
         rejectionNote: "Critical evidence is stale and must be refreshed."
       },
       "ops_2",
