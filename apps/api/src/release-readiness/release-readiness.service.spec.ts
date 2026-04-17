@@ -98,6 +98,29 @@ function buildApprovalRecord(
   };
 }
 
+function buildLaunchClosurePackRecord(
+  overrides: Partial<Record<string, unknown>> = {}
+) {
+  return {
+    id: "pack_1",
+    releaseIdentifier: "release-2026-04-08.1",
+    environment: ReleaseReadinessEnvironment.production_like,
+    version: 1,
+    generatedByOperatorId: "ops_1",
+    generatedByOperatorRole: "operations_admin",
+    artifactChecksumSha256: "checksum_1",
+    artifactPayload: {
+      manifest: {
+        releaseIdentifier: "release-2026-04-08.1"
+      },
+      files: []
+    },
+    createdAt: new Date("2026-04-08T12:00:00.000Z"),
+    updatedAt: new Date("2026-04-08T12:00:00.000Z"),
+    ...overrides
+  };
+}
+
 function buildPassedRequiredEvidenceRecords() {
   return [
     buildEvidenceRecord({
@@ -167,6 +190,10 @@ function createService() {
       create: jest.fn(),
       update: jest.fn()
     },
+    releaseLaunchClosurePack: {
+      create: jest.fn(),
+      findFirst: jest.fn()
+    },
     auditEvent: {
       create: jest.fn()
     }
@@ -185,6 +212,13 @@ function createService() {
     releaseReadinessApproval: {
       create: jest.fn(),
       update: jest.fn(),
+      findUnique: jest.fn(),
+      findFirst: jest.fn(),
+      findMany: jest.fn(),
+      count: jest.fn()
+    },
+    releaseLaunchClosurePack: {
+      create: jest.fn(),
       findUnique: jest.fn(),
       findFirst: jest.fn(),
       findMany: jest.fn(),
@@ -570,6 +604,147 @@ describe("ReleaseReadinessService", () => {
     expect(result.summaryMarkdown).toContain(
       "Release identifier: release-2026-04-08.1"
     );
+  });
+
+  it("stores versioned launch-closure packs with immutable artifact snapshots", async () => {
+    const { service, prismaService, transactionClient } = createService();
+    (prismaService.releaseReadinessEvidence.findMany as jest.Mock)
+      .mockResolvedValueOnce(buildPassedRequiredEvidenceRecords())
+      .mockResolvedValueOnce([buildEvidenceRecord()]);
+    (prismaService.releaseReadinessApproval.findFirst as jest.Mock).mockResolvedValue(
+      buildApprovalRecord()
+    );
+    (transactionClient.releaseLaunchClosurePack.findFirst as jest.Mock).mockResolvedValue(
+      buildLaunchClosurePackRecord({
+        id: "pack_0",
+        version: 2
+      })
+    );
+    (transactionClient.releaseLaunchClosurePack.create as jest.Mock).mockResolvedValue(
+      buildLaunchClosurePackRecord({
+        id: "pack_3",
+        version: 3
+      })
+    );
+
+    const result = await service.storeLaunchClosurePack(
+      {
+        releaseIdentifier: "release-2026-04-08.1",
+        environment: "production_like",
+        baseUrls: {
+          web: "https://web.example.com",
+          admin: "https://admin.example.com",
+          api: "https://api.example.com",
+          restoreApi: "https://restore-api.example.com"
+        },
+        worker: {
+          identifier: "worker-prodlike-1"
+        },
+        operator: {
+          requesterId: "ops_1",
+          requesterRole: "operations_admin",
+          approverId: "ops_2",
+          approverRole: "compliance_lead",
+          apiKeyEnvironmentVariable: "INTERNAL_OPERATOR_API_KEY"
+        },
+        artifacts: {
+          apiReleaseId: "api-1",
+          workerReleaseId: "worker-1",
+          approvalRollbackReleaseId: "launch-rollback-1",
+          apiRollbackReleaseId: "api-rollback-1",
+          workerRollbackReleaseId: "worker-rollback-1",
+          backupReference: "backup-1"
+        },
+        alerting: {
+          expectedTargetName: "ops-critical",
+          expectedTargetHealthStatus: "critical",
+          expectedMinReEscalations: 1,
+          expectedAlertDedupeKey: "dedupe-1"
+        },
+        governance: {
+          secretReviewReference: "ticket/SEC-1",
+          roleReviewReference: "ticket/GOV-1",
+          roleReviewRosterReference: "ticket/GOV-1#roster"
+        },
+        notes: {
+          launchSummary: "Launch candidate ready for final governed review.",
+          requestNote: "All evidence must remain current.",
+          residualRiskNote: "No accepted residual risks."
+        }
+      },
+      "ops_1",
+      "operations_admin"
+    );
+
+    expect(transactionClient.releaseLaunchClosurePack.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          releaseIdentifier: "release-2026-04-08.1",
+          environment: "production_like",
+          version: 3,
+          generatedByOperatorId: "ops_1",
+          generatedByOperatorRole: "operations_admin",
+          artifactChecksumSha256: expect.any(String),
+          artifactPayload: expect.objectContaining({
+            outputSubpath: expect.any(String),
+            files: expect.any(Array)
+          })
+        })
+      })
+    );
+    expect(result.pack.version).toBe(3);
+    expect(result.files).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          relativePath: "current-status-summary.md"
+        }),
+        expect.objectContaining({
+          relativePath: "operator-actions.md"
+        })
+      ])
+    );
+  });
+
+  it("lists stored launch-closure packs with bounded filters", async () => {
+    const { service, prismaService } = createService();
+    (prismaService.releaseLaunchClosurePack.findMany as jest.Mock).mockResolvedValue([
+      buildLaunchClosurePackRecord()
+    ]);
+    (prismaService.releaseLaunchClosurePack.count as jest.Mock).mockResolvedValue(1);
+
+    const result = await service.listLaunchClosurePacks({
+      limit: 20,
+      releaseIdentifier: "release-2026-04-08.1",
+      environment: "production_like",
+      sinceDays: 30
+    });
+
+    expect(prismaService.releaseLaunchClosurePack.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          releaseIdentifier: expect.objectContaining({
+            equals: "release-2026-04-08.1"
+          }),
+          environment: "production_like",
+          createdAt: expect.any(Object)
+        }),
+        take: 20
+      })
+    );
+    expect(result.totalCount).toBe(1);
+    expect(result.packs[0]?.id).toBe("pack_1");
+  });
+
+  it("retrieves a stored launch-closure pack by id", async () => {
+    const { service, prismaService } = createService();
+    (prismaService.releaseLaunchClosurePack.findUnique as jest.Mock).mockResolvedValue(
+      buildLaunchClosurePackRecord()
+    );
+
+    const result = await service.getLaunchClosurePack("pack_1");
+
+    expect(result.pack.id).toBe("pack_1");
+    expect(result.pack.artifactChecksumSha256).toBe("checksum_1");
   });
 
   it("requests launch approval and snapshots checklist blockers from live evidence", async () => {

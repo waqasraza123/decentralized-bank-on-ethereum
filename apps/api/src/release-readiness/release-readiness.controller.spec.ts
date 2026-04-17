@@ -65,6 +65,9 @@ describe("ReleaseReadinessController", () => {
   const releaseReadinessService = {
     getSummary: jest.fn(),
     getLaunchClosureStatus: jest.fn(),
+    listLaunchClosurePacks: jest.fn(),
+    getLaunchClosurePack: jest.fn(),
+    storeLaunchClosurePack: jest.fn(),
     listEvidence: jest.fn(),
     getEvidence: jest.fn(),
     recordEvidence: jest.fn(),
@@ -106,6 +109,32 @@ describe("ReleaseReadinessController", () => {
       externalChecks: [],
       latestApproval: null,
       summaryMarkdown: "Scoped launch-closure status."
+    });
+    releaseReadinessService.storeLaunchClosurePack.mockResolvedValue({
+      validation: {
+        errors: [],
+        warnings: []
+      },
+      summaryMarkdown: "Launch-Closure Manifest Validation",
+      outputSubpath: "artifacts/release-launch/launch-2026.04.10.1-production_like",
+      files: [
+        {
+          relativePath: "README.md",
+          content: "# Pack"
+        }
+      ],
+      pack: {
+        id: "pack_1",
+        releaseIdentifier: "launch-2026.04.10.1",
+        environment: "production_like",
+        version: 1,
+        generatedByOperatorId: "ops_1",
+        generatedByOperatorRole: "operations_admin",
+        artifactChecksumSha256: "checksum_1",
+        artifactPayload: {},
+        createdAt: "2026-04-10T12:00:00.000Z",
+        updatedAt: "2026-04-10T12:00:00.000Z"
+      }
     });
   });
 
@@ -576,6 +605,55 @@ describe("ReleaseReadinessController", () => {
     );
   });
 
+  it("lists stored launch-closure packs through the HTTP boundary", async () => {
+    releaseReadinessService.listLaunchClosurePacks.mockResolvedValue({
+      packs: [
+        {
+          id: "pack_1"
+        }
+      ],
+      limit: 20,
+      totalCount: 1
+    });
+
+    const response = await request(app.getHttpServer())
+      .get("/release-readiness/internal/launch-closure/packs")
+      .set("x-operator-api-key", "test-operator-key")
+      .set("x-operator-id", "ops_1")
+      .query({
+        releaseIdentifier: "launch-2026.04.10.1",
+        environment: "production_like",
+        limit: "20"
+      })
+      .expect(200);
+
+    expect(releaseReadinessService.listLaunchClosurePacks).toHaveBeenCalledWith({
+      releaseIdentifier: "launch-2026.04.10.1",
+      environment: "production_like",
+      limit: 20
+    });
+    expect(response.body.data.totalCount).toBe(1);
+  });
+
+  it("retrieves a stored launch-closure pack through the HTTP boundary", async () => {
+    releaseReadinessService.getLaunchClosurePack.mockResolvedValue({
+      pack: {
+        id: "pack_1"
+      }
+    });
+
+    const response = await request(app.getHttpServer())
+      .get("/release-readiness/internal/launch-closure/packs/pack_1")
+      .set("x-operator-api-key", "test-operator-key")
+      .set("x-operator-id", "ops_1")
+      .expect(200);
+
+    expect(releaseReadinessService.getLaunchClosurePack).toHaveBeenCalledWith(
+      "pack_1"
+    );
+    expect(response.body.data.pack.id).toBe("pack_1");
+  });
+
   it("rejects invalid launch-closure scaffold requests before pack generation", async () => {
     await request(app.getHttpServer())
       .post("/release-readiness/internal/launch-closure/scaffold")
@@ -597,85 +675,11 @@ describe("ReleaseReadinessController", () => {
   });
 
   it("scaffolds launch-closure previews when the manifest is valid", async () => {
-    releaseReadinessService.getLaunchClosureStatus.mockResolvedValue({
-      generatedAt: "2026-04-10T12:00:00.000Z",
-      releaseIdentifier: "launch-2026.04.10.1",
-      environment: "production_like",
-      overallStatus: "blocked",
-      maximumEvidenceAgeHours: 72,
-      externalChecks: [
-        {
-          evidenceType: "critical_alert_reescalation",
-          label: "Critical Alert Re-escalation Cadence",
-          status: "pending",
-          acceptedEnvironments: ["staging", "production_like", "production"],
-          latestEvidence: null
-        }
-      ],
-      latestApproval: {
-        id: "approval_1",
-        releaseIdentifier: "launch-2026.04.10.1",
-        environment: "production_like",
-        rollbackReleaseIdentifier: "launch-rollback-2026.04.09.4",
-        status: "pending_approval",
-        summary: "Production-like launch candidate ready for final governed review.",
-        requestNote: "All accepted evidence must be current before approval.",
-        approvalNote: null,
-        rejectionNote: null,
-        requestedByOperatorId: "ops_requester_1",
-        requestedByOperatorRole: "operations_admin",
-        approvedByOperatorId: null,
-        approvedByOperatorRole: null,
-        rejectedByOperatorId: null,
-        rejectedByOperatorRole: null,
-        checklist: {
-          securityConfigurationComplete: true,
-          accessAndGovernanceComplete: true,
-          dataAndRecoveryComplete: false,
-          platformHealthComplete: true,
-          functionalProofComplete: false,
-          contractAndChainProofComplete: true,
-          finalSignoffComplete: false,
-          unresolvedRisksAccepted: false,
-          openBlockers: ["Awaiting critical alert re-escalation proof"],
-          residualRiskNote: "No accepted residual risks remain open at request time."
-        },
-        evidenceSnapshot: {
-          generatedAt: "2026-04-10T12:00:00.000Z",
-          overallStatus: "warning",
-          summary: {
-            requiredCheckCount: 10,
-            passedCheckCount: 1,
-            failedCheckCount: 0,
-            pendingCheckCount: 9
-          },
-          requiredChecks: []
-        },
-        gate: {
-          overallStatus: "blocked",
-          approvalEligible: false,
-          missingChecklistItems: [],
-          missingEvidenceTypes: ["critical_alert_reescalation"],
-          failedEvidenceTypes: [],
-          staleEvidenceTypes: [],
-          metadataMismatches: [],
-          maximumEvidenceAgeHours: 72,
-          openBlockers: ["Awaiting critical alert re-escalation proof"],
-          generatedAt: "2026-04-10T12:00:00.000Z"
-        },
-        requestedAt: "2026-04-10T12:00:00.000Z",
-        approvedAt: null,
-        rejectedAt: null,
-        createdAt: "2026-04-10T12:00:00.000Z",
-        updatedAt: "2026-04-10T12:00:00.000Z"
-      },
-      summaryMarkdown: "Scoped launch-closure status."
-    });
-
     const response = await request(app.getHttpServer())
       .post("/release-readiness/internal/launch-closure/scaffold")
       .set("x-operator-api-key", "test-operator-key")
       .set("x-operator-id", "ops_1")
+      .set("x-operator-role", "operations_admin")
       .send({
         manifest: buildLaunchClosureManifest()
       })
@@ -687,34 +691,21 @@ describe("ReleaseReadinessController", () => {
     expect(response.body.data.outputSubpath).toContain(
       "launch-2026.04.10.1-production_like"
     );
-    expect(releaseReadinessService.getLaunchClosureStatus).toHaveBeenCalledWith({
-      releaseIdentifier: "launch-2026.04.10.1",
-      environment: "production_like"
-    });
+    expect(releaseReadinessService.storeLaunchClosurePack).toHaveBeenCalledWith(
+      buildLaunchClosureManifest(),
+      "ops_1",
+      "operations_admin"
+    );
     expect(response.body.data.files).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           relativePath: "README.md"
         }),
         expect.objectContaining({
-          relativePath: "execution-plan.md"
-        }),
-        expect.objectContaining({
-          relativePath: "operator-actions.md",
-          content: expect.stringContaining("payloads/critical_alert_reescalation.json")
-        }),
-        expect.objectContaining({
-          relativePath: "approve-approval.template.json"
-        }),
-        expect.objectContaining({
-          relativePath: "current-status-summary.md",
-          content: expect.stringContaining("critical_alert_reescalation")
-        }),
-        expect.objectContaining({
-          relativePath: "payloads/critical_alert_reescalation.json",
-          content: expect.stringContaining('"evidenceType": "critical_alert_reescalation"')
+          relativePath: "README.md"
         })
       ])
     );
+    expect(response.body.data.pack.id).toBe("pack_1");
   });
 });

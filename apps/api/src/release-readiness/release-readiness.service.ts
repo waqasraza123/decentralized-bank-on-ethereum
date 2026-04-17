@@ -5,6 +5,7 @@ import {
   Injectable,
   NotFoundException
 } from "@nestjs/common";
+import { createHash } from "node:crypto";
 import { loadReleaseReadinessApprovalRuntimeConfig } from "@stealth-trails-bank/config/api";
 import {
   Prisma,
@@ -20,6 +21,7 @@ import {
 import { PrismaService } from "../prisma/prisma.service";
 import { CreateReleaseReadinessApprovalDto } from "./dto/create-release-readiness-approval.dto";
 import { CreateReleaseReadinessEvidenceDto } from "./dto/create-release-readiness-evidence.dto";
+import { ListReleaseLaunchClosurePacksDto } from "./dto/list-release-launch-closure-packs.dto";
 import { ListReleaseReadinessApprovalsDto } from "./dto/list-release-readiness-approvals.dto";
 import { ListReleaseReadinessEvidenceDto } from "./dto/list-release-readiness-evidence.dto";
 import {
@@ -34,12 +36,20 @@ import {
   ApproveReleaseReadinessApprovalDto,
   RejectReleaseReadinessApprovalDto
 } from "./dto/release-readiness-approval.dto";
-import { renderLaunchClosureStatusSummary } from "./launch-closure-pack";
+import {
+  previewLaunchClosurePack,
+  renderLaunchClosureStatusSummary,
+  renderLaunchClosureValidationSummary,
+  validateLaunchClosureManifest,
+  type LaunchClosureManifest
+} from "./launch-closure-pack";
 
 type ReleaseReadinessEvidenceRecord =
   Prisma.ReleaseReadinessEvidenceGetPayload<{}>;
 type ReleaseReadinessApprovalRecord =
   Prisma.ReleaseReadinessApprovalGetPayload<{}>;
+type ReleaseLaunchClosurePackRecord =
+  Prisma.ReleaseLaunchClosurePackGetPayload<{}>;
 
 type ReleaseReadinessEvidenceProjection = {
   id: string;
@@ -193,6 +203,43 @@ type ReleaseReadinessApprovalList = {
   approvals: ReleaseReadinessApprovalProjection[];
   limit: number;
   totalCount: number;
+};
+
+type ReleaseLaunchClosurePackProjection = {
+  id: string;
+  releaseIdentifier: string;
+  environment: ReleaseReadinessEnvironment;
+  version: number;
+  generatedByOperatorId: string;
+  generatedByOperatorRole: string | null;
+  artifactChecksumSha256: string;
+  artifactPayload: Prisma.JsonValue;
+  createdAt: string;
+  updatedAt: string;
+};
+
+type ReleaseLaunchClosurePackMutationResult = {
+  pack: ReleaseLaunchClosurePackProjection;
+};
+
+type ReleaseLaunchClosurePackList = {
+  packs: ReleaseLaunchClosurePackProjection[];
+  limit: number;
+  totalCount: number;
+};
+
+type StoredLaunchClosurePackResult = {
+  validation: {
+    errors: string[];
+    warnings: string[];
+  };
+  summaryMarkdown: string;
+  outputSubpath: string;
+  files: Array<{
+    relativePath: string;
+    content: string;
+  }>;
+  pack: ReleaseLaunchClosurePackProjection;
 };
 
 type LaunchClosureOperationalCheck = {
@@ -731,6 +778,54 @@ export class ReleaseReadinessService {
     };
   }
 
+  private buildChecksum(value: Prisma.JsonValue): string {
+    return createHash("sha256")
+      .update(JSON.stringify(value))
+      .digest("hex");
+  }
+
+  private mapLaunchClosurePackProjection(
+    record: ReleaseLaunchClosurePackRecord
+  ): ReleaseLaunchClosurePackProjection {
+    return {
+      id: record.id,
+      releaseIdentifier: record.releaseIdentifier,
+      environment: record.environment,
+      version: record.version,
+      generatedByOperatorId: record.generatedByOperatorId,
+      generatedByOperatorRole: record.generatedByOperatorRole ?? null,
+      artifactChecksumSha256: record.artifactChecksumSha256,
+      artifactPayload: record.artifactPayload,
+      createdAt: record.createdAt.toISOString(),
+      updatedAt: record.updatedAt.toISOString()
+    };
+  }
+
+  private buildLaunchClosurePackWhere(
+    query: ListReleaseLaunchClosurePacksDto
+  ): Prisma.ReleaseLaunchClosurePackWhereInput {
+    const where: Prisma.ReleaseLaunchClosurePackWhereInput = {};
+
+    if (query.releaseIdentifier) {
+      where.releaseIdentifier = {
+        equals: query.releaseIdentifier.trim(),
+        mode: Prisma.QueryMode.insensitive
+      };
+    }
+
+    if (query.environment) {
+      where.environment = query.environment;
+    }
+
+    if (query.sinceDays) {
+      where.createdAt = {
+        gte: new Date(Date.now() - query.sinceDays * 24 * 60 * 60 * 1000)
+      };
+    }
+
+    return where;
+  }
+
   async recordEvidence(
     dto: CreateReleaseReadinessEvidenceDto,
     operatorId: string,
@@ -1063,6 +1158,179 @@ export class ReleaseReadinessService {
             }
           : null
       })
+    };
+  }
+
+  async storeLaunchClosurePack(
+    manifest: LaunchClosureManifest,
+    operatorId: string,
+    operatorRole: string | undefined
+  ): Promise<StoredLaunchClosurePackResult> {
+    const validation = validateLaunchClosureManifest(manifest);
+
+    if (validation.errors.length > 0) {
+      throw new BadRequestException(validation.errors.join(" "));
+    }
+
+    const statusSnapshot = await this.getLaunchClosureStatus({
+      releaseIdentifier: manifest.releaseIdentifier,
+      environment: manifest.environment
+    });
+    const preview = previewLaunchClosurePack(manifest, {
+      generatedAt: statusSnapshot.generatedAt,
+      releaseIdentifier: statusSnapshot.releaseIdentifier,
+      environment: manifest.environment,
+      overallStatus: statusSnapshot.overallStatus,
+      maximumEvidenceAgeHours: statusSnapshot.maximumEvidenceAgeHours,
+      externalChecks: statusSnapshot.externalChecks.map((check) => ({
+        evidenceType: check.evidenceType,
+        status: check.status,
+        acceptedEnvironments: check.acceptedEnvironments,
+        latestEvidenceObservedAt: check.latestEvidence?.observedAt ?? null,
+        latestEvidenceEnvironment: check.latestEvidence?.environment ?? null
+      })),
+      latestApproval: statusSnapshot.latestApproval
+        ? {
+            status: statusSnapshot.latestApproval.status,
+            summary: statusSnapshot.latestApproval.summary,
+            requestNote: statusSnapshot.latestApproval.requestNote,
+            residualRiskNote:
+              statusSnapshot.latestApproval.checklist.residualRiskNote,
+            rollbackReleaseIdentifier:
+              statusSnapshot.latestApproval.rollbackReleaseIdentifier,
+            checklist: {
+              securityConfigurationComplete:
+                statusSnapshot.latestApproval.checklist
+                  .securityConfigurationComplete,
+              accessAndGovernanceComplete:
+                statusSnapshot.latestApproval.checklist
+                  .accessAndGovernanceComplete,
+              dataAndRecoveryComplete:
+                statusSnapshot.latestApproval.checklist.dataAndRecoveryComplete,
+              platformHealthComplete:
+                statusSnapshot.latestApproval.checklist.platformHealthComplete,
+              functionalProofComplete:
+                statusSnapshot.latestApproval.checklist.functionalProofComplete,
+              contractAndChainProofComplete:
+                statusSnapshot.latestApproval.checklist
+                  .contractAndChainProofComplete,
+              finalSignoffComplete:
+                statusSnapshot.latestApproval.checklist.finalSignoffComplete,
+              unresolvedRisksAccepted:
+                statusSnapshot.latestApproval.checklist.unresolvedRisksAccepted
+            },
+            gateOverallStatus: statusSnapshot.latestApproval.gate.overallStatus,
+            missingEvidenceTypes:
+              statusSnapshot.latestApproval.gate.missingEvidenceTypes,
+            failedEvidenceTypes:
+              statusSnapshot.latestApproval.gate.failedEvidenceTypes,
+            staleEvidenceTypes:
+              statusSnapshot.latestApproval.gate.staleEvidenceTypes,
+            openBlockers: statusSnapshot.latestApproval.gate.openBlockers
+          }
+        : null
+    });
+    const summaryMarkdown = renderLaunchClosureValidationSummary(manifest);
+    const artifactPayload = {
+      manifest,
+      validation,
+      summaryMarkdown,
+      outputSubpath: preview.outputSubpath,
+      files: preview.files
+    } as Prisma.JsonValue;
+    const artifactChecksumSha256 = this.buildChecksum(artifactPayload);
+    const normalizedOperatorRole = normalizeOperatorRole(operatorRole);
+
+    const pack = await this.prismaService.$transaction(async (transaction) => {
+      const latestPack = await transaction.releaseLaunchClosurePack.findFirst({
+        where: {
+          releaseIdentifier: manifest.releaseIdentifier,
+          environment: manifest.environment
+        },
+        orderBy: [{ version: "desc" }]
+      });
+      const nextVersion = (latestPack?.version ?? 0) + 1;
+
+      const createdPack = await transaction.releaseLaunchClosurePack.create({
+        data: {
+          releaseIdentifier: manifest.releaseIdentifier,
+          environment: manifest.environment,
+          version: nextVersion,
+          generatedByOperatorId: operatorId,
+          generatedByOperatorRole: normalizedOperatorRole ?? undefined,
+          artifactChecksumSha256,
+          artifactPayload: artifactPayload as Prisma.InputJsonValue
+        }
+      });
+
+      await transaction.auditEvent.create({
+        data: {
+          actorType: "operator",
+          actorId: operatorId,
+          action: "release_readiness.launch_closure_pack_generated",
+          targetType: "ReleaseLaunchClosurePack",
+          targetId: createdPack.id,
+          metadata: {
+            releaseIdentifier: createdPack.releaseIdentifier,
+            environment: createdPack.environment,
+            version: createdPack.version,
+            artifactChecksumSha256,
+            operatorRole: normalizedOperatorRole
+          } as Prisma.InputJsonValue
+        }
+      });
+
+      return createdPack;
+    });
+
+    return {
+      validation,
+      summaryMarkdown,
+      outputSubpath: preview.outputSubpath,
+      files: preview.files,
+      pack: this.mapLaunchClosurePackProjection(pack)
+    };
+  }
+
+  async getLaunchClosurePack(
+    packId: string
+  ): Promise<ReleaseLaunchClosurePackMutationResult> {
+    const pack = await this.prismaService.releaseLaunchClosurePack.findUnique({
+      where: {
+        id: packId
+      }
+    });
+
+    if (!pack) {
+      throw new NotFoundException("Launch-closure pack was not found.");
+    }
+
+    return {
+      pack: this.mapLaunchClosurePackProjection(pack)
+    };
+  }
+
+  async listLaunchClosurePacks(
+    query: ListReleaseLaunchClosurePacksDto
+  ): Promise<ReleaseLaunchClosurePackList> {
+    const limit = query.limit ?? 12;
+    const where = this.buildLaunchClosurePackWhere(query);
+
+    const [packs, totalCount] = await Promise.all([
+      this.prismaService.releaseLaunchClosurePack.findMany({
+        where,
+        orderBy: [{ createdAt: "desc" }, { version: "desc" }],
+        take: limit
+      }),
+      this.prismaService.releaseLaunchClosurePack.count({
+        where
+      })
+    ]);
+
+    return {
+      packs: packs.map((record) => this.mapLaunchClosurePackProjection(record)),
+      limit,
+      totalCount
     };
   }
 

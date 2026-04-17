@@ -1416,3 +1416,20 @@ model ReleaseReadinessApproval {
   @@index([requestedByOperatorId, requestedAt])
   @@index([approvedByOperatorId, approvedAt])
 }
+
+model ReleaseLaunchClosurePack {
+  id                     String                      @id @default(cuid())
+  releaseIdentifier      String
+  environment            ReleaseReadinessEnvironment
+  version                Int
+  generatedByOperatorId  String
+  generatedByOperatorRole String?
+  artifactChecksumSha256 String
+  artifactPayload        Json
+  createdAt              DateTime                    @default(now())
+  updatedAt              DateTime                    @updatedAt
+
+  @@unique([releaseIdentifier, environment, version])
+  @@index([releaseIdentifier, environment, createdAt])
+  @@index([generatedByOperatorId, createdAt])
+}

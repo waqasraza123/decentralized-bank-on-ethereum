@@ -19,6 +19,7 @@ import {
   GetLaunchClosureStatusDto,
   LaunchClosureManifestDto
 } from "./dto/launch-closure.dto";
+import { ListReleaseLaunchClosurePacksDto } from "./dto/list-release-launch-closure-packs.dto";
 import { ListReleaseReadinessApprovalsDto } from "./dto/list-release-readiness-approvals.dto";
 import { ListReleaseReadinessEvidenceDto } from "./dto/list-release-readiness-evidence.dto";
 import {
@@ -26,7 +27,6 @@ import {
   RejectReleaseReadinessApprovalDto
 } from "./dto/release-readiness-approval.dto";
 import {
-  previewLaunchClosurePack,
   renderLaunchClosureValidationSummary,
   validateLaunchClosureManifest as validateLaunchClosureManifestPayload
 } from "./launch-closure-pack";
@@ -263,6 +263,39 @@ export class ReleaseReadinessController {
     };
   }
 
+  @Get("launch-closure/packs")
+  async listLaunchClosurePacks(
+    @Query(
+      new ValidationPipe({
+        transform: true,
+        whitelist: true,
+        forbidNonWhitelisted: true
+      })
+    )
+    query: ListReleaseLaunchClosurePacksDto
+  ): Promise<CustomJsonResponse> {
+    const result = await this.releaseReadinessService.listLaunchClosurePacks(query);
+
+    return {
+      status: "success",
+      message: "Launch-closure packs retrieved successfully.",
+      data: result
+    };
+  }
+
+  @Get("launch-closure/packs/:packId")
+  async getLaunchClosurePack(
+    @Param("packId") packId: string
+  ): Promise<CustomJsonResponse> {
+    const result = await this.releaseReadinessService.getLaunchClosurePack(packId);
+
+    return {
+      status: "success",
+      message: "Launch-closure pack retrieved successfully.",
+      data: result
+    };
+  }
+
   @Post("launch-closure/validate")
   validateLaunchClosureManifest(
     @Body(
@@ -293,7 +326,8 @@ export class ReleaseReadinessController {
         forbidNonWhitelisted: true
       })
     )
-    dto: LaunchClosureManifestDto
+    dto: LaunchClosureManifestDto,
+    @Request() request: InternalOperatorRequest
   ): Promise<CustomJsonResponse> {
     const validation = validateLaunchClosureManifestPayload(dto.manifest);
 
@@ -301,75 +335,16 @@ export class ReleaseReadinessController {
       throw new BadRequestException(validation.errors.join(" "));
     }
 
-    const statusSnapshot =
-      await this.releaseReadinessService.getLaunchClosureStatus({
-        releaseIdentifier: dto.manifest.releaseIdentifier,
-        environment: dto.manifest.environment
-      });
-    const preview = previewLaunchClosurePack(dto.manifest, {
-      generatedAt: statusSnapshot.generatedAt,
-      releaseIdentifier: statusSnapshot.releaseIdentifier,
-      environment: dto.manifest.environment,
-      overallStatus: statusSnapshot.overallStatus,
-      maximumEvidenceAgeHours: statusSnapshot.maximumEvidenceAgeHours,
-      externalChecks: statusSnapshot.externalChecks.map((check) => ({
-        evidenceType: check.evidenceType,
-        status: check.status,
-        acceptedEnvironments: check.acceptedEnvironments,
-        latestEvidenceObservedAt: check.latestEvidence?.observedAt ?? null,
-        latestEvidenceEnvironment: check.latestEvidence?.environment ?? null
-      })),
-      latestApproval: statusSnapshot.latestApproval
-        ? {
-            status: statusSnapshot.latestApproval.status,
-            summary: statusSnapshot.latestApproval.summary,
-            requestNote: statusSnapshot.latestApproval.requestNote,
-            residualRiskNote:
-              statusSnapshot.latestApproval.checklist.residualRiskNote,
-            rollbackReleaseIdentifier:
-              statusSnapshot.latestApproval.rollbackReleaseIdentifier,
-            checklist: {
-              securityConfigurationComplete:
-                statusSnapshot.latestApproval.checklist
-                  .securityConfigurationComplete,
-              accessAndGovernanceComplete:
-                statusSnapshot.latestApproval.checklist
-                  .accessAndGovernanceComplete,
-              dataAndRecoveryComplete:
-                statusSnapshot.latestApproval.checklist.dataAndRecoveryComplete,
-              platformHealthComplete:
-                statusSnapshot.latestApproval.checklist.platformHealthComplete,
-              functionalProofComplete:
-                statusSnapshot.latestApproval.checklist.functionalProofComplete,
-              contractAndChainProofComplete:
-                statusSnapshot.latestApproval.checklist
-                  .contractAndChainProofComplete,
-              finalSignoffComplete:
-                statusSnapshot.latestApproval.checklist.finalSignoffComplete,
-              unresolvedRisksAccepted:
-                statusSnapshot.latestApproval.checklist.unresolvedRisksAccepted
-            },
-            gateOverallStatus: statusSnapshot.latestApproval.gate.overallStatus,
-            missingEvidenceTypes:
-              statusSnapshot.latestApproval.gate.missingEvidenceTypes,
-            failedEvidenceTypes:
-              statusSnapshot.latestApproval.gate.failedEvidenceTypes,
-            staleEvidenceTypes:
-              statusSnapshot.latestApproval.gate.staleEvidenceTypes,
-            openBlockers: statusSnapshot.latestApproval.gate.openBlockers
-          }
-        : null
-    });
+    const result = await this.releaseReadinessService.storeLaunchClosurePack(
+      dto.manifest,
+      request.internalOperator.operatorId,
+      request.internalOperator.operatorRole
+    );
 
     return {
       status: "success",
       message: "Launch-closure pack generated successfully.",
-      data: {
-        validation,
-        summaryMarkdown: renderLaunchClosureValidationSummary(dto.manifest),
-        outputSubpath: preview.outputSubpath,
-        files: preview.files
-      }
+      data: result
     };
   }
 }
