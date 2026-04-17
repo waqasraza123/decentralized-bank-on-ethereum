@@ -139,6 +139,8 @@ function buildApproval(releaseIdentifier: string) {
     approvedByOperatorRole: null,
     rejectedByOperatorId: null,
     rejectedByOperatorRole: null,
+    supersededByOperatorId: null,
+    supersededByOperatorRole: null,
     checklist: {
       securityConfigurationComplete: true,
       accessAndGovernanceComplete: true,
@@ -215,6 +217,7 @@ function buildApproval(releaseIdentifier: string) {
     requestedAt: "2026-04-14T10:00:00.000Z",
     approvedAt: null,
     rejectedAt: null,
+    supersededAt: null,
     createdAt: "2026-04-14T10:00:00.000Z",
     updatedAt: "2026-04-14T10:00:00.000Z"
   };
@@ -349,7 +352,7 @@ describe("LaunchReadinessPage", () => {
       async (_session, approvalId, payload) => ({
         approval: {
           ...buildApproval("launch-2026.04.13.2"),
-          id: approvalId,
+          id: `${approvalId}-rebound`,
           launchClosurePack: {
             id: payload.launchClosurePackId,
             version: 4,
@@ -617,6 +620,41 @@ describe("LaunchReadinessPage", () => {
         }
       );
     });
+  });
+
+  it("keeps superseded approvals read-only for historical review", async () => {
+    vi.mocked(listReleaseReadinessApprovals).mockResolvedValueOnce({
+      approvals: [
+        {
+          ...buildApproval("launch-2026.04.13.1"),
+          status: "superseded" as const,
+          supersededByOperatorId: "ops_2",
+          supersededByOperatorRole: "operations_admin",
+          supersededAt: "2026-04-14T11:00:00.000Z"
+        }
+      ],
+      limit: 20,
+      totalCount: 1
+    });
+
+    renderPage(
+      "/launch-readiness?release=launch-2026.04.13.1&approval=launch-2026.04.13.1-approval"
+    );
+
+    expect(
+      await screen.findByText(
+        "Superseded, approved, and rejected approvals remain read-only for historical review."
+      )
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Approve release" })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Reject release" })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Rebind to latest pack" })
+    ).not.toBeInTheDocument();
   });
 
   it("requires rollback metadata before recording rollback drill evidence", async () => {

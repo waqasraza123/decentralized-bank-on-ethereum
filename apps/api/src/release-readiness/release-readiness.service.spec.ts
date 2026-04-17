@@ -59,6 +59,8 @@ function buildApprovalRecord(
     approvedByOperatorRole: null,
     rejectedByOperatorId: null,
     rejectedByOperatorRole: null,
+    supersededByOperatorId: null,
+    supersededByOperatorRole: null,
     securityConfigurationComplete: true,
     accessAndGovernanceComplete: true,
     dataAndRecoveryComplete: true,
@@ -97,6 +99,7 @@ function buildApprovalRecord(
     requestedAt: new Date("2026-04-08T12:00:00.000Z"),
     approvedAt: null,
     rejectedAt: null,
+    supersededAt: null,
     createdAt: new Date("2026-04-08T12:00:00.000Z"),
     updatedAt: new Date("2026-04-08T12:00:00.000Z"),
     launchClosurePack: buildLaunchClosurePackRecord(),
@@ -940,9 +943,10 @@ describe("ReleaseReadinessService", () => {
       .mockResolvedValueOnce(buildPassedRequiredEvidenceRecords())
       .mockResolvedValueOnce([buildEvidenceRecord()]);
     (
-      transactionClient.releaseReadinessApproval.update as jest.Mock
+      transactionClient.releaseReadinessApproval.create as jest.Mock
     ).mockResolvedValue(
       buildApprovalRecord({
+        id: "approval_2",
         launchClosurePackId: "pack_2",
         launchClosurePackVersion: 2,
         launchClosurePackChecksumSha256: "checksum_2",
@@ -970,20 +974,43 @@ describe("ReleaseReadinessService", () => {
 
     expect(transactionClient.releaseReadinessApproval.update).toHaveBeenCalledWith(
       expect.objectContaining({
+        where: {
+          id: "approval_1"
+        },
         data: expect.objectContaining({
+          status: ReleaseReadinessApprovalStatus.superseded,
+          supersededByOperatorId: "ops_1",
+          supersededByOperatorRole: "operations_admin",
+          supersededAt: expect.any(Date)
+        })
+      })
+    );
+    expect(transactionClient.releaseReadinessApproval.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          releaseIdentifier: "release-2026-04-08.1",
+          environment: ReleaseReadinessEnvironment.production_like,
           launchClosurePackId: "pack_2",
           launchClosurePackVersion: 2,
-          launchClosurePackChecksumSha256: "checksum_2"
+          launchClosurePackChecksumSha256: "checksum_2",
+          status: ReleaseReadinessApprovalStatus.pending_approval
         })
       })
     );
     expect(transactionClient.auditEvent.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
-          action: "release_readiness.approval_pack_rebound"
+          action: "release_readiness.approval_pack_rebound",
+          targetId: "approval_1",
+          metadata: expect.objectContaining({
+            supersededApprovalId: "approval_1",
+            nextApprovalId: "approval_2",
+            nextLaunchClosurePackId: "pack_2"
+          })
         })
       })
     );
+    expect(result.approval.id).toBe("approval_2");
     expect(result.approval.launchClosurePack?.id).toBe("pack_2");
   });
 

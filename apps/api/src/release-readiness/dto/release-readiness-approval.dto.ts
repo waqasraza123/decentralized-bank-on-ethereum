@@ -5,7 +5,8 @@ import { RELEASE_READINESS_NOTE_MAX_LENGTH } from "./release-readiness-input.val
 export const releaseReadinessApprovalStatuses = [
   "pending_approval",
   "approved",
-  "rejected"
+  "rejected",
+  "superseded"
 ] as const;
 
 export class ApproveReleaseReadinessApprovalDto {

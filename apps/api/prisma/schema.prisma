@@ -1274,6 +1274,7 @@ enum ReleaseReadinessApprovalStatus {
   pending_approval
   approved
   rejected
+  superseded
 }
 
 model CustomerAccountIncidentPackageRelease {
@@ -1396,6 +1397,8 @@ model ReleaseReadinessApproval {
   approvedByOperatorRole        String?
   rejectedByOperatorId          String?
   rejectedByOperatorRole        String?
+  supersededByOperatorId        String?
+  supersededByOperatorRole      String?
   securityConfigurationComplete Boolean                        @default(false)
   accessAndGovernanceComplete   Boolean                        @default(false)
   dataAndRecoveryComplete       Boolean                        @default(false)
@@ -1413,6 +1416,7 @@ model ReleaseReadinessApproval {
   requestedAt                   DateTime                       @default(now())
   approvedAt                    DateTime?
   rejectedAt                    DateTime?
+  supersededAt                  DateTime?
   createdAt                     DateTime                       @default(now())
   updatedAt                     DateTime                       @updatedAt
   launchClosurePack             ReleaseLaunchClosurePack?      @relation(fields: [launchClosurePackId], references: [id])

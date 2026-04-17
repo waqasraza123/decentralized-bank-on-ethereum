@@ -190,6 +190,8 @@ type ReleaseReadinessApprovalProjection = {
   approvedByOperatorRole: string | null;
   rejectedByOperatorId: string | null;
   rejectedByOperatorRole: string | null;
+  supersededByOperatorId: string | null;
+  supersededByOperatorRole: string | null;
   checklist: ReleaseReadinessApprovalChecklist;
   evidenceSnapshot: ReleaseReadinessApprovalEvidenceSnapshot;
   gate: ReleaseReadinessApprovalGate;
@@ -221,6 +223,7 @@ type ReleaseReadinessApprovalProjection = {
   requestedAt: string;
   approvedAt: string | null;
   rejectedAt: string | null;
+  supersededAt: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -1021,6 +1024,8 @@ export class ReleaseReadinessService {
       approvedByOperatorRole: record.approvedByOperatorRole ?? null,
       rejectedByOperatorId: record.rejectedByOperatorId ?? null,
       rejectedByOperatorRole: record.rejectedByOperatorRole ?? null,
+      supersededByOperatorId: record.supersededByOperatorId ?? null,
+      supersededByOperatorRole: record.supersededByOperatorRole ?? null,
       checklist,
       evidenceSnapshot,
       gate,
@@ -1031,6 +1036,7 @@ export class ReleaseReadinessService {
       requestedAt: record.requestedAt.toISOString(),
       approvedAt: record.approvedAt?.toISOString() ?? null,
       rejectedAt: record.rejectedAt?.toISOString() ?? null,
+      supersededAt: record.supersededAt?.toISOString() ?? null,
       createdAt: record.createdAt.toISOString(),
       updatedAt: record.updatedAt.toISOString()
     };
@@ -1922,15 +1928,49 @@ export class ReleaseReadinessService {
 
     const updatedApproval = await this.prismaService.$transaction(
       async (transaction) => {
-        const nextApproval = await transaction.releaseReadinessApproval.update({
+        const supersededAt = new Date();
+
+        await transaction.releaseReadinessApproval.update({
           where: {
             id: approval.id
           },
           data: {
+            status: ReleaseReadinessApprovalStatus.superseded,
+            supersededByOperatorId: operatorId,
+            supersededByOperatorRole: normalizedOperatorRole,
+            supersededAt
+          }
+        });
+
+        const nextApproval = await transaction.releaseReadinessApproval.create({
+          data: {
+            releaseIdentifier: approval.releaseIdentifier,
+            environment: approval.environment,
             launchClosurePackId: launchClosurePack.id,
             launchClosurePackVersion: launchClosurePack.version,
             launchClosurePackChecksumSha256:
               launchClosurePack.artifactChecksumSha256,
+            rollbackReleaseIdentifier:
+              approval.rollbackReleaseIdentifier ?? undefined,
+            status: ReleaseReadinessApprovalStatus.pending_approval,
+            summary: approval.summary,
+            requestNote: approval.requestNote ?? undefined,
+            requestedByOperatorId: approval.requestedByOperatorId,
+            requestedByOperatorRole:
+              approval.requestedByOperatorRole ?? undefined,
+            securityConfigurationComplete:
+              approval.securityConfigurationComplete,
+            accessAndGovernanceComplete:
+              approval.accessAndGovernanceComplete,
+            dataAndRecoveryComplete: approval.dataAndRecoveryComplete,
+            platformHealthComplete: approval.platformHealthComplete,
+            functionalProofComplete: approval.functionalProofComplete,
+            contractAndChainProofComplete:
+              approval.contractAndChainProofComplete,
+            finalSignoffComplete: approval.finalSignoffComplete,
+            unresolvedRisksAccepted: approval.unresolvedRisksAccepted,
+            openBlockers: [...approval.openBlockers],
+            residualRiskNote: approval.residualRiskNote ?? undefined,
             evidenceSnapshot: evidenceSnapshot as unknown as Prisma.InputJsonValue,
             blockerSnapshot: gate as unknown as Prisma.InputJsonValue
           }
@@ -1942,14 +1982,17 @@ export class ReleaseReadinessService {
             actorId: operatorId,
             action: "release_readiness.approval_pack_rebound",
             targetType: "ReleaseReadinessApproval",
-            targetId: nextApproval.id,
+            targetId: approval.id,
             metadata: {
-              releaseIdentifier: nextApproval.releaseIdentifier,
-              environment: nextApproval.environment,
+              releaseIdentifier: approval.releaseIdentifier,
+              environment: approval.environment,
+              supersededApprovalId: approval.id,
+              supersededAt: supersededAt.toISOString(),
               previousLaunchClosurePackId: approval.launchClosurePackId,
               previousLaunchClosurePackVersion: approval.launchClosurePackVersion,
               previousLaunchClosurePackChecksumSha256:
                 approval.launchClosurePackChecksumSha256,
+              nextApprovalId: nextApproval.id,
               nextLaunchClosurePackId: launchClosurePack.id,
               nextLaunchClosurePackVersion: launchClosurePack.version,
               nextLaunchClosurePackChecksumSha256:

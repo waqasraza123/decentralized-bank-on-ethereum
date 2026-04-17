@@ -1073,7 +1073,7 @@ export type ReleaseReadinessApproval = {
     artifactChecksumSha256: string;
   } | null;
   rollbackReleaseIdentifier: string | null;
-  status: "pending_approval" | "approved" | "rejected";
+  status: "pending_approval" | "approved" | "rejected" | "superseded";
   summary: string;
   requestNote: string | null;
   approvalNote: string | null;
@@ -1084,6 +1084,8 @@ export type ReleaseReadinessApproval = {
   approvedByOperatorRole: string | null;
   rejectedByOperatorId: string | null;
   rejectedByOperatorRole: string | null;
+  supersededByOperatorId: string | null;
+  supersededByOperatorRole: string | null;
   checklist: ReleaseReadinessApprovalChecklist;
   evidenceSnapshot: ReleaseReadinessApprovalEvidenceSnapshot;
   gate: ReleaseReadinessApprovalGate;
@@ -1115,6 +1117,7 @@ export type ReleaseReadinessApproval = {
   requestedAt: string;
   approvedAt: string | null;
   rejectedAt: string | null;
+  supersededAt: string | null;
   createdAt: string;
   updatedAt: string;
 };

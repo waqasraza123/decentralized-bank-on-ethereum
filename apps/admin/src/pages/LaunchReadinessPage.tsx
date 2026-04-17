@@ -867,6 +867,8 @@ export function LaunchReadinessPage() {
       (file) => file.relativePath === selectedLaunchClosureFilePath
     ) ?? null;
   const gateNotice = buildApprovalGateNotice(selectedApproval);
+  const selectedApprovalIsPending =
+    selectedApproval?.status === "pending_approval";
   const decisionPending =
     approveMutation.isPending ||
     rejectMutation.isPending ||
@@ -1424,6 +1426,31 @@ export function LaunchReadinessPage() {
                         label: "Requested by",
                         value: selectedApproval.requestedByOperatorId,
                         mono: true
+                      },
+                      {
+                        label: "Approved",
+                        value: selectedApproval.approvedAt
+                          ? formatDateTime(selectedApproval.approvedAt)
+                          : "Not approved"
+                      },
+                      {
+                        label: "Rejected",
+                        value: selectedApproval.rejectedAt
+                          ? formatDateTime(selectedApproval.rejectedAt)
+                          : "Not rejected"
+                      },
+                      {
+                        label: "Superseded",
+                        value: selectedApproval.supersededAt
+                          ? formatDateTime(selectedApproval.supersededAt)
+                          : "Active"
+                      },
+                      {
+                        label: "Superseded by",
+                        value:
+                          selectedApproval.supersededByOperatorId ??
+                          "Not superseded",
+                        mono: Boolean(selectedApproval.supersededByOperatorId)
                       }
                     ]}
                   />
@@ -1772,7 +1799,8 @@ export function LaunchReadinessPage() {
                       ]}
                     />
 
-                    {selectedApproval.launchClosureDrift ? (
+                    {selectedApproval.launchClosureDrift &&
+                    selectedApproval.status === "pending_approval" ? (
                       <div className="admin-detail-stack">
                         <InlineNotice
                           title={
@@ -1973,26 +2001,35 @@ export function LaunchReadinessPage() {
                       </div>
                     ) : null}
 
-                    <div className="admin-field">
-                      <span>Approval note</span>
-                      <textarea
-                        aria-label="Approval note"
-                        placeholder="Document why this release is approved or rejected."
-                        value={actionNote}
-                        onChange={(event) => setActionNote(event.target.value)}
-                      />
-                    </div>
+                    {selectedApprovalIsPending ? (
+                      <>
+                        <div className="admin-field">
+                          <span>Approval note</span>
+                          <textarea
+                            aria-label="Approval note"
+                            placeholder="Document why this release is approved or rejected."
+                            value={actionNote}
+                            onChange={(event) => setActionNote(event.target.value)}
+                          />
+                        </div>
 
-                    <label className="admin-checkbox">
-                      <input
-                        type="checkbox"
-                        checked={governedConfirm}
-                        onChange={(event) => setGovernedConfirm(event.target.checked)}
+                        <label className="admin-checkbox">
+                          <input
+                            type="checkbox"
+                            checked={governedConfirm}
+                            onChange={(event) => setGovernedConfirm(event.target.checked)}
+                          />
+                          <span>
+                            I reviewed failed checks, stale evidence, and open blockers before deciding.
+                          </span>
+                        </label>
+                      </>
+                    ) : (
+                      <InlineNotice
+                        title="Historical approval"
+                        description="Superseded, approved, and rejected approvals remain read-only for historical review."
                       />
-                      <span>
-                        I reviewed failed checks, stale evidence, and open blockers before deciding.
-                      </span>
-                    </label>
+                    )}
 
                     {decisionFlash ? (
                       <InlineNotice
@@ -2009,28 +2046,30 @@ export function LaunchReadinessPage() {
                       />
                     ) : null}
 
-                    <div className="admin-action-buttons">
-                      <button
-                        type="button"
-                        className="admin-primary-button"
-                        disabled={
-                          !governedConfirm ||
-                          decisionPending ||
-                          approvalDriftBlocksDecision
-                        }
-                        onClick={() => approveMutation.mutate()}
-                      >
-                        {approveMutation.isPending ? "Approving..." : "Approve release"}
-                      </button>
-                      <button
-                        type="button"
-                        className="admin-danger-button"
-                        disabled={!governedConfirm || decisionPending}
-                        onClick={() => rejectMutation.mutate()}
-                      >
-                        {rejectMutation.isPending ? "Rejecting..." : "Reject release"}
-                      </button>
-                    </div>
+                    {selectedApprovalIsPending ? (
+                      <div className="admin-action-buttons">
+                        <button
+                          type="button"
+                          className="admin-primary-button"
+                          disabled={
+                            !governedConfirm ||
+                            decisionPending ||
+                            approvalDriftBlocksDecision
+                          }
+                          onClick={() => approveMutation.mutate()}
+                        >
+                          {approveMutation.isPending ? "Approving..." : "Approve release"}
+                        </button>
+                        <button
+                          type="button"
+                          className="admin-danger-button"
+                          disabled={!governedConfirm || decisionPending}
+                          onClick={() => rejectMutation.mutate()}
+                        >
+                          {rejectMutation.isPending ? "Rejecting..." : "Reject release"}
+                        </button>
+                      </div>
+                    ) : null}
                   </>
                 ) : (
                   <EmptyState
