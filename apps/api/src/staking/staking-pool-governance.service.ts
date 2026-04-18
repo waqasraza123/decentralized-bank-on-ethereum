@@ -11,6 +11,7 @@ import {
 } from "@prisma/client";
 import { assertOperatorRoleAuthorized } from "../auth/internal-operator-role-policy";
 import { PrismaService } from "../prisma/prisma.service";
+import type { PrismaJsonValue } from "../prisma/prisma-json";
 import { StakingService } from "./staking.service";
 import { CreateStakingPoolGovernanceRequestDto } from "./dto/create-staking-pool-governance-request.dto";
 import { ListStakingPoolGovernanceRequestsDto } from "./dto/list-staking-pool-governance-requests.dto";
@@ -217,7 +218,7 @@ export class StakingPoolGovernanceService {
             rewardRate: dto.rewardRate,
             requestNote,
             operatorRole: normalizedOperatorRole
-          } as Prisma.InputJsonValue
+          } as PrismaJsonValue
         }
       });
 
@@ -323,7 +324,7 @@ export class StakingPoolGovernanceService {
               rewardRate: nextRequest.rewardRate,
               approvedByOperatorRole: approvedOperatorRole,
               approvalNote
-            } as Prisma.InputJsonValue
+            } as PrismaJsonValue
           }
         });
 
@@ -386,7 +387,7 @@ export class StakingPoolGovernanceService {
               rewardRate: nextRequest.rewardRate,
               rejectedByOperatorRole: rejectedOperatorRole,
               rejectionNote
-            } as Prisma.InputJsonValue
+            } as PrismaJsonValue
           }
         });
 
@@ -474,7 +475,7 @@ export class StakingPoolGovernanceService {
                 retryAttempt:
                   request.status ===
                   StakingPoolGovernanceRequestStatus.execution_failed
-              } as Prisma.InputJsonValue
+              } as PrismaJsonValue
             }
           });
 
@@ -525,7 +526,7 @@ export class StakingPoolGovernanceService {
               retryAttempt:
                 request.status ===
                 StakingPoolGovernanceRequestStatus.execution_failed
-            } as Prisma.InputJsonValue
+            } as PrismaJsonValue
           }
         });
 

@@ -21,6 +21,7 @@ import {
   loadSharedLoginBootstrapRuntimeConfig
 } from "@stealth-trails-bank/config/api";
 import { PrismaService } from "../prisma/prisma.service";
+import type { PrismaJsonValue } from "../prisma/prisma-json";
 import { CustomJsonResponse } from "../types/CustomJsonResponse";
 import { generateEthereumAddress } from "./auth.util";
 
@@ -577,7 +578,7 @@ export class AuthService {
           targetId: customer.id,
           metadata: {
             passwordRotationAvailable: true
-          } as Prisma.InputJsonValue
+          } as PrismaJsonValue
         }
       });
     });

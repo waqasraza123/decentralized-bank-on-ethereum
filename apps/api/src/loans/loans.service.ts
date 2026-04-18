@@ -36,6 +36,7 @@ import {
 } from "../auth/auth.service";
 import { LedgerService } from "../ledger/ledger.service";
 import { PrismaService } from "../prisma/prisma.service";
+import type { PrismaJsonValue } from "../prisma/prisma-json";
 import { CreateLoanApplicationDto } from "./dto/create-loan-application.dto";
 import { ListOperatorLoanAgreementsDto } from "./dto/list-operator-loan-agreements.dto";
 import { ListOperatorLoanApplicationsDto } from "./dto/list-operator-loan-applications.dto";
@@ -554,7 +555,7 @@ export class LoansService {
         actorRole: input.actorRole ?? null,
         eventType: input.eventType,
         note: input.note ?? null,
-        metadata: (input.metadata ?? {}) as Prisma.InputJsonValue
+        metadata: (input.metadata ?? {}) as PrismaJsonValue
       }
     });
   }
@@ -835,7 +836,7 @@ export class LoansService {
             ...quote,
             disclosureAcknowledgement: dto.disclosureAcknowledgement,
             supportNote: dto.supportNote ?? null
-          } as Prisma.InputJsonValue
+          } as PrismaJsonValue
         }
       });
 
@@ -1299,7 +1300,7 @@ export class LoansService {
           activationTransactionHash: onchain.transactionHash,
           approvedAt: approvalTime,
           nextDueAt,
-          disclosureSnapshot: updatedApplication.quoteSnapshot as Prisma.InputJsonValue
+          disclosureSnapshot: updatedApplication.quoteSnapshot as PrismaJsonValue
         }
       });
 
@@ -1341,7 +1342,7 @@ export class LoansService {
             principalAmount: agreement.principalAmount.toString(),
             serviceFeeAmount: agreement.serviceFeeAmount.toString(),
             outstandingTotalAmount: agreement.outstandingTotalAmount.toString()
-          } as Prisma.InputJsonValue
+          } as PrismaJsonValue
         }
       });
 

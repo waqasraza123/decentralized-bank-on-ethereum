@@ -14,6 +14,7 @@ import {
 } from "@prisma/client";
 import { Injectable } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
+import type { PrismaJsonValue } from "../prisma/prisma-json";
 
 type PlatformAlertDeliveryPayload = {
   id: string;
@@ -147,7 +148,7 @@ export class PlatformAlertDeliveryService {
     eventType: PlatformAlertDeliveryEventType,
     context: PlatformAlertDeliveryContext,
     metadata?: PlatformAlertDeliveryMetadata
-  ): Prisma.InputJsonValue {
+  ): PrismaJsonValue {
     return {
       eventType,
       generatedAt: new Date().toISOString(),
@@ -160,7 +161,7 @@ export class PlatformAlertDeliveryService {
         escalationReason: context.escalationReason
       },
       ...(metadata ? { metadata } : {})
-    } as Prisma.InputJsonValue;
+    } as PrismaJsonValue;
   }
 
   private async createPendingDelivery(args: {

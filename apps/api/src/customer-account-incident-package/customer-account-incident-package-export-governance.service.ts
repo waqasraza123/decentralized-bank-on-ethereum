@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { loadIncidentPackageExportGovernanceRuntimeConfig } from "@stealth-trails-bank/config/api";
 import { Prisma } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
+import type { PrismaJsonValue } from "../prisma/prisma-json";
 import { CustomerAccountIncidentPackageService } from "./customer-account-incident-package.service";
 import {
   type IncidentPackageExportMode,
@@ -605,7 +606,7 @@ export class CustomerAccountIncidentPackageExportGovernanceService {
           restrictionCount: pkg.holdHistory.length,
           recentTransactionIntentCount: pkg.recentTransactionIntents.length,
           timelineEventCount: pkg.timeline.length
-        } as Prisma.InputJsonValue
+        } as PrismaJsonValue
       }
     });
   }

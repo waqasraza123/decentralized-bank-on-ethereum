@@ -19,6 +19,7 @@ import {
   normalizeOperatorRole
 } from "../auth/internal-operator-role-policy";
 import { PrismaService } from "../prisma/prisma.service";
+import type { PrismaJsonValue } from "../prisma/prisma-json";
 import { CreateReleaseReadinessApprovalDto } from "./dto/create-release-readiness-approval.dto";
 import { CreateReleaseReadinessEvidenceDto } from "./dto/create-release-readiness-evidence.dto";
 import { ListReleaseLaunchClosurePacksDto } from "./dto/list-release-launch-closure-packs.dto";
@@ -1327,7 +1328,7 @@ export class ReleaseReadinessService {
           integrityStatus: integrity.status,
           integrityIssues: integrity.issues,
           selectedApprovalId: approval.id
-        } as Prisma.InputJsonValue
+        } as PrismaJsonValue
       }
     });
   }
@@ -1484,7 +1485,7 @@ export class ReleaseReadinessService {
     const observedAt = this.normalizeOptionalDate(dto.observedAt) ?? new Date();
     const evidenceLinks = this.normalizeEvidenceLinks(dto.evidenceLinks);
     const evidencePayload =
-      (dto.evidencePayload as Prisma.InputJsonValue | undefined) ?? undefined;
+      (dto.evidencePayload as PrismaJsonValue | undefined) ?? undefined;
 
     if (missingMetadata.length > 0) {
       throw new BadRequestException(
@@ -1536,7 +1537,7 @@ export class ReleaseReadinessService {
             observedAt: createdEvidence.observedAt.toISOString(),
             completedAt: createdEvidence.completedAt?.toISOString() ?? null,
             operatorRole: normalizedOperatorRole
-          } as Prisma.InputJsonValue
+          } as PrismaJsonValue
         }
       });
 
@@ -1895,7 +1896,7 @@ export class ReleaseReadinessService {
           generatedByOperatorId: operatorId,
           generatedByOperatorRole: normalizedOperatorRole ?? undefined,
           artifactChecksumSha256,
-          artifactPayload: artifactPayload as Prisma.InputJsonValue
+          artifactPayload: artifactPayload as PrismaJsonValue
         }
       });
 
@@ -1912,7 +1913,7 @@ export class ReleaseReadinessService {
             version: createdPack.version,
             artifactChecksumSha256,
             operatorRole: normalizedOperatorRole
-          } as Prisma.InputJsonValue
+          } as PrismaJsonValue
         }
       });
 
@@ -2062,8 +2063,8 @@ export class ReleaseReadinessService {
           unresolvedRisksAccepted: checklist.unresolvedRisksAccepted,
           openBlockers: checklist.openBlockers,
           residualRiskNote: checklist.residualRiskNote ?? undefined,
-          evidenceSnapshot: evidenceSnapshot as unknown as Prisma.InputJsonValue,
-          blockerSnapshot: gate as unknown as Prisma.InputJsonValue
+          evidenceSnapshot: evidenceSnapshot as unknown as PrismaJsonValue,
+          blockerSnapshot: gate as unknown as PrismaJsonValue
         }
       });
 
@@ -2085,7 +2086,7 @@ export class ReleaseReadinessService {
             summary: summaryText,
             operatorRole: normalizedOperatorRole,
             gate
-          } as Prisma.InputJsonValue
+          } as PrismaJsonValue
         }
       });
 
@@ -2208,10 +2209,10 @@ export class ReleaseReadinessService {
             approvedByOperatorRole: approvedOperatorRole,
             approvalNote: approvalNote ?? undefined,
             approvedAt: new Date(),
-            evidenceSnapshot: evidenceSnapshot as unknown as Prisma.InputJsonValue,
-            blockerSnapshot: approvedGate as unknown as Prisma.InputJsonValue,
+            evidenceSnapshot: evidenceSnapshot as unknown as PrismaJsonValue,
+            blockerSnapshot: approvedGate as unknown as PrismaJsonValue,
             decisionDriftSnapshot:
-              launchClosureDrift as unknown as Prisma.InputJsonValue,
+              launchClosureDrift as unknown as PrismaJsonValue,
             decisionDriftCapturedAt
           }
         });
@@ -2231,7 +2232,7 @@ export class ReleaseReadinessService {
               gate: approvedGate,
               launchClosureDrift,
               decisionDriftCapturedAt: decisionDriftCapturedAt.toISOString()
-            } as Prisma.InputJsonValue
+            } as PrismaJsonValue
           }
         });
 
@@ -2395,8 +2396,8 @@ export class ReleaseReadinessService {
             unresolvedRisksAccepted: approval.unresolvedRisksAccepted,
             openBlockers: [...approval.openBlockers],
             residualRiskNote: approval.residualRiskNote ?? undefined,
-            evidenceSnapshot: evidenceSnapshot as unknown as Prisma.InputJsonValue,
-            blockerSnapshot: gate as unknown as Prisma.InputJsonValue
+            evidenceSnapshot: evidenceSnapshot as unknown as PrismaJsonValue,
+            blockerSnapshot: gate as unknown as PrismaJsonValue
           }
         });
 
@@ -2438,7 +2439,7 @@ export class ReleaseReadinessService {
                 launchClosurePack.artifactChecksumSha256,
               operatorRole: normalizedOperatorRole,
               gate
-            } as Prisma.InputJsonValue
+            } as PrismaJsonValue
           }
         });
 
@@ -2551,10 +2552,10 @@ export class ReleaseReadinessService {
             rejectedByOperatorRole: rejectedOperatorRole,
             rejectionNote,
             rejectedAt: new Date(),
-            evidenceSnapshot: evidenceSnapshot as unknown as Prisma.InputJsonValue,
-            blockerSnapshot: rejectedGate as unknown as Prisma.InputJsonValue,
+            evidenceSnapshot: evidenceSnapshot as unknown as PrismaJsonValue,
+            blockerSnapshot: rejectedGate as unknown as PrismaJsonValue,
             decisionDriftSnapshot:
-              launchClosureDrift as unknown as Prisma.InputJsonValue,
+              launchClosureDrift as unknown as PrismaJsonValue,
             decisionDriftCapturedAt
           }
         });
@@ -2574,7 +2575,7 @@ export class ReleaseReadinessService {
               gate: rejectedGate,
               launchClosureDrift,
               decisionDriftCapturedAt: decisionDriftCapturedAt.toISOString()
-            } as Prisma.InputJsonValue
+            } as PrismaJsonValue
           }
         });
 

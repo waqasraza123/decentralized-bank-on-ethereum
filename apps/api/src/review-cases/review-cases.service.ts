@@ -19,6 +19,7 @@ import {
   TransactionIntentType
 } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
+import type { PrismaJsonValue } from "../prisma/prisma-json";
 import { AddReviewCaseNoteDto } from "./dto/add-review-case-note.dto";
 import { ApplyManualResolutionDto } from "./dto/apply-manual-resolution.dto";
 import { DismissReviewCaseDto } from "./dto/dismiss-review-case.dto";
@@ -429,7 +430,7 @@ export class ReviewCasesService {
     actorId: string | null,
     eventType: ReviewCaseEventType,
     note: string | null,
-    metadata: Prisma.InputJsonValue | null
+    metadata: PrismaJsonValue | null
   ): Promise<ReviewCaseEventRecord> {
     return client.reviewCaseEvent.create({
       data: {
@@ -657,7 +658,7 @@ export class ReviewCasesService {
         reviewCaseType: params.type,
         reviewCaseStatus: ReviewCaseStatus.open,
         context: params.auditMetadata ?? null
-      } as Prisma.InputJsonValue
+      } as PrismaJsonValue
     );
 
     await client.auditEvent.create({
@@ -676,7 +677,7 @@ export class ReviewCasesService {
           reasonCode: params.reasonCode,
           notes: params.notes,
           context: params.auditMetadata ?? null
-        } as Prisma.InputJsonValue
+        } as PrismaJsonValue
       }
     });
 
@@ -913,7 +914,7 @@ export class ReviewCasesService {
             newStatus: ReviewCaseStatus.in_progress,
             previousAssignedOperatorId: existingReviewCase.assignedOperatorId,
             newAssignedOperatorId: operatorId
-          } as Prisma.InputJsonValue
+          } as PrismaJsonValue
         );
 
         await transaction.auditEvent.create({
@@ -932,7 +933,7 @@ export class ReviewCasesService {
               note: dto.note?.trim() ?? null,
               transactionIntentId: existingReviewCase.transactionIntentId,
               customerAccountId: existingReviewCase.customerAccountId
-            } as Prisma.InputJsonValue
+            } as PrismaJsonValue
           }
         });
 
@@ -983,7 +984,7 @@ export class ReviewCasesService {
         {
           assignedOperatorId: existingReviewCase.assignedOperatorId,
           status: existingReviewCase.status
-        } as Prisma.InputJsonValue
+        } as PrismaJsonValue
       );
 
       await transaction.auditEvent.create({
@@ -1000,7 +1001,7 @@ export class ReviewCasesService {
             status: existingReviewCase.status,
             transactionIntentId: existingReviewCase.transactionIntentId,
             customerAccountId: existingReviewCase.customerAccountId
-          } as Prisma.InputJsonValue
+          } as PrismaJsonValue
         }
       });
 
@@ -1069,7 +1070,7 @@ export class ReviewCasesService {
             newAssignedOperatorId: nextOperatorId,
             previousStatus: existingReviewCase.status,
             newStatus: ReviewCaseStatus.in_progress
-          } as Prisma.InputJsonValue
+          } as PrismaJsonValue
         );
 
         await transaction.auditEvent.create({
@@ -1088,7 +1089,7 @@ export class ReviewCasesService {
               note: dto.note?.trim() ?? null,
               transactionIntentId: existingReviewCase.transactionIntentId,
               customerAccountId: existingReviewCase.customerAccountId
-            } as Prisma.InputJsonValue
+            } as PrismaJsonValue
           }
         });
 
@@ -1151,7 +1152,7 @@ export class ReviewCasesService {
           {
             previousStatus: existingReviewCase.status,
             newStatus: ReviewCaseStatus.resolved
-          } as Prisma.InputJsonValue
+          } as PrismaJsonValue
         );
 
         await transaction.auditEvent.create({
@@ -1169,7 +1170,7 @@ export class ReviewCasesService {
               reviewCaseType: existingReviewCase.type,
               transactionIntentId: existingReviewCase.transactionIntentId,
               customerAccountId: existingReviewCase.customerAccountId
-            } as Prisma.InputJsonValue
+            } as PrismaJsonValue
           }
         });
 
@@ -1232,7 +1233,7 @@ export class ReviewCasesService {
           {
             previousStatus: existingReviewCase.status,
             newStatus: ReviewCaseStatus.dismissed
-          } as Prisma.InputJsonValue
+          } as PrismaJsonValue
         );
 
         await transaction.auditEvent.create({
@@ -1250,7 +1251,7 @@ export class ReviewCasesService {
               reviewCaseType: existingReviewCase.type,
               transactionIntentId: existingReviewCase.transactionIntentId,
               customerAccountId: existingReviewCase.customerAccountId
-            } as Prisma.InputJsonValue
+            } as PrismaJsonValue
           }
         });
 
@@ -1361,7 +1362,7 @@ export class ReviewCasesService {
           manualResolutionOperatorRole:
             callerAwareEligibility.operatorRole,
           manualResolutionReviewCaseId: existingReviewCase.id
-        } as Prisma.InputJsonValue
+        } as PrismaJsonValue
       );
 
       await this.appendReviewCaseEvent(
@@ -1375,7 +1376,7 @@ export class ReviewCasesService {
           previousStatus: existingReviewCase.status,
           newStatus: ReviewCaseStatus.resolved,
           resolutionSource: "manual_intervention"
-        } as Prisma.InputJsonValue
+        } as PrismaJsonValue
       );
 
       await transaction.auditEvent.create({
@@ -1398,7 +1399,7 @@ export class ReviewCasesService {
             reviewCaseId: existingReviewCase.id,
             reviewCaseType: existingReviewCase.type,
             customerAccountId: existingReviewCase.customerAccountId
-          } as Prisma.InputJsonValue
+          } as PrismaJsonValue
         }
       });
 
@@ -1418,7 +1419,7 @@ export class ReviewCasesService {
             manualResolutionNote: note,
             transactionIntentId: existingReviewCase.transactionIntentId,
             customerAccountId: existingReviewCase.customerAccountId
-          } as Prisma.InputJsonValue
+          } as PrismaJsonValue
         }
       });
 

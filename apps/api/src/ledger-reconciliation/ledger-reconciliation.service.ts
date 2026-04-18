@@ -25,6 +25,7 @@ import {
   TransactionIntentType
 } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
+import type { PrismaJsonValue } from "../prisma/prisma-json";
 import { ReviewCasesService } from "../review-cases/review-cases.service";
 import { classifyDepositSettlementReconciliation } from "../transaction-intents/domain/deposit-settlement-reconciliation";
 import { classifyWithdrawalSettlementReconciliation } from "../transaction-intents/domain/withdrawal-settlement-reconciliation";
@@ -712,7 +713,7 @@ export class LedgerReconciliationService {
           reasonCode: mismatch.reasonCode,
           recommendedAction: mismatch.recommendedAction,
           ...(metadata ?? {})
-        } as Prisma.InputJsonValue
+        } as PrismaJsonValue
       }
     });
   }
@@ -763,7 +764,7 @@ export class LedgerReconciliationService {
           resolutionSource: "ledger_reconciliation_scan",
           mismatchId: mismatch.id,
           mismatchKey: mismatch.mismatchKey
-        } as Prisma.InputJsonValue
+        } as PrismaJsonValue
       }
     });
 
@@ -784,7 +785,7 @@ export class LedgerReconciliationService {
           customerAccountId: mismatch.customerAccountId,
           mismatchId: mismatch.id,
           mismatchKey: mismatch.mismatchKey
-        } as Prisma.InputJsonValue
+        } as PrismaJsonValue
       }
     });
 
@@ -1422,7 +1423,7 @@ export class LedgerReconciliationService {
             transactionIntentId: candidate.transactionIntentId,
             assetId: candidate.assetId,
             linkedReviewCaseId: candidate.linkedReviewCaseId,
-            latestSnapshot: candidate.latestSnapshot as Prisma.InputJsonValue
+            latestSnapshot: candidate.latestSnapshot as PrismaJsonValue
           },
           include: mismatchInclude
         });
@@ -1481,7 +1482,7 @@ export class LedgerReconciliationService {
           transactionIntentId: candidate.transactionIntentId,
           assetId: candidate.assetId,
           linkedReviewCaseId: preservedLinkedReviewCaseId,
-          latestSnapshot: candidate.latestSnapshot as Prisma.InputJsonValue,
+          latestSnapshot: candidate.latestSnapshot as PrismaJsonValue,
           detectionCount: {
             increment: 1
           },
@@ -1545,7 +1546,7 @@ export class LedgerReconciliationService {
                 resolutionNote: "Automatically resolved by reconciliation scan.",
                 resolutionMetadata: {
                   resolvedBy: "system_reconciliation_scan"
-                } as Prisma.InputJsonValue
+                } as PrismaJsonValue
               },
               include: mismatchInclude
             });
@@ -1656,7 +1657,7 @@ export class LedgerReconciliationService {
           refreshedCount: result.refreshedCount,
           autoResolvedCount: result.autoResolvedCount,
           activeMismatchCount: result.activeMismatchCount,
-          resultSnapshot: result as Prisma.InputJsonValue,
+          resultSnapshot: result as PrismaJsonValue,
           errorCode: null,
           errorMessage: null
         }
@@ -1713,7 +1714,7 @@ export class LedgerReconciliationService {
             transactionIntentId: query.transactionIntentId?.trim() ?? null,
             errorCode,
             errorMessage
-          } as Prisma.InputJsonValue
+          } as PrismaJsonValue
         }
       });
 
@@ -2157,7 +2158,7 @@ export class LedgerReconciliationService {
             repairedAvailableBalance: expectedAvailable.toString(),
             repairedPendingBalance: expectedPending.toString(),
             note
-          } as Prisma.InputJsonValue
+          } as PrismaJsonValue
         }
       });
     });
@@ -2183,14 +2184,14 @@ export class LedgerReconciliationService {
       },
       data: {
         recommendedAction: LedgerReconciliationMismatchRecommendedAction.none,
-        latestSnapshot: currentCandidate.latestSnapshot as Prisma.InputJsonValue,
+        latestSnapshot: currentCandidate.latestSnapshot as PrismaJsonValue,
         resolutionMetadata: {
           repairAction: "repair_customer_balance",
           previousAvailableBalance: actualBalance.availableBalance,
           previousPendingBalance: actualBalance.pendingBalance,
           repairedAvailableBalance: expectedAvailable.toString(),
           repairedPendingBalance: expectedPending.toString()
-        } as Prisma.InputJsonValue,
+        } as PrismaJsonValue,
         resolutionNote: note ?? "Customer balance projection rebuilt from ledger.",
         resolvedByOperatorId: operatorId
       },

@@ -29,6 +29,7 @@ import {
   type CustomerWalletProjection
 } from "../auth/auth.service";
 import { PrismaService } from "../prisma/prisma.service";
+import type { PrismaJsonValue } from "../prisma/prisma-json";
 import { CustomJsonResponse } from "../types/CustomJsonResponse";
 
 type LegacyUserRecord = {
@@ -210,7 +211,7 @@ export class StakingService {
           metadata: {
             ...(input.metadata ?? {}),
             actorRole: input.actor.actorRole ?? null
-          } as Prisma.InputJsonValue
+          } as PrismaJsonValue
         }
       });
     } catch (error) {

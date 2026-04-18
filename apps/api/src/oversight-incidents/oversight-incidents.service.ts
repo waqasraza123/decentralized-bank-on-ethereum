@@ -20,6 +20,7 @@ import {
   loadProductChainRuntimeConfig
 } from "@stealth-trails-bank/config/api";
 import { PrismaService } from "../prisma/prisma.service";
+import type { PrismaJsonValue } from "../prisma/prisma-json";
 import { ReviewCasesService } from "../review-cases/review-cases.service";
 import { AddOversightIncidentNoteDto } from "./dto/add-oversight-incident-note.dto";
 import { ApplyAccountRestrictionDto } from "./dto/apply-account-restriction.dto";
@@ -680,7 +681,7 @@ export class OversightIncidentsService {
     actorId: string | null,
     eventType: OversightIncidentEventType,
     note: string | null,
-    metadata: Prisma.InputJsonValue | null
+    metadata: PrismaJsonValue | null
   ): Promise<OversightIncidentEventRecord> {
     return client.oversightIncidentEvent.create({
       data: {
@@ -1046,7 +1047,7 @@ export class OversightIncidentsService {
             threshold,
             currentCount: intents.length,
             incidentType: OversightIncidentType.customer_manual_resolution_spike
-          } as Prisma.InputJsonValue
+          } as PrismaJsonValue
         );
 
         await transaction.auditEvent.create({
@@ -1150,7 +1151,7 @@ export class OversightIncidentsService {
             incidentType: OversightIncidentType.operator_manual_resolution_spike,
             subjectOperatorId,
             subjectOperatorRole
-          } as Prisma.InputJsonValue
+          } as PrismaJsonValue
         );
 
         await transaction.auditEvent.create({
@@ -1400,7 +1401,7 @@ export class OversightIncidentsService {
             newStatus: OversightIncidentStatus.in_progress,
             previousAssignedOperatorId: incident.assignedOperatorId,
             newAssignedOperatorId: operatorId
-          } as Prisma.InputJsonValue
+          } as PrismaJsonValue
         );
 
         await transaction.auditEvent.create({
@@ -1469,7 +1470,7 @@ export class OversightIncidentsService {
         {
           assignedOperatorId: incident.assignedOperatorId,
           status: incident.status
-        } as Prisma.InputJsonValue
+        } as PrismaJsonValue
       );
 
       await transaction.auditEvent.create({
@@ -1658,7 +1659,7 @@ export class OversightIncidentsService {
             appliedByOperatorId: operatorId,
             appliedByOperatorRole: normalizedOperatorRole,
             appliedAt: restrictionAppliedAt.toISOString()
-          } as Prisma.InputJsonValue
+          } as PrismaJsonValue
         );
 
         await transaction.auditEvent.create({
@@ -1788,7 +1789,7 @@ export class OversightIncidentsService {
           {
             previousStatus: incident.status,
             newStatus: OversightIncidentStatus.resolved
-          } as Prisma.InputJsonValue
+          } as PrismaJsonValue
         );
 
         await transaction.auditEvent.create({
@@ -1867,7 +1868,7 @@ export class OversightIncidentsService {
           {
             previousStatus: incident.status,
             newStatus: OversightIncidentStatus.dismissed
-          } as Prisma.InputJsonValue
+          } as PrismaJsonValue
         );
 
         await transaction.auditEvent.create({

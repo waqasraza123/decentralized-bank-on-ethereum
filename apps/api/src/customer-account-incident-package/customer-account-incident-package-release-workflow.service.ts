@@ -12,6 +12,7 @@ import {
   Prisma
 } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
+import type { PrismaJsonValue } from "../prisma/prisma-json";
 import { CustomerAccountIncidentPackageExportGovernanceService } from "./customer-account-incident-package-export-governance.service";
 import { ApproveCustomerAccountIncidentPackageReleaseDto } from "./dto/approve-customer-account-incident-package-release.dto";
 import { CreateCustomerAccountIncidentPackageReleaseRequestDto } from "./dto/create-customer-account-incident-package-release-request.dto";
@@ -276,7 +277,7 @@ export class CustomerAccountIncidentPackageReleaseWorkflowService {
           releaseTarget: release.releaseTarget,
           artifactChecksumSha256: release.artifactChecksumSha256,
           expiresAt: release.expiresAt.toISOString()
-        } as Prisma.InputJsonValue
+        } as PrismaJsonValue
       }
     });
 
@@ -325,7 +326,7 @@ export class CustomerAccountIncidentPackageReleaseWorkflowService {
           requestNote: dto.requestNote?.trim() ?? null,
           artifactChecksumSha256:
             exportEnvelope.exportMetadata.packageChecksumSha256,
-          artifactPayload: exportEnvelope as unknown as Prisma.InputJsonValue
+          artifactPayload: exportEnvelope as unknown as PrismaJsonValue
         },
         include: incidentPackageReleaseInclude
       });
@@ -345,7 +346,7 @@ export class CustomerAccountIncidentPackageReleaseWorkflowService {
           releaseReasonCode: createdRelease.releaseReasonCode,
           requestNote: createdRelease.requestNote,
           artifactChecksumSha256: createdRelease.artifactChecksumSha256
-        } as Prisma.InputJsonValue
+        } as PrismaJsonValue
       }
     });
 
@@ -522,7 +523,7 @@ export class CustomerAccountIncidentPackageReleaseWorkflowService {
           approvedAt: approvedAt.toISOString(),
           expiresAt: expiresAt.toISOString(),
           artifactChecksumSha256: updatedRelease.artifactChecksumSha256
-        } as Prisma.InputJsonValue
+        } as PrismaJsonValue
       }
     });
 
@@ -605,7 +606,7 @@ export class CustomerAccountIncidentPackageReleaseWorkflowService {
           rejectionNote: updatedRelease.rejectionNote,
           rejectedAt: rejectedAt.toISOString(),
           artifactChecksumSha256: updatedRelease.artifactChecksumSha256
-        } as Prisma.InputJsonValue
+        } as PrismaJsonValue
       }
     });
 
@@ -686,7 +687,7 @@ export class CustomerAccountIncidentPackageReleaseWorkflowService {
           releasedAt: releasedAt.toISOString(),
           releaseNote: updatedRelease.releaseNote,
           artifactChecksumSha256: updatedRelease.artifactChecksumSha256
-        } as Prisma.InputJsonValue
+        } as PrismaJsonValue
       }
     });
 

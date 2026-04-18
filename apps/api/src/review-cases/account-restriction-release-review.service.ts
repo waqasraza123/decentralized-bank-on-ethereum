@@ -18,6 +18,7 @@ import {
   ReviewCaseType
 } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
+import type { PrismaJsonValue } from "../prisma/prisma-json";
 import { DecideAccountReleaseDto } from "./dto/decide-account-release.dto";
 import { ListPendingAccountReleaseReviewsDto } from "./dto/list-pending-account-release-reviews.dto";
 import { RequestAccountReleaseDto } from "./dto/request-account-release.dto";
@@ -198,7 +199,7 @@ export class AccountRestrictionReleaseReviewService {
     actorId: string,
     eventType: ReviewCaseEventType,
     note: string | null,
-    metadata: Prisma.InputJsonValue | null
+    metadata: PrismaJsonValue | null
   ): Promise<void> {
     await client.reviewCaseEvent.create({
       data: {
@@ -500,7 +501,7 @@ export class AccountRestrictionReleaseReviewService {
               CustomerAccountRestrictionReleaseDecisionStatus.pending,
             releaseRequestedAt: releaseRequestedAt.toISOString(),
             releaseRequestedByOperatorId: operatorId
-          } as Prisma.InputJsonValue
+          } as PrismaJsonValue
         );
 
         await transaction.auditEvent.create({
@@ -520,7 +521,7 @@ export class AccountRestrictionReleaseReviewService {
               note,
               releaseRequestedAt: releaseRequestedAt.toISOString(),
               releaseRequestedByOperatorId: operatorId
-            } as Prisma.InputJsonValue
+            } as PrismaJsonValue
           }
         });
 
@@ -711,7 +712,7 @@ export class AccountRestrictionReleaseReviewService {
               releaseDecidedAt: releaseDecidedAt.toISOString(),
               releaseDecidedByOperatorId: operatorId,
               releaseDecidedByOperatorRole: normalizedOperatorRole
-            } as Prisma.InputJsonValue
+            } as PrismaJsonValue
           );
 
           await this.appendReviewCaseEvent(
@@ -723,7 +724,7 @@ export class AccountRestrictionReleaseReviewService {
             {
               previousStatus: reviewCase.status,
               newStatus: ReviewCaseStatus.resolved
-            } as Prisma.InputJsonValue
+            } as PrismaJsonValue
           );
 
           await transaction.oversightIncidentEvent.create({
@@ -743,7 +744,7 @@ export class AccountRestrictionReleaseReviewService {
                 releasedAt: releaseDecidedAt.toISOString(),
                 restoredStatus,
                 reviewCaseId: reviewCase.id
-              } as Prisma.InputJsonValue
+              } as PrismaJsonValue
             }
           });
 
@@ -767,7 +768,7 @@ export class AccountRestrictionReleaseReviewService {
                 releasedByOperatorRole: normalizedOperatorRole,
                 releasedAt: releaseDecidedAt.toISOString(),
                 restoredStatus
-              } as Prisma.InputJsonValue
+              } as PrismaJsonValue
             }
           });
 
@@ -785,7 +786,7 @@ export class AccountRestrictionReleaseReviewService {
                 note: decisionNote,
                 reviewCaseType: reviewCase.type,
                 customerAccountId: reviewCase.customerAccountId
-              } as Prisma.InputJsonValue
+              } as PrismaJsonValue
             }
           });
 
@@ -857,7 +858,7 @@ export class AccountRestrictionReleaseReviewService {
             releaseDecidedAt: releaseDecidedAt.toISOString(),
             releaseDecidedByOperatorId: operatorId,
             releaseDecidedByOperatorRole: normalizedOperatorRole
-          } as Prisma.InputJsonValue
+          } as PrismaJsonValue
         );
 
         await transaction.auditEvent.create({
@@ -876,7 +877,7 @@ export class AccountRestrictionReleaseReviewService {
               releaseDecidedAt: releaseDecidedAt.toISOString(),
               releaseDecidedByOperatorId: operatorId,
               releaseDecidedByOperatorRole: normalizedOperatorRole
-            } as Prisma.InputJsonValue
+            } as PrismaJsonValue
           }
         });
 

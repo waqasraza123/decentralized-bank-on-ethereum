@@ -45,6 +45,7 @@ import {
 } from "@prisma/client";
 import { ApiRequestMetricsService } from "../logging/api-request-metrics.service";
 import { PrismaService } from "../prisma/prisma.service";
+import type { PrismaJsonValue } from "../prisma/prisma-json";
 import { ReviewCasesService } from "../review-cases/review-cases.service";
 import { PlatformAlertDeliveryService } from "./platform-alert-delivery.service";
 import { GetOperationsMetricsDto } from "./dto/get-operations-metrics.dto";
@@ -338,7 +339,7 @@ type PlatformAlertCandidate = {
   code: string;
   summary: string;
   detail: string | null;
-  metadata: Prisma.InputJsonValue | null;
+  metadata: PrismaJsonValue | null;
 };
 
 const DEFAULT_STALE_AFTER_SECONDS = 180;
@@ -1253,7 +1254,7 @@ export class OperationsMonitoringService {
           previousSeverity: previousSeverity ?? null,
           currentSeverity: alert.severity,
           routeNote
-        } as Prisma.InputJsonValue
+        } as PrismaJsonValue
       }
     });
   }
@@ -1516,7 +1517,7 @@ export class OperationsMonitoringService {
           lastFailureAt: target.lastFailureAt,
           lastErrorMessage: target.lastErrorMessage,
           sloBreaches: target.sloBreaches
-        } as Prisma.InputJsonValue
+        } as PrismaJsonValue
       });
     }
 
@@ -2177,13 +2178,13 @@ export class OperationsMonitoringService {
           (dto.lastReconciliationScanStatus as LedgerReconciliationScanRunStatus | undefined) ??
           null,
         runtimeMetadata: dto.runtimeMetadata
-          ? (dto.runtimeMetadata as Prisma.InputJsonValue)
+          ? (dto.runtimeMetadata as PrismaJsonValue)
           : Prisma.JsonNull,
         latestIterationMetrics: dto.latestIterationMetrics
           ? ({
               ...dto.latestIterationMetrics,
               lastIterationDurationMs: dto.lastIterationDurationMs ?? null
-            } as Prisma.InputJsonValue)
+            } as PrismaJsonValue)
           : Prisma.JsonNull
       },
       update: {
@@ -2213,13 +2214,13 @@ export class OperationsMonitoringService {
           (dto.lastReconciliationScanStatus as LedgerReconciliationScanRunStatus | undefined) ??
           null,
         runtimeMetadata: dto.runtimeMetadata
-          ? (dto.runtimeMetadata as Prisma.InputJsonValue)
+          ? (dto.runtimeMetadata as PrismaJsonValue)
           : Prisma.JsonNull,
         latestIterationMetrics: dto.latestIterationMetrics
           ? ({
               ...dto.latestIterationMetrics,
               lastIterationDurationMs: dto.lastIterationDurationMs ?? null
-            } as Prisma.InputJsonValue)
+            } as PrismaJsonValue)
           : Prisma.JsonNull
       }
     });
@@ -2491,7 +2492,7 @@ export class OperationsMonitoringService {
             firstDetectedAt: candidate.alert.firstDetectedAt.toISOString(),
             lastReEscalatedAt: candidate.lastReEscalatedAt?.toISOString() ?? null,
             queuedDeliveryCount
-          } as Prisma.InputJsonValue
+          } as PrismaJsonValue
         }
       });
 
@@ -2599,7 +2600,7 @@ export class OperationsMonitoringService {
           previousOwnerOperatorId: alert.ownerOperatorId ?? null,
           ownerOperatorId: trimmedOwnerOperatorId,
           ownershipNote
-        } as Prisma.InputJsonValue
+        } as PrismaJsonValue
       }
     });
 
@@ -2660,7 +2661,7 @@ export class OperationsMonitoringService {
         targetId: alert.id,
         metadata: {
           acknowledgementNote
-        } as Prisma.InputJsonValue
+        } as PrismaJsonValue
       }
     });
 
@@ -2732,7 +2733,7 @@ export class OperationsMonitoringService {
           previousSuppressedUntil: alert.suppressedUntil?.toISOString() ?? null,
           suppressedUntil: suppressedUntil.toISOString(),
           suppressionNote
-        } as Prisma.InputJsonValue
+        } as PrismaJsonValue
       }
     });
 
@@ -2794,7 +2795,7 @@ export class OperationsMonitoringService {
         metadata: {
           previousSuppressedUntil: alert.suppressedUntil.toISOString(),
           suppressionNote
-        } as Prisma.InputJsonValue
+        } as PrismaJsonValue
       }
     });
 
@@ -2843,7 +2844,7 @@ export class OperationsMonitoringService {
           metadata: {
             retriedDeliveryCount,
             note: note?.trim() ? note.trim() : null
-          } as Prisma.InputJsonValue
+          } as PrismaJsonValue
         }
       });
     }
@@ -2937,7 +2938,7 @@ export class OperationsMonitoringService {
             routingStateReused,
             routeNote,
             initiatedBy: actor.actorType
-          } as Prisma.InputJsonValue
+          } as PrismaJsonValue
         }
       });
 
