@@ -32,6 +32,7 @@ export function AppButton({
   return (
     <Pressable
       accessibilityRole="button"
+      accessibilityState={{ disabled }}
       disabled={disabled}
       onPress={onPress}
       className={`${fullWidth ? "w-full" : ""} rounded-full px-4 py-3 ${variantClasses} ${

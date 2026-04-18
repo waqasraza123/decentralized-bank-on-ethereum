@@ -6,13 +6,18 @@ export const mobileMessagesAr: MobileMessages = {
     retry: "إعادة المحاولة",
     save: "حفظ",
     cancel: "إلغاء",
+    reset: "إعادة ضبط التطبيق",
     enabled: "مفعّل",
     disabled: "معطّل",
     notAvailable: "غير متاح",
     close: "إغلاق",
     signOut: "تسجيل الخروج",
     open: "فتح",
-    noData: "لا توجد بيانات بعد."
+    noData: "لا توجد بيانات بعد.",
+    somethingWentWrong: "حدث خطأ غير متوقع",
+    crashRecovery:
+      "واجه التطبيق خطأً أثناء التشغيل. أعد ضبط واجهة التطبيق ثم حاول مرة أخرى.",
+    requiredField: "أكمل جميع الحقول المطلوبة قبل المتابعة."
   },
   locale: {
     label: "اللغة",
@@ -46,7 +51,9 @@ export const mobileMessagesAr: MobileMessages = {
     switchToSignUp: "إنشاء حساب",
     switchToSignIn: "لديك حساب بالفعل؟",
     demoFill: "استخدم بيانات العرض المشتركة",
-    sessionExpired: "انتهت الجلسة. سجّل الدخول مرة أخرى."
+    sessionExpired: "انتهت الجلسة. سجّل الدخول مرة أخرى.",
+    emailInvalid: "أدخل بريداً إلكترونياً صالحاً.",
+    passwordTooShort: "يجب أن تتكون كلمة المرور من 8 أحرف على الأقل."
   },
   dashboard: {
     title: "نظرة عامة على الأموال المُدارة",
@@ -177,6 +184,7 @@ export const mobileMessagesAr: MobileMessages = {
     installmentAmount: "القسط",
     installment: "القسط",
     termInvalid: "يجب أن تكون مدة القرض عدداً صحيحاً أكبر من صفر.",
+    acknowledgementRequired: "أقر برسوم الخدمة الثابتة قبل إرسال الطلب.",
     acknowledgement:
       "أقر بأن رسوم الخدمة المعلنة ثابتة وغير قائمة على الفائدة.",
     noEligibility: "الإقراض غير متاح لهذا الحساب حتى الآن."

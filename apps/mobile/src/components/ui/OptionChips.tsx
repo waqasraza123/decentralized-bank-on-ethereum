@@ -28,6 +28,8 @@ export function OptionChips({
 
         return (
           <Pressable
+            accessibilityRole="button"
+            accessibilityState={{ selected: active }}
             key={option.value}
             onPress={() => onChange(option.value)}
             className={`rounded-full border px-4 py-2 ${

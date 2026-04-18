@@ -19,6 +19,7 @@ export function FieldInput({
       </AppText>
       <TextInput
         {...props}
+        accessibilityLabel={label}
         className={`rounded-2xl border border-border bg-white px-4 py-3 text-base text-ink ${className ?? ""}`}
         placeholderTextColor="#72808d"
       />

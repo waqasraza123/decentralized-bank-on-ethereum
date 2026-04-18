@@ -1,7 +1,5 @@
 # Stealth Trails Bank
 
-[![License](https://img.shields.io/github/license/waqasraza123/stealth-trails-bank)](LICENSE)
-
 ![PNPM](https://img.shields.io/badge/pnpm-9.15.0-F69220?logo=pnpm&logoColor=fff)
 ![Turborepo](https://img.shields.io/badge/Turborepo-2.x-EF4444?logo=turborepo&logoColor=fff)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178C6?logo=typescript&logoColor=fff)
@@ -184,7 +182,10 @@ Run these from the repository root unless noted otherwise.
 | `pnpm dev:mobile`                         | Start the Expo mobile app                                           |
 | `pnpm mobile:ios`                         | Open the Expo app in an iOS simulator                               |
 | `pnpm mobile:android`                     | Open the Expo app in an Android emulator                            |
+| `pnpm mobile:typecheck`                   | Typecheck the React Native app                                      |
 | `pnpm mobile:test`                        | Run the mobile Jest suite                                           |
+| `pnpm mobile:export`                      | Export the Expo web bundle used as a CI bundle gate                 |
+| `pnpm mobile:verify`                      | Run the production mobile verification gate                         |
 | `pnpm push --validate-before-push`        | Run repo push validation and push only if it passes                 |
 | `pnpm safe-push`                          | Alias for `pnpm push --validate-before-push`                        |
 

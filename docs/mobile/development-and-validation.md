@@ -26,8 +26,10 @@ From the repository root:
 pnpm dev:mobile
 pnpm mobile:ios
 pnpm mobile:android
+pnpm mobile:typecheck
 pnpm mobile:test
-pnpm --filter @stealth-trails-bank/mobile exec tsc --noEmit
+pnpm mobile:export
+pnpm mobile:verify
 ```
 
 ## Validation baseline
@@ -35,8 +37,7 @@ pnpm --filter @stealth-trails-bank/mobile exec tsc --noEmit
 Before shipping mobile changes, run:
 
 ```bash
-pnpm --filter @stealth-trails-bank/mobile exec tsc --noEmit
-pnpm mobile:test
+pnpm mobile:verify
 ```
 
 Then verify on a simulator or device:
@@ -53,3 +54,4 @@ Then verify on a simulator or device:
 - The mobile app reuses the existing API envelope and does not introduce a separate backend contract.
 - JWT is stored in secure storage; locale is stored in async storage.
 - Money movement remains request-driven and policy-governed; mobile is a client surface over the same backend workflow model as web.
+- GitHub Actions runs the same `pnpm mobile:verify` gate in `.github/workflows/mobile-ci.yml`.

@@ -4,13 +4,18 @@ export const mobileMessages = {
     retry: "Retry",
     save: "Save",
     cancel: "Cancel",
+    reset: "Reset app",
     enabled: "Enabled",
     disabled: "Disabled",
     notAvailable: "Not available",
     close: "Close",
     signOut: "Sign out",
     open: "Open",
-    noData: "No data available yet."
+    noData: "No data available yet.",
+    somethingWentWrong: "Something went wrong",
+    crashRecovery:
+      "The mobile session hit an unexpected runtime error. Reset the app shell and try again.",
+    requiredField: "Complete every required field before continuing."
   },
   locale: {
     label: "Language",
@@ -44,7 +49,9 @@ export const mobileMessages = {
     switchToSignUp: "Create an account",
     switchToSignIn: "Already have an account?",
     demoFill: "Use shared demo credentials",
-    sessionExpired: "Your session expired. Please sign in again."
+    sessionExpired: "Your session expired. Please sign in again.",
+    emailInvalid: "Enter a valid email address.",
+    passwordTooShort: "Password must be at least 8 characters."
   },
   dashboard: {
     title: "Managed money overview",
@@ -177,6 +184,8 @@ export const mobileMessages = {
     installmentAmount: "Installment",
     installment: "Installment",
     termInvalid: "Term months must be a whole number greater than zero.",
+    acknowledgementRequired:
+      "Acknowledge the fixed service fee disclosure before submitting.",
     acknowledgement:
       "I acknowledge that the disclosed service fee is fixed and non-interest bearing.",
     noEligibility: "Lending is not available for this account yet."

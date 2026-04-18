@@ -10,6 +10,11 @@ import { InlineNotice } from "../../components/ui/InlineNotice";
 import { LanguageToggle } from "../../components/ui/LanguageToggle";
 import { useAuthActions } from "../../hooks/use-session";
 import { useT } from "../../i18n/use-t";
+import {
+  hasMinimumLength,
+  isEmailAddress,
+  isNonEmptyValue
+} from "../../lib/validation";
 import type { AuthStackParamList } from "../../navigation/types";
 
 export function SignUpScreen() {
@@ -23,8 +28,33 @@ export function SignUpScreen() {
   const [password, setPassword] = useState("");
 
   async function handleSubmit() {
+    if (
+      !isNonEmptyValue(firstName) ||
+      !isNonEmptyValue(lastName) ||
+      !isNonEmptyValue(email) ||
+      !isNonEmptyValue(password)
+    ) {
+      Alert.alert(t("auth.signUp"), t("common.requiredField"));
+      return;
+    }
+
+    if (!isEmailAddress(email)) {
+      Alert.alert(t("auth.signUp"), t("auth.emailInvalid"));
+      return;
+    }
+
+    if (!hasMinimumLength(password, 8)) {
+      Alert.alert(t("auth.signUp"), t("auth.passwordTooShort"));
+      return;
+    }
+
     try {
-      await signUp({ firstName, lastName, email, password });
+      await signUp({
+        firstName: firstName.trim(),
+        lastName: lastName.trim(),
+        email: email.trim(),
+        password: password.trim()
+      });
       Alert.alert(t("auth.signUp"), t("auth.switchToSignIn"));
       navigation.navigate("SignIn");
     } catch (requestError) {

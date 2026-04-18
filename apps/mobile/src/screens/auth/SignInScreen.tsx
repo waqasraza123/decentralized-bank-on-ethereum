@@ -10,6 +10,11 @@ import { InlineNotice } from "../../components/ui/InlineNotice";
 import { LanguageToggle } from "../../components/ui/LanguageToggle";
 import { useAuthActions } from "../../hooks/use-session";
 import { useT } from "../../i18n/use-t";
+import {
+  hasMinimumLength,
+  isEmailAddress,
+  isNonEmptyValue
+} from "../../lib/validation";
 import type { AuthStackParamList } from "../../navigation/types";
 
 const sharedLoginCredentials = {
@@ -26,8 +31,23 @@ export function SignInScreen() {
   const [password, setPassword] = useState("");
 
   async function handleSubmit() {
+    if (!isEmailAddress(email)) {
+      Alert.alert(t("auth.signIn"), t("auth.emailInvalid"));
+      return;
+    }
+
+    if (!isNonEmptyValue(password)) {
+      Alert.alert(t("auth.signIn"), t("common.requiredField"));
+      return;
+    }
+
+    if (!hasMinimumLength(password, 8)) {
+      Alert.alert(t("auth.signIn"), t("auth.passwordTooShort"));
+      return;
+    }
+
     try {
-      await signIn({ email, password });
+      await signIn({ email: email.trim(), password: password.trim() });
     } catch (requestError) {
       Alert.alert(
         t("auth.signIn"),

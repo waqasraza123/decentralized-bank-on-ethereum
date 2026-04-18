@@ -98,6 +98,14 @@ export function LoansScreen() {
       return;
     }
 
+    if (!acknowledged) {
+      Alert.alert(
+        t("loans.submitApplication"),
+        t("loans.acknowledgementRequired")
+      );
+      return;
+    }
+
     if (!isPositiveDecimalString(borrowAmount)) {
       Alert.alert(t("loans.submitApplication"), t("wallet.amountInvalid"));
       return;
@@ -264,7 +272,11 @@ export function LoansScreen() {
               <AppText className="text-sm text-ink" weight="semibold">
                 {t("loans.autopay")}
               </AppText>
-              <Switch onValueChange={setAutopayEnabled} value={autopayEnabled} />
+              <Switch
+                accessibilityLabel={t("loans.autopay")}
+                onValueChange={setAutopayEnabled}
+                value={autopayEnabled}
+              />
             </View>
             <FieldInput
               label={t("loans.supportNote")}
@@ -277,7 +289,11 @@ export function LoansScreen() {
               <AppText className="mr-4 flex-1 text-sm leading-6 text-ink">
                 {t("loans.acknowledgement")}
               </AppText>
-              <Switch onValueChange={setAcknowledged} value={acknowledged} />
+              <Switch
+                accessibilityLabel={t("loans.acknowledgement")}
+                onValueChange={setAcknowledged}
+                value={acknowledged}
+              />
             </View>
             <AppButton
               disabled={!dashboard.eligibility.eligible || quotePreviewMutation.isPending}
@@ -358,6 +374,7 @@ export function LoansScreen() {
                         {t("loans.autopay")}
                       </AppText>
                       <Switch
+                        accessibilityLabel={`${t("loans.autopay")} ${selectedAgreement.id}`}
                         onValueChange={(nextValue) => {
                           void updateAutopay(nextValue);
                         }}

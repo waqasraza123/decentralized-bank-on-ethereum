@@ -10,6 +10,25 @@ import { NavigationContainer } from "@react-navigation/native";
 import { queryClient } from "./src/lib/query-client";
 import { MobileI18nProvider } from "./src/i18n/provider";
 import { AppNavigator } from "./src/navigation/AppNavigator";
+import { useT } from "./src/i18n/use-t";
+import { AppErrorBoundary } from "./src/components/system/AppErrorBoundary";
+
+function MobileShell() {
+  const t = useT();
+
+  return (
+    <AppErrorBoundary
+      title={t("common.somethingWentWrong")}
+      message={t("common.crashRecovery")}
+      actionLabel={t("common.reset")}
+    >
+      <NavigationContainer>
+        <StatusBar style="dark" />
+        <AppNavigator />
+      </NavigationContainer>
+    </AppErrorBoundary>
+  );
+}
 
 export default function App() {
   return (
@@ -17,10 +36,7 @@ export default function App() {
       <SafeAreaProvider>
         <QueryClientProvider client={queryClient}>
           <MobileI18nProvider>
-            <NavigationContainer>
-              <StatusBar style="dark" />
-              <AppNavigator />
-            </NavigationContainer>
+            <MobileShell />
           </MobileI18nProvider>
         </QueryClientProvider>
       </SafeAreaProvider>

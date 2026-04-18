@@ -19,6 +19,7 @@ import { useLocale } from "../i18n/use-locale";
 import { useT } from "../i18n/use-t";
 import { formatAccountStatusLabel, getAccountStatusTone } from "../lib/account";
 import { formatDateLabel } from "../lib/finance";
+import { hasMinimumLength, isNonEmptyValue } from "../lib/validation";
 import { useSessionStore } from "../stores/session-store";
 
 const emptyPasswordForm = {
@@ -44,15 +45,29 @@ export function ProfileScreen() {
   }, [profile?.notificationPreferences]);
 
   async function handlePasswordUpdate() {
+    if (
+      !isNonEmptyValue(passwordForm.currentPassword) ||
+      !isNonEmptyValue(passwordForm.newPassword) ||
+      !isNonEmptyValue(passwordForm.confirmPassword)
+    ) {
+      Alert.alert(t("profile.passwordManagement"), t("common.requiredField"));
+      return;
+    }
+
     if (passwordForm.newPassword !== passwordForm.confirmPassword) {
       Alert.alert(t("profile.passwordManagement"), t("profile.passwordsMustMatch"));
       return;
     }
 
+    if (!hasMinimumLength(passwordForm.newPassword, 8)) {
+      Alert.alert(t("profile.passwordManagement"), t("auth.passwordTooShort"));
+      return;
+    }
+
     try {
       await rotatePasswordMutation.mutateAsync({
-        currentPassword: passwordForm.currentPassword,
-        newPassword: passwordForm.newPassword
+        currentPassword: passwordForm.currentPassword.trim(),
+        newPassword: passwordForm.newPassword.trim()
       });
       setPasswordForm(emptyPasswordForm);
       Alert.alert(t("profile.passwordManagement"), t("profile.passwordUpdated"));
@@ -223,6 +238,7 @@ export function ProfileScreen() {
                       {item.label}
                     </AppText>
                     <Switch
+                      accessibilityLabel={item.label}
                       onValueChange={(nextValue) =>
                         setNotificationDraft((current) =>
                           current
