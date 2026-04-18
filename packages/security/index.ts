@@ -1,4 +1,5 @@
 export {
+  buildInternalGovernedExecutorHeaders,
   buildInternalOperatorHeaders,
   buildInternalWorkerHeaders,
   readHeaderValue
@@ -6,6 +7,7 @@ export {
 export type {
   HeaderRecord,
   HeaderValue,
+  InternalGovernedExecutorSession,
   InternalOperatorSession,
   InternalWorkerSession
 } from "./src/headers";

@@ -118,6 +118,8 @@ const DEFAULT_LOCAL_WORKER_ID = "worker-local-1";
 const DEFAULT_LOCAL_INTERNAL_API_BASE_URL = "http://localhost:9001";
 const DEFAULT_LOCAL_INTERNAL_WORKER_API_KEY = "local-dev-worker-key";
 const DEFAULT_LOCAL_INTERNAL_OPERATOR_API_KEY = "local-dev-operator-key";
+const DEFAULT_LOCAL_INTERNAL_GOVERNED_EXECUTOR_API_KEY =
+  "local-dev-governed-executor-key";
 const DEFAULT_SHARED_LOGIN_ENABLED = true;
 const DEFAULT_SHARED_LOGIN_EMAIL = "admin@gmail.com";
 const DEFAULT_SHARED_LOGIN_PASSWORD = "P@ssw0rd";
@@ -807,6 +809,10 @@ export type InternalWorkerRuntimeConfig = {
   readonly internalWorkerApiKey: string;
 };
 
+export type InternalGovernedExecutorRuntimeConfig = {
+  readonly internalGovernedExecutorApiKey: string;
+};
+
 export type ManualResolutionPolicyRuntimeConfig = {
   readonly manualResolutionAllowedOperatorRoles: readonly string[];
 };
@@ -937,6 +943,7 @@ export type GovernedExecutionRuntimeConfig = {
   readonly overrideMaxHours: number;
   readonly executionPackageSignerPrivateKey: string;
   readonly executionClaimLeaseSeconds: number;
+  readonly executorClaimLeaseSeconds: number;
 };
 
 function parsePlatformAlertDeliveryHealthSloConfig(
@@ -1482,6 +1489,23 @@ export function loadInternalWorkerRuntimeConfig(
   };
 }
 
+export function loadInternalGovernedExecutorRuntimeConfig(
+  env: RuntimeEnvShape = getNodeRuntimeEnv()
+): InternalGovernedExecutorRuntimeConfig {
+  const environment = parseApiRuntimeEnvironment(
+    readOptionalRuntimeEnv(env, "NODE_ENV")
+  );
+
+  return {
+    internalGovernedExecutorApiKey: readDevelopmentAwareRequiredRuntimeEnv(
+      env,
+      environment,
+      "INTERNAL_GOVERNED_EXECUTOR_API_KEY",
+      DEFAULT_LOCAL_INTERNAL_GOVERNED_EXECUTOR_API_KEY
+    )
+  };
+}
+
 export function loadManualResolutionPolicyRuntimeConfig(
   env: RuntimeEnvShape = getNodeRuntimeEnv()
 ): ManualResolutionPolicyRuntimeConfig {
@@ -1988,6 +2012,13 @@ export function loadGovernedExecutionRuntimeConfig(
       readOptionalRuntimeEnv(env, "GOVERNED_EXECUTION_CLAIM_LEASE_SECONDS") ??
         "300",
       "GOVERNED_EXECUTION_CLAIM_LEASE_SECONDS"
+    ),
+    executorClaimLeaseSeconds: parsePositiveInteger(
+      readOptionalRuntimeEnv(
+        env,
+        "GOVERNED_EXECUTOR_CLAIM_LEASE_SECONDS"
+      ) ?? "300",
+      "GOVERNED_EXECUTOR_CLAIM_LEASE_SECONDS"
     )
   };
 }

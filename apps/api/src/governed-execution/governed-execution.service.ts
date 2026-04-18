@@ -166,6 +166,10 @@ type ExecutionRequestProjection = {
   dispatchReference: string | null;
   dispatchVerificationChecksumSha256: string | null;
   dispatchFailureReason: string | null;
+  claimedByExecutorId: string | null;
+  executorClaimedAt: string | null;
+  executorClaimExpiresAt: string | null;
+  executorReceiptSubmittedAt: string | null;
   updatedAt: string;
   asset: {
     id: string;
@@ -198,6 +202,7 @@ export type GovernedExecutionWorkspaceResult = {
     stakingWriteExecutionMode: string;
     overrideMaxHours: number;
     executionClaimLeaseSeconds: number;
+    executorClaimLeaseSeconds: number;
   };
   posture: {
     status: "healthy" | "warning" | "critical";
@@ -411,6 +416,12 @@ export class GovernedExecutionService {
       dispatchVerificationChecksumSha256:
         record.dispatchVerificationChecksumSha256 ?? null,
       dispatchFailureReason: record.dispatchFailureReason ?? null,
+      claimedByExecutorId: record.claimedByExecutorId ?? null,
+      executorClaimedAt: record.executorClaimedAt?.toISOString() ?? null,
+      executorClaimExpiresAt:
+        record.executorClaimExpiresAt?.toISOString() ?? null,
+      executorReceiptSubmittedAt:
+        record.executorReceiptSubmittedAt?.toISOString() ?? null,
       updatedAt: record.updatedAt.toISOString(),
       asset: record.asset
         ? {
@@ -804,7 +815,8 @@ export class GovernedExecutionService {
         loanFundingExecutionMode: this.config.loanFundingExecutionMode,
         stakingWriteExecutionMode: this.config.stakingWriteExecutionMode,
         overrideMaxHours: this.config.overrideMaxHours,
-        executionClaimLeaseSeconds: this.config.executionClaimLeaseSeconds
+        executionClaimLeaseSeconds: this.config.executionClaimLeaseSeconds,
+        executorClaimLeaseSeconds: this.config.executorClaimLeaseSeconds
       },
       posture: {
         status,
@@ -1270,6 +1282,532 @@ export class GovernedExecutionService {
     };
   }
 
+  async listExecutorReadyExecutionRequests(limit: number): Promise<{
+    requests: ExecutionRequestProjection[];
+    limit: number;
+    generatedAt: string;
+  }> {
+    const normalizedLimit = Math.max(1, Math.min(limit, 50));
+    const now = new Date();
+    const records = await this.prismaService.governedTreasuryExecutionRequest.findMany({
+      where: {
+        environment: this.environment,
+        status: {
+          in: [
+            GovernedTreasuryExecutionRequestStatus.pending_execution,
+            GovernedTreasuryExecutionRequestStatus.execution_failed
+          ]
+        },
+        dispatchStatus: GovernedTreasuryExecutionDispatchStatus.dispatched,
+        OR: [
+          {
+            executorClaimExpiresAt: null
+          },
+          {
+            executorClaimExpiresAt: {
+              lt: now
+            }
+          }
+        ]
+      },
+      include: executionRequestInclude,
+      orderBy: {
+        requestedAt: "asc"
+      },
+      take: normalizedLimit
+    });
+
+    return {
+      requests: records.map((record) => this.mapExecutionRequestProjection(record)),
+      limit: normalizedLimit,
+      generatedAt: now.toISOString()
+    };
+  }
+
+  async claimExecutionForExecutor(
+    requestId: string,
+    executorId: string,
+    reclaimStaleAfterMs?: number
+  ): Promise<{
+    request: ExecutionRequestProjection;
+    claimReused: boolean;
+  }> {
+    const now = new Date();
+    const claimLeaseMs = Math.max(
+      reclaimStaleAfterMs ?? this.config.executorClaimLeaseSeconds * 1000,
+      1_000
+    );
+    const executorClaimExpiresAt = new Date(now.getTime() + claimLeaseMs);
+
+    const result = await this.prismaService.$transaction(async (transaction) => {
+      const request = await transaction.governedTreasuryExecutionRequest.findUnique({
+        where: {
+          id: requestId
+        },
+        include: executionRequestInclude
+      });
+
+      if (!request || request.environment !== this.environment) {
+        throw new ConflictException(
+          "Governed treasury execution request was not found in this environment."
+        );
+      }
+
+      if (
+        request.dispatchStatus !==
+        GovernedTreasuryExecutionDispatchStatus.dispatched
+      ) {
+        throw new ConflictException(
+          "Governed treasury execution request is not ready for governed executor pickup."
+        );
+      }
+
+      if (
+        request.status !== GovernedTreasuryExecutionRequestStatus.pending_execution &&
+        request.status !== GovernedTreasuryExecutionRequestStatus.execution_failed
+      ) {
+        throw new ConflictException(
+          "Governed treasury execution request is no longer executable."
+        );
+      }
+
+      if (
+        request.claimedByExecutorId === executorId &&
+        request.executorClaimExpiresAt &&
+        request.executorClaimExpiresAt.getTime() > now.getTime()
+      ) {
+        return {
+          request,
+          claimReused: true
+        };
+      }
+
+      if (
+        request.claimedByExecutorId &&
+        request.claimedByExecutorId !== executorId &&
+        request.executorClaimExpiresAt &&
+        request.executorClaimExpiresAt.getTime() > now.getTime()
+      ) {
+        throw new ConflictException(
+          "Governed treasury execution request is already claimed by another governed executor."
+        );
+      }
+
+      const updated = await transaction.governedTreasuryExecutionRequest.update({
+        where: {
+          id: request.id
+        },
+        data: {
+          claimedByExecutorId: executorId,
+          executorClaimedAt: now,
+          executorClaimExpiresAt
+        },
+        include: executionRequestInclude
+      });
+
+      await transaction.auditEvent.create({
+        data: {
+          customerId: null,
+          actorType: "system",
+          actorId: executorId,
+          action: "governed_execution.executor.claimed",
+          targetType: "GovernedTreasuryExecutionRequest",
+          targetId: updated.id,
+          metadata: {
+            environment: this.environment,
+            dispatchReference: updated.dispatchReference,
+            executorClaimExpiresAt: executorClaimExpiresAt.toISOString()
+          } as PrismaJsonValue
+        }
+      });
+
+      return {
+        request: updated,
+        claimReused: false
+      };
+    });
+
+    return {
+      request: this.mapExecutionRequestProjection(result.request),
+      claimReused: result.claimReused
+    };
+  }
+
+  private assertExecutorReceiptMatchesRequest(
+    request: ExecutionRequestRecord,
+    input: {
+      dispatchReference: string;
+      transactionChainId: number;
+      transactionToAddress: string;
+    }
+  ): void {
+    const dispatchReference = this.normalizeOptionalString(input.dispatchReference);
+    const transactionToAddress = this.normalizeOptionalString(
+      input.transactionToAddress
+    )?.toLowerCase();
+
+    if (!dispatchReference || dispatchReference !== request.dispatchReference) {
+      throw new ConflictException(
+        "Governed executor receipt does not match the active dispatch reference."
+      );
+    }
+
+    if (input.transactionChainId !== request.chainId) {
+      throw new ConflictException(
+        "Governed executor receipt chain id does not match the execution request."
+      );
+    }
+
+    const expectedToAddress =
+      this.normalizeOptionalString(request.contractAddress)?.toLowerCase() ??
+      this.normalizeOptionalString(request.walletAddress)?.toLowerCase();
+
+    if (expectedToAddress && transactionToAddress !== expectedToAddress) {
+      throw new ConflictException(
+        "Governed executor receipt target address does not match the execution request."
+      );
+    }
+  }
+
+  async recordExecutionSuccessFromExecutor(
+    requestId: string,
+    input: {
+      dispatchReference: string;
+      transactionChainId: number;
+      transactionToAddress: string;
+      blockchainTransactionHash?: string;
+      externalExecutionReference?: string;
+      contractLoanId?: string;
+      contractAddress?: string;
+      executionNote?: string;
+    },
+    executorId: string
+  ): Promise<{
+    request: ExecutionRequestProjection;
+  }> {
+    const executionNote = this.normalizeOptionalString(input.executionNote);
+    const blockchainTransactionHash = this.normalizeOptionalString(
+      input.blockchainTransactionHash
+    );
+    const externalExecutionReference = this.normalizeOptionalString(
+      input.externalExecutionReference
+    );
+    const contractLoanId = this.normalizeOptionalString(input.contractLoanId);
+    const contractAddress = this.normalizeOptionalString(input.contractAddress);
+
+    if (!blockchainTransactionHash && !externalExecutionReference) {
+      throw new BadRequestException(
+        "Governed executor success requires a blockchain transaction hash or external execution reference."
+      );
+    }
+
+    const updated = await this.prismaService.$transaction(async (transaction) => {
+      const request = await transaction.governedTreasuryExecutionRequest.findUnique({
+        where: {
+          id: requestId
+        },
+        include: executionRequestInclude
+      });
+
+      if (!request || request.environment !== this.environment) {
+        throw new ConflictException(
+          "Governed treasury execution request was not found in this environment."
+        );
+      }
+
+      if (request.claimedByExecutorId !== executorId) {
+        throw new ConflictException(
+          "Governed treasury execution request is not claimed by this governed executor."
+        );
+      }
+
+      if (
+        !request.executorClaimExpiresAt ||
+        request.executorClaimExpiresAt.getTime() <= Date.now()
+      ) {
+        throw new ConflictException(
+          "Governed treasury execution request executor lease has expired."
+        );
+      }
+
+      this.assertExecutorReceiptMatchesRequest(request, input);
+
+      if (
+        request.executionType ===
+          GovernedTreasuryExecutionRequestType.loan_contract_creation &&
+        !contractLoanId
+      ) {
+        throw new BadRequestException(
+          "Governed executor loan contract creation requires contractLoanId."
+        );
+      }
+
+      const next = await transaction.governedTreasuryExecutionRequest.update({
+        where: {
+          id: request.id
+        },
+        data: {
+          status: GovernedTreasuryExecutionRequestStatus.executed,
+          dispatchStatus: GovernedTreasuryExecutionDispatchStatus.dispatched,
+          claimedByWorkerId: null,
+          claimedAt: null,
+          claimExpiresAt: null,
+          claimedByExecutorId: null,
+          executorClaimedAt: null,
+          executorClaimExpiresAt: null,
+          executorReceiptSubmittedAt: new Date(),
+          executedByActorType: "governed_executor",
+          executedByActorId: executorId,
+          executedByActorRole: null,
+          executedAt: new Date(),
+          blockchainTransactionHash: blockchainTransactionHash ?? undefined,
+          externalExecutionReference: externalExecutionReference ?? undefined,
+          failureReason: null,
+          failedAt: null,
+          dispatchFailureReason: null,
+          contractAddress:
+            contractAddress ?? request.contractAddress ?? undefined,
+          executionResult: {
+            executionNote: executionNote ?? null,
+            blockchainTransactionHash: blockchainTransactionHash ?? null,
+            externalExecutionReference: externalExecutionReference ?? null,
+            contractLoanId: contractLoanId ?? null,
+            dispatchReference: request.dispatchReference
+          } as PrismaJsonValue
+        },
+        include: executionRequestInclude
+      });
+
+      if (next.loanAgreementId) {
+        await transaction.loanAgreement.update({
+          where: {
+            id: next.loanAgreementId
+          },
+          data: {
+            contractLoanId: contractLoanId ?? undefined,
+            contractAddress:
+              contractAddress ?? next.contractAddress ?? undefined,
+            activationTransactionHash:
+              blockchainTransactionHash ?? undefined
+          }
+        });
+
+        await transaction.loanEvent.create({
+          data: {
+            loanAgreementId: next.loanAgreementId,
+            actorType: "system",
+            actorId: executorId,
+            actorRole: null,
+            eventType: "governed_executor_execution_recorded",
+            note:
+              executionNote ??
+              "Governed executor submitted a successful loan execution receipt.",
+            metadata: {
+              governedTreasuryExecutionRequestId: next.id,
+              blockchainTransactionHash,
+              externalExecutionReference,
+              contractLoanId,
+              dispatchReference: request.dispatchReference
+            } as PrismaJsonValue
+          }
+        });
+      }
+
+      if (next.stakingPoolGovernanceRequestId) {
+        await transaction.stakingPoolGovernanceRequest.update({
+          where: {
+            id: next.stakingPoolGovernanceRequestId
+          },
+          data: {
+            status: "executed",
+            executedByOperatorId: null,
+            executedByOperatorRole: null,
+            executionNote: executionNote ?? undefined,
+            executionFailureReason: null,
+            blockchainTransactionHash: blockchainTransactionHash ?? undefined,
+            executedAt: new Date()
+          }
+        });
+      }
+
+      await transaction.auditEvent.create({
+        data: {
+          customerId: null,
+          actorType: "system",
+          actorId: executorId,
+          action: "governed_execution.executor.executed",
+          targetType: "GovernedTreasuryExecutionRequest",
+          targetId: next.id,
+          metadata: {
+            environment: this.environment,
+            blockchainTransactionHash,
+            externalExecutionReference,
+            contractLoanId,
+            dispatchReference: request.dispatchReference,
+            transactionChainId: input.transactionChainId,
+            transactionToAddress: input.transactionToAddress
+          } as PrismaJsonValue
+        }
+      });
+
+      return next;
+    });
+
+    return {
+      request: this.mapExecutionRequestProjection(updated)
+    };
+  }
+
+  async recordExecutionFailureFromExecutor(
+    requestId: string,
+    input: {
+      dispatchReference: string;
+      failureReason: string;
+      executionNote?: string;
+      transactionChainId?: number;
+      transactionToAddress?: string;
+      blockchainTransactionHash?: string;
+      externalExecutionReference?: string;
+    },
+    executorId: string
+  ): Promise<{
+    request: ExecutionRequestProjection;
+  }> {
+    const failureReason = this.normalizeOptionalString(input.failureReason);
+    const executionNote = this.normalizeOptionalString(input.executionNote);
+    const blockchainTransactionHash = this.normalizeOptionalString(
+      input.blockchainTransactionHash
+    );
+    const externalExecutionReference = this.normalizeOptionalString(
+      input.externalExecutionReference
+    );
+
+    if (!failureReason) {
+      throw new BadRequestException("failureReason is required.");
+    }
+
+    const updated = await this.prismaService.$transaction(async (transaction) => {
+      const request = await transaction.governedTreasuryExecutionRequest.findUnique({
+        where: {
+          id: requestId
+        },
+        include: executionRequestInclude
+      });
+
+      if (!request || request.environment !== this.environment) {
+        throw new ConflictException(
+          "Governed treasury execution request was not found in this environment."
+        );
+      }
+
+      if (request.claimedByExecutorId !== executorId) {
+        throw new ConflictException(
+          "Governed treasury execution request is not claimed by this governed executor."
+        );
+      }
+
+      if (
+        !request.executorClaimExpiresAt ||
+        request.executorClaimExpiresAt.getTime() <= Date.now()
+      ) {
+        throw new ConflictException(
+          "Governed treasury execution request executor lease has expired."
+        );
+      }
+
+      if (
+        input.transactionChainId !== undefined &&
+        input.transactionToAddress !== undefined
+      ) {
+        this.assertExecutorReceiptMatchesRequest(request, {
+          dispatchReference: input.dispatchReference,
+          transactionChainId: input.transactionChainId,
+          transactionToAddress: input.transactionToAddress
+        });
+      } else if (input.dispatchReference !== request.dispatchReference) {
+        throw new ConflictException(
+          "Governed executor failure receipt does not match the active dispatch reference."
+        );
+      }
+
+      const next = await transaction.governedTreasuryExecutionRequest.update({
+        where: {
+          id: request.id
+        },
+        data: {
+          status: GovernedTreasuryExecutionRequestStatus.execution_failed,
+          dispatchStatus: GovernedTreasuryExecutionDispatchStatus.dispatch_failed,
+          claimedByWorkerId: null,
+          claimedAt: null,
+          claimExpiresAt: null,
+          claimedByExecutorId: null,
+          executorClaimedAt: null,
+          executorClaimExpiresAt: null,
+          executorReceiptSubmittedAt: new Date(),
+          blockchainTransactionHash: blockchainTransactionHash ?? undefined,
+          externalExecutionReference: externalExecutionReference ?? undefined,
+          failureReason,
+          failedAt: new Date(),
+          dispatchFailureReason: failureReason,
+          executionResult: {
+            executionNote: executionNote ?? null,
+            blockchainTransactionHash: blockchainTransactionHash ?? null,
+            externalExecutionReference: externalExecutionReference ?? null,
+            failureReason,
+            dispatchReference: request.dispatchReference
+          } as PrismaJsonValue
+        },
+        include: executionRequestInclude
+      });
+
+      if (next.loanAgreementId) {
+        await transaction.loanEvent.create({
+          data: {
+            loanAgreementId: next.loanAgreementId,
+            actorType: "system",
+            actorId: executorId,
+            actorRole: null,
+            eventType: "governed_executor_execution_failed",
+            note:
+              executionNote ??
+              "Governed executor submitted a failed loan execution receipt.",
+            metadata: {
+              governedTreasuryExecutionRequestId: next.id,
+              blockchainTransactionHash,
+              externalExecutionReference,
+              failureReason,
+              dispatchReference: request.dispatchReference
+            } as PrismaJsonValue
+          }
+        });
+      }
+
+      await transaction.auditEvent.create({
+        data: {
+          customerId: null,
+          actorType: "system",
+          actorId: executorId,
+          action: "governed_execution.executor.execution_failed",
+          targetType: "GovernedTreasuryExecutionRequest",
+          targetId: next.id,
+          metadata: {
+            environment: this.environment,
+            blockchainTransactionHash,
+            externalExecutionReference,
+            failureReason,
+            dispatchReference: request.dispatchReference
+          } as PrismaJsonValue
+        }
+      });
+
+      return next;
+    });
+
+    return {
+      request: this.mapExecutionRequestProjection(updated)
+    };
+  }
+
   async requestLoanContractCreation(input: {
     loanAgreementId: string;
     chainId: number;
@@ -1577,6 +2115,10 @@ export class GovernedExecutionService {
           claimedByWorkerId: null,
           claimedAt: null,
           claimExpiresAt: null,
+          claimedByExecutorId: null,
+          executorClaimedAt: null,
+          executorClaimExpiresAt: null,
+          executorReceiptSubmittedAt: new Date(),
           executedByActorType: "operator",
           executedByActorId: operator.operatorId,
           executedByActorRole: normalizedOperatorRole,
@@ -1742,6 +2284,10 @@ export class GovernedExecutionService {
           claimedByWorkerId: null,
           claimedAt: null,
           claimExpiresAt: null,
+          claimedByExecutorId: null,
+          executorClaimedAt: null,
+          executorClaimExpiresAt: null,
+          executorReceiptSubmittedAt: new Date(),
           blockchainTransactionHash: blockchainTransactionHash ?? undefined,
           externalExecutionReference: externalExecutionReference ?? undefined,
           failureReason,

@@ -22,6 +22,7 @@ const mockConfig: {
   overrideMaxHours: number;
   executionPackageSignerPrivateKey: string;
   executionClaimLeaseSeconds: number;
+  executorClaimLeaseSeconds: number;
 } = {
   environment: "production" as const,
   governedExecutionRequiredInProduction: true,
@@ -36,7 +37,8 @@ const mockConfig: {
   overrideMaxHours: 12,
   executionPackageSignerPrivateKey:
     "0x59c6995e998f97a5a0044976f094538e2d7db6d63dd7f6c5f495fac1cac7e31d",
-  executionClaimLeaseSeconds: 300
+  executionClaimLeaseSeconds: 300,
+  executorClaimLeaseSeconds: 300
 };
 
 jest.mock("@stealth-trails-bank/config/api", () => ({
@@ -169,6 +171,10 @@ function createExecutionRequestRecord(
     dispatchReference: string | null;
     dispatchVerificationChecksumSha256: string | null;
     dispatchFailureReason: string | null;
+    claimedByExecutorId: string | null;
+    executorClaimedAt: Date | null;
+    executorClaimExpiresAt: Date | null;
+    executorReceiptSubmittedAt: Date | null;
   }>
 ) {
   return {
@@ -249,6 +255,10 @@ function createExecutionRequestRecord(
     dispatchVerificationChecksumSha256:
       overrides?.dispatchVerificationChecksumSha256 ?? null,
     dispatchFailureReason: overrides?.dispatchFailureReason ?? null,
+    claimedByExecutorId: overrides?.claimedByExecutorId ?? null,
+    executorClaimedAt: overrides?.executorClaimedAt ?? null,
+    executorClaimExpiresAt: overrides?.executorClaimExpiresAt ?? null,
+    executorReceiptSubmittedAt: overrides?.executorReceiptSubmittedAt ?? null,
     requestedByActorType: "operator",
     requestedByActorId: "operator_req",
     requestedByActorRole: "risk_manager",
@@ -740,5 +750,126 @@ describe("GovernedExecutionService", () => {
     expect(result.request.dispatchStatus).toBe("dispatch_failed");
     expect(result.verificationFailureReason).toBeTruthy();
     expect(executionRequestStore[0]?.dispatchFailureReason).toBeTruthy();
+  });
+
+  it("claims a dispatched execution request for the governed executor", async () => {
+    const executionRecord = createExecutionRequestRecord({
+      id: "execution_executor_claim_1",
+      dispatchStatus: "dispatched",
+      dispatchReference: "dispatch:execution_executor_claim_1"
+    });
+    const { service, executionRequestStore } = createService({
+      executionRequests: [executionRecord]
+    });
+
+    const result = await service.claimExecutionForExecutor(
+      "execution_executor_claim_1",
+      "executor_1",
+      180000
+    );
+
+    expect(result.claimReused).toBe(false);
+    expect(result.request.claimedByExecutorId).toBe("executor_1");
+    expect(executionRequestStore[0]?.executorClaimExpiresAt).toBeTruthy();
+  });
+
+  it("records governed executor success after validating dispatch receipt details", async () => {
+    const executionRecord = createExecutionRequestRecord({
+      id: "execution_executor_success_1",
+      dispatchStatus: "dispatched",
+      dispatchReference: "dispatch:execution_executor_success_1",
+      claimedByExecutorId: "executor_1",
+      executorClaimedAt: new Date("2030-04-18T10:02:00.000Z"),
+      executorClaimExpiresAt: new Date("2030-04-18T10:07:00.000Z"),
+      contractAddress: "0x0000000000000000000000000000000000000def"
+    });
+    const { service, prismaService, executionRequestStore } = createService({
+      executionRequests: [executionRecord]
+    });
+
+    const result = await service.recordExecutionSuccessFromExecutor(
+      "execution_executor_success_1",
+      {
+        dispatchReference: "dispatch:execution_executor_success_1",
+        transactionChainId: 8453,
+        transactionToAddress: "0x0000000000000000000000000000000000000def",
+        blockchainTransactionHash: "0xexecutorhash",
+        contractLoanId: "loan_1234"
+      },
+      "executor_1"
+    );
+
+    expect(result.request.status).toBe("executed");
+    expect(result.request.claimedByExecutorId).toBeNull();
+    expect(executionRequestStore[0]?.executorReceiptSubmittedAt).toBeTruthy();
+    expect(prismaService.loanAgreement.update).toHaveBeenCalledWith({
+      where: {
+        id: "loan_agreement_1"
+      },
+      data: expect.objectContaining({
+        contractLoanId: "loan_1234",
+        activationTransactionHash: "0xexecutorhash"
+      })
+    });
+  });
+
+  it("rejects governed executor success receipts when dispatch details do not match", async () => {
+    const executionRecord = createExecutionRequestRecord({
+      id: "execution_executor_bad_receipt_1",
+      dispatchStatus: "dispatched",
+      dispatchReference: "dispatch:execution_executor_bad_receipt_1",
+      claimedByExecutorId: "executor_1",
+      executorClaimedAt: new Date("2030-04-18T10:02:00.000Z"),
+      executorClaimExpiresAt: new Date("2030-04-18T10:07:00.000Z"),
+      contractAddress: "0x0000000000000000000000000000000000000def"
+    });
+    const { service } = createService({
+      executionRequests: [executionRecord]
+    });
+
+    await expect(
+      service.recordExecutionSuccessFromExecutor(
+        "execution_executor_bad_receipt_1",
+        {
+          dispatchReference: "dispatch:execution_executor_bad_receipt_1",
+          transactionChainId: 8453,
+          transactionToAddress: "0x0000000000000000000000000000000000000abc",
+          blockchainTransactionHash: "0xexecutorhash",
+          contractLoanId: "loan_1234"
+        },
+        "executor_1"
+      )
+    ).rejects.toThrow("Governed executor receipt target address does not match");
+  });
+
+  it("records governed executor failure and resets the dispatch state", async () => {
+    const executionRecord = createExecutionRequestRecord({
+      id: "execution_executor_failure_1",
+      dispatchStatus: "dispatched",
+      dispatchReference: "dispatch:execution_executor_failure_1",
+      claimedByExecutorId: "executor_1",
+      executorClaimedAt: new Date("2030-04-18T10:02:00.000Z"),
+      executorClaimExpiresAt: new Date("2030-04-18T10:07:00.000Z"),
+      contractAddress: "0x0000000000000000000000000000000000000def"
+    });
+    const { service, executionRequestStore } = createService({
+      executionRequests: [executionRecord]
+    });
+
+    const result = await service.recordExecutionFailureFromExecutor(
+      "execution_executor_failure_1",
+      {
+        dispatchReference: "dispatch:execution_executor_failure_1",
+        failureReason: "multisig_rejected",
+        transactionChainId: 8453,
+        transactionToAddress: "0x0000000000000000000000000000000000000def"
+      },
+      "executor_1"
+    );
+
+    expect(result.request.status).toBe("execution_failed");
+    expect(result.request.dispatchStatus).toBe("dispatch_failed");
+    expect(executionRequestStore[0]?.claimedByExecutorId).toBeNull();
+    expect(executionRequestStore[0]?.executorReceiptSubmittedAt).toBeTruthy();
   });
 });
