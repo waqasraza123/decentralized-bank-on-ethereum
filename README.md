@@ -1,6 +1,17 @@
 # Stealth Trails Bank
 
-![React Native](https://img.shields.io/badge/React%20Native-20232A?style=flat&logo=react&logoColor=61DAFB)
+[![License](https://img.shields.io/github/license/waqasraza123/stealth-trails-bank)](LICENSE)
+[![Last Commit](https://img.shields.io/github/last-commit/waqasraza123/stealth-trails-bank)](https://github.com/waqasraza123/stealth-trails-bank/commits/main)
+[![Issues](https://img.shields.io/github/issues/waqasraza123/stealth-trails-bank)](https://github.com/waqasraza123/stealth-trails-bank/issues)
+[![Pull Requests](https://img.shields.io/github/issues-pr/waqasraza123/stealth-trails-bank)](https://github.com/waqasraza123/stealth-trails-bank/pulls)
+[![Stars](https://img.shields.io/github/stars/waqasraza123/stealth-trails-bank)](https://github.com/waqasraza123/stealth-trails-bank/stargazers)
+
+![PNPM](https://img.shields.io/badge/pnpm-9.15.0-F69220?logo=pnpm&logoColor=fff)
+![Turborepo](https://img.shields.io/badge/Turborepo-2.x-EF4444?logo=turborepo&logoColor=fff)
+![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178C6?logo=typescript&logoColor=fff)
+![Playwright](https://img.shields.io/badge/Playwright-E2E-45BA4B?logo=playwright&logoColor=fff)
+![React Native](https://img.shields.io/badge/React%20Native-20232A?logo=react&logoColor=61DAFB)
+![Expo](https://img.shields.io/badge/Expo-SDK%2055-000020?logo=expo&logoColor=fff)
 
 ## Screenshots
 
