@@ -276,6 +276,4 @@ Please read these files before opening major changes:
 
 ## License
 
-This repository is currently distributed under a proprietary license. See `LICENSE`.
-
-If you later decide to open-source all or part of the repo, the license can be changed intentionally instead of by accident.
+This repository is distributed under the MIT License. See `LICENSE`.
