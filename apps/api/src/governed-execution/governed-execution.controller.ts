@@ -11,6 +11,8 @@ import {
 import { InternalOperatorApiKeyGuard } from "../auth/guards/internal-operator-api-key.guard";
 import { CustomJsonResponse } from "../types/CustomJsonResponse";
 import { ApproveGovernedExecutionOverrideDto } from "./dto/approve-governed-execution-override.dto";
+import { RecordGovernedTreasuryExecutionFailureDto } from "./dto/record-governed-treasury-execution-failure.dto";
+import { RecordGovernedTreasuryExecutionSuccessDto } from "./dto/record-governed-treasury-execution-success.dto";
 import { RejectGovernedExecutionOverrideDto } from "./dto/reject-governed-execution-override.dto";
 import { RequestGovernedExecutionOverrideDto } from "./dto/request-governed-execution-override.dto";
 import { GovernedExecutionService } from "./governed-execution.service";
@@ -120,6 +122,62 @@ export class GovernedExecutionController {
     return {
       status: "success",
       message: "Governed execution override rejected successfully.",
+      data: result
+    };
+  }
+
+  @Post("execution-requests/:requestId/record-executed")
+  async recordExecutionSuccess(
+    @Param("requestId") requestId: string,
+    @Body(
+      new ValidationPipe({
+        whitelist: true,
+        forbidNonWhitelisted: true
+      })
+    )
+    dto: RecordGovernedTreasuryExecutionSuccessDto,
+    @Request() request: InternalOperatorRequest
+  ): Promise<CustomJsonResponse> {
+    const result = await this.governedExecutionService.recordExecutionSuccess(
+      requestId,
+      dto,
+      {
+        operatorId: request.internalOperator.operatorId,
+        operatorRole: request.internalOperator.operatorRole
+      }
+    );
+
+    return {
+      status: "success",
+      message: "Governed treasury execution was recorded successfully.",
+      data: result
+    };
+  }
+
+  @Post("execution-requests/:requestId/record-failed")
+  async recordExecutionFailure(
+    @Param("requestId") requestId: string,
+    @Body(
+      new ValidationPipe({
+        whitelist: true,
+        forbidNonWhitelisted: true
+      })
+    )
+    dto: RecordGovernedTreasuryExecutionFailureDto,
+    @Request() request: InternalOperatorRequest
+  ): Promise<CustomJsonResponse> {
+    const result = await this.governedExecutionService.recordExecutionFailure(
+      requestId,
+      dto,
+      {
+        operatorId: request.internalOperator.operatorId,
+        operatorRole: request.internalOperator.operatorRole
+      }
+    );
+
+    return {
+      status: "success",
+      message: "Governed treasury execution failure was recorded successfully.",
       data: result
     };
   }

@@ -625,6 +625,8 @@ export type GovernedExecutionWorkspace = {
   latestPendingOverrideRequest: GovernedExecutionOverrideRequest | null;
   activeApprovedOverrides: GovernedExecutionOverrideRequest[];
   recentOverrideRequests: GovernedExecutionOverrideRequest[];
+  latestPendingExecutionRequest: GovernedTreasuryExecutionRequest | null;
+  recentExecutionRequests: GovernedTreasuryExecutionRequest[];
   governance: {
     currentOperator: {
       operatorId: string | null;
@@ -659,6 +661,57 @@ export type GovernedExecutionOverrideRequest = {
   rejectionNote: string | null;
   rejectedAt: string | null;
   updatedAt: string;
+};
+
+export type GovernedTreasuryExecutionRequest = {
+  id: string;
+  environment: string;
+  chainId: number;
+  executionType: string;
+  status: string;
+  targetType: string;
+  targetId: string;
+  loanAgreementId: string | null;
+  stakingPoolGovernanceRequestId: string | null;
+  contractAddress: string | null;
+  contractMethod: string;
+  walletAddress: string | null;
+  requestNote: string | null;
+  requestedByActorType: string;
+  requestedByActorId: string;
+  requestedByActorRole: string | null;
+  requestedAt: string;
+  executedByActorType: string | null;
+  executedByActorId: string | null;
+  executedByActorRole: string | null;
+  executedAt: string | null;
+  blockchainTransactionHash: string | null;
+  externalExecutionReference: string | null;
+  failureReason: string | null;
+  failedAt: string | null;
+  metadata: JsonValue | null;
+  executionPayload: JsonValue;
+  executionResult: JsonValue | null;
+  updatedAt: string;
+  asset: {
+    id: string;
+    symbol: string;
+    displayName: string;
+    decimals: number;
+    chainId: number;
+  } | null;
+  loanAgreement: {
+    id: string;
+    status: string;
+    contractLoanId: string | null;
+    contractAddress: string | null;
+  } | null;
+  stakingPoolGovernanceRequest: {
+    id: string;
+    status: string;
+    rewardRate: number;
+    stakingPoolId: number | null;
+  } | null;
 };
 
 export type SolvencyWorkspace = {

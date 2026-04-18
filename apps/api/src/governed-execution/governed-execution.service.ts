@@ -12,6 +12,8 @@ import {
 } from "@stealth-trails-bank/config/api";
 import {
   GovernedExecutionOverrideRequestStatus,
+  GovernedTreasuryExecutionRequestStatus,
+  GovernedTreasuryExecutionRequestType,
   Prisma,
   WalletCustodyType,
   WalletKind,
@@ -51,6 +53,38 @@ type ReserveWalletRecord = Prisma.WalletGetPayload<{
 type OverrideRecord = Prisma.GovernedExecutionOverrideRequestGetPayload<{}>;
 type WorkerHeartbeatRecord = Prisma.WorkerRuntimeHeartbeatGetPayload<{}>;
 
+const executionRequestInclude = {
+  asset: {
+    select: {
+      id: true,
+      symbol: true,
+      displayName: true,
+      decimals: true,
+      chainId: true
+    }
+  },
+  loanAgreement: {
+    select: {
+      id: true,
+      status: true,
+      contractLoanId: true,
+      contractAddress: true
+    }
+  },
+  stakingPoolGovernanceRequest: {
+    select: {
+      id: true,
+      status: true,
+      rewardRate: true,
+      stakingPoolId: true
+    }
+  }
+} satisfies Prisma.GovernedTreasuryExecutionRequestInclude;
+
+type ExecutionRequestRecord = Prisma.GovernedTreasuryExecutionRequestGetPayload<{
+  include: typeof executionRequestInclude;
+}>;
+
 type OperatorContext = {
   operatorId: string | null;
   operatorRole: string | null;
@@ -78,6 +112,57 @@ type OverrideProjection = {
   rejectionNote: string | null;
   rejectedAt: string | null;
   updatedAt: string;
+};
+
+type ExecutionRequestProjection = {
+  id: string;
+  environment: WorkerRuntimeEnvironment;
+  chainId: number;
+  executionType: GovernedTreasuryExecutionRequestType;
+  status: GovernedTreasuryExecutionRequestStatus;
+  targetType: string;
+  targetId: string;
+  loanAgreementId: string | null;
+  stakingPoolGovernanceRequestId: string | null;
+  contractAddress: string | null;
+  contractMethod: string;
+  walletAddress: string | null;
+  requestNote: string | null;
+  requestedByActorType: string;
+  requestedByActorId: string;
+  requestedByActorRole: string | null;
+  requestedAt: string;
+  executedByActorType: string | null;
+  executedByActorId: string | null;
+  executedByActorRole: string | null;
+  executedAt: string | null;
+  blockchainTransactionHash: string | null;
+  externalExecutionReference: string | null;
+  failureReason: string | null;
+  failedAt: string | null;
+  metadata: Prisma.JsonValue | null;
+  executionPayload: Prisma.JsonValue;
+  executionResult: Prisma.JsonValue | null;
+  updatedAt: string;
+  asset: {
+    id: string;
+    symbol: string;
+    displayName: string;
+    decimals: number;
+    chainId: number;
+  } | null;
+  loanAgreement: {
+    id: string;
+    status: string;
+    contractLoanId: string | null;
+    contractAddress: string | null;
+  } | null;
+  stakingPoolGovernanceRequest: {
+    id: string;
+    status: string;
+    rewardRate: number;
+    stakingPoolId: number | null;
+  } | null;
 };
 
 export type GovernedExecutionWorkspaceResult = {
@@ -128,6 +213,8 @@ export type GovernedExecutionWorkspaceResult = {
   latestPendingOverrideRequest: OverrideProjection | null;
   activeApprovedOverrides: OverrideProjection[];
   recentOverrideRequests: OverrideProjection[];
+  latestPendingExecutionRequest: ExecutionRequestProjection | null;
+  recentExecutionRequests: ExecutionRequestProjection[];
   governance: {
     currentOperator: {
       operatorId: string | null;
@@ -242,6 +329,69 @@ export class GovernedExecutionService {
     };
   }
 
+  private mapExecutionRequestProjection(
+    record: ExecutionRequestRecord
+  ): ExecutionRequestProjection {
+    return {
+      id: record.id,
+      environment: record.environment,
+      chainId: record.chainId,
+      executionType: record.executionType,
+      status: record.status,
+      targetType: record.targetType,
+      targetId: record.targetId,
+      loanAgreementId: record.loanAgreementId ?? null,
+      stakingPoolGovernanceRequestId:
+        record.stakingPoolGovernanceRequestId ?? null,
+      contractAddress: record.contractAddress ?? null,
+      contractMethod: record.contractMethod,
+      walletAddress: record.walletAddress ?? null,
+      requestNote: record.requestNote ?? null,
+      requestedByActorType: record.requestedByActorType,
+      requestedByActorId: record.requestedByActorId,
+      requestedByActorRole: record.requestedByActorRole ?? null,
+      requestedAt: record.requestedAt.toISOString(),
+      executedByActorType: record.executedByActorType ?? null,
+      executedByActorId: record.executedByActorId ?? null,
+      executedByActorRole: record.executedByActorRole ?? null,
+      executedAt: record.executedAt?.toISOString() ?? null,
+      blockchainTransactionHash: record.blockchainTransactionHash ?? null,
+      externalExecutionReference: record.externalExecutionReference ?? null,
+      failureReason: record.failureReason ?? null,
+      failedAt: record.failedAt?.toISOString() ?? null,
+      metadata: record.metadata ?? null,
+      executionPayload: record.executionPayload,
+      executionResult: record.executionResult ?? null,
+      updatedAt: record.updatedAt.toISOString(),
+      asset: record.asset
+        ? {
+            id: record.asset.id,
+            symbol: record.asset.symbol,
+            displayName: record.asset.displayName,
+            decimals: record.asset.decimals,
+            chainId: record.asset.chainId
+          }
+        : null,
+      loanAgreement: record.loanAgreement
+        ? {
+            id: record.loanAgreement.id,
+            status: record.loanAgreement.status,
+            contractLoanId: record.loanAgreement.contractLoanId ?? null,
+            contractAddress: record.loanAgreement.contractAddress ?? null
+          }
+        : null,
+      stakingPoolGovernanceRequest: record.stakingPoolGovernanceRequest
+        ? {
+            id: record.stakingPoolGovernanceRequest.id,
+            status: record.stakingPoolGovernanceRequest.status,
+            rewardRate: record.stakingPoolGovernanceRequest.rewardRate,
+            stakingPoolId:
+              record.stakingPoolGovernanceRequest.stakingPoolId ?? null
+          }
+        : null
+    };
+  }
+
   private async expireStaleOverrides(now: Date): Promise<void> {
     const expired = await this.prismaService.governedExecutionOverrideRequest.updateMany({
       where: {
@@ -290,6 +440,21 @@ export class GovernedExecutionService {
         requestedAt: "desc"
       },
       take: 12
+    });
+  }
+
+  private async findExecutionRequestRecords(
+    limit: number
+  ): Promise<ExecutionRequestRecord[]> {
+    return this.prismaService.governedTreasuryExecutionRequest.findMany({
+      where: {
+        environment: this.environment
+      },
+      include: executionRequestInclude,
+      orderBy: {
+        requestedAt: "desc"
+      },
+      take: limit
     });
   }
 
@@ -364,9 +529,18 @@ export class GovernedExecutionService {
     return overrides.some((record) => record[scope]);
   }
 
+  isLoanFundingGovernedExternalEnabled(): boolean {
+    return this.config.loanFundingExecutionMode === "governed_external";
+  }
+
+  isStakingWriteGovernedExternalEnabled(): boolean {
+    return this.config.stakingWriteExecutionMode === "governed_external";
+  }
+
   async getWorkspace(operator: OperatorContext): Promise<GovernedExecutionWorkspaceResult> {
     const now = new Date();
-    const [reserveWallets, overrideRecords, managedWorkers] = await Promise.all([
+    const [reserveWallets, overrideRecords, managedWorkers, executionRequests] =
+      await Promise.all([
       this.prismaService.wallet.findMany({
         where: {
           kind: {
@@ -387,7 +561,8 @@ export class GovernedExecutionService {
           lastHeartbeatAt: "desc"
         },
         take: 6
-      })
+      }),
+      this.findExecutionRequestRecords(20)
     ]);
 
     const activeApprovedOverrides = overrideRecords.filter(
@@ -400,6 +575,12 @@ export class GovernedExecutionService {
         (record) =>
           record.status ===
           GovernedExecutionOverrideRequestStatus.pending_approval
+      ) ?? null;
+    const latestPendingExecutionRequest =
+      executionRequests.find(
+        (record) =>
+          record.status ===
+          GovernedTreasuryExecutionRequestStatus.pending_execution
       ) ?? null;
     const reserveWalletProjections = reserveWallets.map((record) => {
       const classification = this.classifyReserveWallet(record);
@@ -552,7 +733,554 @@ export class GovernedExecutionService {
       recentOverrideRequests: overrideRecords.map((record) =>
         this.mapOverrideProjection(record)
       ),
+      latestPendingExecutionRequest: latestPendingExecutionRequest
+        ? this.mapExecutionRequestProjection(latestPendingExecutionRequest)
+        : null,
+      recentExecutionRequests: executionRequests.map((record) =>
+        this.mapExecutionRequestProjection(record)
+      ),
       governance: this.buildGovernanceProjection(operator)
+    };
+  }
+
+  async requestLoanContractCreation(input: {
+    loanAgreementId: string;
+    chainId: number;
+    assetId: string;
+    walletAddress: string | null;
+    contractAddress: string | null;
+    contractMethod: string;
+    borrowerWalletAddress: string | null;
+    principalAmount: string;
+    collateralAmount: string;
+    serviceFeeAmount: string;
+    installmentAmount: string;
+    installmentCount: number;
+    termMonths: number;
+    autopayEnabled: boolean;
+    requestNote?: string | null;
+    requestedByActorType: string;
+    requestedByActorId: string;
+    requestedByActorRole?: string | null;
+  }): Promise<{
+    request: ExecutionRequestProjection;
+    stateReused: boolean;
+  }> {
+    const requestNote = this.normalizeOptionalString(input.requestNote);
+
+    const record = await this.prismaService.$transaction(async (transaction) => {
+      const existing = await transaction.governedTreasuryExecutionRequest.findFirst({
+        where: {
+          environment: this.environment,
+          loanAgreementId: input.loanAgreementId,
+          executionType:
+            GovernedTreasuryExecutionRequestType.loan_contract_creation,
+          status: {
+            in: [
+              GovernedTreasuryExecutionRequestStatus.pending_execution,
+              GovernedTreasuryExecutionRequestStatus.executed
+            ]
+          }
+        },
+        include: executionRequestInclude,
+        orderBy: {
+          requestedAt: "desc"
+        }
+      });
+
+      if (existing) {
+        return {
+          record: existing,
+          stateReused: true
+        };
+      }
+
+      const created = await transaction.governedTreasuryExecutionRequest.create({
+        data: {
+          environment: this.environment,
+          chainId: input.chainId,
+          executionType:
+            GovernedTreasuryExecutionRequestType.loan_contract_creation,
+          targetType: "LoanAgreement",
+          targetId: input.loanAgreementId,
+          loanAgreementId: input.loanAgreementId,
+          contractAddress: input.contractAddress ?? undefined,
+          contractMethod: input.contractMethod,
+          walletAddress: input.walletAddress ?? undefined,
+          assetId: input.assetId,
+          executionPayload: {
+            borrowerWalletAddress: input.borrowerWalletAddress,
+            principalAmount: input.principalAmount,
+            collateralAmount: input.collateralAmount,
+            serviceFeeAmount: input.serviceFeeAmount,
+            installmentAmount: input.installmentAmount,
+            installmentCount: input.installmentCount,
+            termMonths: input.termMonths,
+            autopayEnabled: input.autopayEnabled
+          } as PrismaJsonValue,
+          requestedByActorType: input.requestedByActorType,
+          requestedByActorId: input.requestedByActorId,
+          requestedByActorRole: input.requestedByActorRole ?? undefined,
+          requestNote: requestNote ?? undefined
+        },
+        include: executionRequestInclude
+      });
+
+      await transaction.loanEvent.create({
+        data: {
+          loanAgreementId: input.loanAgreementId,
+          actorType: input.requestedByActorType,
+          actorId: input.requestedByActorId,
+          actorRole: input.requestedByActorRole ?? undefined,
+          eventType: "governed_execution_requested",
+          note:
+            requestNote ??
+            "Loan contract creation has been queued for governed external execution.",
+          metadata: {
+            governedTreasuryExecutionRequestId: created.id,
+            executionType: created.executionType,
+            contractMethod: created.contractMethod,
+            walletAddress: created.walletAddress,
+            contractAddress: created.contractAddress
+          } as PrismaJsonValue
+        }
+      });
+
+      await transaction.auditEvent.create({
+        data: {
+          customerId: null,
+          actorType: input.requestedByActorType,
+          actorId: input.requestedByActorId,
+          action: "governed_execution.loan_contract_creation.requested",
+          targetType: "GovernedTreasuryExecutionRequest",
+          targetId: created.id,
+          metadata: {
+            environment: this.environment,
+            loanAgreementId: input.loanAgreementId,
+            assetId: input.assetId,
+            contractAddress: created.contractAddress,
+            contractMethod: created.contractMethod
+          } as PrismaJsonValue
+        }
+      });
+
+      return {
+        record: created,
+        stateReused: false
+      };
+    });
+
+    return {
+      request: this.mapExecutionRequestProjection(record.record),
+      stateReused: record.stateReused
+    };
+  }
+
+  async requestStakingPoolCreation(input: {
+    stakingPoolGovernanceRequestId: string;
+    stakingPoolId: number;
+    rewardRate: number;
+    chainId: number;
+    contractAddress: string | null;
+    contractMethod: string;
+    requestNote?: string | null;
+    requestedByActorType: string;
+    requestedByActorId: string;
+    requestedByActorRole?: string | null;
+  }): Promise<{
+    request: ExecutionRequestProjection;
+    stateReused: boolean;
+  }> {
+    const requestNote = this.normalizeOptionalString(input.requestNote);
+
+    const record = await this.prismaService.$transaction(async (transaction) => {
+      const existing = await transaction.governedTreasuryExecutionRequest.findFirst({
+        where: {
+          environment: this.environment,
+          stakingPoolGovernanceRequestId: input.stakingPoolGovernanceRequestId,
+          executionType:
+            GovernedTreasuryExecutionRequestType.staking_pool_creation,
+          status: {
+            in: [
+              GovernedTreasuryExecutionRequestStatus.pending_execution,
+              GovernedTreasuryExecutionRequestStatus.executed
+            ]
+          }
+        },
+        include: executionRequestInclude,
+        orderBy: {
+          requestedAt: "desc"
+        }
+      });
+
+      if (existing) {
+        return {
+          record: existing,
+          stateReused: true
+        };
+      }
+
+      const created = await transaction.governedTreasuryExecutionRequest.create({
+        data: {
+          environment: this.environment,
+          chainId: input.chainId,
+          executionType:
+            GovernedTreasuryExecutionRequestType.staking_pool_creation,
+          targetType: "StakingPoolGovernanceRequest",
+          targetId: input.stakingPoolGovernanceRequestId,
+          stakingPoolGovernanceRequestId: input.stakingPoolGovernanceRequestId,
+          contractAddress: input.contractAddress ?? undefined,
+          contractMethod: input.contractMethod,
+          executionPayload: {
+            stakingPoolId: input.stakingPoolId,
+            rewardRate: input.rewardRate
+          } as PrismaJsonValue,
+          requestedByActorType: input.requestedByActorType,
+          requestedByActorId: input.requestedByActorId,
+          requestedByActorRole: input.requestedByActorRole ?? undefined,
+          requestNote: requestNote ?? undefined
+        },
+        include: executionRequestInclude
+      });
+
+      await transaction.auditEvent.create({
+        data: {
+          customerId: null,
+          actorType: input.requestedByActorType,
+          actorId: input.requestedByActorId,
+          action: "governed_execution.staking_pool_creation.requested",
+          targetType: "GovernedTreasuryExecutionRequest",
+          targetId: created.id,
+          metadata: {
+            environment: this.environment,
+            stakingPoolGovernanceRequestId: input.stakingPoolGovernanceRequestId,
+            stakingPoolId: input.stakingPoolId,
+            rewardRate: input.rewardRate,
+            contractAddress: created.contractAddress,
+            contractMethod: created.contractMethod
+          } as PrismaJsonValue
+        }
+      });
+
+      return {
+        record: created,
+        stateReused: false
+      };
+    });
+
+    return {
+      request: this.mapExecutionRequestProjection(record.record),
+      stateReused: record.stateReused
+    };
+  }
+
+  async recordExecutionSuccess(
+    requestId: string,
+    input: {
+      executionNote?: string;
+      blockchainTransactionHash?: string;
+      externalExecutionReference?: string;
+      contractLoanId?: string;
+      contractAddress?: string;
+    },
+    operator: {
+      operatorId: string;
+      operatorRole?: string | null;
+    }
+  ): Promise<{
+    request: ExecutionRequestProjection;
+    workspace: GovernedExecutionWorkspaceResult;
+  }> {
+    const normalizedOperatorRole = this.assertCanApprove(operator.operatorRole);
+    const executionNote = this.normalizeOptionalString(input.executionNote);
+    const blockchainTransactionHash = this.normalizeOptionalString(
+      input.blockchainTransactionHash
+    );
+    const externalExecutionReference = this.normalizeOptionalString(
+      input.externalExecutionReference
+    );
+    const contractLoanId = this.normalizeOptionalString(input.contractLoanId);
+    const contractAddress = this.normalizeOptionalString(input.contractAddress);
+
+    if (!blockchainTransactionHash && !externalExecutionReference) {
+      throw new BadRequestException(
+        "Execution success requires a blockchain transaction hash or an external execution reference."
+      );
+    }
+
+    const updated = await this.prismaService.$transaction(async (transaction) => {
+      const request = await transaction.governedTreasuryExecutionRequest.findUnique({
+        where: {
+          id: requestId
+        },
+        include: executionRequestInclude
+      });
+
+      if (!request || request.environment !== this.environment) {
+        throw new ConflictException(
+          "Governed treasury execution request was not found in this environment."
+        );
+      }
+
+      if (
+        request.status !== GovernedTreasuryExecutionRequestStatus.pending_execution &&
+        request.status !== GovernedTreasuryExecutionRequestStatus.execution_failed
+      ) {
+        return request;
+      }
+
+      if (
+        request.executionType ===
+          GovernedTreasuryExecutionRequestType.loan_contract_creation &&
+        !contractLoanId
+      ) {
+        throw new BadRequestException(
+          "Loan contract creation execution requires contractLoanId."
+        );
+      }
+
+      const next = await transaction.governedTreasuryExecutionRequest.update({
+        where: {
+          id: request.id
+        },
+        data: {
+          status: GovernedTreasuryExecutionRequestStatus.executed,
+          executedByActorType: "operator",
+          executedByActorId: operator.operatorId,
+          executedByActorRole: normalizedOperatorRole,
+          executedAt: new Date(),
+          blockchainTransactionHash: blockchainTransactionHash ?? undefined,
+          externalExecutionReference: externalExecutionReference ?? undefined,
+          failureReason: null,
+          failedAt: null,
+          contractAddress:
+            contractAddress ?? request.contractAddress ?? undefined,
+          executionResult: {
+            executionNote: executionNote ?? null,
+            blockchainTransactionHash: blockchainTransactionHash ?? null,
+            externalExecutionReference: externalExecutionReference ?? null,
+            contractLoanId: contractLoanId ?? null
+          } as PrismaJsonValue
+        },
+        include: executionRequestInclude
+      });
+
+      if (next.loanAgreementId) {
+        await transaction.loanAgreement.update({
+          where: {
+            id: next.loanAgreementId
+          },
+          data: {
+            contractLoanId: contractLoanId ?? undefined,
+            contractAddress:
+              contractAddress ?? next.contractAddress ?? undefined,
+            activationTransactionHash:
+              blockchainTransactionHash ?? undefined
+          }
+        });
+
+        await transaction.loanEvent.create({
+          data: {
+            loanAgreementId: next.loanAgreementId,
+            actorType: "operator",
+            actorId: operator.operatorId,
+            actorRole: normalizedOperatorRole,
+            eventType: "governed_execution_recorded",
+            note:
+              executionNote ??
+              "Governed treasury execution for loan contract creation was recorded.",
+            metadata: {
+              governedTreasuryExecutionRequestId: next.id,
+              blockchainTransactionHash,
+              externalExecutionReference,
+              contractLoanId
+            } as PrismaJsonValue
+          }
+        });
+      }
+
+      if (next.stakingPoolGovernanceRequestId) {
+        await transaction.stakingPoolGovernanceRequest.update({
+          where: {
+            id: next.stakingPoolGovernanceRequestId
+          },
+          data: {
+            status: "executed",
+            executedByOperatorId: operator.operatorId,
+            executedByOperatorRole: normalizedOperatorRole,
+            executionNote: executionNote ?? undefined,
+            executionFailureReason: null,
+            blockchainTransactionHash: blockchainTransactionHash ?? undefined,
+            executedAt: new Date()
+          }
+        });
+      }
+
+      await transaction.auditEvent.create({
+        data: {
+          customerId: null,
+          actorType: "operator",
+          actorId: operator.operatorId,
+          action: "governed_execution.request.executed",
+          targetType: "GovernedTreasuryExecutionRequest",
+          targetId: next.id,
+          metadata: {
+            environment: this.environment,
+            executionType: next.executionType,
+            blockchainTransactionHash,
+            externalExecutionReference,
+            contractLoanId,
+            contractAddress:
+              contractAddress ?? next.contractAddress ?? null
+          } as PrismaJsonValue
+        }
+      });
+
+      return next;
+    });
+
+    return {
+      request: this.mapExecutionRequestProjection(updated),
+      workspace: await this.getWorkspace({
+        operatorId: operator.operatorId,
+        operatorRole: normalizedOperatorRole
+      })
+    };
+  }
+
+  async recordExecutionFailure(
+    requestId: string,
+    input: {
+      failureReason: string;
+      executionNote?: string;
+      blockchainTransactionHash?: string;
+      externalExecutionReference?: string;
+    },
+    operator: {
+      operatorId: string;
+      operatorRole?: string | null;
+    }
+  ): Promise<{
+    request: ExecutionRequestProjection;
+    workspace: GovernedExecutionWorkspaceResult;
+  }> {
+    const normalizedOperatorRole = this.assertCanApprove(operator.operatorRole);
+    const failureReason = this.normalizeOptionalString(input.failureReason);
+    const executionNote = this.normalizeOptionalString(input.executionNote);
+    const blockchainTransactionHash = this.normalizeOptionalString(
+      input.blockchainTransactionHash
+    );
+    const externalExecutionReference = this.normalizeOptionalString(
+      input.externalExecutionReference
+    );
+
+    if (!failureReason) {
+      throw new BadRequestException("failureReason is required.");
+    }
+
+    const updated = await this.prismaService.$transaction(async (transaction) => {
+      const request = await transaction.governedTreasuryExecutionRequest.findUnique({
+        where: {
+          id: requestId
+        },
+        include: executionRequestInclude
+      });
+
+      if (!request || request.environment !== this.environment) {
+        throw new ConflictException(
+          "Governed treasury execution request was not found in this environment."
+        );
+      }
+
+      if (
+        request.status !== GovernedTreasuryExecutionRequestStatus.pending_execution &&
+        request.status !== GovernedTreasuryExecutionRequestStatus.execution_failed
+      ) {
+        return request;
+      }
+
+      const next = await transaction.governedTreasuryExecutionRequest.update({
+        where: {
+          id: request.id
+        },
+        data: {
+          status: GovernedTreasuryExecutionRequestStatus.execution_failed,
+          blockchainTransactionHash: blockchainTransactionHash ?? undefined,
+          externalExecutionReference: externalExecutionReference ?? undefined,
+          failureReason,
+          failedAt: new Date(),
+          executionResult: {
+            executionNote: executionNote ?? null,
+            blockchainTransactionHash: blockchainTransactionHash ?? null,
+            externalExecutionReference: externalExecutionReference ?? null,
+            failureReason
+          } as PrismaJsonValue
+        },
+        include: executionRequestInclude
+      });
+
+      if (next.loanAgreementId) {
+        await transaction.loanEvent.create({
+          data: {
+            loanAgreementId: next.loanAgreementId,
+            actorType: "operator",
+            actorId: operator.operatorId,
+            actorRole: normalizedOperatorRole,
+            eventType: "governed_execution_failed",
+            note:
+              executionNote ??
+              "Governed treasury execution for loan contract creation failed.",
+            metadata: {
+              governedTreasuryExecutionRequestId: next.id,
+              blockchainTransactionHash,
+              externalExecutionReference,
+              failureReason
+            } as PrismaJsonValue
+          }
+        });
+      }
+
+      if (next.stakingPoolGovernanceRequestId) {
+        await transaction.stakingPoolGovernanceRequest.update({
+          where: {
+            id: next.stakingPoolGovernanceRequestId
+          },
+          data: {
+            status: "execution_failed",
+            executionNote: executionNote ?? undefined,
+            executionFailureReason: failureReason,
+            blockchainTransactionHash: blockchainTransactionHash ?? undefined
+          }
+        });
+      }
+
+      await transaction.auditEvent.create({
+        data: {
+          customerId: null,
+          actorType: "operator",
+          actorId: operator.operatorId,
+          action: "governed_execution.request.execution_failed",
+          targetType: "GovernedTreasuryExecutionRequest",
+          targetId: next.id,
+          metadata: {
+            environment: this.environment,
+            executionType: next.executionType,
+            blockchainTransactionHash,
+            externalExecutionReference,
+            failureReason
+          } as PrismaJsonValue
+        }
+      });
+
+      return next;
+    });
+
+    return {
+      request: this.mapExecutionRequestProjection(updated),
+      workspace: await this.getWorkspace({
+        operatorId: operator.operatorId,
+        operatorRole: normalizedOperatorRole
+      })
     };
   }
 

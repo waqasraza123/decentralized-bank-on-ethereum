@@ -178,7 +178,9 @@ export class LoansService {
     @Optional()
     private readonly governedExecutionService?: Pick<
       GovernedExecutionService,
-      "assertLoanFundingExecutionAllowed"
+      | "assertLoanFundingExecutionAllowed"
+      | "isLoanFundingGovernedExternalEnabled"
+      | "requestLoanContractCreation"
     >
   ) {
     const runtimeConfig = loadOptionalBlockchainContractWriteRuntimeConfig();
@@ -220,6 +222,65 @@ export class LoansService {
     }
 
     return value instanceof Prisma.Decimal ? value.toString() : String(value);
+  }
+
+  private getLoanContractAddress(): string | null {
+    const contract =
+      (this.writeContract as { address?: string } | null)?.address ??
+      (this.readContract as { address?: string } | null)?.address;
+
+    return typeof contract === "string" && contract.trim().length > 0
+      ? contract
+      : null;
+  }
+
+  private async queueGovernedLoanContractExecution(input: {
+    agreement: {
+      id: string;
+      borrowAssetId: string;
+      principalAmount: Prisma.Decimal;
+      collateralAmount: Prisma.Decimal;
+      serviceFeeAmount: Prisma.Decimal;
+      installmentAmount: Prisma.Decimal;
+      installmentCount: number;
+      termMonths: number;
+      autopayEnabled: boolean;
+    };
+    chainId: number;
+    borrowerWalletAddress: string | null;
+    operatorId: string;
+    operatorRole?: string;
+    requestNote?: string | null;
+  }): Promise<{ requestId: string; stateReused: boolean } | null> {
+    if (!this.governedExecutionService?.isLoanFundingGovernedExternalEnabled?.()) {
+      return null;
+    }
+
+    const queued = await this.governedExecutionService.requestLoanContractCreation({
+      loanAgreementId: input.agreement.id,
+      chainId: input.chainId,
+      assetId: input.agreement.borrowAssetId,
+      walletAddress: input.borrowerWalletAddress,
+      contractAddress: this.getLoanContractAddress(),
+      contractMethod: "createLoan",
+      borrowerWalletAddress: input.borrowerWalletAddress,
+      principalAmount: input.agreement.principalAmount.toString(),
+      collateralAmount: input.agreement.collateralAmount.toString(),
+      serviceFeeAmount: input.agreement.serviceFeeAmount.toString(),
+      installmentAmount: input.agreement.installmentAmount.toString(),
+      installmentCount: input.agreement.installmentCount,
+      termMonths: input.agreement.termMonths,
+      autopayEnabled: input.agreement.autopayEnabled,
+      requestNote: input.requestNote ?? null,
+      requestedByActorType: "operator",
+      requestedByActorId: input.operatorId,
+      requestedByActorRole: this.normalizeOperatorRole(input.operatorRole)
+    });
+
+    return {
+      requestId: queued.request.id,
+      stateReused: queued.stateReused
+    };
   }
 
   private async getCustomerContext(
@@ -1219,10 +1280,41 @@ export class LoansService {
     }
 
     if (application.loanAgreement) {
+      const reusedExecutionRequest = await this.queueGovernedLoanContractExecution({
+        agreement: {
+          id: application.loanAgreement.id,
+          borrowAssetId: application.loanAgreement.borrowAssetId,
+          principalAmount: application.loanAgreement.principalAmount,
+          collateralAmount: application.loanAgreement.collateralAmount,
+          serviceFeeAmount: application.loanAgreement.serviceFeeAmount,
+          installmentAmount: application.loanAgreement.installmentAmount,
+          installmentCount: application.loanAgreement.installmentCount,
+          termMonths: application.loanAgreement.termMonths,
+          autopayEnabled: application.loanAgreement.autopayEnabled
+        },
+        chainId: application.requestedBorrowAsset.chainId,
+        borrowerWalletAddress:
+          application.customerAccount.customer.supabaseUserId
+            ? (
+                await this.authService.getCustomerWalletProjectionBySupabaseUserId(
+                  application.customerAccount.customer.supabaseUserId
+                )
+              ).wallet.address
+            : null,
+        operatorId,
+        operatorRole,
+        requestNote: dto.note ?? null
+      });
+
       return {
         loanApplicationId: application.id,
         status: application.status,
         loanAgreementId: application.loanAgreement.id,
+        contractLoanId: application.loanAgreement.contractLoanId,
+        governedExecutionRequestId: reusedExecutionRequest?.requestId,
+        fundingExecutionMode: this.governedExecutionService?.isLoanFundingGovernedExternalEnabled?.()
+          ? "governed_external"
+          : "direct_private_key",
         reused: true
       };
     }
@@ -1253,18 +1345,25 @@ export class LoansService {
       serviceFeeAmount: application.serviceFeeAmount,
       installmentCount: application.requestedTermMonths
     });
-    const onchain = await this.maybeCreateOnchainLoan({
-      walletAddress: walletProjection.wallet.address,
-      borrowAsset,
-      collateralAsset,
-      principalAmount: application.requestedBorrowAmount.toString(),
-      collateralAmount: application.requestedCollateralAmount.toString(),
-      serviceFeeAmount: application.serviceFeeAmount.toString(),
-      installmentAmount: schedule[0]?.scheduledTotalAmount.toString() ?? "0",
-      installmentCount: application.requestedTermMonths,
-      termMonths: application.requestedTermMonths,
-      autopayEnabled: application.autopayEnabled
-    });
+    const usesGovernedExternalFunding =
+      this.governedExecutionService?.isLoanFundingGovernedExternalEnabled?.() ?? false;
+    const onchain = usesGovernedExternalFunding
+      ? {
+          contractLoanId: null,
+          transactionHash: null
+        }
+      : await this.maybeCreateOnchainLoan({
+          walletAddress: walletProjection.wallet.address,
+          borrowAsset,
+          collateralAsset,
+          principalAmount: application.requestedBorrowAmount.toString(),
+          collateralAmount: application.requestedCollateralAmount.toString(),
+          serviceFeeAmount: application.serviceFeeAmount.toString(),
+          installmentAmount: schedule[0]?.scheduledTotalAmount.toString() ?? "0",
+          installmentCount: application.requestedTermMonths,
+          termMonths: application.requestedTermMonths,
+          autopayEnabled: application.autopayEnabled
+        });
 
     const result = await this.prismaService.$transaction(async (transaction) => {
       const approvalTime = new Date();
@@ -1308,7 +1407,7 @@ export class LoansService {
           termMonths: updatedApplication.requestedTermMonths,
           autopayEnabled: updatedApplication.autopayEnabled,
           contractLoanId: onchain.contractLoanId,
-          contractAddress: this.writeContract?.address ?? null,
+          contractAddress: this.getLoanContractAddress(),
           activationTransactionHash: onchain.transactionHash,
           approvedAt: approvalTime,
           nextDueAt,
@@ -1381,11 +1480,34 @@ export class LoansService {
       };
     });
 
+    const governedExecutionRequest = await this.queueGovernedLoanContractExecution({
+      agreement: {
+        id: result.agreement.id,
+        borrowAssetId: result.agreement.borrowAssetId,
+        principalAmount: result.agreement.principalAmount,
+        collateralAmount: result.agreement.collateralAmount,
+        serviceFeeAmount: result.agreement.serviceFeeAmount,
+        installmentAmount: result.agreement.installmentAmount,
+        installmentCount: result.agreement.installmentCount,
+        termMonths: result.agreement.termMonths,
+        autopayEnabled: result.agreement.autopayEnabled
+      },
+      chainId: borrowAsset.chainId,
+      borrowerWalletAddress: walletProjection.wallet.address,
+      operatorId,
+      operatorRole,
+      requestNote: dto.note ?? null
+    });
+
     return {
       loanApplicationId: result.application.id,
       status: result.application.status,
       loanAgreementId: result.agreement.id,
       contractLoanId: result.agreement.contractLoanId,
+      governedExecutionRequestId: governedExecutionRequest?.requestId,
+      fundingExecutionMode: usesGovernedExternalFunding
+        ? "governed_external"
+        : "direct_private_key",
       reused: false
     };
   }
@@ -1930,6 +2052,8 @@ export class LoansService {
           borrowAssetId: true,
           principalAmount: true,
           serviceFeeAmount: true,
+          contractLoanId: true,
+          activationTransactionHash: true,
           borrowAsset: {
             select: {
               chainId: true
@@ -1940,6 +2064,16 @@ export class LoansService {
 
       if (!currentAgreement) {
         throw new NotFoundException("Loan agreement not found.");
+      }
+
+      if (
+        this.governedExecutionService?.isLoanFundingGovernedExternalEnabled?.() &&
+        (!currentAgreement.contractLoanId ||
+          !currentAgreement.activationTransactionHash)
+      ) {
+        throw new BadRequestException(
+          "Loan funding cannot proceed until governed contract execution has been recorded."
+        );
       }
 
       const ledgerResult = await this.ledgerService.recordLoanDisbursement(

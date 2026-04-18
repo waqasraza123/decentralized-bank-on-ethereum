@@ -1,5 +1,7 @@
 import {
   GovernedExecutionOverrideRequestStatus,
+  GovernedTreasuryExecutionRequestStatus,
+  GovernedTreasuryExecutionRequestType,
   WalletCustodyType,
   WalletKind,
   WalletStatus,
@@ -132,12 +134,104 @@ function createOverrideRecord(
   };
 }
 
+function createExecutionRequestRecord(
+  overrides?: Partial<{
+    id: string;
+    executionType: GovernedTreasuryExecutionRequestType;
+    status: GovernedTreasuryExecutionRequestStatus;
+    loanAgreementId: string | null;
+    stakingPoolGovernanceRequestId: string | null;
+    contractAddress: string | null;
+    contractMethod: string;
+    walletAddress: string | null;
+    assetId: string | null;
+    failureReason: string | null;
+    blockchainTransactionHash: string | null;
+  }>
+) {
+  return {
+    id: overrides?.id ?? "execution_1",
+    environment: WorkerRuntimeEnvironment.production,
+    chainId: 8453,
+    executionType:
+      overrides?.executionType ??
+      GovernedTreasuryExecutionRequestType.loan_contract_creation,
+    status:
+      overrides?.status ??
+      GovernedTreasuryExecutionRequestStatus.pending_execution,
+    targetType:
+      overrides?.executionType ===
+      GovernedTreasuryExecutionRequestType.staking_pool_creation
+        ? "StakingPoolGovernanceRequest"
+        : "LoanAgreement",
+    targetId:
+      overrides?.stakingPoolGovernanceRequestId ??
+      overrides?.loanAgreementId ??
+      "target_1",
+    loanAgreementId: overrides?.loanAgreementId ?? "loan_agreement_1",
+    loanAgreement: overrides?.loanAgreementId
+      ? {
+          id: overrides.loanAgreementId,
+          status: "awaiting_funding",
+          contractLoanId: null,
+          contractAddress: null
+        }
+      : null,
+    stakingPoolGovernanceRequestId:
+      overrides?.stakingPoolGovernanceRequestId ?? null,
+    stakingPoolGovernanceRequest: overrides?.stakingPoolGovernanceRequestId
+      ? {
+          id: overrides.stakingPoolGovernanceRequestId,
+          status: "approved",
+          rewardRate: 12,
+          stakingPoolId: 17
+        }
+      : null,
+    contractAddress: overrides?.contractAddress ?? "0xcontract",
+    contractMethod: overrides?.contractMethod ?? "createLoan",
+    walletAddress:
+      overrides?.walletAddress ?? "0x0000000000000000000000000000000000000abc",
+    assetId: overrides?.assetId ?? "asset_usdc",
+    asset: overrides?.assetId
+      ? {
+          id: overrides.assetId,
+          symbol: "USDC",
+          displayName: "USD Coin",
+          decimals: 6,
+          chainId: 8453
+        }
+      : null,
+    executionPayload: {
+      principalAmount: "1000"
+    },
+    requestedByActorType: "operator",
+    requestedByActorId: "operator_req",
+    requestedByActorRole: "risk_manager",
+    requestNote: "Queue external execution",
+    requestedAt: new Date("2026-04-18T10:00:00.000Z"),
+    executedByActorType: null,
+    executedByActorId: null,
+    executedByActorRole: null,
+    executedAt: null,
+    blockchainTransactionHash: overrides?.blockchainTransactionHash ?? null,
+    externalExecutionReference: null,
+    executionResult: null,
+    failedAt: null,
+    failureReason: overrides?.failureReason ?? null,
+    metadata: null,
+    createdAt: new Date("2026-04-18T10:00:00.000Z"),
+    updatedAt: new Date("2026-04-18T10:00:00.000Z")
+  };
+}
+
 function createService(args?: {
   wallets?: ReturnType<typeof createWallet>[];
   workers?: ReturnType<typeof createWorkerHeartbeat>[];
   overrides?: ReturnType<typeof createOverrideRecord>[];
+  executionRequests?: ReturnType<typeof createExecutionRequestRecord>[];
 }) {
   const overrideStore = [...(args?.overrides ?? [])];
+  const executionRequestStore = [...(args?.executionRequests ?? [])];
   const wallets = args?.wallets ?? [createWallet()];
   const workers = args?.workers ?? [createWorkerHeartbeat(true)];
 
@@ -150,6 +244,15 @@ function createService(args?: {
     },
     auditEvent: {
       create: jest.fn().mockResolvedValue(undefined)
+    },
+    loanEvent: {
+      create: jest.fn().mockResolvedValue(undefined)
+    },
+    loanAgreement: {
+      update: jest.fn().mockResolvedValue(undefined)
+    },
+    stakingPoolGovernanceRequest: {
+      update: jest.fn().mockResolvedValue(undefined)
     },
     governedExecutionOverrideRequest: {
       findMany: jest.fn(async () => [...overrideStore]),
@@ -207,6 +310,84 @@ function createService(args?: {
         return { count };
       })
     },
+    governedTreasuryExecutionRequest: {
+      findMany: jest.fn(async () => [...executionRequestStore]),
+      findFirst: jest.fn(
+        async ({
+          where
+        }: {
+          where: {
+            loanAgreementId?: string;
+            stakingPoolGovernanceRequestId?: string;
+            status?: { in: GovernedTreasuryExecutionRequestStatus[] };
+          };
+        }) =>
+          executionRequestStore.find((record) => {
+            if (
+              where.loanAgreementId &&
+              record.loanAgreementId !== where.loanAgreementId
+            ) {
+              return false;
+            }
+
+            if (
+              where.stakingPoolGovernanceRequestId &&
+              record.stakingPoolGovernanceRequestId !==
+                where.stakingPoolGovernanceRequestId
+            ) {
+              return false;
+            }
+
+            if (where.status?.in && !where.status.in.includes(record.status)) {
+              return false;
+            }
+
+            return true;
+          }) ?? null
+      ),
+      findUnique: jest.fn(async ({ where }: { where: { id: string } }) => {
+        return executionRequestStore.find((record) => record.id === where.id) ?? null;
+      }),
+      create: jest.fn(async ({ data }: { data: Record<string, unknown> }) => {
+        const next = createExecutionRequestRecord({
+          id: `execution_${executionRequestStore.length + 1}`,
+          executionType: data.executionType as GovernedTreasuryExecutionRequestType,
+          status:
+            (data.status as GovernedTreasuryExecutionRequestStatus | undefined) ??
+            GovernedTreasuryExecutionRequestStatus.pending_execution,
+          loanAgreementId: (data.loanAgreementId as string | undefined) ?? null,
+          stakingPoolGovernanceRequestId:
+            (data.stakingPoolGovernanceRequestId as string | undefined) ?? null,
+          contractAddress: (data.contractAddress as string | undefined) ?? null,
+          contractMethod: data.contractMethod as string,
+          walletAddress: (data.walletAddress as string | undefined) ?? null,
+          assetId: (data.assetId as string | undefined) ?? null
+        });
+        executionRequestStore.unshift(next);
+        return next;
+      }),
+      update: jest.fn(
+        async ({
+          where,
+          data
+        }: {
+          where: { id: string };
+          data: Record<string, unknown>;
+        }) => {
+          const index = executionRequestStore.findIndex(
+            (record) => record.id === where.id
+          );
+          const current = executionRequestStore[index];
+          const next = {
+            ...current,
+            ...data,
+            updatedAt: new Date("2026-04-18T10:05:00.000Z")
+          };
+          executionRequestStore[index] = next;
+          return next;
+        }
+      )
+    },
     $transaction: jest.fn()
   } as unknown as PrismaService;
 
@@ -214,6 +395,11 @@ function createService(args?: {
     async (callback: (client: unknown) => Promise<unknown>) =>
       callback({
         governedExecutionOverrideRequest: prismaService.governedExecutionOverrideRequest,
+        governedTreasuryExecutionRequest:
+          prismaService.governedTreasuryExecutionRequest,
+        loanEvent: prismaService.loanEvent,
+        loanAgreement: prismaService.loanAgreement,
+        stakingPoolGovernanceRequest: prismaService.stakingPoolGovernanceRequest,
         auditEvent: prismaService.auditEvent
       })
   );
@@ -221,7 +407,8 @@ function createService(args?: {
   return {
     service: new GovernedExecutionService(prismaService),
     prismaService,
-    overrideStore
+    overrideStore,
+    executionRequestStore
   };
 }
 
@@ -330,5 +517,74 @@ describe("GovernedExecutionService", () => {
         sourceWalletCustodyType: WalletCustodyType.platform_managed
       })
     ).rejects.toThrow("Managed withdrawal execution is blocked");
+  });
+
+  it("creates a durable external execution request for governed loan creation", async () => {
+    mockConfig.loanFundingExecutionMode = "governed_external";
+
+    const { service, prismaService } = createService({
+      executionRequests: []
+    });
+
+    const result = await service.requestLoanContractCreation({
+      loanAgreementId: "loan_agreement_1",
+      chainId: 8453,
+      assetId: "asset_usdc",
+      walletAddress: "0xwallet",
+      contractAddress: "0xcontract",
+      contractMethod: "createLoan",
+      borrowerWalletAddress: "0xwallet",
+      principalAmount: "1000",
+      collateralAmount: "1600",
+      serviceFeeAmount: "20",
+      installmentAmount: "170",
+      installmentCount: 6,
+      termMonths: 6,
+      autopayEnabled: true,
+      requestedByActorType: "operator",
+      requestedByActorId: "operator_1",
+      requestedByActorRole: "risk_manager"
+    });
+
+    expect(result.stateReused).toBe(false);
+    expect(result.request.executionType).toBe("loan_contract_creation");
+    expect(prismaService.auditEvent.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        action: "governed_execution.loan_contract_creation.requested"
+      })
+    });
+  });
+
+  it("records execution success and updates linked loan agreement state", async () => {
+    const executionRecord = createExecutionRequestRecord({
+      id: "execution_loan_1"
+    });
+    const { service, prismaService } = createService({
+      executionRequests: [executionRecord]
+    });
+
+    const result = await service.recordExecutionSuccess(
+      "execution_loan_1",
+      {
+        blockchainTransactionHash: "0xloanhash",
+        contractLoanId: "1234",
+        contractAddress: "0xloanbook"
+      },
+      {
+        operatorId: "operator_approver",
+        operatorRole: "risk_manager"
+      }
+    );
+
+    expect(result.request.status).toBe("executed");
+    expect(prismaService.loanAgreement.update).toHaveBeenCalledWith({
+      where: {
+        id: "loan_agreement_1"
+      },
+      data: expect.objectContaining({
+        contractLoanId: "1234",
+        activationTransactionHash: "0xloanhash"
+      })
+    });
   });
 });

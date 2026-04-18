@@ -30,7 +30,8 @@ function createService() {
       findMany: jest.fn()
     },
     loanApplication: {
-      findMany: jest.fn()
+      findMany: jest.fn(),
+      findUnique: jest.fn()
     },
     loanAgreement: {
       findMany: jest.fn(),
@@ -49,11 +50,24 @@ function createService() {
     recordLoanRepayment: jest.fn()
   } as unknown as LedgerService;
 
+  const governedExecutionService = {
+    assertLoanFundingExecutionAllowed: jest.fn(),
+    isLoanFundingGovernedExternalEnabled: jest.fn(() => false),
+    requestLoanContractCreation: jest.fn()
+  };
+
   return {
     prismaService,
     authService,
     ledgerService,
-    service: new LoansService(prismaService, authService, ledgerService)
+    governedExecutionService,
+    service: new LoansService(
+      prismaService,
+      authService,
+      ledgerService,
+      undefined,
+      governedExecutionService as never
+    )
   };
 }
 
@@ -303,6 +317,168 @@ describe("LoansService", () => {
       loanAgreementId: "loan_agreement_1",
       status: "active"
     });
+  });
+
+  it("queues governed external loan contract execution instead of writing immediately", async () => {
+    const {
+      service,
+      prismaService,
+      authService,
+      governedExecutionService
+    } = createService();
+    (governedExecutionService.isLoanFundingGovernedExternalEnabled as jest.Mock).mockReturnValue(
+      true
+    );
+
+    (prismaService.loanApplication.findUnique as jest.Mock).mockResolvedValue({
+      id: "loan_application_1",
+      status: "submitted",
+      customerAccountId: "account_1",
+      customerAccount: {
+        customer: {
+          supabaseUserId: "supabase_user_1"
+        }
+      },
+      requestedBorrowAmount: new Prisma.Decimal("1000"),
+      requestedCollateralAmount: new Prisma.Decimal("1600"),
+      serviceFeeAmount: new Prisma.Decimal("25"),
+      requestedTermMonths: 6,
+      autopayEnabled: true,
+      jurisdiction: "usa",
+      requestedBorrowAssetId: "asset_usdc",
+      requestedBorrowAsset: {
+        id: "asset_usdc",
+        symbol: "USDC",
+        displayName: "USD Coin",
+        decimals: 6,
+        chainId: 8453,
+        assetType: AssetType.erc20,
+        contractAddress: "0xasset"
+      },
+      requestedCollateralAssetId: "asset_eth",
+      requestedCollateralAsset: {
+        id: "asset_eth",
+        symbol: "ETH",
+        displayName: "Ether",
+        decimals: 18,
+        chainId: 8453,
+        assetType: AssetType.native,
+        contractAddress: null
+      },
+      loanAgreement: null,
+      events: []
+    });
+
+    (
+      authService.getCustomerWalletProjectionBySupabaseUserId as jest.Mock
+    ).mockResolvedValue({
+      wallet: {
+        address: "0xwallet"
+      }
+    });
+
+    (prismaService.$transaction as jest.Mock).mockImplementation(async (callback) =>
+      callback({
+        loanApplication: {
+          update: jest.fn().mockResolvedValue({
+            id: "loan_application_1",
+            status: "approved",
+            customerAccountId: "account_1",
+            jurisdiction: "usa",
+            requestedBorrowAssetId: "asset_usdc",
+            requestedCollateralAssetId: "asset_eth",
+            requestedBorrowAmount: new Prisma.Decimal("1000"),
+            requestedCollateralAmount: new Prisma.Decimal("1600"),
+            serviceFeeAmount: new Prisma.Decimal("25"),
+            requestedTermMonths: 6,
+            autopayEnabled: true,
+            quoteSnapshot: {}
+          })
+        },
+        loanAgreement: {
+          create: jest.fn().mockResolvedValue({
+            id: "loan_agreement_1",
+            borrowAssetId: "asset_usdc",
+            principalAmount: new Prisma.Decimal("1000"),
+            collateralAmount: new Prisma.Decimal("1600"),
+            serviceFeeAmount: new Prisma.Decimal("25"),
+            outstandingTotalAmount: new Prisma.Decimal("1025"),
+            installmentAmount: new Prisma.Decimal("170.833333333333333333"),
+            installmentCount: 6,
+            termMonths: 6,
+            autopayEnabled: true,
+            contractLoanId: null
+          })
+        },
+        loanInstallment: {
+          createMany: jest.fn().mockResolvedValue({ count: 6 })
+        },
+        loanCollateralPosition: {
+          create: jest.fn().mockResolvedValue({ id: "position_1" })
+        },
+        loanStatement: {
+          create: jest.fn().mockResolvedValue({ id: "statement_1" })
+        },
+        loanEvent: {
+          create: jest.fn().mockResolvedValue({ id: "event_1" })
+        }
+      })
+    );
+
+    (governedExecutionService.requestLoanContractCreation as jest.Mock).mockResolvedValue({
+      request: {
+        id: "execution_1"
+      },
+      stateReused: false
+    });
+
+    const result = await service.approveApplication(
+      "loan_application_1",
+      "operator_1",
+      "risk_manager",
+      {
+        note: "Approved subject to governed treasury execution."
+      }
+    );
+
+    expect(governedExecutionService.requestLoanContractCreation).toHaveBeenCalled();
+    expect(result).toEqual(
+      expect.objectContaining({
+        loanAgreementId: "loan_agreement_1",
+        governedExecutionRequestId: "execution_1",
+        fundingExecutionMode: "governed_external"
+      })
+    );
+  });
+
+  it("blocks funding until governed execution evidence is recorded", async () => {
+    const { service, prismaService, governedExecutionService } = createService();
+    (governedExecutionService.isLoanFundingGovernedExternalEnabled as jest.Mock).mockReturnValue(
+      true
+    );
+
+    (prismaService.$transaction as jest.Mock).mockImplementation(async (callback) =>
+      callback({
+        loanAgreement: {
+          findUnique: jest.fn().mockResolvedValue({
+            id: "loan_agreement_1",
+            status: "awaiting_funding",
+            borrowAssetId: "asset_usdc",
+            principalAmount: new Prisma.Decimal("1000"),
+            serviceFeeAmount: new Prisma.Decimal("25"),
+            contractLoanId: null,
+            activationTransactionHash: null,
+            borrowAsset: {
+              chainId: 8453
+            }
+          })
+        }
+      })
+    );
+
+    await expect(service.fundAgreement("loan_agreement_1", "worker_1")).rejects.toBeInstanceOf(
+      BadRequestException
+    );
   });
 
   it("records an immutable ledger journal when autopay settles a repayment", async () => {

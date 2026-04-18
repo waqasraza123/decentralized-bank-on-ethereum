@@ -6,7 +6,9 @@ function createController() {
     getWorkspace: jest.fn(),
     requestOverride: jest.fn(),
     approveOverride: jest.fn(),
-    rejectOverride: jest.fn()
+    rejectOverride: jest.fn(),
+    recordExecutionSuccess: jest.fn(),
+    recordExecutionFailure: jest.fn()
   } as unknown as GovernedExecutionService;
 
   return {
@@ -71,6 +73,41 @@ describe("GovernedExecutionController", () => {
       {
         operatorId: "operator_1",
         operatorRole: "operations_admin"
+      }
+    );
+  });
+
+  it("passes governed execution success recording through", async () => {
+    const { controller, governedExecutionService } = createController();
+    (governedExecutionService.recordExecutionSuccess as jest.Mock).mockResolvedValue({
+      request: {
+        id: "execution_request_1"
+      }
+    });
+
+    await controller.recordExecutionSuccess(
+      "execution_request_1",
+      {
+        blockchainTransactionHash: "0xhash",
+        contractLoanId: "loan_12"
+      },
+      {
+        internalOperator: {
+          operatorId: "operator_1",
+          operatorRole: "risk_manager"
+        }
+      }
+    );
+
+    expect(governedExecutionService.recordExecutionSuccess).toHaveBeenCalledWith(
+      "execution_request_1",
+      {
+        blockchainTransactionHash: "0xhash",
+        contractLoanId: "loan_12"
+      },
+      {
+        operatorId: "operator_1",
+        operatorRole: "risk_manager"
       }
     );
   });

@@ -198,6 +198,100 @@ export class StakingService {
       : null;
   }
 
+  getGovernedPoolContractAddress(): string | null {
+    const address =
+      (this.writeContract as { address?: string } | null)?.address ??
+      (this.readContract as { address?: string } | null)?.address;
+
+    return typeof address === "string" && address.trim().length > 0
+      ? address
+      : null;
+  }
+
+  async getConfiguredChainId(): Promise<number> {
+    const provider = this.provider as {
+      network?: { chainId?: number };
+      getNetwork?: () => Promise<{ chainId: number }>;
+    };
+
+    if (provider.network?.chainId) {
+      return provider.network.chainId;
+    }
+
+    if (provider.getNetwork) {
+      const network = await provider.getNetwork();
+      if (typeof network.chainId === "number") {
+        return network.chainId;
+      }
+    }
+
+    return 8453;
+  }
+
+  async prepareGovernedPoolCreation(input: {
+    rewardRate: number;
+    stakingPoolId?: number | null;
+  }): Promise<{
+    poolId: number;
+    blockchainPoolId: number;
+    poolStatus: PoolStatus;
+  }> {
+    let stakingPool = input.stakingPoolId
+      ? await this.prismaService.stakingPool.findUnique({
+          where: {
+            id: input.stakingPoolId
+          }
+        })
+      : null;
+
+    if (input.stakingPoolId && !stakingPool) {
+      throw new NotFoundException(
+        `Staking pool with ID ${input.stakingPoolId} was not found for governance execution.`
+      );
+    }
+
+    if (stakingPool && stakingPool.rewardRate !== input.rewardRate) {
+      throw new ConflictException(
+        "Governance request reward rate no longer matches the linked staking pool."
+      );
+    }
+
+    if (!stakingPool) {
+      const createdStakingPool = await this.prismaService.stakingPool.create({
+        data: {
+          rewardRate: input.rewardRate,
+          totalStakedAmount: 0n,
+          totalRewardsPaid: 0n,
+          poolStatus: PoolStatus.paused
+        }
+      });
+
+      stakingPool = await this.prismaService.stakingPool.update({
+        where: {
+          id: createdStakingPool.id
+        },
+        data: {
+          blockchainPoolId: createdStakingPool.id
+        }
+      });
+    } else if (stakingPool.blockchainPoolId === null) {
+      stakingPool = await this.prismaService.stakingPool.update({
+        where: {
+          id: stakingPool.id
+        },
+        data: {
+          blockchainPoolId: stakingPool.id
+        }
+      });
+    }
+
+    return {
+      poolId: stakingPool.id,
+      blockchainPoolId: stakingPool.blockchainPoolId as number,
+      poolStatus: stakingPool.poolStatus
+    };
+  }
+
   private async writeAuditEvent(input: {
     customerId: string | null;
     actor: StakingAuditActor;
@@ -503,59 +597,15 @@ export class StakingService {
       actorId: input.operatorId,
       actorRole: normalizedOperatorRole
     };
-    let stakingPool = input.stakingPoolId
-      ? await this.prismaService.stakingPool.findUnique({
-          where: {
-            id: input.stakingPoolId
-          }
-        })
-      : null;
-
-    if (input.stakingPoolId && !stakingPool) {
-      throw new NotFoundException(
-        `Staking pool with ID ${input.stakingPoolId} was not found for governance execution.`
-      );
-    }
-
-    if (stakingPool && stakingPool.rewardRate !== input.rewardRate) {
-      throw new ConflictException(
-        "Governance request reward rate no longer matches the linked staking pool."
-      );
-    }
-
-    if (!stakingPool) {
-      const createdStakingPool = await this.prismaService.stakingPool.create({
-        data: {
-          rewardRate: input.rewardRate,
-          totalStakedAmount: 0n,
-          totalRewardsPaid: 0n,
-          poolStatus: PoolStatus.paused
-        }
-      });
-
-      stakingPool = await this.prismaService.stakingPool.update({
-        where: {
-          id: createdStakingPool.id
-        },
-        data: {
-          blockchainPoolId: createdStakingPool.id
-        }
-      });
-    } else if (stakingPool.blockchainPoolId === null) {
-      stakingPool = await this.prismaService.stakingPool.update({
-        where: {
-          id: stakingPool.id
-        },
-        data: {
-          blockchainPoolId: stakingPool.id
-        }
-      });
-    }
+    const preparedPool = await this.prepareGovernedPoolCreation({
+      rewardRate: input.rewardRate,
+      stakingPoolId: input.stakingPoolId
+    });
 
     let transactionHash: string | null = null;
 
     try {
-      const blockchainPoolId = stakingPool.blockchainPoolId as number;
+      const blockchainPoolId = preparedPool.blockchainPoolId;
       const transaction = await writeContract.createPool(
         input.rewardRate,
         blockchainPoolId
@@ -573,21 +623,21 @@ export class StakingService {
         actor,
         action: "staking.pool.executed",
         targetType: "StakingPool",
-        targetId: stakingPool.id,
+        targetId: preparedPool.poolId,
         metadata: {
           rewardRate: input.rewardRate,
-          poolStatus: stakingPool.poolStatus,
-          blockchainPoolId: stakingPool.blockchainPoolId,
+          poolStatus: preparedPool.poolStatus,
+          blockchainPoolId: preparedPool.blockchainPoolId,
           transactionHash
         }
       });
 
       return {
         success: true,
-        poolId: stakingPool.id,
+        poolId: preparedPool.poolId,
         blockchainPoolId,
         transactionHash: transactionHash ?? "",
-        poolStatus: stakingPool.poolStatus
+        poolStatus: preparedPool.poolStatus
       };
     } catch (error) {
       await this.writeAuditEvent({
@@ -595,10 +645,10 @@ export class StakingService {
         actor,
         action: "staking.pool.execution_failed",
         targetType: "StakingPool",
-        targetId: stakingPool.id,
+        targetId: preparedPool.poolId,
         metadata: {
           rewardRate: input.rewardRate,
-          blockchainPoolId: stakingPool.blockchainPoolId,
+          blockchainPoolId: preparedPool.blockchainPoolId,
           transactionHash,
           errorMessage: this.describeError(error)
         }
@@ -611,8 +661,8 @@ export class StakingService {
 
       return {
         success: false,
-        poolId: stakingPool.id,
-        blockchainPoolId: stakingPool.blockchainPoolId as number,
+        poolId: preparedPool.poolId,
+        blockchainPoolId: preparedPool.blockchainPoolId,
         transactionHash,
         errorMessage: this.describeError(error)
       };

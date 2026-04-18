@@ -69,18 +69,28 @@ describe("StakingPoolGovernanceService", () => {
     };
 
     const stakingService = {
-      executeGovernedPoolCreation: jest.fn()
+      executeGovernedPoolCreation: jest.fn(),
+      prepareGovernedPoolCreation: jest.fn(),
+      getConfiguredChainId: jest.fn().mockResolvedValue(8453),
+      getGovernedPoolContractAddress: jest.fn().mockReturnValue("0xstaking")
+    };
+
+    const governedExecutionService = {
+      isStakingWriteGovernedExternalEnabled: jest.fn(() => false),
+      requestStakingPoolCreation: jest.fn()
     };
 
     const service = new StakingPoolGovernanceService(
       prismaService as never,
-      stakingService as never
+      stakingService as never,
+      governedExecutionService as never
     );
 
     return {
       service,
       prismaService,
-      stakingService
+      stakingService,
+      governedExecutionService
     };
   }
 
@@ -306,5 +316,68 @@ describe("StakingPoolGovernanceService", () => {
         "risk_manager"
       )
     ).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+  it("queues governed external staking execution when direct writes are disabled", async () => {
+    const {
+      service,
+      prismaService,
+      stakingService,
+      governedExecutionService
+    } = createService();
+    (
+      governedExecutionService.isStakingWriteGovernedExternalEnabled as jest.Mock
+    ).mockReturnValue(true);
+
+    prismaService.stakingPoolGovernanceRequest.findUnique.mockResolvedValue(
+      createGovernanceRequestRecord({
+        status: "approved",
+        approvedByOperatorId: "risk_approver",
+        approvedByOperatorRole: "risk_manager",
+        approvedAt: new Date("2026-04-09T11:00:00.000Z")
+      })
+    );
+    stakingService.prepareGovernedPoolCreation.mockResolvedValue({
+      poolId: 17,
+      blockchainPoolId: 17,
+      poolStatus: "paused"
+    });
+    governedExecutionService.requestStakingPoolCreation.mockResolvedValue({
+      request: {
+        id: "execution_1"
+      },
+      stateReused: false
+    });
+    prismaService.stakingPoolGovernanceRequest.update.mockResolvedValue(
+      createGovernanceRequestRecord({
+        status: "approved",
+        stakingPoolId: 17,
+        executionNote: "Queued for governed external execution.",
+        stakingPool: {
+          id: 17,
+          blockchainPoolId: 17,
+          rewardRate: 12,
+          poolStatus: "paused",
+          createdAt: new Date("2026-04-09T11:05:00.000Z"),
+          updatedAt: new Date("2026-04-09T11:05:00.000Z")
+        }
+      })
+    );
+
+    const result = await service.executeRequest(
+      "request_1",
+      {
+        executionNote: "Queued for governed external execution."
+      },
+      "treasury_executor",
+      "treasury"
+    );
+
+    expect(result.stateReused).toBe(false);
+    expect(stakingService.prepareGovernedPoolCreation).toHaveBeenCalledWith({
+      rewardRate: 12,
+      stakingPoolId: null
+    });
+    expect(governedExecutionService.requestStakingPoolCreation).toHaveBeenCalled();
   });
 });

@@ -3,6 +3,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   approveGovernedExecutionOverride,
   getGovernedExecutionWorkspace,
+  recordGovernedTreasuryExecutionFailure,
+  recordGovernedTreasuryExecutionSuccess,
   rejectGovernedExecutionOverride,
   requestGovernedExecutionOverride
 } from "@/lib/api";
@@ -26,6 +28,7 @@ import {
   WorkspaceLayout
 } from "@/components/console/primitives";
 import { mapStatusToTone, useConfiguredSessionGuard } from "./shared";
+import type { GovernedTreasuryExecutionRequest } from "@/lib/types";
 
 type OverrideDraft = {
   reasonCode: string;
@@ -34,6 +37,15 @@ type OverrideDraft = {
   allowUnsafeWithdrawalExecution: boolean;
   allowDirectLoanFunding: boolean;
   allowDirectStakingWrites: boolean;
+};
+
+type ExecutionDraft = {
+  executionNote: string;
+  blockchainTransactionHash: string;
+  externalExecutionReference: string;
+  contractLoanId: string;
+  contractAddress: string;
+  failureReason: string;
 };
 
 function createOverrideDraft(): OverrideDraft {
@@ -47,11 +59,25 @@ function createOverrideDraft(): OverrideDraft {
   };
 }
 
+function createExecutionDraft(): ExecutionDraft {
+  return {
+    executionNote: "",
+    blockchainTransactionHash: "",
+    externalExecutionReference: "",
+    contractLoanId: "",
+    contractAddress: "",
+    failureReason: ""
+  };
+}
+
 export function GovernedExecutionPage() {
   const { session, fallback } = useConfiguredSessionGuard();
   const queryClient = useQueryClient();
   const [draft, setDraft] = useState<OverrideDraft>(createOverrideDraft);
   const [draftError, setDraftError] = useState<string | null>(null);
+  const [executionDrafts, setExecutionDrafts] = useState<
+    Record<string, ExecutionDraft>
+  >({});
 
   const workspaceQuery = useQuery({
     queryKey: ["governed-execution-workspace", session?.baseUrl],
@@ -92,6 +118,61 @@ export function GovernedExecutionPage() {
     mutationFn: (requestId: string) =>
       rejectGovernedExecutionOverride(session!, requestId, {}),
     onSuccess: () => {
+      void queryClient.invalidateQueries({
+        queryKey: ["governed-execution-workspace", session?.baseUrl]
+      });
+    }
+  });
+
+  const recordExecutionSuccessMutation = useMutation({
+    mutationFn: ({
+      requestId,
+      draft
+    }: {
+      requestId: string;
+      draft: ExecutionDraft;
+    }) =>
+      recordGovernedTreasuryExecutionSuccess(session!, requestId, {
+        executionNote: draft.executionNote.trim() || undefined,
+        blockchainTransactionHash:
+          draft.blockchainTransactionHash.trim() || undefined,
+        externalExecutionReference:
+          draft.externalExecutionReference.trim() || undefined,
+        contractLoanId: draft.contractLoanId.trim() || undefined,
+        contractAddress: draft.contractAddress.trim() || undefined
+      }),
+    onSuccess: (_, variables) => {
+      setExecutionDrafts((current) => ({
+        ...current,
+        [variables.requestId]: createExecutionDraft()
+      }));
+      void queryClient.invalidateQueries({
+        queryKey: ["governed-execution-workspace", session?.baseUrl]
+      });
+    }
+  });
+
+  const recordExecutionFailureMutation = useMutation({
+    mutationFn: ({
+      requestId,
+      draft
+    }: {
+      requestId: string;
+      draft: ExecutionDraft;
+    }) =>
+      recordGovernedTreasuryExecutionFailure(session!, requestId, {
+        failureReason: draft.failureReason.trim(),
+        executionNote: draft.executionNote.trim() || undefined,
+        blockchainTransactionHash:
+          draft.blockchainTransactionHash.trim() || undefined,
+        externalExecutionReference:
+          draft.externalExecutionReference.trim() || undefined
+      }),
+    onSuccess: (_, variables) => {
+      setExecutionDrafts((current) => ({
+        ...current,
+        [variables.requestId]: createExecutionDraft()
+      }));
       void queryClient.invalidateQueries({
         queryKey: ["governed-execution-workspace", session?.baseUrl]
       });
@@ -157,6 +238,145 @@ export function GovernedExecutionPage() {
 
     setDraftError(null);
     requestOverrideMutation.mutate();
+  }
+
+  function getExecutionDraft(requestId: string): ExecutionDraft {
+    return executionDrafts[requestId] ?? createExecutionDraft();
+  }
+
+  function updateExecutionDraft(
+    requestId: string,
+    updater: (current: ExecutionDraft) => ExecutionDraft
+  ) {
+    setExecutionDrafts((current) => ({
+      ...current,
+      [requestId]: updater(current[requestId] ?? createExecutionDraft())
+    }));
+  }
+
+  function renderExecutionActions(request: GovernedTreasuryExecutionRequest) {
+    if (
+      request.status !== "pending_execution" &&
+      request.status !== "execution_failed"
+    ) {
+      return null;
+    }
+
+    const draft = getExecutionDraft(request.id);
+
+    return (
+      <div className="stack-sm">
+        <div className="admin-form-grid">
+          <label className="admin-field">
+            <span>Execution note</span>
+            <textarea
+              rows={2}
+              value={draft.executionNote}
+              onChange={(event) =>
+                updateExecutionDraft(request.id, (current) => ({
+                  ...current,
+                  executionNote: event.target.value
+                }))
+              }
+            />
+          </label>
+          <label className="admin-field">
+            <span>Transaction hash</span>
+            <input
+              value={draft.blockchainTransactionHash}
+              onChange={(event) =>
+                updateExecutionDraft(request.id, (current) => ({
+                  ...current,
+                  blockchainTransactionHash: event.target.value
+                }))
+              }
+            />
+          </label>
+          <label className="admin-field">
+            <span>External reference</span>
+            <input
+              value={draft.externalExecutionReference}
+              onChange={(event) =>
+                updateExecutionDraft(request.id, (current) => ({
+                  ...current,
+                  externalExecutionReference: event.target.value
+                }))
+              }
+            />
+          </label>
+          {request.executionType === "loan_contract_creation" ? (
+            <>
+              <label className="admin-field">
+                <span>Contract loan ID</span>
+                <input
+                  value={draft.contractLoanId}
+                  onChange={(event) =>
+                    updateExecutionDraft(request.id, (current) => ({
+                      ...current,
+                      contractLoanId: event.target.value
+                    }))
+                  }
+                />
+              </label>
+              <label className="admin-field">
+                <span>Contract address</span>
+                <input
+                  value={draft.contractAddress}
+                  onChange={(event) =>
+                    updateExecutionDraft(request.id, (current) => ({
+                      ...current,
+                      contractAddress: event.target.value
+                    }))
+                  }
+                />
+              </label>
+            </>
+          ) : null}
+          <label className="admin-field">
+            <span>Failure reason</span>
+            <input
+              value={draft.failureReason}
+              onChange={(event) =>
+                updateExecutionDraft(request.id, (current) => ({
+                  ...current,
+                  failureReason: event.target.value
+                }))
+              }
+            />
+          </label>
+        </div>
+        <ActionRail
+          title="Execution recording"
+          description="Record durable external execution evidence before sensitive flows continue."
+          actions={[
+            {
+              label: recordExecutionSuccessMutation.isPending
+                ? "Recording success…"
+                : "Record executed",
+              onClick: () =>
+                recordExecutionSuccessMutation.mutate({
+                  requestId: request.id,
+                  draft
+                }),
+              disabled: recordExecutionSuccessMutation.isPending
+            },
+            {
+              label: recordExecutionFailureMutation.isPending
+                ? "Recording failure…"
+                : "Record failed",
+              onClick: () =>
+                recordExecutionFailureMutation.mutate({
+                  requestId: request.id,
+                  draft
+                }),
+              disabled:
+                recordExecutionFailureMutation.isPending ||
+                !draft.failureReason.trim()
+            }
+          ]}
+        />
+      </div>
+    );
   }
 
   return (
@@ -481,6 +701,96 @@ export function GovernedExecutionPage() {
               ))}
             </div>
           )}
+        </SectionPanel>
+
+        <SectionPanel
+          title="Governed treasury execution"
+          description="Durable queue of externalized treasury actions for loans and staking."
+        >
+          {workspace.recentExecutionRequests.length === 0 ? (
+            <EmptyState
+              title="No governed execution requests"
+              description="No externalized treasury execution requests have been recorded yet."
+            />
+          ) : (
+            <div className="stack-lg">
+              {workspace.recentExecutionRequests.map((request) => (
+                <ListCard
+                  key={request.id}
+                  title={`${toTitleCase(
+                    request.executionType.replaceAll("_", " ")
+                  )} · ${shortenValue(request.id)}`}
+                  description={
+                    request.requestNote ??
+                    `${request.targetType} ${shortenValue(
+                      request.targetId
+                    )} queued for governed execution.`
+                  }
+                  badge={
+                    <AdminStatusBadge
+                      label={toTitleCase(request.status.replaceAll("_", " "))}
+                      tone={mapStatusToTone(
+                        request.status === "executed"
+                          ? "positive"
+                          : request.status === "execution_failed"
+                            ? "critical"
+                            : "warning"
+                      )}
+                    />
+                  }
+                  footer={
+                    <div className="stack-sm">
+                      <DetailList
+                        items={[
+                          {
+                            label: "Target",
+                            value: `${request.targetType} · ${shortenValue(
+                              request.targetId
+                            )}`
+                          },
+                          {
+                            label: "Requested by",
+                            value: `${request.requestedByActorId} · ${
+                              request.requestedByActorRole ?? "unknown"
+                            }`
+                          },
+                          {
+                            label: "Evidence",
+                            value:
+                              request.blockchainTransactionHash ??
+                              request.externalExecutionReference ??
+                              request.failureReason ??
+                              "Pending evidence"
+                          }
+                        ]}
+                      />
+                      {renderExecutionActions(request)}
+                    </div>
+                  }
+                />
+              ))}
+            </div>
+          )}
+          {recordExecutionSuccessMutation.isError ? (
+            <InlineNotice
+              title="Execution success recording failed"
+              description={readApiErrorMessage(
+                recordExecutionSuccessMutation.error,
+                "Governed execution success could not be recorded."
+              )}
+              tone="critical"
+            />
+          ) : null}
+          {recordExecutionFailureMutation.isError ? (
+            <InlineNotice
+              title="Execution failure recording failed"
+              description={readApiErrorMessage(
+                recordExecutionFailureMutation.error,
+                "Governed execution failure could not be recorded."
+              )}
+              tone="critical"
+            />
+          ) : null}
         </SectionPanel>
       </WorkspaceLayout>
     </div>

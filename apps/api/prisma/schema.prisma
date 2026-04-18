@@ -126,6 +126,7 @@ model Asset {
   loanCollateralPositions LoanCollateralPosition[]
   loanRepaymentEvents LoanRepaymentEvent[] @relation("LoanRepaymentAsset")
   solvencyLiabilityLeaves SolvencyLiabilityLeaf[]
+  governedExecutionRequests GovernedTreasuryExecutionRequest[]
 }
 
 model TransactionIntent {
@@ -539,6 +540,18 @@ enum GovernedExecutionOverrideRequestStatus {
   expired
 }
 
+enum GovernedTreasuryExecutionRequestType {
+  loan_contract_creation
+  staking_pool_creation
+}
+
+enum GovernedTreasuryExecutionRequestStatus {
+  pending_execution
+  executed
+  execution_failed
+  cancelled
+}
+
 model SolvencySnapshot {
   id                         String                    @id @default(cuid())
   environment                WorkerRuntimeEnvironment
@@ -789,6 +802,49 @@ model GovernedExecutionOverrideRequest {
   @@index([environment, status, expiresAt])
 }
 
+model GovernedTreasuryExecutionRequest {
+  id                           String                               @id @default(cuid())
+  environment                  WorkerRuntimeEnvironment
+  chainId                      Int
+  executionType                GovernedTreasuryExecutionRequestType
+  status                       GovernedTreasuryExecutionRequestStatus @default(pending_execution)
+  targetType                   String
+  targetId                     String
+  loanAgreementId              String?
+  loanAgreement                LoanAgreement?                       @relation(fields: [loanAgreementId], references: [id])
+  stakingPoolGovernanceRequestId String?
+  stakingPoolGovernanceRequest StakingPoolGovernanceRequest?        @relation(fields: [stakingPoolGovernanceRequestId], references: [id])
+  contractAddress              String?
+  contractMethod               String
+  walletAddress                String?
+  assetId                      String?
+  asset                        Asset?                               @relation(fields: [assetId], references: [id])
+  executionPayload             Json
+  requestedByActorType         String
+  requestedByActorId           String
+  requestedByActorRole         String?
+  requestNote                  String?
+  requestedAt                  DateTime                             @default(now())
+  executedByActorType          String?
+  executedByActorId            String?
+  executedByActorRole          String?
+  executedAt                   DateTime?
+  blockchainTransactionHash    String?
+  externalExecutionReference   String?
+  executionResult              Json?
+  failedAt                     DateTime?
+  failureReason                String?
+  metadata                     Json?
+  createdAt                    DateTime                             @default(now())
+  updatedAt                    DateTime                             @updatedAt
+
+  @@index([environment, status, requestedAt])
+  @@index([executionType, targetType, targetId, requestedAt])
+  @@index([loanAgreementId, requestedAt])
+  @@index([stakingPoolGovernanceRequestId, requestedAt])
+  @@index([assetId, requestedAt])
+}
+
 model LedgerReconciliationMismatch {
   id                    String                                @id @default(cuid())
   mismatchKey           String                                @unique
@@ -1025,6 +1081,7 @@ model LoanAgreement {
   statements                LoanStatement[]
   events                    LoanEvent[]
   ledgerJournals            LedgerJournal[]
+  governedExecutionRequests GovernedTreasuryExecutionRequest[]
 
   @@index([customerAccountId, status, updatedAt])
   @@index([status, nextDueAt])
@@ -1657,6 +1714,7 @@ model StakingPoolGovernanceRequest {
   executedAt             DateTime?
   createdAt              DateTime                          @default(now())
   updatedAt              DateTime                          @updatedAt
+  governedExecutionRequests GovernedTreasuryExecutionRequest[]
 
   @@index([status, requestedAt])
   @@index([requestedByOperatorId, requestedAt])

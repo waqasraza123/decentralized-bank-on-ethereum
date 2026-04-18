@@ -2,7 +2,8 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
-  NotFoundException
+  NotFoundException,
+  Optional
 } from "@nestjs/common";
 import { loadStakingPoolGovernanceRuntimeConfig } from "@stealth-trails-bank/config/api";
 import {
@@ -10,6 +11,7 @@ import {
   StakingPoolGovernanceRequestStatus
 } from "@prisma/client";
 import { assertOperatorRoleAuthorized } from "../auth/internal-operator-role-policy";
+import { GovernedExecutionService } from "../governed-execution/governed-execution.service";
 import { PrismaService } from "../prisma/prisma.service";
 import type { PrismaJsonValue } from "../prisma/prisma-json";
 import { StakingService } from "./staking.service";
@@ -91,7 +93,12 @@ export class StakingPoolGovernanceService {
 
   constructor(
     private readonly prismaService: PrismaService,
-    private readonly stakingService: StakingService
+    private readonly stakingService: StakingService,
+    @Optional()
+    private readonly governedExecutionService?: Pick<
+      GovernedExecutionService,
+      "isStakingWriteGovernedExternalEnabled" | "requestStakingPoolCreation"
+    >
   ) {
     const config = loadStakingPoolGovernanceRuntimeConfig();
 
@@ -431,6 +438,72 @@ export class StakingPoolGovernanceService {
     }
 
     const executionNote = this.normalizeOptionalString(dto.executionNote);
+
+    if (this.governedExecutionService?.isStakingWriteGovernedExternalEnabled?.()) {
+      const preparedPool = await this.stakingService.prepareGovernedPoolCreation({
+        rewardRate: request.rewardRate,
+        stakingPoolId: request.stakingPoolId
+      });
+      const governedExecutionRequest =
+        await this.governedExecutionService.requestStakingPoolCreation({
+          stakingPoolGovernanceRequestId: request.id,
+          stakingPoolId: preparedPool.poolId,
+          rewardRate: request.rewardRate,
+          chainId: await this.stakingService.getConfiguredChainId(),
+          contractAddress: this.stakingService.getGovernedPoolContractAddress(),
+          contractMethod: "createPool",
+          requestNote: executionNote,
+          requestedByActorType: "operator",
+          requestedByActorId: operatorId,
+          requestedByActorRole: executedOperatorRole
+        });
+
+      const queuedRequest = await this.prismaService.$transaction(
+        async (transaction) => {
+          const nextRequest = await transaction.stakingPoolGovernanceRequest.update({
+            where: {
+              id: request.id
+            },
+            data: {
+              stakingPoolId: preparedPool.poolId,
+              executionNote:
+                executionNote ??
+                "Governed external staking execution has been requested."
+            },
+            include: stakingPoolGovernanceRequestInclude
+          });
+
+          await transaction.auditEvent.create({
+            data: {
+              customerId: null,
+              actorType: "operator",
+              actorId: operatorId,
+              action: "staking.pool_creation.execution_requested",
+              targetType: "StakingPoolGovernanceRequest",
+              targetId: nextRequest.id,
+              metadata: {
+                rewardRate: nextRequest.rewardRate,
+                executedByOperatorRole: executedOperatorRole,
+                executionNote,
+                stakingPoolId: preparedPool.poolId,
+                governedTreasuryExecutionRequestId:
+                  governedExecutionRequest.request.id,
+                governedExecutionRequestStateReused:
+                  governedExecutionRequest.stateReused
+              } as PrismaJsonValue
+            }
+          });
+
+          return nextRequest;
+        }
+      );
+
+      return {
+        request: this.mapProjection(queuedRequest),
+        stateReused: governedExecutionRequest.stateReused
+      };
+    }
+
     const executionResult = await this.stakingService.executeGovernedPoolCreation({
       rewardRate: request.rewardRate,
       operatorId,

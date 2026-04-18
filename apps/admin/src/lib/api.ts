@@ -11,6 +11,7 @@ import type {
   CriticalPlatformAlertRoutingResult,
   CustomerAccountOperationsTimeline,
   GovernedExecutionOverrideRequest,
+  GovernedTreasuryExecutionRequest,
   GovernedExecutionWorkspace,
   GovernedIncidentPackageExport,
   IncidentPackageReleaseList,
@@ -185,6 +186,47 @@ export async function rejectGovernedExecutionOverride(
   return requestData(session, {
     method: "POST",
     url: `/governed-execution/internal/override-requests/${requestId}/reject`,
+    data: payload
+  });
+}
+
+export async function recordGovernedTreasuryExecutionSuccess(
+  session: OperatorSession,
+  requestId: string,
+  payload: {
+    executionNote?: string;
+    blockchainTransactionHash?: string;
+    externalExecutionReference?: string;
+    contractLoanId?: string;
+    contractAddress?: string;
+  }
+): Promise<{
+  request: GovernedTreasuryExecutionRequest;
+  workspace: GovernedExecutionWorkspace;
+}> {
+  return requestData(session, {
+    method: "POST",
+    url: `/governed-execution/internal/execution-requests/${requestId}/record-executed`,
+    data: payload
+  });
+}
+
+export async function recordGovernedTreasuryExecutionFailure(
+  session: OperatorSession,
+  requestId: string,
+  payload: {
+    failureReason: string;
+    executionNote?: string;
+    blockchainTransactionHash?: string;
+    externalExecutionReference?: string;
+  }
+): Promise<{
+  request: GovernedTreasuryExecutionRequest;
+  workspace: GovernedExecutionWorkspace;
+}> {
+  return requestData(session, {
+    method: "POST",
+    url: `/governed-execution/internal/execution-requests/${requestId}/record-failed`,
     data: payload
   });
 }
