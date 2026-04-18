@@ -231,6 +231,20 @@ export async function recordGovernedTreasuryExecutionFailure(
   });
 }
 
+export async function publishGovernedTreasuryExecutionPackage(
+  session: OperatorSession,
+  requestId: string
+): Promise<{
+  request: GovernedTreasuryExecutionRequest;
+  workspace: GovernedExecutionWorkspace;
+  stateReused: boolean;
+}> {
+  return requestData(session, {
+    method: "POST",
+    url: `/governed-execution/internal/execution-requests/${requestId}/publish-package`
+  });
+}
+
 export async function getSolvencyWorkspace(
   session: OperatorSession,
   params: Record<string, string | number | undefined>

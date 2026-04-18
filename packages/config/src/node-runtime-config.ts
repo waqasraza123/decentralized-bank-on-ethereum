@@ -933,6 +933,8 @@ export type GovernedExecutionRuntimeConfig = {
   readonly requestAllowedOperatorRoles: readonly string[];
   readonly approverAllowedOperatorRoles: readonly string[];
   readonly overrideMaxHours: number;
+  readonly executionPackageSignerPrivateKey: string;
+  readonly executionClaimLeaseSeconds: number;
 };
 
 function parsePlatformAlertDeliveryHealthSloConfig(
@@ -1924,6 +1926,15 @@ export function loadGovernedExecutionRuntimeConfig(
     env,
     "GOVERNED_EXECUTION_ALLOWED_RESERVE_CUSTODY_TYPES"
   );
+  const executionPackageSignerPrivateKey =
+    readOptionalRuntimeEnv(env, "GOVERNED_EXECUTION_PACKAGE_SIGNER_PRIVATE_KEY") ??
+    readOptionalRuntimeEnv(env, "SOLVENCY_REPORT_SIGNER_PRIVATE_KEY");
+
+  if (!executionPackageSignerPrivateKey) {
+    throw new Error(
+      "GOVERNED_EXECUTION_PACKAGE_SIGNER_PRIVATE_KEY is required."
+    );
+  }
 
   return {
     environment,
@@ -1962,6 +1973,12 @@ export function loadGovernedExecutionRuntimeConfig(
       readOptionalRuntimeEnv(env, "GOVERNED_EXECUTION_OVERRIDE_MAX_HOURS") ??
         String(DEFAULT_GOVERNED_EXECUTION_OVERRIDE_MAX_HOURS),
       "GOVERNED_EXECUTION_OVERRIDE_MAX_HOURS"
+    ),
+    executionPackageSignerPrivateKey,
+    executionClaimLeaseSeconds: parsePositiveInteger(
+      readOptionalRuntimeEnv(env, "GOVERNED_EXECUTION_CLAIM_LEASE_SECONDS") ??
+        "300",
+      "GOVERNED_EXECUTION_CLAIM_LEASE_SECONDS"
     )
   };
 }

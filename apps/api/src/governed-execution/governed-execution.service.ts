@@ -24,6 +24,10 @@ import {
 import { assertOperatorRoleAuthorized } from "../auth/internal-operator-role-policy";
 import { PrismaService } from "../prisma/prisma.service";
 import type { PrismaJsonValue } from "../prisma/prisma-json";
+import {
+  buildSignedGovernedExecutionPackage,
+  type GovernedExecutionPackagePayload
+} from "./governed-execution-proof";
 
 const RESERVE_WALLET_KINDS = [
   WalletKind.treasury,
@@ -143,6 +147,17 @@ type ExecutionRequestProjection = {
   metadata: Prisma.JsonValue | null;
   executionPayload: Prisma.JsonValue;
   executionResult: Prisma.JsonValue | null;
+  canonicalExecutionPayload: Prisma.JsonValue | null;
+  canonicalExecutionPayloadText: string | null;
+  executionPackageHash: string | null;
+  executionPackageChecksumSha256: string | null;
+  executionPackageSignature: string | null;
+  executionPackageSignatureAlgorithm: string | null;
+  executionPackageSignerAddress: string | null;
+  executionPackagePublishedAt: string | null;
+  claimedByWorkerId: string | null;
+  claimedAt: string | null;
+  claimExpiresAt: string | null;
   updatedAt: string;
   asset: {
     id: string;
@@ -174,6 +189,7 @@ export type GovernedExecutionWorkspaceResult = {
     loanFundingExecutionMode: string;
     stakingWriteExecutionMode: string;
     overrideMaxHours: number;
+    executionClaimLeaseSeconds: number;
   };
   posture: {
     status: "healthy" | "warning" | "critical";
@@ -254,6 +270,7 @@ export class GovernedExecutionService {
   private readonly governedReserveCustodyTypes: Set<string>;
   private readonly requestAllowedRoles: readonly string[];
   private readonly approverAllowedRoles: readonly string[];
+  private readonly executionPackageSignerPrivateKey: string;
 
   constructor(private readonly prismaService: PrismaService) {
     this.config = loadGovernedExecutionRuntimeConfig();
@@ -262,6 +279,8 @@ export class GovernedExecutionService {
     );
     this.requestAllowedRoles = [...this.config.requestAllowedOperatorRoles];
     this.approverAllowedRoles = [...this.config.approverAllowedOperatorRoles];
+    this.executionPackageSignerPrivateKey =
+      this.config.executionPackageSignerPrivateKey;
   }
 
   private normalizeEnvironment(
@@ -362,6 +381,21 @@ export class GovernedExecutionService {
       metadata: record.metadata ?? null,
       executionPayload: record.executionPayload,
       executionResult: record.executionResult ?? null,
+      canonicalExecutionPayload: record.canonicalExecutionPayload ?? null,
+      canonicalExecutionPayloadText: record.canonicalExecutionPayloadText ?? null,
+      executionPackageHash: record.executionPackageHash ?? null,
+      executionPackageChecksumSha256:
+        record.executionPackageChecksumSha256 ?? null,
+      executionPackageSignature: record.executionPackageSignature ?? null,
+      executionPackageSignatureAlgorithm:
+        record.executionPackageSignatureAlgorithm ?? null,
+      executionPackageSignerAddress:
+        record.executionPackageSignerAddress ?? null,
+      executionPackagePublishedAt:
+        record.executionPackagePublishedAt?.toISOString() ?? null,
+      claimedByWorkerId: record.claimedByWorkerId ?? null,
+      claimedAt: record.claimedAt?.toISOString() ?? null,
+      claimExpiresAt: record.claimExpiresAt?.toISOString() ?? null,
       updatedAt: record.updatedAt.toISOString(),
       asset: record.asset
         ? {
@@ -456,6 +490,57 @@ export class GovernedExecutionService {
       },
       take: limit
     });
+  }
+
+  private buildExecutionPackagePayload(
+    record: ExecutionRequestRecord
+  ): GovernedExecutionPackagePayload {
+    return {
+      version: 1,
+      requestId: record.id,
+      environment: record.environment,
+      chainId: record.chainId,
+      executionType: record.executionType,
+      targetType: record.targetType,
+      targetId: record.targetId,
+      loanAgreementId: record.loanAgreementId ?? null,
+      stakingPoolGovernanceRequestId:
+        record.stakingPoolGovernanceRequestId ?? null,
+      contractAddress: record.contractAddress ?? null,
+      contractMethod: record.contractMethod,
+      walletAddress: record.walletAddress ?? null,
+      asset: record.asset
+        ? {
+            id: record.asset.id,
+            symbol: record.asset.symbol,
+            displayName: record.asset.displayName,
+            decimals: record.asset.decimals,
+            chainId: record.asset.chainId
+          }
+        : null,
+      loanAgreement: record.loanAgreement
+        ? {
+            id: record.loanAgreement.id,
+            status: record.loanAgreement.status,
+            contractLoanId: record.loanAgreement.contractLoanId ?? null,
+            contractAddress: record.loanAgreement.contractAddress ?? null
+          }
+        : null,
+      stakingPoolGovernanceRequest: record.stakingPoolGovernanceRequest
+        ? {
+            id: record.stakingPoolGovernanceRequest.id,
+            status: record.stakingPoolGovernanceRequest.status,
+            rewardRate: record.stakingPoolGovernanceRequest.rewardRate,
+            stakingPoolId:
+              record.stakingPoolGovernanceRequest.stakingPoolId ?? null
+          }
+        : null,
+      executionPayload: record.executionPayload,
+      requestedByActorType: record.requestedByActorType,
+      requestedByActorId: record.requestedByActorId,
+      requestedByActorRole: record.requestedByActorRole ?? null,
+      requestedAt: record.requestedAt.toISOString()
+    };
   }
 
   private classifyReserveWallet(record: ReserveWalletRecord): {
@@ -703,7 +788,8 @@ export class GovernedExecutionService {
         governedReserveCustodyTypes: [...this.config.governedReserveCustodyTypes],
         loanFundingExecutionMode: this.config.loanFundingExecutionMode,
         stakingWriteExecutionMode: this.config.stakingWriteExecutionMode,
-        overrideMaxHours: this.config.overrideMaxHours
+        overrideMaxHours: this.config.overrideMaxHours,
+        executionClaimLeaseSeconds: this.config.executionClaimLeaseSeconds
       },
       posture: {
         status,
@@ -740,6 +826,255 @@ export class GovernedExecutionService {
         this.mapExecutionRequestProjection(record)
       ),
       governance: this.buildGovernanceProjection(operator)
+    };
+  }
+
+  async publishExecutionPackage(
+    requestId: string,
+    operator: {
+      operatorId: string;
+      operatorRole?: string | null;
+    }
+  ): Promise<{
+    request: ExecutionRequestProjection;
+    workspace: GovernedExecutionWorkspaceResult;
+    stateReused: boolean;
+  }> {
+    const normalizedOperatorRole = this.assertCanApprove(operator.operatorRole);
+
+    const result = await this.prismaService.$transaction(async (transaction) => {
+      const request = await transaction.governedTreasuryExecutionRequest.findUnique({
+        where: {
+          id: requestId
+        },
+        include: executionRequestInclude
+      });
+
+      if (!request || request.environment !== this.environment) {
+        throw new ConflictException(
+          "Governed treasury execution request was not found in this environment."
+        );
+      }
+
+      if (request.status === GovernedTreasuryExecutionRequestStatus.cancelled) {
+        throw new ConflictException(
+          "Cancelled governed treasury execution requests cannot be published."
+        );
+      }
+
+      if (request.executionPackageHash) {
+        return {
+          request,
+          stateReused: true
+        };
+      }
+
+      const payload = this.buildExecutionPackagePayload(request);
+      const signedPackage = buildSignedGovernedExecutionPackage(
+        payload,
+        this.executionPackageSignerPrivateKey
+      );
+      const updated = await transaction.governedTreasuryExecutionRequest.update({
+        where: {
+          id: request.id
+        },
+        data: {
+          canonicalExecutionPayload: payload as unknown as PrismaJsonValue,
+          canonicalExecutionPayloadText: signedPackage.canonicalPayloadText,
+          executionPackageHash: signedPackage.executionPackageHash,
+          executionPackageChecksumSha256:
+            signedPackage.executionPackageChecksumSha256,
+          executionPackageSignature: signedPackage.executionPackageSignature,
+          executionPackageSignatureAlgorithm:
+            signedPackage.executionPackageSignatureAlgorithm,
+          executionPackageSignerAddress:
+            signedPackage.executionPackageSignerAddress,
+          executionPackagePublishedAt: new Date()
+        },
+        include: executionRequestInclude
+      });
+
+      await transaction.auditEvent.create({
+        data: {
+          customerId: null,
+          actorType: "operator",
+          actorId: operator.operatorId,
+          action: "governed_execution.package_published",
+          targetType: "GovernedTreasuryExecutionRequest",
+          targetId: updated.id,
+          metadata: {
+            environment: this.environment,
+            publishedByOperatorRole: normalizedOperatorRole,
+            executionPackageHash: updated.executionPackageHash,
+            executionPackageSignerAddress:
+              updated.executionPackageSignerAddress
+          } as PrismaJsonValue
+        }
+      });
+
+      return {
+        request: updated,
+        stateReused: false
+      };
+    });
+
+    return {
+      request: this.mapExecutionRequestProjection(result.request),
+      workspace: await this.getWorkspace({
+        operatorId: operator.operatorId,
+        operatorRole: normalizedOperatorRole
+      }),
+      stateReused: result.stateReused
+    };
+  }
+
+  async listClaimableExecutionRequests(limit: number): Promise<{
+    requests: ExecutionRequestProjection[];
+    limit: number;
+    generatedAt: string;
+  }> {
+    const normalizedLimit = Math.max(1, Math.min(limit, 50));
+    const now = new Date();
+    const records = await this.prismaService.governedTreasuryExecutionRequest.findMany({
+      where: {
+        environment: this.environment,
+        status: {
+          in: [
+            GovernedTreasuryExecutionRequestStatus.pending_execution,
+            GovernedTreasuryExecutionRequestStatus.execution_failed
+          ]
+        },
+        executionPackagePublishedAt: {
+          not: null
+        },
+        OR: [
+          {
+            claimExpiresAt: null
+          },
+          {
+            claimExpiresAt: {
+              lt: now
+            }
+          }
+        ]
+      },
+      include: executionRequestInclude,
+      orderBy: {
+        requestedAt: "asc"
+      },
+      take: normalizedLimit
+    });
+
+    return {
+      requests: records.map((record) => this.mapExecutionRequestProjection(record)),
+      limit: normalizedLimit,
+      generatedAt: now.toISOString()
+    };
+  }
+
+  async claimExecutionRequest(
+    requestId: string,
+    workerId: string,
+    reclaimStaleAfterMs?: number
+  ): Promise<{
+    request: ExecutionRequestProjection;
+    claimReused: boolean;
+  }> {
+    const now = new Date();
+    const claimLeaseMs = Math.max(
+      reclaimStaleAfterMs ?? this.config.executionClaimLeaseSeconds * 1000,
+      1_000
+    );
+    const claimExpiresAt = new Date(now.getTime() + claimLeaseMs);
+
+    const result = await this.prismaService.$transaction(async (transaction) => {
+      const request = await transaction.governedTreasuryExecutionRequest.findUnique({
+        where: {
+          id: requestId
+        },
+        include: executionRequestInclude
+      });
+
+      if (!request || request.environment !== this.environment) {
+        throw new ConflictException(
+          "Governed treasury execution request was not found in this environment."
+        );
+      }
+
+      if (!request.executionPackagePublishedAt || !request.executionPackageHash) {
+        throw new ConflictException(
+          "Governed treasury execution request is not yet packaged for external execution."
+        );
+      }
+
+      if (
+        request.status !== GovernedTreasuryExecutionRequestStatus.pending_execution &&
+        request.status !== GovernedTreasuryExecutionRequestStatus.execution_failed
+      ) {
+        throw new ConflictException(
+          "Governed treasury execution request is no longer claimable."
+        );
+      }
+
+      if (
+        request.claimedByWorkerId === workerId &&
+        request.claimExpiresAt &&
+        request.claimExpiresAt.getTime() > now.getTime()
+      ) {
+        return {
+          request,
+          claimReused: true
+        };
+      }
+
+      if (
+        request.claimedByWorkerId &&
+        request.claimedByWorkerId !== workerId &&
+        request.claimExpiresAt &&
+        request.claimExpiresAt.getTime() > now.getTime()
+      ) {
+        throw new ConflictException(
+          "Governed treasury execution request is already claimed by another worker."
+        );
+      }
+
+      const updated = await transaction.governedTreasuryExecutionRequest.update({
+        where: {
+          id: request.id
+        },
+        data: {
+          claimedByWorkerId: workerId,
+          claimedAt: now,
+          claimExpiresAt
+        },
+        include: executionRequestInclude
+      });
+
+      await transaction.auditEvent.create({
+        data: {
+          customerId: null,
+          actorType: "worker",
+          actorId: workerId,
+          action: "governed_execution.request.claimed",
+          targetType: "GovernedTreasuryExecutionRequest",
+          targetId: updated.id,
+          metadata: {
+            environment: this.environment,
+            executionPackageHash: updated.executionPackageHash,
+            claimExpiresAt: claimExpiresAt.toISOString()
+          } as PrismaJsonValue
+        }
+      });
+
+      return {
+        request: updated,
+        claimReused: false
+      };
+    });
+
+    return {
+      request: this.mapExecutionRequestProjection(result.request),
+      claimReused: result.claimReused
     };
   }
 
@@ -1045,6 +1380,9 @@ export class GovernedExecutionService {
         },
         data: {
           status: GovernedTreasuryExecutionRequestStatus.executed,
+          claimedByWorkerId: null,
+          claimedAt: null,
+          claimExpiresAt: null,
           executedByActorType: "operator",
           executedByActorId: operator.operatorId,
           executedByActorRole: normalizedOperatorRole,
@@ -1205,6 +1543,9 @@ export class GovernedExecutionService {
         },
         data: {
           status: GovernedTreasuryExecutionRequestStatus.execution_failed,
+          claimedByWorkerId: null,
+          claimedAt: null,
+          claimExpiresAt: null,
           blockchainTransactionHash: blockchainTransactionHash ?? undefined,
           externalExecutionReference: externalExecutionReference ?? undefined,
           failureReason,

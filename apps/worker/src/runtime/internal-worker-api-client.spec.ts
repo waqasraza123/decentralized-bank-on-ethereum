@@ -238,6 +238,10 @@ test("internal worker api client issues every worker request against the expecte
     });
 
     await client.listAwaitingFundingLoans(20);
+    await client.listClaimableGovernedExecutionRequests(20);
+    await client.claimGovernedExecutionRequest("execution_request_1", {
+      reclaimStaleAfterMs: 120000
+    });
     await client.fundLoanAgreement("loan_1");
     await client.listDueLoanInstallments(20);
     await client.runLoanAutopay("loan_1");
@@ -309,6 +313,8 @@ test("internal worker api client issues every worker request against the expecte
         "post:/transaction-intents/internal/worker/withdrawal-requests/withdrawal_1/settle",
         "post:/transaction-intents/internal/worker/withdrawal-requests/withdrawal_1/fail",
         "get:/loans/internal/worker/agreements/awaiting-funding",
+        "get:/governed-execution/internal/worker/execution-requests/claimable",
+        "post:/governed-execution/internal/worker/execution-requests/execution_request_1/claim",
         "post:/loans/internal/worker/agreements/loan_1/fund",
         "get:/loans/internal/worker/installments/due",
         "post:/loans/internal/worker/agreements/loan_1/run-autopay",

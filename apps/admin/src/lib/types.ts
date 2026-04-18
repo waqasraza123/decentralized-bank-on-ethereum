@@ -586,6 +586,7 @@ export type GovernedExecutionWorkspace = {
     loanFundingExecutionMode: string;
     stakingWriteExecutionMode: string;
     overrideMaxHours: number;
+    executionClaimLeaseSeconds: number;
   };
   posture: {
     status: "healthy" | "warning" | "critical";
@@ -692,6 +693,17 @@ export type GovernedTreasuryExecutionRequest = {
   metadata: JsonValue | null;
   executionPayload: JsonValue;
   executionResult: JsonValue | null;
+  canonicalExecutionPayload: JsonValue | null;
+  canonicalExecutionPayloadText: string | null;
+  executionPackageHash: string | null;
+  executionPackageChecksumSha256: string | null;
+  executionPackageSignature: string | null;
+  executionPackageSignatureAlgorithm: string | null;
+  executionPackageSignerAddress: string | null;
+  executionPackagePublishedAt: string | null;
+  claimedByWorkerId: string | null;
+  claimedAt: string | null;
+  claimExpiresAt: string | null;
   updatedAt: string;
   asset: {
     id: string;

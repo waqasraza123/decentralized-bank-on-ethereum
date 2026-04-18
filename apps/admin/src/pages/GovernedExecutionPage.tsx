@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   approveGovernedExecutionOverride,
   getGovernedExecutionWorkspace,
+  publishGovernedTreasuryExecutionPackage,
   recordGovernedTreasuryExecutionFailure,
   recordGovernedTreasuryExecutionSuccess,
   rejectGovernedExecutionOverride,
@@ -173,6 +174,16 @@ export function GovernedExecutionPage() {
         ...current,
         [variables.requestId]: createExecutionDraft()
       }));
+      void queryClient.invalidateQueries({
+        queryKey: ["governed-execution-workspace", session?.baseUrl]
+      });
+    }
+  });
+
+  const publishExecutionPackageMutation = useMutation({
+    mutationFn: (requestId: string) =>
+      publishGovernedTreasuryExecutionPackage(session!, requestId),
+    onSuccess: () => {
       void queryClient.invalidateQueries({
         queryKey: ["governed-execution-workspace", session?.baseUrl]
       });
@@ -758,12 +769,51 @@ export function GovernedExecutionPage() {
                             label: "Evidence",
                             value:
                               request.blockchainTransactionHash ??
+                              request.executionPackageHash ??
                               request.externalExecutionReference ??
                               request.failureReason ??
                               "Pending evidence"
+                          },
+                          {
+                            label: "Package",
+                            value:
+                              request.executionPackageHash
+                                ? `${shortenValue(
+                                    request.executionPackageHash
+                                  )} · ${formatDateTime(
+                                    request.executionPackagePublishedAt ??
+                                      request.requestedAt
+                                  )}`
+                                : "Not yet published"
+                          },
+                          {
+                            label: "Claim",
+                            value: request.claimedByWorkerId
+                              ? `${request.claimedByWorkerId} until ${formatDateTime(
+                                  request.claimExpiresAt ?? request.claimedAt ?? request.requestedAt
+                                )}`
+                              : "Unclaimed"
                           }
                         ]}
                       />
+                      {!request.executionPackageHash &&
+                      (request.status === "pending_execution" ||
+                        request.status === "execution_failed") ? (
+                        <ActionRail
+                          title="Execution package"
+                          description={`Publish a signed canonical package before a governed executor claims this request. Lease window ${workspace.policy.executionClaimLeaseSeconds} seconds.`}
+                          actions={[
+                            {
+                              label: publishExecutionPackageMutation.isPending
+                                ? "Publishing…"
+                                : "Publish package",
+                              onClick: () =>
+                                publishExecutionPackageMutation.mutate(request.id),
+                              disabled: publishExecutionPackageMutation.isPending
+                            }
+                          ]}
+                        />
+                      ) : null}
                       {renderExecutionActions(request)}
                     </div>
                   }
@@ -787,6 +837,16 @@ export function GovernedExecutionPage() {
               description={readApiErrorMessage(
                 recordExecutionFailureMutation.error,
                 "Governed execution failure could not be recorded."
+              )}
+              tone="critical"
+            />
+          ) : null}
+          {publishExecutionPackageMutation.isError ? (
+            <InlineNotice
+              title="Execution package publish failed"
+              description={readApiErrorMessage(
+                publishExecutionPackageMutation.error,
+                "Governed execution package could not be published."
               )}
               tone="critical"
             />

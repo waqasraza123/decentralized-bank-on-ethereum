@@ -20,6 +20,8 @@ const mockConfig: {
   requestAllowedOperatorRoles: string[];
   approverAllowedOperatorRoles: string[];
   overrideMaxHours: number;
+  executionPackageSignerPrivateKey: string;
+  executionClaimLeaseSeconds: number;
 } = {
   environment: "production" as const,
   governedExecutionRequiredInProduction: true,
@@ -31,7 +33,10 @@ const mockConfig: {
   stakingWriteExecutionMode: "direct_private_key" as const,
   requestAllowedOperatorRoles: ["operations_admin", "risk_manager"],
   approverAllowedOperatorRoles: ["compliance_lead", "risk_manager"],
-  overrideMaxHours: 12
+  overrideMaxHours: 12,
+  executionPackageSignerPrivateKey:
+    "0x59c6995e998f97a5a0044976f094538e2d7db6d63dd7f6c5f495fac1cac7e31d",
+  executionClaimLeaseSeconds: 300
 };
 
 jest.mock("@stealth-trails-bank/config/api", () => ({
@@ -147,6 +152,17 @@ function createExecutionRequestRecord(
     assetId: string | null;
     failureReason: string | null;
     blockchainTransactionHash: string | null;
+    canonicalExecutionPayload: Record<string, unknown> | null;
+    canonicalExecutionPayloadText: string | null;
+    executionPackageHash: string | null;
+    executionPackageChecksumSha256: string | null;
+    executionPackageSignature: string | null;
+    executionPackageSignatureAlgorithm: string | null;
+    executionPackageSignerAddress: string | null;
+    executionPackagePublishedAt: Date | null;
+    claimedByWorkerId: string | null;
+    claimedAt: Date | null;
+    claimExpiresAt: Date | null;
   }>
 ) {
   return {
@@ -204,6 +220,22 @@ function createExecutionRequestRecord(
     executionPayload: {
       principalAmount: "1000"
     },
+    canonicalExecutionPayload: overrides?.canonicalExecutionPayload ?? null,
+    canonicalExecutionPayloadText:
+      overrides?.canonicalExecutionPayloadText ?? null,
+    executionPackageHash: overrides?.executionPackageHash ?? null,
+    executionPackageChecksumSha256:
+      overrides?.executionPackageChecksumSha256 ?? null,
+    executionPackageSignature: overrides?.executionPackageSignature ?? null,
+    executionPackageSignatureAlgorithm:
+      overrides?.executionPackageSignatureAlgorithm ?? null,
+    executionPackageSignerAddress:
+      overrides?.executionPackageSignerAddress ?? null,
+    executionPackagePublishedAt:
+      overrides?.executionPackagePublishedAt ?? null,
+    claimedByWorkerId: overrides?.claimedByWorkerId ?? null,
+    claimedAt: overrides?.claimedAt ?? null,
+    claimExpiresAt: overrides?.claimExpiresAt ?? null,
     requestedByActorType: "operator",
     requestedByActorId: "operator_req",
     requestedByActorRole: "risk_manager",
@@ -586,5 +618,48 @@ describe("GovernedExecutionService", () => {
         activationTransactionHash: "0xloanhash"
       })
     });
+  });
+
+  it("publishes a signed execution package before worker claim", async () => {
+    const executionRecord = createExecutionRequestRecord({
+      id: "execution_pkg_1"
+    });
+    const { service } = createService({
+      executionRequests: [executionRecord]
+    });
+
+    const result = await service.publishExecutionPackage("execution_pkg_1", {
+      operatorId: "operator_approver",
+      operatorRole: "risk_manager"
+    });
+
+    expect(result.stateReused).toBe(false);
+    expect(result.request.executionPackageHash).toBeTruthy();
+    expect(result.request.executionPackageSignature).toBeTruthy();
+    expect(result.request.executionPackagePublishedAt).toBeTruthy();
+  });
+
+  it("claims a packaged execution request with an expiring worker lease", async () => {
+    const executionRecord = createExecutionRequestRecord({
+      id: "execution_claim_1"
+    });
+    const { service, executionRequestStore } = createService({
+      executionRequests: [executionRecord]
+    });
+
+    await service.publishExecutionPackage("execution_claim_1", {
+      operatorId: "operator_approver",
+      operatorRole: "risk_manager"
+    });
+
+    const result = await service.claimExecutionRequest(
+      "execution_claim_1",
+      "worker_1",
+      120000
+    );
+
+    expect(result.claimReused).toBe(false);
+    expect(result.request.claimedByWorkerId).toBe("worker_1");
+    expect(executionRequestStore[0]?.claimExpiresAt).toBeTruthy();
   });
 });

@@ -825,6 +825,17 @@ model GovernedTreasuryExecutionRequest {
   requestedByActorRole         String?
   requestNote                  String?
   requestedAt                  DateTime                             @default(now())
+  canonicalExecutionPayload    Json?
+  canonicalExecutionPayloadText String?
+  executionPackageHash         String?                              @unique
+  executionPackageChecksumSha256 String?
+  executionPackageSignature    String?
+  executionPackageSignatureAlgorithm String?
+  executionPackageSignerAddress String?
+  executionPackagePublishedAt  DateTime?
+  claimedByWorkerId            String?
+  claimedAt                    DateTime?
+  claimExpiresAt               DateTime?
   executedByActorType          String?
   executedByActorId            String?
   executedByActorRole          String?
@@ -839,6 +850,8 @@ model GovernedTreasuryExecutionRequest {
   updatedAt                    DateTime                             @updatedAt
 
   @@index([environment, status, requestedAt])
+  @@index([environment, executionPackagePublishedAt, requestedAt])
+  @@index([environment, claimExpiresAt, requestedAt])
   @@index([executionType, targetType, targetId, requestedAt])
   @@index([loanAgreementId, requestedAt])
   @@index([stakingPoolGovernanceRequestId, requestedAt])

@@ -224,6 +224,64 @@ export type CriticalAlertReEscalationSweepResult = {
   }>;
 };
 
+export type GovernedExecutionRequestProjection = {
+  id: string;
+  environment: string;
+  chainId: number;
+  executionType: string;
+  status: string;
+  targetType: string;
+  targetId: string;
+  loanAgreementId: string | null;
+  stakingPoolGovernanceRequestId: string | null;
+  contractAddress: string | null;
+  contractMethod: string;
+  walletAddress: string | null;
+  requestNote: string | null;
+  requestedByActorType: string;
+  requestedByActorId: string;
+  requestedByActorRole: string | null;
+  requestedAt: string;
+  executedByActorType: string | null;
+  executedByActorId: string | null;
+  executedByActorRole: string | null;
+  executedAt: string | null;
+  blockchainTransactionHash: string | null;
+  externalExecutionReference: string | null;
+  failureReason: string | null;
+  failedAt: string | null;
+  metadata: Record<string, unknown> | null;
+  executionPayload: Record<string, unknown>;
+  executionResult: Record<string, unknown> | null;
+  canonicalExecutionPayload: Record<string, unknown> | null;
+  canonicalExecutionPayloadText: string | null;
+  executionPackageHash: string | null;
+  executionPackageChecksumSha256: string | null;
+  executionPackageSignature: string | null;
+  executionPackageSignatureAlgorithm: string | null;
+  executionPackageSignerAddress: string | null;
+  executionPackagePublishedAt: string | null;
+  claimedByWorkerId: string | null;
+  claimedAt: string | null;
+  claimExpiresAt: string | null;
+  updatedAt: string;
+};
+
+export type ListClaimableGovernedExecutionRequestsResult = {
+  requests: GovernedExecutionRequestProjection[];
+  limit: number;
+  generatedAt: string;
+};
+
+export type ClaimGovernedExecutionRequestPayload = {
+  reclaimStaleAfterMs?: number;
+};
+
+export type ClaimGovernedExecutionRequestResult = {
+  request: GovernedExecutionRequestProjection;
+  claimReused: boolean;
+};
+
 export type TrackedLedgerReconciliationScanRun = {
   id: string;
   status: string;

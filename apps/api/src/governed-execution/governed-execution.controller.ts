@@ -154,6 +154,26 @@ export class GovernedExecutionController {
     };
   }
 
+  @Post("execution-requests/:requestId/publish-package")
+  async publishExecutionPackage(
+    @Param("requestId") requestId: string,
+    @Request() request: InternalOperatorRequest
+  ): Promise<CustomJsonResponse> {
+    const result = await this.governedExecutionService.publishExecutionPackage(
+      requestId,
+      {
+        operatorId: request.internalOperator.operatorId,
+        operatorRole: request.internalOperator.operatorRole
+      }
+    );
+
+    return {
+      status: "success",
+      message: "Governed execution package published successfully.",
+      data: result
+    };
+  }
+
   @Post("execution-requests/:requestId/record-failed")
   async recordExecutionFailure(
     @Param("requestId") requestId: string,

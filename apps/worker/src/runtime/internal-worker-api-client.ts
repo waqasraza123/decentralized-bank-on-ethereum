@@ -2,8 +2,11 @@ import axios, { type AxiosInstance } from "axios";
 import { buildInternalWorkerHeaders } from "@stealth-trails-bank/security";
 import type { WorkerRuntime } from "./worker-runtime";
 import type {
+  ClaimGovernedExecutionRequestPayload,
+  ClaimGovernedExecutionRequestResult,
   ConfirmIntentPayload,
   CriticalAlertReEscalationSweepResult,
+  ListClaimableGovernedExecutionRequestsResult,
   FailIntentPayload,
   GeneratedSolvencySnapshotResult,
   ListIntentsResult,
@@ -259,6 +262,33 @@ export function createInternalWorkerApiClient(runtime: WorkerRuntime) {
         httpClient.get<ApiEnvelope<ListWorkerLoanAgreementsResult>>(
           "/loans/internal/worker/agreements/awaiting-funding",
           { params: { limit } }
+        ),
+        baseUrl
+      );
+    },
+
+    async listClaimableGovernedExecutionRequests(
+      limit: number
+    ): Promise<ListClaimableGovernedExecutionRequestsResult> {
+      return readResponseData(
+        httpClient.get<ApiEnvelope<ListClaimableGovernedExecutionRequestsResult>>(
+          "/governed-execution/internal/worker/execution-requests/claimable",
+          {
+            params: { limit }
+          }
+        ),
+        baseUrl
+      );
+    },
+
+    async claimGovernedExecutionRequest(
+      requestId: string,
+      payload: ClaimGovernedExecutionRequestPayload = {}
+    ): Promise<ClaimGovernedExecutionRequestResult> {
+      return readResponseData(
+        httpClient.post<ApiEnvelope<ClaimGovernedExecutionRequestResult>>(
+          `/governed-execution/internal/worker/execution-requests/${requestId}/claim`,
+          payload
         ),
         baseUrl
       );
