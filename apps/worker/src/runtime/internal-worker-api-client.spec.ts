@@ -21,6 +21,9 @@ const runtime = {
   solvencySnapshotIntervalMs: 300000,
   governedExecutionDispatchIntervalMs: 60000,
   platformAlertReEscalationIntervalMs: 300000,
+  governedExecutorDispatchBaseUrl: null,
+  governedExecutorDispatchApiKey: null,
+  governedExecutorDispatchTimeoutMs: 250,
   rpcUrl: null,
   depositSignerPrivateKey: null,
   managedWithdrawalClaimTimeoutMs: 60000,
@@ -247,6 +250,18 @@ test("internal worker api client issues every worker request against the expecte
       dispatchReference: "worker:worker-local-1:execution_request_1",
       dispatchNote: "handoff prepared"
     });
+    await client.recordGovernedExecutionDeliveryAccepted("execution_request_1", {
+      dispatchReference: "worker:worker-local-1:execution_request_1",
+      deliveryBackendType: "webhook_push",
+      deliveryBackendReference: "executor-job-1",
+      deliveryHttpStatus: 202
+    });
+    await client.recordGovernedExecutionDeliveryFailed("execution_request_1", {
+      dispatchReference: "worker:worker-local-1:execution_request_1",
+      deliveryBackendType: "webhook_push",
+      deliveryFailureReason: "executor backend returned 503",
+      deliveryHttpStatus: 503
+    });
     await client.fundLoanAgreement("loan_1");
     await client.listDueLoanInstallments(20);
     await client.runLoanAutopay("loan_1");
@@ -267,6 +282,8 @@ test("internal worker api client issues every worker request against the expecte
         claimedGovernedExecutionRequestCount: 0,
         dispatchedGovernedExecutionRequestCount: 0,
         governedExecutionDispatchFailureCount: 0,
+        governedExecutionDeliveryAcceptedCount: 0,
+        governedExecutionDeliveryFailureCount: 0,
         broadcastDepositCount: 0,
         broadcastWithdrawalCount: 0,
         confirmedDepositReadyToSettleCount: 0,
@@ -325,6 +342,8 @@ test("internal worker api client issues every worker request against the expecte
         "get:/governed-execution/internal/worker/execution-requests/claimable",
         "post:/governed-execution/internal/worker/execution-requests/execution_request_1/claim",
         "post:/governed-execution/internal/worker/execution-requests/execution_request_1/dispatch",
+        "post:/governed-execution/internal/worker/execution-requests/execution_request_1/record-delivery-accepted",
+        "post:/governed-execution/internal/worker/execution-requests/execution_request_1/record-delivery-failed",
         "post:/loans/internal/worker/agreements/loan_1/fund",
         "get:/loans/internal/worker/installments/due",
         "post:/loans/internal/worker/agreements/loan_1/run-autopay",

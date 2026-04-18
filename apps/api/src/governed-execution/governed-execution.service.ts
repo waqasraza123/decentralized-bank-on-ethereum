@@ -19,6 +19,7 @@ import {
 import {
   AssetType,
   GovernedExecutionOverrideRequestStatus,
+  GovernedTreasuryExecutionDeliveryStatus,
   GovernedTreasuryExecutionDispatchStatus,
   GovernedTreasuryExecutionRequestStatus,
   GovernedTreasuryExecutionRequestType,
@@ -176,6 +177,14 @@ type ExecutionRequestProjection = {
   dispatchReference: string | null;
   dispatchVerificationChecksumSha256: string | null;
   dispatchFailureReason: string | null;
+  deliveryStatus: GovernedTreasuryExecutionDeliveryStatus;
+  deliveryAttemptedAt: string | null;
+  deliveryAcceptedAt: string | null;
+  deliveredByWorkerId: string | null;
+  deliveryBackendType: string | null;
+  deliveryBackendReference: string | null;
+  deliveryHttpStatus: number | null;
+  deliveryFailureReason: string | null;
   expectedExecutionCalldata: string | null;
   expectedExecutionCalldataHash: string | null;
   expectedExecutionMethodSelector: string | null;
@@ -216,6 +225,7 @@ export type GovernedExecutionWorkspaceResult = {
     overrideMaxHours: number;
     executionClaimLeaseSeconds: number;
     executorClaimLeaseSeconds: number;
+    executorDeliveryBackendType: string;
   };
   posture: {
     status: "healthy" | "warning" | "critical";
@@ -709,6 +719,14 @@ export class GovernedExecutionService {
       dispatchVerificationChecksumSha256:
         record.dispatchVerificationChecksumSha256 ?? null,
       dispatchFailureReason: record.dispatchFailureReason ?? null,
+      deliveryStatus: record.deliveryStatus,
+      deliveryAttemptedAt: record.deliveryAttemptedAt?.toISOString() ?? null,
+      deliveryAcceptedAt: record.deliveryAcceptedAt?.toISOString() ?? null,
+      deliveredByWorkerId: record.deliveredByWorkerId ?? null,
+      deliveryBackendType: record.deliveryBackendType ?? null,
+      deliveryBackendReference: record.deliveryBackendReference ?? null,
+      deliveryHttpStatus: record.deliveryHttpStatus ?? null,
+      deliveryFailureReason: record.deliveryFailureReason ?? null,
       expectedExecutionCalldata: record.expectedExecutionCalldata ?? null,
       expectedExecutionCalldataHash:
         record.expectedExecutionCalldataHash ?? null,
@@ -1114,7 +1132,8 @@ export class GovernedExecutionService {
         stakingWriteExecutionMode: this.config.stakingWriteExecutionMode,
         overrideMaxHours: this.config.overrideMaxHours,
         executionClaimLeaseSeconds: this.config.executionClaimLeaseSeconds,
-        executorClaimLeaseSeconds: this.config.executorClaimLeaseSeconds
+        executorClaimLeaseSeconds: this.config.executorClaimLeaseSeconds,
+        executorDeliveryBackendType: this.config.executorDeliveryBackendType
       },
       posture: {
         status,
@@ -1531,6 +1550,20 @@ export class GovernedExecutionService {
           dispatchVerificationChecksumSha256:
             verification.verificationChecksumSha256,
           dispatchFailureReason: verification.failureReason ?? undefined,
+          deliveryStatus:
+            nextDispatchStatus ===
+            GovernedTreasuryExecutionDispatchStatus.dispatched
+              ? GovernedTreasuryExecutionDeliveryStatus.not_delivered
+              : GovernedTreasuryExecutionDeliveryStatus.delivery_failed,
+          deliveryAttemptedAt: null,
+          deliveryAcceptedAt: null,
+          deliveredByWorkerId: null,
+          deliveryBackendType: null,
+          deliveryBackendReference: null,
+          deliveryHttpStatus: null,
+          deliveryFailureReason: verification.verified
+            ? null
+            : verification.failureReason ?? null,
           claimedByWorkerId: null,
           claimedAt: null,
           claimExpiresAt: null,
@@ -1580,6 +1613,261 @@ export class GovernedExecutionService {
     };
   }
 
+  private assertDeliveryRecordable(args: {
+    request: ExecutionRequestRecord;
+    workerId: string;
+    dispatchReference: string;
+  }): void {
+    if (
+      args.request.dispatchStatus !==
+      GovernedTreasuryExecutionDispatchStatus.dispatched
+    ) {
+      throw new ConflictException(
+        "Governed treasury execution request has not been dispatched."
+      );
+    }
+
+    if (args.request.dispatchReference !== args.dispatchReference) {
+      throw new ConflictException(
+        "Governed treasury execution delivery result does not match the active dispatch reference."
+      );
+    }
+
+    if (
+      args.request.dispatchedByWorkerId &&
+      args.request.dispatchedByWorkerId !== args.workerId
+    ) {
+      throw new ConflictException(
+        "Governed treasury execution delivery result must be recorded by the worker that dispatched the request."
+      );
+    }
+  }
+
+  async recordExecutionDeliveryAccepted(
+    requestId: string,
+    input: {
+      dispatchReference: string;
+      deliveryBackendType: string;
+      deliveryBackendReference?: string;
+      deliveryHttpStatus?: number;
+      deliveryNote?: string;
+    },
+    workerId: string
+  ): Promise<{
+    request: ExecutionRequestProjection;
+    deliveryRecorded: boolean;
+    stateReused: boolean;
+  }> {
+    const deliveryBackendType = this.normalizeOptionalString(
+      input.deliveryBackendType
+    );
+    const deliveryBackendReference = this.normalizeOptionalString(
+      input.deliveryBackendReference
+    );
+    const deliveryNote = this.normalizeOptionalString(input.deliveryNote);
+
+    if (!deliveryBackendType) {
+      throw new BadRequestException("deliveryBackendType is required.");
+    }
+
+    const now = new Date();
+    const result = await this.prismaService.$transaction(async (transaction) => {
+      const request = await transaction.governedTreasuryExecutionRequest.findUnique({
+        where: {
+          id: requestId
+        },
+        include: executionRequestInclude
+      });
+
+      if (!request || request.environment !== this.environment) {
+        throw new ConflictException(
+          "Governed treasury execution request was not found in this environment."
+        );
+      }
+
+      this.assertDeliveryRecordable({
+        request,
+        workerId,
+        dispatchReference: input.dispatchReference
+      });
+
+      if (
+        request.deliveryStatus ===
+          GovernedTreasuryExecutionDeliveryStatus.accepted_by_executor &&
+        request.deliveryBackendType === deliveryBackendType &&
+        request.deliveryBackendReference === deliveryBackendReference
+      ) {
+        return {
+          request,
+          deliveryRecorded: false,
+          stateReused: true
+        };
+      }
+
+      const updated = await transaction.governedTreasuryExecutionRequest.update({
+        where: {
+          id: request.id
+        },
+        data: {
+          deliveryStatus:
+            GovernedTreasuryExecutionDeliveryStatus.accepted_by_executor,
+          deliveryAttemptedAt: now,
+          deliveryAcceptedAt: now,
+          deliveredByWorkerId: workerId,
+          deliveryBackendType,
+          deliveryBackendReference: deliveryBackendReference ?? undefined,
+          deliveryHttpStatus: input.deliveryHttpStatus ?? undefined,
+          deliveryFailureReason: null,
+          metadata: {
+            ...(isRecord(request.metadata) ? request.metadata : {}),
+            latestDeliveryNote: deliveryNote ?? null
+          } as PrismaJsonValue
+        },
+        include: executionRequestInclude
+      });
+
+      await transaction.auditEvent.create({
+        data: {
+          customerId: null,
+          actorType: "worker",
+          actorId: workerId,
+          action: "governed_execution.request.delivery_accepted",
+          targetType: "GovernedTreasuryExecutionRequest",
+          targetId: updated.id,
+          metadata: {
+            environment: this.environment,
+            dispatchReference: updated.dispatchReference,
+            deliveryBackendType,
+            deliveryBackendReference,
+            deliveryHttpStatus: input.deliveryHttpStatus ?? null,
+            deliveryNote
+          } as PrismaJsonValue
+        }
+      });
+
+      return {
+        request: updated,
+        deliveryRecorded: true,
+        stateReused: false
+      };
+    });
+
+    return {
+      request: this.mapExecutionRequestProjection(result.request),
+      deliveryRecorded: result.deliveryRecorded,
+      stateReused: result.stateReused
+    };
+  }
+
+  async recordExecutionDeliveryFailed(
+    requestId: string,
+    input: {
+      dispatchReference: string;
+      deliveryBackendType: string;
+      deliveryFailureReason: string;
+      deliveryHttpStatus?: number;
+      deliveryBackendReference?: string;
+      deliveryNote?: string;
+    },
+    workerId: string
+  ): Promise<{
+    request: ExecutionRequestProjection;
+    deliveryRecorded: boolean;
+  }> {
+    const deliveryBackendType = this.normalizeOptionalString(
+      input.deliveryBackendType
+    );
+    const deliveryFailureReason = this.normalizeOptionalString(
+      input.deliveryFailureReason
+    );
+    const deliveryBackendReference = this.normalizeOptionalString(
+      input.deliveryBackendReference
+    );
+    const deliveryNote = this.normalizeOptionalString(input.deliveryNote);
+
+    if (!deliveryBackendType) {
+      throw new BadRequestException("deliveryBackendType is required.");
+    }
+
+    if (!deliveryFailureReason) {
+      throw new BadRequestException("deliveryFailureReason is required.");
+    }
+
+    const now = new Date();
+    const result = await this.prismaService.$transaction(async (transaction) => {
+      const request = await transaction.governedTreasuryExecutionRequest.findUnique({
+        where: {
+          id: requestId
+        },
+        include: executionRequestInclude
+      });
+
+      if (!request || request.environment !== this.environment) {
+        throw new ConflictException(
+          "Governed treasury execution request was not found in this environment."
+        );
+      }
+
+      this.assertDeliveryRecordable({
+        request,
+        workerId,
+        dispatchReference: input.dispatchReference
+      });
+
+      const updated = await transaction.governedTreasuryExecutionRequest.update({
+        where: {
+          id: request.id
+        },
+        data: {
+          deliveryStatus:
+            GovernedTreasuryExecutionDeliveryStatus.delivery_failed,
+          deliveryAttemptedAt: now,
+          deliveryAcceptedAt: null,
+          deliveredByWorkerId: workerId,
+          deliveryBackendType,
+          deliveryBackendReference: deliveryBackendReference ?? undefined,
+          deliveryHttpStatus: input.deliveryHttpStatus ?? undefined,
+          deliveryFailureReason,
+          metadata: {
+            ...(isRecord(request.metadata) ? request.metadata : {}),
+            latestDeliveryNote: deliveryNote ?? null
+          } as PrismaJsonValue
+        },
+        include: executionRequestInclude
+      });
+
+      await transaction.auditEvent.create({
+        data: {
+          customerId: null,
+          actorType: "worker",
+          actorId: workerId,
+          action: "governed_execution.request.delivery_failed",
+          targetType: "GovernedTreasuryExecutionRequest",
+          targetId: updated.id,
+          metadata: {
+            environment: this.environment,
+            dispatchReference: updated.dispatchReference,
+            deliveryBackendType,
+            deliveryBackendReference,
+            deliveryHttpStatus: input.deliveryHttpStatus ?? null,
+            deliveryFailureReason,
+            deliveryNote
+          } as PrismaJsonValue
+        }
+      });
+
+      return {
+        request: updated,
+        deliveryRecorded: true
+      };
+    });
+
+    return {
+      request: this.mapExecutionRequestProjection(result.request),
+      deliveryRecorded: result.deliveryRecorded
+    };
+  }
+
   async listExecutorReadyExecutionRequests(limit: number): Promise<{
     requests: ExecutionRequestProjection[];
     limit: number;
@@ -1597,6 +1885,12 @@ export class GovernedExecutionService {
           ]
         },
         dispatchStatus: GovernedTreasuryExecutionDispatchStatus.dispatched,
+        deliveryStatus: {
+          in: [
+            GovernedTreasuryExecutionDeliveryStatus.not_delivered,
+            GovernedTreasuryExecutionDeliveryStatus.delivery_failed
+          ]
+        },
         OR: [
           {
             executorClaimExpiresAt: null
@@ -1657,6 +1951,15 @@ export class GovernedExecutionService {
       ) {
         throw new ConflictException(
           "Governed treasury execution request is not ready for governed executor pickup."
+        );
+      }
+
+      if (
+        request.deliveryStatus ===
+        GovernedTreasuryExecutionDeliveryStatus.accepted_by_executor
+      ) {
+        throw new ConflictException(
+          "Governed treasury execution request has already been delivered to the governed executor backend."
         );
       }
 
@@ -1767,6 +2070,39 @@ export class GovernedExecutionService {
     }
   }
 
+  private assertExecutorCallbackAuthorized(args: {
+    request: ExecutionRequestRecord;
+    executorId: string;
+    externalExecutionReference?: string | null;
+  }): void {
+    if (
+      args.request.claimedByExecutorId === args.executorId &&
+      args.request.executorClaimExpiresAt &&
+      args.request.executorClaimExpiresAt.getTime() > Date.now()
+    ) {
+      return;
+    }
+
+    if (
+      args.request.deliveryStatus !==
+      GovernedTreasuryExecutionDeliveryStatus.accepted_by_executor
+    ) {
+      throw new ConflictException(
+        "Governed treasury execution request is not claimed by this governed executor."
+      );
+    }
+
+    if (
+      args.request.deliveryBackendReference &&
+      this.normalizeOptionalString(args.externalExecutionReference) !==
+        args.request.deliveryBackendReference
+    ) {
+      throw new ConflictException(
+        "Governed executor callback does not match the accepted delivery backend reference."
+      );
+    }
+  }
+
   async recordExecutionSuccessFromExecutor(
     requestId: string,
     input: {
@@ -1820,20 +2156,11 @@ export class GovernedExecutionService {
         );
       }
 
-      if (request.claimedByExecutorId !== executorId) {
-        throw new ConflictException(
-          "Governed treasury execution request is not claimed by this governed executor."
-        );
-      }
-
-      if (
-        !request.executorClaimExpiresAt ||
-        request.executorClaimExpiresAt.getTime() <= Date.now()
-      ) {
-        throw new ConflictException(
-          "Governed treasury execution request executor lease has expired."
-        );
-      }
+      this.assertExecutorCallbackAuthorized({
+        request,
+        executorId,
+        externalExecutionReference
+      });
 
       this.assertExecutorReceiptMatchesRequest(request, input);
 
@@ -2060,20 +2387,11 @@ export class GovernedExecutionService {
         );
       }
 
-      if (request.claimedByExecutorId !== executorId) {
-        throw new ConflictException(
-          "Governed treasury execution request is not claimed by this governed executor."
-        );
-      }
-
-      if (
-        !request.executorClaimExpiresAt ||
-        request.executorClaimExpiresAt.getTime() <= Date.now()
-      ) {
-        throw new ConflictException(
-          "Governed treasury execution request executor lease has expired."
-        );
-      }
+      this.assertExecutorCallbackAuthorized({
+        request,
+        executorId,
+        externalExecutionReference
+      });
 
       if (
         input.transactionChainId !== undefined &&

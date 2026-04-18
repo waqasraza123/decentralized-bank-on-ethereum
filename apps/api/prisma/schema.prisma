@@ -558,6 +558,12 @@ enum GovernedTreasuryExecutionDispatchStatus {
   dispatch_failed
 }
 
+enum GovernedTreasuryExecutionDeliveryStatus {
+  not_delivered
+  accepted_by_executor
+  delivery_failed
+}
+
 model SolvencySnapshot {
   id                         String                    @id @default(cuid())
   environment                WorkerRuntimeEnvironment
@@ -848,6 +854,14 @@ model GovernedTreasuryExecutionRequest {
   dispatchReference            String?
   dispatchVerificationChecksumSha256 String?
   dispatchFailureReason        String?
+  deliveryStatus              GovernedTreasuryExecutionDeliveryStatus @default(not_delivered)
+  deliveryAttemptedAt         DateTime?
+  deliveryAcceptedAt          DateTime?
+  deliveredByWorkerId         String?
+  deliveryBackendType         String?
+  deliveryBackendReference    String?
+  deliveryHttpStatus          Int?
+  deliveryFailureReason       String?
   expectedExecutionCalldata    String?
   expectedExecutionCalldataHash String?
   expectedExecutionMethodSelector String?
@@ -881,6 +895,7 @@ model GovernedTreasuryExecutionRequest {
   @@index([environment, executionPackagePublishedAt, requestedAt])
   @@index([environment, claimExpiresAt, requestedAt])
   @@index([environment, dispatchStatus, requestedAt])
+  @@index([environment, deliveryStatus, requestedAt])
   @@index([environment, executorClaimExpiresAt, requestedAt])
   @@index([executionType, targetType, targetId, requestedAt])
   @@index([loanAgreementId, requestedAt])

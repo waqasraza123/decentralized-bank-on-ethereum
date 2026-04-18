@@ -5,7 +5,9 @@ function createController() {
   const governedExecutionService = {
     listClaimableExecutionRequests: jest.fn(),
     claimExecutionRequest: jest.fn(),
-    dispatchExecutionRequest: jest.fn()
+    dispatchExecutionRequest: jest.fn(),
+    recordExecutionDeliveryAccepted: jest.fn(),
+    recordExecutionDeliveryFailed: jest.fn()
   } as unknown as GovernedExecutionService;
 
   return {
@@ -96,6 +98,85 @@ describe("GovernedExecutionWorkerController", () => {
       "execution_request_1",
       {
         dispatchReference: "worker:worker_1:execution_request_1"
+      },
+      "worker_1"
+    );
+  });
+
+  it("records delivery acceptance for a dispatched request", async () => {
+    const { controller, governedExecutionService } = createController();
+    (governedExecutionService.recordExecutionDeliveryAccepted as jest.Mock).mockResolvedValue(
+      {
+        request: {
+          id: "execution_request_1"
+        },
+        deliveryRecorded: true,
+        stateReused: false
+      }
+    );
+
+    await controller.recordExecutionDeliveryAccepted(
+      "execution_request_1",
+      {
+        dispatchReference: "dispatch:execution_request_1",
+        deliveryBackendType: "webhook_push",
+        deliveryBackendReference: "executor-job-1",
+        deliveryHttpStatus: 202
+      },
+      {
+        internalWorker: {
+          workerId: "worker_1"
+        }
+      }
+    );
+
+    expect(
+      governedExecutionService.recordExecutionDeliveryAccepted
+    ).toHaveBeenCalledWith(
+      "execution_request_1",
+      {
+        dispatchReference: "dispatch:execution_request_1",
+        deliveryBackendType: "webhook_push",
+        deliveryBackendReference: "executor-job-1",
+        deliveryHttpStatus: 202
+      },
+      "worker_1"
+    );
+  });
+
+  it("records delivery failure for a dispatched request", async () => {
+    const { controller, governedExecutionService } = createController();
+    (governedExecutionService.recordExecutionDeliveryFailed as jest.Mock).mockResolvedValue(
+      {
+        request: {
+          id: "execution_request_1"
+        },
+        deliveryRecorded: true
+      }
+    );
+
+    await controller.recordExecutionDeliveryFailed(
+      "execution_request_1",
+      {
+        dispatchReference: "dispatch:execution_request_1",
+        deliveryBackendType: "webhook_push",
+        deliveryFailureReason: "executor backend returned 503"
+      },
+      {
+        internalWorker: {
+          workerId: "worker_1"
+        }
+      }
+    );
+
+    expect(
+      governedExecutionService.recordExecutionDeliveryFailed
+    ).toHaveBeenCalledWith(
+      "execution_request_1",
+      {
+        dispatchReference: "dispatch:execution_request_1",
+        deliveryBackendType: "webhook_push",
+        deliveryFailureReason: "executor backend returned 503"
       },
       "worker_1"
     );

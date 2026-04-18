@@ -183,6 +183,8 @@ export type WorkerIterationMetrics = {
   claimedGovernedExecutionRequestCount: number;
   dispatchedGovernedExecutionRequestCount: number;
   governedExecutionDispatchFailureCount: number;
+  governedExecutionDeliveryAcceptedCount: number;
+  governedExecutionDeliveryFailureCount: number;
   signedWithdrawalCount: number;
   broadcastDepositCount: number;
   broadcastWithdrawalCount: number;
@@ -274,6 +276,16 @@ export type GovernedExecutionRequestProjection = {
   dispatchReference: string | null;
   dispatchVerificationChecksumSha256: string | null;
   dispatchFailureReason: string | null;
+  deliveryStatus: string;
+  deliveryAttemptedAt: string | null;
+  deliveryAcceptedAt: string | null;
+  deliveredByWorkerId: string | null;
+  deliveryBackendType: string | null;
+  deliveryBackendReference: string | null;
+  deliveryHttpStatus: number | null;
+  deliveryFailureReason: string | null;
+  expectedExecutionCalldataHash: string | null;
+  expectedExecutionMethodSelector: string | null;
   updatedAt: string;
 };
 
@@ -302,6 +314,34 @@ export type DispatchGovernedExecutionRequestResult = {
   dispatchRecorded: boolean;
   verificationSucceeded: boolean;
   verificationFailureReason: string | null;
+};
+
+export type RecordGovernedExecutionDeliveryAcceptedPayload = {
+  dispatchReference: string;
+  deliveryBackendType: string;
+  deliveryBackendReference?: string;
+  deliveryHttpStatus?: number;
+  deliveryNote?: string;
+};
+
+export type RecordGovernedExecutionDeliveryAcceptedResult = {
+  request: GovernedExecutionRequestProjection;
+  deliveryRecorded: boolean;
+  stateReused: boolean;
+};
+
+export type RecordGovernedExecutionDeliveryFailedPayload = {
+  dispatchReference: string;
+  deliveryBackendType: string;
+  deliveryFailureReason: string;
+  deliveryHttpStatus?: number;
+  deliveryBackendReference?: string;
+  deliveryNote?: string;
+};
+
+export type RecordGovernedExecutionDeliveryFailedResult = {
+  request: GovernedExecutionRequestProjection;
+  deliveryRecorded: boolean;
 };
 
 export type TrackedLedgerReconciliationScanRun = {

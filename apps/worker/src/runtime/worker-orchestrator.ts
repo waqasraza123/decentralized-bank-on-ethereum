@@ -1,5 +1,9 @@
 import { createHash } from "node:crypto";
 import { ManagedExecutionIntentError } from "./deposit-broadcaster";
+import {
+  GovernedExecutorDispatchError,
+  type GovernedExecutorDispatchClient
+} from "./governed-executor-dispatch-client";
 import type { InternalWorkerApiClient } from "./internal-worker-api-client";
 import type { WorkerRuntime } from "./worker-runtime";
 import type {
@@ -23,6 +27,7 @@ type JsonRpcClient = {
 type WorkerOrchestratorDeps = {
   runtime: WorkerRuntime;
   internalApiClient: InternalWorkerApiClient;
+  governedExecutorDispatchClient?: GovernedExecutorDispatchClient | null;
   rpcClient: JsonRpcClient | null;
   depositBroadcaster: ManagedDepositBroadcaster | null;
   withdrawalBroadcaster: ManagedWithdrawalBroadcaster | null;
@@ -55,6 +60,8 @@ function createEmptyIterationMetrics(): WorkerIterationMetrics {
     claimedGovernedExecutionRequestCount: 0,
     dispatchedGovernedExecutionRequestCount: 0,
     governedExecutionDispatchFailureCount: 0,
+    governedExecutionDeliveryAcceptedCount: 0,
+    governedExecutionDeliveryFailureCount: 0,
     signedWithdrawalCount: 0,
     broadcastDepositCount: 0,
     broadcastWithdrawalCount: 0,
@@ -273,6 +280,70 @@ export class WorkerOrchestrator {
         if (dispatchResult.verificationSucceeded) {
           metrics.dispatchedGovernedExecutionRequestCount +=
             dispatchResult.dispatchRecorded ? 1 : 0;
+
+          if (this.deps.governedExecutorDispatchClient) {
+            try {
+              const deliveryResult =
+                await this.deps.governedExecutorDispatchClient.deliverExecutionRequest(
+                  {
+                    request: dispatchResult.request,
+                    dispatchReference,
+                    dispatchNote:
+                      "Worker delivered a signed governed execution package to the configured executor backend."
+                  }
+                );
+
+              await this.deps.internalApiClient.recordGovernedExecutionDeliveryAccepted(
+                request.id,
+                {
+                  dispatchReference,
+                  deliveryBackendType: "webhook_push",
+                  deliveryBackendReference:
+                    deliveryResult.backendReference ?? undefined,
+                  deliveryHttpStatus: deliveryResult.httpStatus ?? undefined,
+                  deliveryNote:
+                    "Configured governed executor backend accepted the signed execution package."
+                }
+              );
+              metrics.governedExecutionDeliveryAcceptedCount += 1;
+            } catch (error) {
+              const deliveryError =
+                error instanceof GovernedExecutorDispatchError
+                  ? error
+                  : new GovernedExecutorDispatchError({
+                      message:
+                        error instanceof Error
+                          ? error.message
+                          : "Governed executor dispatch failed.",
+                      cause: error
+                    });
+
+              await this.deps.internalApiClient.recordGovernedExecutionDeliveryFailed(
+                request.id,
+                {
+                  dispatchReference,
+                  deliveryBackendType: "webhook_push",
+                  deliveryFailureReason: deliveryError.message,
+                  deliveryHttpStatus: deliveryError.httpStatus ?? undefined,
+                  deliveryBackendReference:
+                    deliveryError.backendReference ?? undefined,
+                  deliveryNote:
+                    "Configured governed executor backend did not accept the signed execution package."
+                }
+              );
+              metrics.governedExecutionDeliveryFailureCount += 1;
+              this.deps.logger.error("governed_execution_delivery_failed", {
+                requestId: request.id,
+                executionType: request.executionType,
+                targetType: request.targetType,
+                targetId: request.targetId,
+                dispatchReference,
+                error: deliveryError.message,
+                httpStatus: deliveryError.httpStatus
+              });
+            }
+          }
+
           this.deps.logger.info("governed_execution_request_dispatched", {
             requestId: request.id,
             executionType: request.executionType,

@@ -587,6 +587,8 @@ export type GovernedExecutionWorkspace = {
     stakingWriteExecutionMode: string;
     overrideMaxHours: number;
     executionClaimLeaseSeconds: number;
+    executorClaimLeaseSeconds: number;
+    executorDeliveryBackendType: string;
   };
   posture: {
     status: "healthy" | "warning" | "critical";
@@ -710,6 +712,14 @@ export type GovernedTreasuryExecutionRequest = {
   dispatchReference: string | null;
   dispatchVerificationChecksumSha256: string | null;
   dispatchFailureReason: string | null;
+  deliveryStatus: string;
+  deliveryAttemptedAt: string | null;
+  deliveryAcceptedAt: string | null;
+  deliveredByWorkerId: string | null;
+  deliveryBackendType: string | null;
+  deliveryBackendReference: string | null;
+  deliveryHttpStatus: number | null;
+  deliveryFailureReason: string | null;
   updatedAt: string;
   asset: {
     id: string;

@@ -1,10 +1,12 @@
 export {
+  buildGovernedExecutionDispatchHeaders,
   buildInternalGovernedExecutorHeaders,
   buildInternalOperatorHeaders,
   buildInternalWorkerHeaders,
   readHeaderValue
 } from "./src/headers";
 export type {
+  GovernedExecutionDispatchSession,
   HeaderRecord,
   HeaderValue,
   InternalGovernedExecutorSession,

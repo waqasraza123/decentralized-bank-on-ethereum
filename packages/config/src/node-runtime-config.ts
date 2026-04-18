@@ -787,6 +787,9 @@ export type WorkerRuntimeConfig = {
   readonly solvencySnapshotIntervalMs: number;
   readonly governedExecutionDispatchIntervalMs: number;
   readonly managedWithdrawalClaimTimeoutMs: number;
+  readonly governedExecutorDispatchBaseUrl: string | null;
+  readonly governedExecutorDispatchApiKey: string | null;
+  readonly governedExecutorDispatchTimeoutMs: number;
   readonly policyControlledWithdrawalExecutorPrivateKey: string | null;
   readonly policyControlledWithdrawalPolicySignerPrivateKey: string | null;
   readonly policyControlledWithdrawalAuthorizationTtlSeconds: number;
@@ -949,6 +952,7 @@ export type GovernedExecutionRuntimeConfig = {
   readonly executorClaimLeaseSeconds: number;
   readonly executorAllowedSignerAddresses: readonly string[];
   readonly requireOnchainExecutorReceiptVerification: boolean;
+  readonly executorDeliveryBackendType: "internal_pull" | "webhook_push";
 };
 
 function parsePlatformAlertDeliveryHealthSloConfig(
@@ -1252,6 +1256,14 @@ export function loadWorkerRuntimeConfig(
     env,
     "WORKER_DEPOSIT_SIGNER_PRIVATE_KEY"
   );
+  const governedExecutorDispatchBaseUrl = readOptionalRuntimeEnv(
+    env,
+    "GOVERNED_EXECUTOR_DISPATCH_BASE_URL"
+  );
+  const governedExecutorDispatchApiKey = readOptionalRuntimeEnv(
+    env,
+    "GOVERNED_EXECUTOR_DISPATCH_API_KEY"
+  );
   const policyControlledWithdrawalExecutorPrivateKey = readOptionalRuntimeEnv(
     env,
     "WORKER_POLICY_CONTROLLED_WITHDRAWAL_EXECUTOR_PRIVATE_KEY"
@@ -1295,6 +1307,12 @@ export function loadWorkerRuntimeConfig(
 
   if (batchLimit > 100) {
     throw new Error("WORKER_BATCH_LIMIT must not be greater than 100.");
+  }
+
+  if (Boolean(governedExecutorDispatchBaseUrl) !== Boolean(governedExecutorDispatchApiKey)) {
+    throw new Error(
+      "GOVERNED_EXECUTOR_DISPATCH_BASE_URL and GOVERNED_EXECUTOR_DISPATCH_API_KEY must be configured together."
+    );
   }
 
   return {
@@ -1372,6 +1390,22 @@ export function loadWorkerRuntimeConfig(
         "WORKER_MANAGED_WITHDRAWAL_CLAIM_TIMEOUT_MS"
       ) ?? String(DEFAULT_WORKER_MANAGED_WITHDRAWAL_CLAIM_TIMEOUT_MS),
       "WORKER_MANAGED_WITHDRAWAL_CLAIM_TIMEOUT_MS"
+    ),
+    governedExecutorDispatchBaseUrl: governedExecutorDispatchBaseUrl
+      ? normalizeBaseUrl(
+          governedExecutorDispatchBaseUrl,
+          "GOVERNED_EXECUTOR_DISPATCH_BASE_URL"
+        )
+      : null,
+    governedExecutorDispatchApiKey: governedExecutorDispatchApiKey ?? null,
+    governedExecutorDispatchTimeoutMs: parsePositiveInteger(
+      readOptionalRuntimeEnv(
+        env,
+        "GOVERNED_EXECUTOR_DISPATCH_TIMEOUT_MS"
+      ) ??
+        (readOptionalRuntimeEnv(env, "WORKER_REQUEST_TIMEOUT_MS") ??
+          String(DEFAULT_WORKER_REQUEST_TIMEOUT_MS)),
+      "GOVERNED_EXECUTOR_DISPATCH_TIMEOUT_MS"
     ),
     policyControlledWithdrawalExecutorPrivateKey:
       policyControlledWithdrawalExecutorPrivateKey ?? null,
@@ -1968,6 +2002,10 @@ export function loadGovernedExecutionRuntimeConfig(
     env,
     "GOVERNED_EXECUTOR_ALLOWED_SIGNER_ADDRESSES"
   );
+  const configuredExecutorDeliveryBackendType = readOptionalRuntimeEnv(
+    env,
+    "GOVERNED_EXECUTOR_DELIVERY_BACKEND_TYPE"
+  );
   const executionPackageSignerPrivateKey =
     readOptionalRuntimeEnv(env, "GOVERNED_EXECUTION_PACKAGE_SIGNER_PRIVATE_KEY") ??
     readOptionalRuntimeEnv(env, "SOLVENCY_REPORT_SIGNER_PRIVATE_KEY");
@@ -2049,6 +2087,10 @@ export function loadGovernedExecutionRuntimeConfig(
         "GOVERNED_EXECUTOR_REQUIRE_ONCHAIN_RECEIPT_VERIFICATION"
       ) ?? "true",
       "GOVERNED_EXECUTOR_REQUIRE_ONCHAIN_RECEIPT_VERIFICATION"
-    )
+    ),
+    executorDeliveryBackendType:
+      configuredExecutorDeliveryBackendType === "webhook_push"
+        ? "webhook_push"
+        : "internal_pull"
   };
 }

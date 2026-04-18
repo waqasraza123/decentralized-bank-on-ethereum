@@ -27,6 +27,7 @@ const mockConfig: {
   executorClaimLeaseSeconds: number;
   executorAllowedSignerAddresses: string[];
   requireOnchainExecutorReceiptVerification: boolean;
+  executorDeliveryBackendType: "internal_pull" | "webhook_push";
 } = {
   environment: "production" as const,
   governedExecutionRequiredInProduction: true,
@@ -48,7 +49,8 @@ const mockConfig: {
       "0x59c6995e998f97a5a0044966f094538c5f6d4e07f16b8ad8cc7658f0f1b0f9d8"
     ).address
   ],
-  requireOnchainExecutorReceiptVerification: true
+  requireOnchainExecutorReceiptVerification: true,
+  executorDeliveryBackendType: "internal_pull"
 };
 
 const mockProvider = {
@@ -247,6 +249,17 @@ function createExecutionRequestRecord(
     dispatchReference: string | null;
     dispatchVerificationChecksumSha256: string | null;
     dispatchFailureReason: string | null;
+    deliveryStatus:
+      | "not_delivered"
+      | "accepted_by_executor"
+      | "delivery_failed";
+    deliveryAttemptedAt: Date | null;
+    deliveryAcceptedAt: Date | null;
+    deliveredByWorkerId: string | null;
+    deliveryBackendType: string | null;
+    deliveryBackendReference: string | null;
+    deliveryHttpStatus: number | null;
+    deliveryFailureReason: string | null;
     expectedExecutionCalldata: string | null;
     expectedExecutionCalldataHash: string | null;
     expectedExecutionMethodSelector: string | null;
@@ -335,6 +348,14 @@ function createExecutionRequestRecord(
     dispatchVerificationChecksumSha256:
       overrides?.dispatchVerificationChecksumSha256 ?? null,
     dispatchFailureReason: overrides?.dispatchFailureReason ?? null,
+    deliveryStatus: overrides?.deliveryStatus ?? "not_delivered",
+    deliveryAttemptedAt: overrides?.deliveryAttemptedAt ?? null,
+    deliveryAcceptedAt: overrides?.deliveryAcceptedAt ?? null,
+    deliveredByWorkerId: overrides?.deliveredByWorkerId ?? null,
+    deliveryBackendType: overrides?.deliveryBackendType ?? null,
+    deliveryBackendReference: overrides?.deliveryBackendReference ?? null,
+    deliveryHttpStatus: overrides?.deliveryHttpStatus ?? null,
+    deliveryFailureReason: overrides?.deliveryFailureReason ?? null,
     expectedExecutionCalldata: overrides?.expectedExecutionCalldata ?? null,
     expectedExecutionCalldataHash:
       overrides?.expectedExecutionCalldataHash ?? null,
@@ -873,6 +894,64 @@ describe("GovernedExecutionService", () => {
     expect(executionRequestStore[0]?.dispatchFailureReason).toBeTruthy();
   });
 
+  it("records delivery acceptance for a dispatched governed execution request", async () => {
+    const executionRecord = createExecutionRequestRecord({
+      id: "execution_delivery_ok_1",
+      dispatchStatus: "dispatched",
+      dispatchedByWorkerId: "worker_1",
+      dispatchReference: "dispatch:execution_delivery_ok_1"
+    });
+    const { service, executionRequestStore } = createService({
+      executionRequests: [executionRecord]
+    });
+
+    const result = await service.recordExecutionDeliveryAccepted(
+      "execution_delivery_ok_1",
+      {
+        dispatchReference: "dispatch:execution_delivery_ok_1",
+        deliveryBackendType: "webhook_push",
+        deliveryBackendReference: "executor-job-1",
+        deliveryHttpStatus: 202
+      },
+      "worker_1"
+    );
+
+    expect(result.deliveryRecorded).toBe(true);
+    expect(result.request.deliveryStatus).toBe("accepted_by_executor");
+    expect(executionRequestStore[0]?.deliveryBackendReference).toBe(
+      "executor-job-1"
+    );
+  });
+
+  it("records delivery failure for a dispatched governed execution request", async () => {
+    const executionRecord = createExecutionRequestRecord({
+      id: "execution_delivery_fail_1",
+      dispatchStatus: "dispatched",
+      dispatchedByWorkerId: "worker_1",
+      dispatchReference: "dispatch:execution_delivery_fail_1"
+    });
+    const { service, executionRequestStore } = createService({
+      executionRequests: [executionRecord]
+    });
+
+    const result = await service.recordExecutionDeliveryFailed(
+      "execution_delivery_fail_1",
+      {
+        dispatchReference: "dispatch:execution_delivery_fail_1",
+        deliveryBackendType: "webhook_push",
+        deliveryFailureReason: "executor backend returned 503",
+        deliveryHttpStatus: 503
+      },
+      "worker_1"
+    );
+
+    expect(result.deliveryRecorded).toBe(true);
+    expect(result.request.deliveryStatus).toBe("delivery_failed");
+    expect(executionRequestStore[0]?.deliveryFailureReason).toBe(
+      "executor backend returned 503"
+    );
+  });
+
   it("claims a dispatched execution request for the governed executor", async () => {
     const executionRecord = createExecutionRequestRecord({
       id: "execution_executor_claim_1",
@@ -957,6 +1036,59 @@ describe("GovernedExecutionService", () => {
     expect(mockProvider.getTransactionReceipt).toHaveBeenCalledWith(
       "0xexecutorhash"
     );
+  });
+
+  it("accepts governed executor success from an accepted delivery callback without an executor claim lease", async () => {
+    const executionRecord = createExecutionRequestRecord({
+      id: "execution_executor_delivery_callback_1",
+      dispatchStatus: "dispatched",
+      dispatchReference: "dispatch:execution_executor_delivery_callback_1",
+      deliveryStatus: "accepted_by_executor",
+      deliveryBackendType: "webhook_push",
+      deliveryBackendReference: "executor-job-42",
+      contractAddress: "0x0000000000000000000000000000000000000def"
+    });
+    const { service } = createService({
+      executionRequests: [executionRecord]
+    });
+    const signedReceipt = buildExecutorReceipt({
+      requestId: "execution_executor_delivery_callback_1",
+      executionType: "loan_contract_creation",
+      targetType: "LoanAgreement",
+      targetId: "target_1",
+      dispatchReference: "dispatch:execution_executor_delivery_callback_1",
+      executorId: "executor_1",
+      outcome: "executed",
+      transactionChainId: 8453,
+      transactionToAddress: "0x0000000000000000000000000000000000000def",
+      blockchainTransactionHash: "0xexecutorhash",
+      externalExecutionReference: "executor-job-42",
+      contractLoanId: "loan_4321",
+      contractAddress: "0x0000000000000000000000000000000000000def"
+    });
+
+    const result = await service.recordExecutionSuccessFromExecutor(
+      "execution_executor_delivery_callback_1",
+      {
+        dispatchReference: "dispatch:execution_executor_delivery_callback_1",
+        transactionChainId: 8453,
+        transactionToAddress: "0x0000000000000000000000000000000000000def",
+        blockchainTransactionHash: "0xexecutorhash",
+        externalExecutionReference: "executor-job-42",
+        contractLoanId: "loan_4321",
+        contractAddress: "0x0000000000000000000000000000000000000def",
+        notedAt: "2030-04-18T10:03:00.000Z",
+        canonicalReceiptText: signedReceipt.canonicalReceiptText,
+        receiptHash: signedReceipt.receiptHash,
+        receiptChecksumSha256: signedReceipt.receiptChecksumSha256,
+        receiptSignature: signedReceipt.receiptSignature,
+        receiptSignerAddress: signedReceipt.receiptSignerAddress,
+        receiptSignatureAlgorithm: signedReceipt.receiptSignatureAlgorithm
+      },
+      "executor_1"
+    );
+
+    expect(result.request.status).toBe("executed");
   });
 
   it("rejects governed executor success receipts when dispatch details do not match", async () => {

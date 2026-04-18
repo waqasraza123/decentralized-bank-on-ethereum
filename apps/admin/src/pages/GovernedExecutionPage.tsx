@@ -807,6 +807,20 @@ export function GovernedExecutionPage() {
                                   ? request.dispatchFailureReason ??
                                     "Dispatch verification failed"
                                   : "Not yet dispatched"
+                          },
+                          {
+                            label: "Executor delivery",
+                            value:
+                              request.deliveryStatus === "accepted_by_executor"
+                                ? `${request.deliveryBackendType ?? "backend"} · ${
+                                    request.deliveryBackendReference
+                                      ? shortenValue(request.deliveryBackendReference)
+                                      : "accepted"
+                                  }`
+                                : request.deliveryStatus === "delivery_failed"
+                                  ? request.deliveryFailureReason ??
+                                    "Executor backend delivery failed"
+                                  : "Not yet delivered"
                           }
                         ]}
                       />

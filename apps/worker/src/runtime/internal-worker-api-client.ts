@@ -9,6 +9,10 @@ import type {
   DispatchGovernedExecutionRequestPayload,
   DispatchGovernedExecutionRequestResult,
   ListClaimableGovernedExecutionRequestsResult,
+  RecordGovernedExecutionDeliveryAcceptedPayload,
+  RecordGovernedExecutionDeliveryAcceptedResult,
+  RecordGovernedExecutionDeliveryFailedPayload,
+  RecordGovernedExecutionDeliveryFailedResult,
   FailIntentPayload,
   GeneratedSolvencySnapshotResult,
   ListIntentsResult,
@@ -303,6 +307,32 @@ export function createInternalWorkerApiClient(runtime: WorkerRuntime) {
       return readResponseData(
         httpClient.post<ApiEnvelope<DispatchGovernedExecutionRequestResult>>(
           `/governed-execution/internal/worker/execution-requests/${requestId}/dispatch`,
+          payload
+        ),
+        baseUrl
+      );
+    },
+
+    async recordGovernedExecutionDeliveryAccepted(
+      requestId: string,
+      payload: RecordGovernedExecutionDeliveryAcceptedPayload
+    ): Promise<RecordGovernedExecutionDeliveryAcceptedResult> {
+      return readResponseData(
+        httpClient.post<ApiEnvelope<RecordGovernedExecutionDeliveryAcceptedResult>>(
+          `/governed-execution/internal/worker/execution-requests/${requestId}/record-delivery-accepted`,
+          payload
+        ),
+        baseUrl
+      );
+    },
+
+    async recordGovernedExecutionDeliveryFailed(
+      requestId: string,
+      payload: RecordGovernedExecutionDeliveryFailedPayload
+    ): Promise<RecordGovernedExecutionDeliveryFailedResult> {
+      return readResponseData(
+        httpClient.post<ApiEnvelope<RecordGovernedExecutionDeliveryFailedResult>>(
+          `/governed-execution/internal/worker/execution-requests/${requestId}/record-delivery-failed`,
           payload
         ),
         baseUrl

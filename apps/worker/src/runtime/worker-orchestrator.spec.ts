@@ -157,6 +157,9 @@ function createRuntime<T extends Record<string, unknown>>(
 ): T & {
   solvencySnapshotIntervalMs: number;
   governedExecutionDispatchIntervalMs: number;
+  governedExecutorDispatchBaseUrl: null;
+  governedExecutorDispatchApiKey: null;
+  governedExecutorDispatchTimeoutMs: number;
   managedWithdrawalClaimTimeoutMs: number;
   policyControlledWithdrawalExecutorPrivateKey: null;
   policyControlledWithdrawalPolicySignerPrivateKey: null;
@@ -166,6 +169,9 @@ function createRuntime<T extends Record<string, unknown>>(
   return {
     solvencySnapshotIntervalMs: 300000,
     governedExecutionDispatchIntervalMs: 60000,
+    governedExecutorDispatchBaseUrl: null,
+    governedExecutorDispatchApiKey: null,
+    governedExecutorDispatchTimeoutMs: 1000,
     managedWithdrawalClaimTimeoutMs: 60000,
     policyControlledWithdrawalExecutorPrivateKey: null,
     policyControlledWithdrawalPolicySignerPrivateKey: null,
@@ -269,6 +275,183 @@ test("worker claims and dispatches governed execution requests before downstream
   assert.deepEqual(operations, [
     "claim:execution_request_1",
     "dispatch:execution_request_1"
+  ]);
+});
+
+test("worker delivers dispatched governed execution packages to the configured executor backend", async () => {
+  const operations: string[] = [];
+  const client = createInternalApiClient({
+    async listQueuedDepositIntents() {
+      return { intents: [], limit: 20 };
+    },
+    async listQueuedWithdrawalIntents() {
+      return { intents: [], limit: 20 };
+    },
+    async listBroadcastDepositIntents() {
+      return { intents: [], limit: 20 };
+    },
+    async listBroadcastWithdrawalIntents() {
+      return { intents: [], limit: 20 };
+    },
+    async listConfirmedDepositIntentsReadyToSettle() {
+      return { intents: [], limit: 20 };
+    },
+    async listConfirmedWithdrawalIntentsReadyToSettle() {
+      return { intents: [], limit: 20 };
+    },
+    async listClaimableGovernedExecutionRequests() {
+      return {
+        requests: [
+          {
+            id: "execution_request_1",
+            executionType: "loan_contract_creation",
+            targetType: "LoanAgreement",
+            targetId: "loan_1",
+            executionPackageHash: "0xpackage",
+            dispatchStatus: "not_dispatched"
+          }
+        ],
+        limit: 20,
+        generatedAt: new Date().toISOString()
+      };
+    },
+    async claimGovernedExecutionRequest(requestId: string) {
+      operations.push(`claim:${requestId}`);
+      return {
+        request: {
+          id: requestId,
+          executionPackageHash: "0xpackage"
+        },
+        claimReused: false
+      };
+    },
+    async dispatchGovernedExecutionRequest(requestId: string) {
+      operations.push(`dispatch:${requestId}`);
+      return {
+        request: {
+          id: requestId,
+          environment: "production",
+          chainId: 8453,
+          executionType: "loan_contract_creation",
+          status: "pending_execution",
+          targetType: "LoanAgreement",
+          targetId: "loan_1",
+          loanAgreementId: "loan_1",
+          stakingPoolGovernanceRequestId: null,
+          contractAddress: "0x0000000000000000000000000000000000000def",
+          contractMethod: "createLoan",
+          walletAddress: "0x0000000000000000000000000000000000000abc",
+          requestNote: null,
+          requestedByActorType: "operator",
+          requestedByActorId: "op_1",
+          requestedByActorRole: "risk_manager",
+          requestedAt: new Date().toISOString(),
+          executedByActorType: null,
+          executedByActorId: null,
+          executedByActorRole: null,
+          executedAt: null,
+          blockchainTransactionHash: null,
+          externalExecutionReference: null,
+          failureReason: null,
+          failedAt: null,
+          metadata: null,
+          executionPayload: { principalAmount: "1000" },
+          executionResult: null,
+          canonicalExecutionPayload: { principalAmount: "1000" },
+          canonicalExecutionPayloadText: "{\"principalAmount\":\"1000\"}",
+          executionPackageHash: "0xpackage",
+          executionPackageChecksumSha256: "checksum",
+          executionPackageSignature: "0xsig",
+          executionPackageSignatureAlgorithm:
+            "ethereum-secp256k1-keccak256-v1",
+          executionPackageSignerAddress:
+            "0x0000000000000000000000000000000000000aaa",
+          executionPackagePublishedAt: new Date().toISOString(),
+          claimedByWorkerId: null,
+          claimedAt: null,
+          claimExpiresAt: null,
+          dispatchStatus: "dispatched",
+          dispatchPreparedAt: new Date().toISOString(),
+          dispatchedByWorkerId: "worker_1",
+          dispatchReference: "worker:worker_1:execution_request_1",
+          dispatchVerificationChecksumSha256: "checksum",
+          dispatchFailureReason: null,
+          deliveryStatus: "not_delivered",
+          deliveryAttemptedAt: null,
+          deliveryAcceptedAt: null,
+          deliveredByWorkerId: null,
+          deliveryBackendType: null,
+          deliveryBackendReference: null,
+          deliveryHttpStatus: null,
+          deliveryFailureReason: null,
+          expectedExecutionCalldataHash: "0xcalldatahash",
+          expectedExecutionMethodSelector: "0x12345678",
+          updatedAt: new Date().toISOString()
+        },
+        dispatchRecorded: true,
+        verificationSucceeded: true,
+        verificationFailureReason: null
+      };
+    },
+    async recordGovernedExecutionDeliveryAccepted(requestId: string) {
+      operations.push(`deliveryAccepted:${requestId}`);
+      return {
+        request: {
+          id: requestId
+        },
+        deliveryRecorded: true,
+        stateReused: false
+      };
+    }
+  });
+
+  const dispatchClient = {
+    async deliverExecutionRequest() {
+      operations.push("deliver:execution_request_1");
+      return {
+        backendReference: "executor-job-1",
+        httpStatus: 202
+      };
+    }
+  };
+
+  const orchestrator = new WorkerOrchestrator({
+    runtime: createRuntime({
+      environment: "production",
+      workerId: "worker_1",
+      internalApiBaseUrl: "https://internal.example.com",
+      internalWorkerApiKey: "worker-key",
+      batchLimit: 20,
+      executionMode: "monitor",
+      pollIntervalMs: 10,
+      requestTimeoutMs: 1000,
+      internalApiStartupGracePeriodMs: 45000,
+      confirmationBlocks: 1,
+      reconciliationScanIntervalMs: 300000,
+      platformAlertReEscalationIntervalMs: 300000,
+      rpcUrl: null,
+      depositSignerPrivateKey: null,
+      governedExecutorDispatchBaseUrl: "https://executor.example.com",
+      governedExecutorDispatchApiKey: "dispatch-key"
+    }),
+    internalApiClient: client as never,
+    governedExecutorDispatchClient: dispatchClient as never,
+    rpcClient: null,
+    depositBroadcaster: null,
+    withdrawalBroadcaster: null,
+    policyControlledWithdrawalBroadcaster: null,
+    logger: createLogger()
+  });
+
+  const metrics = await orchestrator.runOnce();
+
+  assert.equal(metrics.dispatchedGovernedExecutionRequestCount, 1);
+  assert.equal(metrics.governedExecutionDeliveryAcceptedCount, 1);
+  assert.deepEqual(operations, [
+    "claim:execution_request_1",
+    "dispatch:execution_request_1",
+    "deliver:execution_request_1",
+    "deliveryAccepted:execution_request_1"
   ]);
 });
 

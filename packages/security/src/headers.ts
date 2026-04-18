@@ -17,6 +17,11 @@ export type InternalGovernedExecutorSession = {
   executorId: string;
 };
 
+export type GovernedExecutionDispatchSession = {
+  apiKey: string;
+  workerId: string;
+};
+
 function normalizeHeaderValue(headerValue: HeaderValue): string | null {
   if (typeof headerValue === "string") {
     const normalizedHeaderValue = headerValue.trim();
@@ -77,5 +82,14 @@ export function buildInternalGovernedExecutorHeaders(
   return {
     "x-governed-executor-api-key": session.apiKey.trim(),
     "x-governed-executor-id": session.executorId.trim()
+  };
+}
+
+export function buildGovernedExecutionDispatchHeaders(
+  session: GovernedExecutionDispatchSession
+): Record<string, string> {
+  return {
+    "x-governed-execution-dispatch-api-key": session.apiKey.trim(),
+    "x-governed-execution-dispatch-worker-id": session.workerId.trim()
   };
 }

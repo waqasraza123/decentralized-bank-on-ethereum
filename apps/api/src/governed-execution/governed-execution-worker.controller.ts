@@ -14,6 +14,8 @@ import { CustomJsonResponse } from "../types/CustomJsonResponse";
 import { ClaimGovernedExecutionRequestDto } from "./dto/claim-governed-execution-request.dto";
 import { DispatchGovernedExecutionRequestDto } from "./dto/dispatch-governed-execution-request.dto";
 import { ListGovernedExecutionRequestsDto } from "./dto/list-governed-execution-requests.dto";
+import { RecordGovernedExecutionDeliveryAcceptedDto } from "./dto/record-governed-execution-delivery-accepted.dto";
+import { RecordGovernedExecutionDeliveryFailedDto } from "./dto/record-governed-execution-delivery-failed.dto";
 import { GovernedExecutionService } from "./governed-execution.service";
 
 type InternalWorkerRequest = {
@@ -91,6 +93,58 @@ export class GovernedExecutionWorkerController {
     return {
       status: "success",
       message: "Governed execution request dispatch recorded successfully.",
+      data: result
+    };
+  }
+
+  @Post("execution-requests/:requestId/record-delivery-accepted")
+  async recordExecutionDeliveryAccepted(
+    @Param("requestId") requestId: string,
+    @Body(
+      new ValidationPipe({
+        whitelist: true,
+        forbidNonWhitelisted: true
+      })
+    )
+    dto: RecordGovernedExecutionDeliveryAcceptedDto,
+    @Request() request: InternalWorkerRequest
+  ): Promise<CustomJsonResponse> {
+    const result =
+      await this.governedExecutionService.recordExecutionDeliveryAccepted(
+        requestId,
+        dto,
+        request.internalWorker.workerId
+      );
+
+    return {
+      status: "success",
+      message: "Governed execution delivery acceptance recorded successfully.",
+      data: result
+    };
+  }
+
+  @Post("execution-requests/:requestId/record-delivery-failed")
+  async recordExecutionDeliveryFailed(
+    @Param("requestId") requestId: string,
+    @Body(
+      new ValidationPipe({
+        whitelist: true,
+        forbidNonWhitelisted: true
+      })
+    )
+    dto: RecordGovernedExecutionDeliveryFailedDto,
+    @Request() request: InternalWorkerRequest
+  ): Promise<CustomJsonResponse> {
+    const result =
+      await this.governedExecutionService.recordExecutionDeliveryFailed(
+        requestId,
+        dto,
+        request.internalWorker.workerId
+      );
+
+    return {
+      status: "success",
+      message: "Governed execution delivery failure recorded successfully.",
       data: result
     };
   }

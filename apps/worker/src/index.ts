@@ -10,6 +10,7 @@ import {
   reportInternalApiStartupUnavailable
 } from "./runtime/internal-api-startup-guard";
 import { createManagedDepositBroadcaster } from "./runtime/deposit-broadcaster";
+import { createGovernedExecutorDispatchClient } from "./runtime/governed-executor-dispatch-client";
 import { createJsonRpcClient } from "./runtime/json-rpc-client";
 import { createPolicyControlledWithdrawalBroadcaster } from "./runtime/policy-controlled-withdrawal-broadcaster";
 import { createManagedWithdrawalBroadcaster } from "./runtime/withdrawal-broadcaster";
@@ -101,9 +102,12 @@ export async function startWorkerRuntime(): Promise<void> {
     runtime.executionMode === "managed"
       ? createPolicyControlledWithdrawalBroadcaster(runtime)
       : null;
+  const governedExecutorDispatchClient =
+    createGovernedExecutorDispatchClient(runtime);
   const orchestrator = new WorkerOrchestrator({
     runtime,
     internalApiClient,
+    governedExecutorDispatchClient,
     rpcClient,
     depositBroadcaster,
     withdrawalBroadcaster,
@@ -189,6 +193,10 @@ export async function startWorkerRuntime(): Promise<void> {
           solvencySnapshotIntervalMs: runtime.solvencySnapshotIntervalMs,
           governedExecutionDispatchIntervalMs:
             runtime.governedExecutionDispatchIntervalMs,
+          governedExecutorDispatchConfigured: Boolean(
+            runtime.governedExecutorDispatchBaseUrl &&
+              runtime.governedExecutorDispatchApiKey
+          ),
           platformAlertReEscalationIntervalMs:
             runtime.platformAlertReEscalationIntervalMs,
           policyControlledWithdrawalReady: Boolean(
