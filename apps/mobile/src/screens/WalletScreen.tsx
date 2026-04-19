@@ -136,6 +136,8 @@ export function WalletScreen({ initialFocus }: WalletScreenProps = {}) {
   }, [activeAction, t]);
 
   const moneyMovementBlocked = user?.mfa?.moneyMovementBlocked ?? true;
+  const sessionRequiresVerification =
+    user?.sessionSecurity?.currentSessionRequiresVerification ?? false;
   const stepUpFresh =
     Boolean(user?.mfa?.stepUpFreshUntil) &&
     Date.parse(user?.mfa?.stepUpFreshUntil ?? "") > Date.now();
@@ -205,6 +207,14 @@ export function WalletScreen({ initialFocus }: WalletScreenProps = {}) {
   async function handleWithdrawal() {
     if (moneyMovementBlocked) {
       Alert.alert(t("wallet.withdraw"), t("wallet.mfaSetupRequired"));
+      return;
+    }
+
+    if (sessionRequiresVerification) {
+      Alert.alert(
+        t("wallet.withdraw"),
+        t("wallet.sessionVerificationRequired"),
+      );
       return;
     }
 
@@ -519,13 +529,18 @@ export function WalletScreen({ initialFocus }: WalletScreenProps = {}) {
             </>
           ) : (
             <>
-              {moneyMovementBlocked ? (
-                <InlineNotice
-                  message={t("wallet.mfaSetupRequired")}
-                  tone="warning"
-                />
-              ) : !stepUpFresh ? (
-                <View className="gap-3">
+                {moneyMovementBlocked ? (
+                  <InlineNotice
+                    message={t("wallet.mfaSetupRequired")}
+                    tone="warning"
+                  />
+                ) : sessionRequiresVerification ? (
+                  <InlineNotice
+                    message={t("wallet.sessionVerificationRequired")}
+                    tone="warning"
+                  />
+                ) : !stepUpFresh ? (
+                  <View className="gap-3">
                   <InlineNotice
                     message={t("wallet.mfaStepUpRequired")}
                     tone="warning"

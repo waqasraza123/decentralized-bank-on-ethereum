@@ -7,7 +7,9 @@ import {
   useRevokeCustomerSession,
   useRevokeAllSessions,
   useRotatePassword,
+  useStartCurrentSessionTrustChallenge,
   useUpdateNotificationPreferences,
+  useVerifyCurrentSessionTrust,
 } from "@/hooks/user/useProfileSettings";
 import { useGetUser } from "@/hooks/user/useGetUser";
 import Profile from "@/pages/Profile";
@@ -22,8 +24,14 @@ const mockUseListCustomerSecurityActivity = vi.mocked(
   useListCustomerSecurityActivity,
 );
 const mockUseRevokeCustomerSession = vi.mocked(useRevokeCustomerSession);
+const mockUseStartCurrentSessionTrustChallenge = vi.mocked(
+  useStartCurrentSessionTrustChallenge,
+);
 const mockUseUpdateNotificationPreferences = vi.mocked(
   useUpdateNotificationPreferences,
+);
+const mockUseVerifyCurrentSessionTrust = vi.mocked(
+  useVerifyCurrentSessionTrust,
 );
 
 vi.mock("@/hooks/user/useGetUser", () => ({
@@ -34,16 +42,20 @@ vi.mock("@/hooks/user/useProfileSettings", () => ({
   useListCustomerSessions: vi.fn(),
   useListCustomerSecurityActivity: vi.fn(),
   useRevokeCustomerSession: vi.fn(),
+  useStartCurrentSessionTrustChallenge: vi.fn(),
   useRevokeAllSessions: vi.fn(),
   useRotatePassword: vi.fn(),
   useUpdateNotificationPreferences: vi.fn(),
+  useVerifyCurrentSessionTrust: vi.fn(),
 }));
 
 describe("profile page", () => {
   const rotatePassword = vi.fn();
   const revokeAllSessions = vi.fn();
   const revokeCustomerSession = vi.fn();
+  const startSessionTrustChallenge = vi.fn();
   const updateNotificationPreferences = vi.fn();
+  const verifyCurrentSessionTrust = vi.fn();
   const freshMfa = {
     required: true,
     totpEnrolled: true,
@@ -59,7 +71,9 @@ describe("profile page", () => {
     rotatePassword.mockReset();
     revokeAllSessions.mockReset();
     revokeCustomerSession.mockReset();
+    startSessionTrustChallenge.mockReset();
     updateNotificationPreferences.mockReset();
+    verifyCurrentSessionTrust.mockReset();
 
     useUserStore.setState({
       token: "test-token",
@@ -70,6 +84,10 @@ describe("profile page", () => {
         email: "amina@example.com",
         supabaseUserId: "supabase_1",
         ethereumAddress: "0x1111222233334444555566667777888899990000",
+        sessionSecurity: {
+          currentSessionTrusted: true,
+          currentSessionRequiresVerification: false,
+        },
       },
     });
 
@@ -95,6 +113,10 @@ describe("profile page", () => {
           productUpdateEmails: false,
         },
         mfa: freshMfa,
+        sessionSecurity: {
+          currentSessionTrusted: true,
+          currentSessionRequiresVerification: false,
+        },
       },
       isLoading: false,
       isError: false,
@@ -118,6 +140,7 @@ describe("profile page", () => {
             id: "session_current",
             current: true,
             clientPlatform: "web",
+            trusted: true,
             userAgent: "Mozilla/5.0",
             ipAddress: "203.0.113.10",
             createdAt: "2026-04-19T10:00:00.000Z",
@@ -127,6 +150,7 @@ describe("profile page", () => {
             id: "session_other",
             current: false,
             clientPlatform: "mobile",
+            trusted: true,
             userAgent: "Expo/ios",
             ipAddress: "198.51.100.24",
             createdAt: "2026-04-18T10:00:00.000Z",
@@ -165,11 +189,19 @@ describe("profile page", () => {
       mutateAsync: revokeCustomerSession,
       isPending: false,
     } as ReturnType<typeof useRevokeCustomerSession>);
+    mockUseStartCurrentSessionTrustChallenge.mockReturnValue({
+      mutateAsync: startSessionTrustChallenge,
+      isPending: false,
+    } as ReturnType<typeof useStartCurrentSessionTrustChallenge>);
 
     mockUseUpdateNotificationPreferences.mockReturnValue({
       mutateAsync: updateNotificationPreferences,
       isPending: false,
     } as ReturnType<typeof useUpdateNotificationPreferences>);
+    mockUseVerifyCurrentSessionTrust.mockReturnValue({
+      mutateAsync: verifyCurrentSessionTrust,
+      isPending: false,
+    } as ReturnType<typeof useVerifyCurrentSessionTrust>);
   });
 
   afterEach(() => {
@@ -230,6 +262,10 @@ describe("profile page", () => {
           requiresSetup: true,
           moneyMovementBlocked: true,
           stepUpFreshUntil: null,
+        },
+        sessionSecurity: {
+          currentSessionTrusted: true,
+          currentSessionRequiresVerification: false,
         },
       },
       isLoading: false,
@@ -341,6 +377,10 @@ describe("profile page", () => {
           requiresSetup: true,
           moneyMovementBlocked: true,
           stepUpFreshUntil: null,
+        },
+        sessionSecurity: {
+          currentSessionTrusted: true,
+          currentSessionRequiresVerification: false,
         },
       },
       isLoading: false,

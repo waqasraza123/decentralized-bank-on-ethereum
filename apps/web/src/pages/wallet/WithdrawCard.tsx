@@ -92,6 +92,8 @@ const WithdrawCard = ({
     [balances, selectedAssetSymbol],
   );
   const moneyMovementBlocked = user?.mfa.moneyMovementBlocked ?? true;
+  const sessionRequiresVerification =
+    user?.sessionSecurity?.currentSessionRequiresVerification ?? false;
   const stepUpFresh =
     Boolean(user?.mfa.stepUpFreshUntil) &&
     Date.parse(user?.mfa.stepUpFreshUntil ?? "") > Date.now();
@@ -121,6 +123,15 @@ const WithdrawCard = ({
         locale === "ar"
           ? "أكمل إعداد المصادقة متعددة العوامل أولاً من الملف الشخصي."
           : "Finish MFA setup from the profile page before sending or withdrawing.",
+      );
+      return;
+    }
+
+    if (sessionRequiresVerification) {
+      setFormError(
+        locale === "ar"
+          ? "تحقق من الجلسة الحالية من صفحة الملف الشخصي قبل إنشاء طلب السحب."
+          : "Verify the current session from the profile page before creating a withdrawal request.",
       );
       return;
     }
@@ -353,6 +364,15 @@ const WithdrawCard = ({
               ? "تظل عمليات السحب والإرسال محجوبة حتى تكتمل المصادقة متعددة العوامل من صفحة الملف الشخصي."
               : "Withdraw and send remain blocked until MFA setup is complete from the profile page."}
           </div>
+        ) : sessionRequiresVerification ? (
+          <div
+            className="stb-trust-note p-4 text-amber-900"
+            data-tone="warning"
+          >
+            {locale === "ar"
+              ? "تحقق من هذه الجلسة غير المألوفة من صفحة الملف الشخصي قبل المتابعة."
+              : "Verify this unfamiliar session from the profile page before withdraw or send is allowed."}
+          </div>
         ) : !stepUpFresh ? (
           <div className="space-y-4 rounded-[1.5rem] border border-slate-200/70 bg-white/85 p-5">
             <p className="text-sm font-medium text-slate-950">
@@ -552,7 +572,9 @@ const WithdrawCard = ({
             type="submit"
             className="h-12 w-full rounded-2xl bg-slate-950 text-sm font-semibold text-white hover:bg-slate-900"
             loading={createWithdrawalIntent.isPending}
-            disabled={moneyMovementBlocked || !stepUpFresh}
+            disabled={
+              moneyMovementBlocked || sessionRequiresVerification || !stepUpFresh
+            }
           >
             {locale === "ar" ? "إنشاء طلب السحب" : "Create withdrawal request"}
           </LoadingButton>

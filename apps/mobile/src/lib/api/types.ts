@@ -2,6 +2,7 @@ import type {
   CustomerMfaStatus,
   CustomerNotificationPreferences,
   CustomerSecurityActivityProjection,
+  CustomerSessionSecurityStatus,
   CustomerSessionProjection,
   UserProfileProjection,
 } from "@stealth-trails-bank/types";
@@ -23,6 +24,7 @@ export type SessionUser = {
   passwordRotationAvailable?: boolean;
   notificationPreferences?: CustomerNotificationPreferences | null;
   mfa?: CustomerMfaStatus;
+  sessionSecurity?: CustomerSessionSecurityStatus;
 };
 
 export type SessionRefresh = {
@@ -62,6 +64,17 @@ export type StartMfaChallengeResult = {
 export type VerifyMfaResult = {
   mfa: CustomerMfaStatus;
   session?: SessionRefresh;
+};
+
+export type StartSessionTrustChallengeResult = {
+  sessionSecurity: CustomerSessionSecurityStatus;
+  expiresAt: string;
+  deliveryChannel: "email";
+  previewCode: string | null;
+};
+
+export type VerifySessionTrustResult = {
+  sessionSecurity: CustomerSessionSecurityStatus;
 };
 
 export type SupportedAsset = {
@@ -426,6 +439,7 @@ export type LoginResponseData = {
     firstName: string;
     lastName: string;
     mfa: CustomerMfaStatus;
+    sessionSecurity: CustomerSessionSecurityStatus;
   };
 };
 

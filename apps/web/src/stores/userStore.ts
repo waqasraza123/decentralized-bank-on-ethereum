@@ -1,6 +1,7 @@
 import type {
   CustomerMfaStatus,
   CustomerNotificationPreferences,
+  CustomerSessionSecurityStatus,
 } from "@stealth-trails-bank/types";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
@@ -15,6 +16,7 @@ export interface User {
   passwordRotationAvailable?: boolean;
   notificationPreferences?: CustomerNotificationPreferences | null;
   mfa?: CustomerMfaStatus;
+  sessionSecurity?: CustomerSessionSecurityStatus;
 }
 
 interface UserState {

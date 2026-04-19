@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type {
   CustomerNotificationPreferences,
   CustomerSecurityActivityProjection,
+  CustomerSessionSecurityStatus,
   CustomerSessionProjection,
 } from "@stealth-trails-bank/types";
 import { loadWebRuntimeConfig } from "@stealth-trails-bank/config/web";
@@ -51,6 +52,17 @@ type ListCustomerSecurityActivityResult = {
   events: CustomerSecurityActivityProjection[];
   limit: number;
   totalCount: number;
+};
+
+type StartSessionTrustChallengeResult = {
+  sessionSecurity: CustomerSessionSecurityStatus;
+  expiresAt: string;
+  deliveryChannel: "email";
+  previewCode: string | null;
+};
+
+type VerifySessionTrustResult = {
+  sessionSecurity: CustomerSessionSecurityStatus;
 };
 
 function buildWebAuthHeaders(token: string) {
@@ -237,6 +249,102 @@ export function useRevokeCustomerSession() {
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["customer-sessions"] });
+    },
+  });
+}
+
+export function useStartCurrentSessionTrustChallenge() {
+  const token = useUserStore((state) => state.token);
+  const user = useUserStore((state) => state.user);
+  const setUser = useUserStore((state) => state.setUser);
+
+  return useMutation({
+    mutationFn: async () => {
+      if (!token) {
+        throw new Error("Auth token is required.");
+      }
+
+      try {
+        const response = await axios.post<
+          ApiResponse<StartSessionTrustChallengeResult>
+        >(
+          `${webRuntimeConfig.serverUrl}/auth/session/trust/start`,
+          {},
+          {
+            headers: buildWebAuthHeaders(token),
+          },
+        );
+
+        if (response.data.status !== "success" || !response.data.data) {
+          throw new Error(
+            response.data.message || "Failed to send session verification code.",
+          );
+        }
+
+        if (user) {
+          setUser({
+            ...user,
+            sessionSecurity: response.data.data.sessionSecurity,
+          });
+        }
+
+        return response.data.data;
+      } catch (error) {
+        throw new Error(
+          readApiErrorMessage(error, "Failed to send session verification code."),
+        );
+      }
+    },
+  });
+}
+
+export function useVerifyCurrentSessionTrust() {
+  const token = useUserStore((state) => state.token);
+  const user = useUserStore((state) => state.user);
+  const setUser = useUserStore((state) => state.setUser);
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (code: string) => {
+      if (!token) {
+        throw new Error("Auth token is required.");
+      }
+
+      try {
+        const response = await axios.post<ApiResponse<VerifySessionTrustResult>>(
+          `${webRuntimeConfig.serverUrl}/auth/session/trust/verify`,
+          { code },
+          {
+            headers: buildWebAuthHeaders(token),
+          },
+        );
+
+        if (response.data.status !== "success" || !response.data.data) {
+          throw new Error(
+            response.data.message || "Failed to verify current session.",
+          );
+        }
+
+        if (user) {
+          setUser({
+            ...user,
+            sessionSecurity: response.data.data.sessionSecurity,
+          });
+        }
+
+        return response.data.data;
+      } catch (error) {
+        throw new Error(
+          readApiErrorMessage(error, "Failed to verify current session."),
+        );
+      }
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["profile"] });
+      await queryClient.invalidateQueries({ queryKey: ["customer-sessions"] });
+      await queryClient.invalidateQueries({
+        queryKey: ["customer-security-activity"],
+      });
     },
   });
 }

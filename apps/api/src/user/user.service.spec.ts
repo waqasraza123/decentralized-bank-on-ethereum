@@ -31,6 +31,12 @@ describe("UserService.getUserById", () => {
     const authService = {
       getCustomerAccountProjectionBySupabaseUserId: jest.fn(),
       getCustomerWalletProjectionBySupabaseUserId: jest.fn(),
+      getCurrentCustomerSessionSecurityStatus: jest
+        .fn()
+        .mockResolvedValue({
+          currentSessionTrusted: true,
+          currentSessionRequiresVerification: false,
+        }),
     };
 
     if (options.customerProjectionError) {
@@ -82,6 +88,7 @@ describe("UserService.getUserById", () => {
       firstName: "Legacy",
       lastName: "User",
       passwordHash: "hashed",
+      authTokenVersion: 0,
       mfaRequired: true,
       mfaTotpEnrolled: true,
       mfaEmailOtpEnrolled: true,
@@ -139,6 +146,10 @@ describe("UserService.getUserById", () => {
       loanEmails: true,
       productUpdateEmails: false,
     });
+    expect(result.sessionSecurity).toEqual({
+      currentSessionTrusted: true,
+      currentSessionRequiresVerification: false,
+    });
   });
 
   it("falls back to legacy ethereumAddress when wallet projection is missing", async () => {
@@ -155,6 +166,10 @@ describe("UserService.getUserById", () => {
     expect(result.ethereumAddress).toBe("0xlegacy");
     expect(result.customerId).toBe("customer_1");
     expect(result.passwordRotationAvailable).toBe(true);
+    expect(result.sessionSecurity).toEqual({
+      currentSessionTrusted: true,
+      currentSessionRequiresVerification: false,
+    });
   });
 
   it("returns the legacy profile when the customer projection is missing", async () => {
@@ -190,6 +205,10 @@ describe("UserService.getUserById", () => {
         moneyMovementBlocked: true,
         stepUpFreshUntil: null,
         lockedUntil: null,
+      },
+      sessionSecurity: {
+        currentSessionTrusted: true,
+        currentSessionRequiresVerification: false,
       },
     });
   });

@@ -23,6 +23,7 @@ import {
   useRevokeCustomerSessionMutation,
   useRotatePasswordMutation,
   useRevokeAllCustomerSessionsMutation,
+  useStartSessionTrustChallengeMutation,
   useStartEmailEnrollmentMutation,
   useStartEmailRecoveryMutation,
   useStartMfaChallengeMutation,
@@ -31,6 +32,7 @@ import {
   useVerifyEmailEnrollmentMutation,
   useVerifyEmailRecoveryMutation,
   useVerifyMfaChallengeMutation,
+  useVerifySessionTrustMutation,
   useVerifyTotpEnrollmentMutation,
 } from "../hooks/use-customer-queries";
 import { useLocale } from "../i18n/use-locale";
@@ -87,6 +89,8 @@ function formatSecurityActivityTitle(
       return t("profile.securityActivityMfaRecovery");
     case "mfa_step_up_verified":
       return t("profile.securityActivityMfaVerified");
+    case "session_trust_verified":
+      return t("profile.securityActivitySessionVerified");
   }
 }
 
@@ -116,6 +120,10 @@ function formatSecurityActivityDetail(
     }
   }
 
+  if (event.kind === "session_trust_verified") {
+    return t("profile.securityActivitySessionVerifiedDetail");
+  }
+
   return null;
 }
 
@@ -131,6 +139,9 @@ export function ProfileScreen() {
   const rotatePasswordMutation = useRotatePasswordMutation();
   const revokeSessionsMutation = useRevokeAllCustomerSessionsMutation();
   const revokeCustomerSessionMutation = useRevokeCustomerSessionMutation();
+  const startSessionTrustChallengeMutation =
+    useStartSessionTrustChallengeMutation();
+  const verifySessionTrustMutation = useVerifySessionTrustMutation();
   const updatePreferencesMutation = useUpdateNotificationPreferencesMutation();
   const startTotpEnrollmentMutation = useStartTotpEnrollmentMutation();
   const verifyTotpEnrollmentMutation = useVerifyTotpEnrollmentMutation();
@@ -142,6 +153,8 @@ export function ProfileScreen() {
   const verifyMfaChallengeMutation = useVerifyMfaChallengeMutation();
   const profile = profileQuery.data;
   const mfa = profile?.mfa ?? sessionUser?.mfa;
+  const sessionSecurity =
+    profile?.sessionSecurity ?? sessionUser?.sessionSecurity;
   const [passwordForm, setPasswordForm] = useState(emptyPasswordForm);
   const [notificationDraft, setNotificationDraft] =
     useState<CustomerNotificationPreferences | null>(null);
@@ -168,6 +181,10 @@ export function ProfileScreen() {
   const [passwordPreviewCode, setPasswordPreviewCode] = useState<string | null>(
     null,
   );
+  const [sessionTrustCode, setSessionTrustCode] = useState("");
+  const [sessionTrustPreviewCode, setSessionTrustPreviewCode] = useState<
+    string | null
+  >(null);
 
   useEffect(() => {
     setNotificationDraft(profile?.notificationPreferences ?? null);
@@ -180,6 +197,14 @@ export function ProfileScreen() {
   const securityActivity = securityActivityQuery.data?.events ?? [];
 
   async function handlePasswordUpdate() {
+    if (sessionSecurity?.currentSessionRequiresVerification) {
+      Alert.alert(
+        t("profile.passwordManagement"),
+        t("profile.sessionVerificationRequired"),
+      );
+      return;
+    }
+
     if (!stepUpFresh) {
       Alert.alert(
         t("profile.passwordManagement"),
@@ -226,6 +251,40 @@ export function ProfileScreen() {
         requestError instanceof Error
           ? requestError.message
           : String(requestError),
+      );
+    }
+  }
+
+  async function handleStartSessionTrustChallenge() {
+    try {
+      const result = await startSessionTrustChallengeMutation.mutateAsync();
+      setSessionTrustCode("");
+      setSessionTrustPreviewCode(result.previewCode);
+      Alert.alert(
+        t("profile.sessionSecurity"),
+        t("profile.sessionTrustCodeSent"),
+      );
+    } catch (error) {
+      Alert.alert(
+        t("profile.sessionSecurity"),
+        error instanceof Error ? error.message : t("common.notAvailable"),
+      );
+    }
+  }
+
+  async function handleVerifySessionTrust() {
+    try {
+      await verifySessionTrustMutation.mutateAsync(sessionTrustCode.trim());
+      setSessionTrustCode("");
+      setSessionTrustPreviewCode(null);
+      Alert.alert(
+        t("profile.sessionSecurity"),
+        t("profile.sessionTrustVerified"),
+      );
+    } catch (error) {
+      Alert.alert(
+        t("profile.sessionSecurity"),
+        error instanceof Error ? error.message : t("common.notAvailable"),
       );
     }
   }
@@ -847,6 +906,55 @@ export function ProfileScreen() {
               message={t("profile.sessionSecurityDescription")}
               tone="warning"
             />
+            <InlineNotice
+              message={
+                sessionSecurity?.currentSessionRequiresVerification
+                  ? t("profile.sessionVerificationRequired")
+                  : t("profile.sessionTrusted")
+              }
+              tone={
+                sessionSecurity?.currentSessionRequiresVerification
+                  ? "critical"
+                  : "positive"
+              }
+            />
+            {sessionSecurity?.currentSessionRequiresVerification ? (
+              <View className="gap-3 rounded-2xl border border-border bg-white px-4 py-4">
+                <AppButton
+                  disabled={startSessionTrustChallengeMutation.isPending}
+                  label={t("profile.sessionTrustStart")}
+                  onPress={() => {
+                    void handleStartSessionTrustChallenge();
+                  }}
+                  variant="secondary"
+                />
+                <FieldInput
+                  keyboardType="number-pad"
+                  label={t("profile.mfaCodeLabel")}
+                  maxLength={6}
+                  onChangeText={setSessionTrustCode}
+                  value={sessionTrustCode}
+                />
+                {sessionTrustPreviewCode ? (
+                  <View className="gap-1">
+                    <AppText className="text-sm text-slate">
+                      {t("profile.mfaPreviewCode")}
+                    </AppText>
+                    <LtrValue value={sessionTrustPreviewCode} />
+                  </View>
+                ) : null}
+                <AppButton
+                  disabled={
+                    verifySessionTrustMutation.isPending ||
+                    sessionTrustCode.trim().length !== 6
+                  }
+                  label={t("profile.sessionTrustVerify")}
+                  onPress={() => {
+                    void handleVerifySessionTrust();
+                  }}
+                />
+              </View>
+            ) : null}
             <AppButton
               disabled={revokeSessionsMutation.isPending}
               label={t("profile.revokeAllSessions")}
@@ -902,7 +1010,16 @@ export function ProfileScreen() {
                           label={t("profile.currentSession")}
                           tone="positive"
                         />
-                      ) : null}
+                      ) : (
+                        <StatusChip
+                          label={
+                            session.trusted
+                              ? t("profile.trustedSession")
+                              : t("profile.verifySessionBadge")
+                          }
+                          tone={session.trusted ? "neutral" : "warning"}
+                        />
+                      )}
                     </View>
                     {!session.current ? (
                       <AppButton

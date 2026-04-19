@@ -24,10 +24,16 @@ export type CustomerMfaStatus = {
   lockedUntil: string | null;
 };
 
+export type CustomerSessionSecurityStatus = {
+  currentSessionTrusted: boolean;
+  currentSessionRequiresVerification: boolean;
+};
+
 export type CustomerSessionProjection = {
   id: string;
   current: boolean;
   clientPlatform: "web" | "mobile" | "unknown";
+  trusted: boolean;
   userAgent: string | null;
   ipAddress: string | null;
   createdAt: string;
@@ -44,7 +50,8 @@ export type CustomerSecurityActivityProjection = {
     | "mfa_authenticator_enrolled"
     | "mfa_email_backup_enrolled"
     | "mfa_recovery_completed"
-    | "mfa_step_up_verified";
+    | "mfa_step_up_verified"
+    | "session_trust_verified";
   createdAt: string;
   clientPlatform: "web" | "mobile" | "unknown" | null;
   ipAddress: string | null;
@@ -74,4 +81,5 @@ export type UserProfileProjection = {
   passwordRotationAvailable: boolean;
   notificationPreferences: CustomerNotificationPreferences | null;
   mfa: CustomerMfaStatus;
+  sessionSecurity: CustomerSessionSecurityStatus;
 };

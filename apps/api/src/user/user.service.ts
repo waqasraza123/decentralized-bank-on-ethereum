@@ -64,6 +64,10 @@ export class UserService {
         stepUpFreshUntil: null,
         lockedUntil: null,
       },
+      sessionSecurity: {
+        currentSessionTrusted: true,
+        currentSessionRequiresVerification: false,
+      },
     };
   }
 
@@ -92,6 +96,8 @@ export class UserService {
     projection: CustomerAccountProjection,
     walletProjection: CustomerWalletProjection | null,
     legacyUser: LegacyUserProfile | null,
+    currentSessionTrusted: boolean,
+    currentSessionRequiresVerification: boolean,
   ): UserProfileProjection {
     const accountStatus = projection.customerAccount
       .status as AccountLifecycleStatusValue;
@@ -138,6 +144,10 @@ export class UserService {
           : null,
         lockedUntil: projection.customer.mfaLockedUntil?.toISOString() ?? null,
       },
+      sessionSecurity: {
+        currentSessionTrusted,
+        currentSessionRequiresVerification,
+      },
     };
   }
 
@@ -165,7 +175,10 @@ export class UserService {
     }
   }
 
-  async getUserById(supabaseUserId: string): Promise<UserProfileProjection> {
+  async getUserById(
+    supabaseUserId: string,
+    currentSessionId?: string | null,
+  ): Promise<UserProfileProjection> {
     const legacyUser =
       await this.getLegacyUserProfileBySupabaseUserId(supabaseUserId);
 
@@ -176,11 +189,18 @@ export class UserService {
         );
       const walletProjection =
         await this.getCustomerWalletProjectionOrNull(supabaseUserId);
+      const sessionSecurity =
+        await this.authService.getCurrentCustomerSessionSecurityStatus(
+          supabaseUserId,
+          currentSessionId,
+        );
 
       return this.mapCustomerProjectionWithWalletOverlay(
         customerProjection,
         walletProjection,
         legacyUser,
+        sessionSecurity.currentSessionTrusted,
+        sessionSecurity.currentSessionRequiresVerification,
       );
     } catch (error) {
       if (!(error instanceof NotFoundException)) {

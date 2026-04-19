@@ -29,6 +29,7 @@ import { UpdatePasswordDto } from "./dto/update-password.dto";
 import { VerifyEmailEnrollmentDto } from "./dto/verify-email-enrollment.dto";
 import { VerifyEmailRecoveryDto } from "./dto/verify-email-recovery.dto";
 import { VerifyMfaChallengeDto } from "./dto/verify-mfa-challenge.dto";
+import { VerifySessionTrustDto } from "./dto/verify-session-trust.dto";
 import { VerifyTotpEnrollmentDto } from "./dto/verify-totp-enrollment.dto";
 
 type AuthenticatedRequest = {
@@ -157,6 +158,30 @@ export class AuthController {
     @Request() request: AuthenticatedRequest,
   ): Promise<CustomJsonResponse> {
     return this.authService.listCustomerSecurityActivity(request.user.id);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post("session/trust/start")
+  async startCurrentSessionTrustChallenge(
+    @Request() request: AuthenticatedRequest,
+  ): Promise<CustomJsonResponse> {
+    return this.authService.startCurrentSessionTrustChallenge(
+      request.user.id,
+      buildCustomerSessionContext(request),
+    );
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post("session/trust/verify")
+  async verifyCurrentSessionTrust(
+    @Body(new ValidationPipe()) dto: VerifySessionTrustDto,
+    @Request() request: AuthenticatedRequest,
+  ): Promise<CustomJsonResponse> {
+    return this.authService.verifyCurrentSessionTrust(
+      request.user.id,
+      request.user.sessionId ?? null,
+      dto.code,
+    );
   }
 
   @UseGuards(JwtAuthGuard)

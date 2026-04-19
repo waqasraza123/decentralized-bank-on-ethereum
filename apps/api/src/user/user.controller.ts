@@ -24,7 +24,7 @@ export class UserController {
   @Get(":id")
   async getUserById(
     @Param("id") id: string,
-    @Req() req: { user: { id: string } }
+    @Req() req: { user: { id: string; sessionId?: string | null } }
   ): Promise<CustomJsonResponse> {
     const authenticatedUser = req.user;
 
@@ -34,7 +34,10 @@ export class UserController {
       );
     }
 
-    const user = await this.userService.getUserById(id);
+    const user = await this.userService.getUserById(
+      id,
+      req.user.sessionId ?? null,
+    );
     if (!user) {
       throw new NotFoundException(`User with ID ${id} not found`);
     }

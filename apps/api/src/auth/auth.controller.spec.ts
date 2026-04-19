@@ -16,6 +16,8 @@ describe("AuthController", () => {
     revokeAllCustomerSessions: jest.fn(),
     listCustomerSessions: jest.fn(),
     listCustomerSecurityActivity: jest.fn(),
+    startCurrentSessionTrustChallenge: jest.fn(),
+    verifyCurrentSessionTrust: jest.fn(),
     revokeCustomerSession: jest.fn(),
     startEmailRecovery: jest.fn(),
     verifyEmailRecovery: jest.fn(),
@@ -269,6 +271,58 @@ describe("AuthController", () => {
 
     expect(authService.listCustomerSecurityActivity).toHaveBeenCalledWith(
       "supabase_1",
+    );
+  });
+
+  it("passes current-session trust verification endpoints through to the auth service", async () => {
+    authService.startCurrentSessionTrustChallenge.mockResolvedValue({
+      status: "success",
+      message: "Session verification code sent successfully.",
+      data: {
+        sessionSecurity: {
+          currentSessionTrusted: false,
+          currentSessionRequiresVerification: true,
+        },
+        expiresAt: "2026-04-19T12:10:00.000Z",
+        deliveryChannel: "email",
+        previewCode: "123456",
+      },
+    });
+    authService.verifyCurrentSessionTrust.mockResolvedValue({
+      status: "success",
+      message: "Current session verified successfully.",
+      data: {
+        sessionSecurity: {
+          currentSessionTrusted: true,
+          currentSessionRequiresVerification: false,
+        },
+      },
+    });
+
+    await request(app.getHttpServer())
+      .post("/auth/session/trust/start")
+      .set("Authorization", "Bearer test-token")
+      .expect(201);
+
+    expect(authService.startCurrentSessionTrustChallenge).toHaveBeenCalledWith(
+      "supabase_1",
+      expect.objectContaining({
+        currentSessionId: "session_current",
+      }),
+    );
+
+    await request(app.getHttpServer())
+      .post("/auth/session/trust/verify")
+      .set("Authorization", "Bearer test-token")
+      .send({
+        code: "123456",
+      })
+      .expect(201);
+
+    expect(authService.verifyCurrentSessionTrust).toHaveBeenCalledWith(
+      "supabase_1",
+      "session_current",
+      "123456",
     );
   });
 

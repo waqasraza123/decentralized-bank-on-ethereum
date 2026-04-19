@@ -90,7 +90,11 @@ function SignedOutNavigator() {
 function SignedInTabs() {
   const t = useT();
   const user = useSessionStore((state) => state.user);
-  const initialRouteName = user?.mfa?.requiresSetup ? "Profile" : "Dashboard";
+  const initialRouteName =
+    user?.mfa?.requiresSetup ||
+    user?.sessionSecurity?.currentSessionRequiresVerification
+      ? "Profile"
+      : "Dashboard";
 
   return (
     <MainTabs.Navigator

@@ -15,6 +15,7 @@ import { WithdrawalIntentsService } from "./withdrawal-intents.service";
 type AuthenticatedRequest = {
   user: {
     id: string;
+    sessionId?: string | null;
   };
 };
 
@@ -37,7 +38,10 @@ export class WithdrawalIntentsController {
     dto: CreateWithdrawalIntentDto,
     @Request() request: AuthenticatedRequest,
   ): Promise<CustomJsonResponse> {
-    await this.authService.assertCustomerStepUpFresh(request.user.id);
+    await this.authService.assertCustomerStepUpFresh(
+      request.user.id,
+      request.user.sessionId ?? null,
+    );
 
     const result = await this.withdrawalIntentsService.createWithdrawalIntent(
       request.user.id,

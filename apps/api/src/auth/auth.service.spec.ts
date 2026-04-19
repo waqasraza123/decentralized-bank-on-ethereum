@@ -44,6 +44,7 @@ import {
   UnauthorizedException,
 } from "@nestjs/common";
 import { AuthService } from "./auth.service";
+import { createOtpHash } from "./customer-mfa.util";
 
 jest.setTimeout(15000);
 
@@ -147,6 +148,7 @@ describe("AuthService", () => {
       id: "session_1",
     });
     prismaService.customerAuthSession.findFirst.mockResolvedValue(null);
+    prismaService.customerAuthSession.findUnique.mockResolvedValue(null);
     prismaService.customerAuthSession.findMany.mockResolvedValue([]);
     prismaService.customerAuthSession.count.mockResolvedValue(0);
     prismaService.auditEvent.findMany.mockResolvedValue([]);
@@ -155,6 +157,12 @@ describe("AuthService", () => {
       count: 1,
     });
     prismaService.customerAuthSession.update.mockResolvedValue(undefined);
+    customerMfaEmailDeliveryService.sendCode.mockResolvedValue({
+      deliveryChannel: "email",
+      previewCode: "123456",
+      backendType: "preview",
+      backendReference: null,
+    });
 
     return {
       service,
@@ -281,6 +289,7 @@ describe("AuthService", () => {
     const {
       service,
       prismaService,
+      customerMfaEmailDeliveryService,
       customerSecurityEmailDeliveryService,
     } = createService();
     const passwordHash = await bcrypt.hash("s3cret-pass", 4);
@@ -331,6 +340,10 @@ describe("AuthService", () => {
         stepUpFreshUntil: null,
         lockedUntil: null,
       },
+      sessionSecurity: {
+        currentSessionTrusted: false,
+        currentSessionRequiresVerification: true,
+      },
     });
     expect(result.data?.user).not.toHaveProperty("privateKey");
     expect(
@@ -343,12 +356,19 @@ describe("AuthService", () => {
         ipAddress: "203.0.113.10",
       }),
     );
+    expect(customerMfaEmailDeliveryService.sendCode).toHaveBeenCalledWith(
+      expect.objectContaining({
+        purpose: "session_trust_verification",
+        challengeId: "session_1",
+      }),
+    );
   });
 
   it("does not send a new-session alert for a recognized device signature", async () => {
     const {
       service,
       prismaService,
+      customerMfaEmailDeliveryService,
       customerSecurityEmailDeliveryService,
     } = createService();
     const passwordHash = await bcrypt.hash("s3cret-pass", 4);
@@ -386,6 +406,131 @@ describe("AuthService", () => {
     expect(
       customerSecurityEmailDeliveryService.sendSessionAlert,
     ).not.toHaveBeenCalled();
+    expect(customerMfaEmailDeliveryService.sendCode).not.toHaveBeenCalled();
+  });
+
+  it("starts an email trust challenge for the current unfamiliar session", async () => {
+    const { service, prismaService, customerMfaEmailDeliveryService } =
+      createService();
+
+    prismaService.customer.findUnique
+      .mockResolvedValueOnce({
+        id: "customer_1",
+      })
+      .mockResolvedValueOnce({
+        id: "customer_1",
+        supabaseUserId: "supabase_1",
+        email: "ada@example.com",
+      });
+    prismaService.customerAuthSession.findUnique.mockResolvedValue({
+      id: "session_current",
+      customerId: "customer_1",
+      tokenVersion: 0,
+      clientPlatform: "web",
+      trustedAt: null,
+      trustChallengeCodeHash: null,
+      trustChallengeExpiresAt: null,
+      trustChallengeSentAt: null,
+      userAgent: "Mozilla/5.0",
+      ipAddress: "203.0.113.10",
+      createdAt: new Date("2026-04-19T12:00:00.000Z"),
+      lastSeenAt: new Date("2026-04-19T12:00:00.000Z"),
+      revokedAt: null,
+    });
+
+    const result = await service.startCurrentSessionTrustChallenge(
+      "supabase_1",
+      {
+        currentSessionId: "session_current",
+        clientPlatform: "web",
+        userAgent: "Mozilla/5.0",
+        ipAddress: "203.0.113.10",
+      },
+    );
+
+    expect(result.status).toBe("success");
+    expect(result.data).toEqual({
+      sessionSecurity: {
+        currentSessionTrusted: false,
+        currentSessionRequiresVerification: true,
+      },
+      expiresAt: expect.any(String),
+      deliveryChannel: "email",
+      previewCode: "123456",
+    });
+    expect(customerMfaEmailDeliveryService.sendCode).toHaveBeenCalledWith(
+      expect.objectContaining({
+        challengeId: "session_current",
+        purpose: "session_trust_verification",
+      }),
+    );
+  });
+
+  it("verifies the current session trust code and marks the session trusted", async () => {
+    const { service, prismaService } = createService();
+
+    prismaService.customer.findUnique
+      .mockResolvedValueOnce({
+        id: "customer_1",
+      })
+      .mockResolvedValueOnce({
+        id: "customer_1",
+        supabaseUserId: "supabase_1",
+      });
+    prismaService.customerAuthSession.findUnique.mockResolvedValue({
+      id: "session_current",
+      customerId: "customer_1",
+      tokenVersion: 0,
+      clientPlatform: "web",
+      trustedAt: null,
+      trustChallengeCodeHash: createOtpHash("123456"),
+      trustChallengeExpiresAt: new Date(Date.now() + 60_000),
+      trustChallengeSentAt: new Date(),
+      userAgent: "Mozilla/5.0",
+      ipAddress: "203.0.113.10",
+      createdAt: new Date("2026-04-19T12:00:00.000Z"),
+      lastSeenAt: new Date("2026-04-19T12:00:00.000Z"),
+      revokedAt: null,
+    });
+    prismaService.customerAuthSession.update.mockResolvedValue({
+      id: "session_current",
+      customerId: "customer_1",
+      tokenVersion: 0,
+      clientPlatform: "web",
+      trustedAt: new Date("2026-04-19T12:05:00.000Z"),
+      trustChallengeCodeHash: null,
+      trustChallengeExpiresAt: null,
+      trustChallengeSentAt: null,
+      userAgent: "Mozilla/5.0",
+      ipAddress: "203.0.113.10",
+      createdAt: new Date("2026-04-19T12:00:00.000Z"),
+      lastSeenAt: new Date("2026-04-19T12:05:00.000Z"),
+      revokedAt: null,
+    });
+
+    const result = await service.verifyCurrentSessionTrust(
+      "supabase_1",
+      "session_current",
+      "123456",
+    );
+
+    expect(result.status).toBe("success");
+    expect(result.data).toEqual({
+      sessionSecurity: {
+        currentSessionTrusted: true,
+        currentSessionRequiresVerification: false,
+      },
+    });
+    expect(prismaService.customerAuthSession.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "session_current" },
+        data: expect.objectContaining({
+          trustChallengeCodeHash: null,
+          trustChallengeExpiresAt: null,
+          trustChallengeSentAt: null,
+        }),
+      }),
+    );
   });
 
   it("bootstraps a shared login account idempotently", async () => {
@@ -509,16 +654,19 @@ describe("AuthService", () => {
         revokedReason: "password_rotation",
       },
     });
-    expect(transaction.customerAuthSession.create).toHaveBeenCalledWith({
-      data: {
-        customerId: "customer_1",
-        tokenVersion: 1,
-        clientPlatform: "unknown",
-      },
-      select: {
-        id: true,
-      },
-    });
+    expect(transaction.customerAuthSession.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          customerId: "customer_1",
+          tokenVersion: 1,
+          clientPlatform: "unknown",
+          trustedAt: expect.any(Date),
+        }),
+        select: {
+          id: true,
+        },
+      }),
+    );
     expect(transaction.auditEvent.create).toHaveBeenCalledWith({
       data: {
         customerId: "customer_1",

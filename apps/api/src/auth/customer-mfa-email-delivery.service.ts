@@ -20,7 +20,8 @@ type CustomerMfaEmailPurpose =
   | "email_enrollment"
   | "email_recovery"
   | "withdrawal_step_up"
-  | "password_step_up";
+  | "password_step_up"
+  | "session_trust_verification";
 
 type SendCustomerMfaEmailInput = {
   customerId: string;

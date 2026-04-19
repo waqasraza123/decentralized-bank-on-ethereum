@@ -118,6 +118,7 @@ describe("WithdrawalIntentsController integration", () => {
 
     authService.validateToken.mockResolvedValue({
       id: "supabase_1",
+      sessionId: "session_current",
     });
     authService.assertCustomerStepUpFresh.mockResolvedValue(undefined);
     prismaService.customerAccount.findFirst.mockResolvedValue({
@@ -249,6 +250,7 @@ describe("WithdrawalIntentsController integration", () => {
     );
     expect(authService.assertCustomerStepUpFresh).toHaveBeenCalledWith(
       "supabase_1",
+      "session_current",
     );
     expect(ledgerService.reserveWithdrawalBalance).toHaveBeenCalledWith(
       prismaTransaction,

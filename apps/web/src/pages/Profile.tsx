@@ -32,8 +32,10 @@ import {
   useListCustomerSecurityActivity,
   useRevokeCustomerSession,
   useRevokeAllSessions,
+  useStartCurrentSessionTrustChallenge,
   useRotatePassword,
   useUpdateNotificationPreferences,
+  useVerifyCurrentSessionTrust,
 } from "@/hooks/user/useProfileSettings";
 import {
   useCustomerMfaStatus,
@@ -115,6 +117,8 @@ function formatSecurityActivityTitle(
       return "Authenticator recovered";
     case "mfa_step_up_verified":
       return "MFA challenge verified";
+    case "session_trust_verified":
+      return "Session verified";
   }
 }
 
@@ -143,6 +147,10 @@ function formatSecurityActivityDetail(
     }
   }
 
+  if (event.kind === "session_trust_verified") {
+    return "This session was verified for sensitive actions.";
+  }
+
   return null;
 }
 
@@ -158,6 +166,9 @@ const Profile = () => {
   const customerSessionsQuery = useListCustomerSessions();
   const securityActivityQuery = useListCustomerSecurityActivity();
   const revokeCustomerSessionMutation = useRevokeCustomerSession();
+  const startSessionTrustChallengeMutation =
+    useStartCurrentSessionTrustChallenge();
+  const verifyCurrentSessionTrustMutation = useVerifyCurrentSessionTrust();
   const updateNotificationPreferencesMutation =
     useUpdateNotificationPreferences();
   useCustomerMfaStatus();
@@ -177,6 +188,10 @@ const Profile = () => {
   const [passwordError, setPasswordError] = useState<string | null>(null);
   const [sessionNotice, setSessionNotice] = useState<string | null>(null);
   const [sessionError, setSessionError] = useState<string | null>(null);
+  const [sessionTrustCode, setSessionTrustCode] = useState("");
+  const [sessionTrustPreviewCode, setSessionTrustPreviewCode] = useState<
+    string | null
+  >(null);
   const [notificationDraft, setNotificationDraft] =
     useState<CustomerNotificationPreferences | null>(null);
   const [notificationNotice, setNotificationNotice] = useState<string | null>(
@@ -236,6 +251,8 @@ const Profile = () => {
     ? getAccountLifecycleEntries(profile, locale)
     : [];
   const passwordRotationAvailable = profile?.passwordRotationAvailable ?? false;
+  const sessionSecurity =
+    profile?.sessionSecurity ?? userFromStore?.sessionSecurity;
   const stepUpFresh =
     Boolean(mfa?.stepUpFreshUntil) &&
     Date.parse(mfa?.stepUpFreshUntil ?? "") > Date.now();
@@ -255,6 +272,13 @@ const Profile = () => {
 
     if (!stepUpFresh) {
       setPasswordError("Verify MFA before updating the password.");
+      return;
+    }
+
+    if (sessionSecurity?.currentSessionRequiresVerification) {
+      setPasswordError(
+        "Verify this unfamiliar session before changing the password.",
+      );
       return;
     }
 
@@ -323,6 +347,42 @@ const Profile = () => {
     } catch (error) {
       setSessionError(
         error instanceof Error ? error.message : "Session revocation failed.",
+      );
+    }
+  }
+
+  async function handleStartSessionTrustChallenge() {
+    setSessionNotice(null);
+    setSessionError(null);
+
+    try {
+      const result = await startSessionTrustChallengeMutation.mutateAsync();
+      setSessionTrustPreviewCode(result.previewCode);
+      setSessionTrustCode("");
+      setSessionNotice("Session verification code sent.");
+    } catch (error) {
+      setSessionError(
+        error instanceof Error
+          ? error.message
+          : "Failed to send session verification code.",
+      );
+    }
+  }
+
+  async function handleVerifySessionTrust() {
+    setSessionNotice(null);
+    setSessionError(null);
+
+    try {
+      await verifyCurrentSessionTrustMutation.mutateAsync(sessionTrustCode);
+      setSessionTrustCode("");
+      setSessionTrustPreviewCode(null);
+      setSessionNotice("Current session verified successfully.");
+    } catch (error) {
+      setSessionError(
+        error instanceof Error
+          ? error.message
+          : "Failed to verify current session.",
       );
     }
   }
@@ -1144,6 +1204,76 @@ const Profile = () => {
                     </Alert>
                   ) : null}
 
+                  {sessionSecurity?.currentSessionRequiresVerification ? (
+                    <Alert variant="destructive">
+                      <ShieldAlert className="h-4 w-4" />
+                      <AlertTitle>Verify this session</AlertTitle>
+                      <AlertDescription>
+                        This sign-in is not yet trusted. Withdrawals and
+                        password changes stay blocked until you verify this
+                        browser from your security email code.
+                      </AlertDescription>
+                    </Alert>
+                  ) : (
+                    <Alert variant="success">
+                      <Shield className="h-4 w-4" />
+                      <AlertTitle>Current session trusted</AlertTitle>
+                      <AlertDescription>
+                        This session is verified for sensitive customer actions.
+                      </AlertDescription>
+                    </Alert>
+                  )}
+
+                  {sessionSecurity?.currentSessionRequiresVerification ? (
+                    <div className="stb-section-frame space-y-3 p-4">
+                      <div className="space-y-1">
+                        <p className="text-sm font-medium text-foreground">
+                          Verify current session
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          Send a code to the customer email on file, then enter
+                          it here to trust this session.
+                        </p>
+                      </div>
+                      <div className="flex flex-col gap-3 sm:flex-row">
+                        <Button
+                          variant="outline"
+                          onClick={handleStartSessionTrustChallenge}
+                          disabled={startSessionTrustChallengeMutation.isPending}
+                        >
+                          {startSessionTrustChallengeMutation.isPending
+                            ? "Sending code..."
+                            : "Send verification code"}
+                        </Button>
+                        <Input
+                          value={sessionTrustCode}
+                          onChange={(event) =>
+                            setSessionTrustCode(event.target.value)
+                          }
+                          placeholder="6-digit code"
+                          inputMode="numeric"
+                          maxLength={6}
+                        />
+                        <Button
+                          onClick={handleVerifySessionTrust}
+                          disabled={
+                            verifyCurrentSessionTrustMutation.isPending ||
+                            sessionTrustCode.trim().length !== 6
+                          }
+                        >
+                          {verifyCurrentSessionTrustMutation.isPending
+                            ? "Verifying..."
+                            : "Verify session"}
+                        </Button>
+                      </div>
+                      {sessionTrustPreviewCode ? (
+                        <p className="text-xs text-muted-foreground">
+                          Dev preview code: {sessionTrustPreviewCode}
+                        </p>
+                      ) : null}
+                    </div>
+                  ) : null}
+
                   <Button
                     variant="outline"
                     onClick={handleRevokeAllSessions}
@@ -1196,6 +1326,13 @@ const Profile = () => {
                                   {session.current ? (
                                     <Badge variant="secondary">Current</Badge>
                                   ) : null}
+                                  <Badge
+                                    variant={
+                                      session.trusted ? "secondary" : "destructive"
+                                    }
+                                  >
+                                    {session.trusted ? "Trusted" : "Verify"}
+                                  </Badge>
                                 </div>
                                 <p className="text-xs text-muted-foreground">
                                   Last seen{" "}

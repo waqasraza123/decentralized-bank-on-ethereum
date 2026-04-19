@@ -96,6 +96,10 @@ model CustomerAuthSession {
   customer       Customer                       @relation(fields: [customerId], references: [id])
   tokenVersion   Int
   clientPlatform CustomerAuthSessionPlatform   @default(unknown)
+  trustedAt      DateTime?
+  trustChallengeCodeHash String?
+  trustChallengeExpiresAt DateTime?
+  trustChallengeSentAt DateTime?
   userAgent      String?
   ipAddress      String?
   lastSeenAt     DateTime                      @default(now())

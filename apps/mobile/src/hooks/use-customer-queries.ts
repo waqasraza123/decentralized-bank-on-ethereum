@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type {
   CustomerMfaStatus,
   CustomerNotificationPreferences,
+  CustomerSessionSecurityStatus,
   UserProfileProjection,
 } from "@stealth-trails-bank/types";
 import { apiClient, readApiErrorMessage } from "../lib/api/client";
@@ -24,12 +25,14 @@ import type {
   StartEmailEnrollmentResult,
   StartEmailRecoveryResult,
   StartMfaChallengeResult,
+  StartSessionTrustChallengeResult,
   RevokeCustomerSessionsResult,
   RevokeCustomerSessionResult,
   StartTotpEnrollmentResult,
   StakingMutationResult,
   UpdateNotificationPreferencesResult,
   VerifyMfaResult,
+  VerifySessionTrustResult,
 } from "../lib/api/types";
 import { useSessionStore } from "../stores/session-store";
 
@@ -47,6 +50,7 @@ function mapProfileToSessionUser(
     passwordRotationAvailable: profile.passwordRotationAvailable,
     notificationPreferences: profile.notificationPreferences,
     mfa: profile.mfa,
+    sessionSecurity: profile.sessionSecurity,
   };
 }
 
@@ -313,6 +317,22 @@ function createSessionRefreshUpdater(
   };
 }
 
+function createSessionSecurityUpdater(
+  setUser: ((user: any) => Promise<void>) | undefined,
+  currentUser: any,
+) {
+  return async (sessionSecurity: CustomerSessionSecurityStatus) => {
+    if (!setUser || !currentUser) {
+      return;
+    }
+
+    await setUser({
+      ...currentUser,
+      sessionSecurity,
+    });
+  };
+}
+
 export function useMfaStatusQuery() {
   const token = useSessionStore((state) => state.token);
   const setUser = useSessionStore((state) => state.setUser);
@@ -565,6 +585,61 @@ export function useRevokeAllCustomerSessionsMutation() {
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["customer-sessions"] });
+    },
+  });
+}
+
+export function useStartSessionTrustChallengeMutation() {
+  const setUser = useSessionStore((state) => state.setUser);
+  const user = useSessionStore((state) => state.user);
+  const applySessionSecurity = createSessionSecurityUpdater(setUser, user);
+
+  return useMutation({
+    mutationFn: async () => {
+      const response = await apiClient.post<
+        ApiEnvelope<StartSessionTrustChallengeResult>
+      >("/auth/session/trust/start");
+
+      if (response.data.status !== "success" || !response.data.data) {
+        throw new Error(
+          response.data.message || "Failed to send session verification code.",
+        );
+      }
+
+      await applySessionSecurity(response.data.data.sessionSecurity);
+      return response.data.data;
+    },
+  });
+}
+
+export function useVerifySessionTrustMutation() {
+  const setUser = useSessionStore((state) => state.setUser);
+  const user = useSessionStore((state) => state.user);
+  const applySessionSecurity = createSessionSecurityUpdater(setUser, user);
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (code: string) => {
+      const response = await apiClient.post<ApiEnvelope<VerifySessionTrustResult>>(
+        "/auth/session/trust/verify",
+        { code },
+      );
+
+      if (response.data.status !== "success" || !response.data.data) {
+        throw new Error(
+          response.data.message || "Failed to verify current session.",
+        );
+      }
+
+      await applySessionSecurity(response.data.data.sessionSecurity);
+      return response.data.data;
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["profile"] });
+      await queryClient.invalidateQueries({ queryKey: ["customer-sessions"] });
+      await queryClient.invalidateQueries({
+        queryKey: ["customer-security-activity"],
+      });
     },
   });
 }

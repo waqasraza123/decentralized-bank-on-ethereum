@@ -1,6 +1,9 @@
 import axios from "axios";
 import { useState } from "react";
-import type { CustomerMfaStatus } from "@stealth-trails-bank/types";
+import type {
+  CustomerMfaStatus,
+  CustomerSessionSecurityStatus,
+} from "@stealth-trails-bank/types";
 import { loadWebRuntimeConfig } from "@stealth-trails-bank/config/web";
 import { useUserStore } from "@/stores/userStore";
 
@@ -47,6 +50,7 @@ type LoginResponseUser = {
   firstName: string;
   lastName: string;
   mfa: CustomerMfaStatus;
+  sessionSecurity: CustomerSessionSecurityStatus;
 };
 
 type LoginResponseData = {
@@ -122,6 +126,7 @@ function mapLoginUser(user: LoginResponseUser) {
     supabaseUserId: user.supabaseUserId,
     ethereumAddress: user.ethereumAddress,
     mfa: user.mfa,
+    sessionSecurity: user.sessionSecurity,
   };
 }
 

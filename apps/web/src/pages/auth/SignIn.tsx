@@ -52,7 +52,12 @@ const SignIn = () => {
         title: t("auth.signIn.successTitle"),
         description: t("auth.signIn.successDescription"),
       });
-      navigate(result.user.mfa.requiresSetup ? "/profile" : "/");
+      navigate(
+        result.user.mfa.requiresSetup ||
+          result.user.sessionSecurity.currentSessionRequiresVerification
+          ? "/profile"
+          : "/",
+      );
     } catch {
       toast({
         title: t("auth.signIn.errorTitle"),
@@ -63,9 +68,19 @@ const SignIn = () => {
 
   useEffect(() => {
     if (token) {
-      navigate(user?.mfa.requiresSetup ? "/profile" : "/");
+      navigate(
+        user?.mfa.requiresSetup ||
+          user?.sessionSecurity?.currentSessionRequiresVerification
+          ? "/profile"
+          : "/",
+      );
     }
-  }, [token, user?.mfa.requiresSetup, navigate]);
+  }, [
+    token,
+    user?.mfa.requiresSetup,
+    user?.sessionSecurity?.currentSessionRequiresVerification,
+    navigate,
+  ]);
 
   return (
     <AuthShell

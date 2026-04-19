@@ -29,6 +29,7 @@ function mapLoginUser(user: LoginResponseData["user"]): SessionUser {
     email: user.email,
     ethereumAddress: user.ethereumAddress,
     mfa: user.mfa,
+    sessionSecurity: user.sessionSecurity,
   };
 }
 

@@ -95,12 +95,19 @@ export type CustomerMfaStatus = {
   lockedUntil: string | null;
 };
 
+export type CustomerSessionSecurityStatus = {
+  currentSessionTrusted: boolean;
+  currentSessionRequiresVerification: boolean;
+};
+
 type CustomerMfaChallengeMethod = "totp" | "email_otp";
 type CustomerMfaChallengePurpose =
   | "email_enrollment"
   | "email_recovery"
   | "withdrawal_step_up"
   | "password_step_up";
+
+type CustomerSessionTrustChallengePurpose = "session_trust_verification";
 
 type CustomerSessionContext = {
   currentSessionId?: string | null;
@@ -148,6 +155,7 @@ type PublicLoggedInUser = {
   firstName: string;
   lastName: string;
   mfa: CustomerMfaStatus;
+  sessionSecurity: CustomerSessionSecurityStatus;
 };
 
 type SignUpResponseData = {
@@ -168,6 +176,7 @@ type CustomerSessionProjection = {
   id: string;
   current: boolean;
   clientPlatform: "web" | "mobile" | "unknown";
+  trusted: boolean;
   userAgent: string | null;
   ipAddress: string | null;
   createdAt: string;
@@ -184,7 +193,8 @@ type CustomerSecurityActivityProjection = {
     | "mfa_authenticator_enrolled"
     | "mfa_email_backup_enrolled"
     | "mfa_recovery_completed"
-    | "mfa_step_up_verified";
+    | "mfa_step_up_verified"
+    | "session_trust_verified";
   createdAt: string;
   clientPlatform: "web" | "mobile" | "unknown" | null;
   ipAddress: string | null;
@@ -242,6 +252,17 @@ type VerifyMfaResponseData = {
   session?: CustomerSessionRefreshData;
 };
 
+type SessionTrustStatusResponseData = {
+  sessionSecurity: CustomerSessionSecurityStatus;
+};
+
+type StartSessionTrustChallengeResponseData = {
+  sessionSecurity: CustomerSessionSecurityStatus;
+  expiresAt: string;
+  deliveryChannel: "email";
+  previewCode: string | null;
+};
+
 type StartMfaChallengeResponseData = {
   mfa: CustomerMfaStatus;
   challengeId: string;
@@ -260,6 +281,10 @@ type CustomerAuthSessionRecord = Prisma.CustomerAuthSessionGetPayload<{
     id: true;
     tokenVersion: true;
     clientPlatform: true;
+    trustedAt: true;
+    trustChallengeCodeHash: true;
+    trustChallengeExpiresAt: true;
+    trustChallengeSentAt: true;
     userAgent: true;
     ipAddress: true;
     createdAt: true;
@@ -512,6 +537,155 @@ export class AuthService {
     }
   }
 
+  private assertCurrentSessionTrusted(
+    status: CustomerSessionSecurityStatus,
+  ): void {
+    if (status.currentSessionRequiresVerification) {
+      throw new ForbiddenException(
+        "Verify this unfamiliar session from the security screen before using money movement or password rotation.",
+      );
+    }
+  }
+
+  private async getCurrentCustomerSessionRecord(
+    supabaseUserId: string,
+    currentSessionId?: string | null,
+  ): Promise<CustomerAuthSessionRecord | null> {
+    if (!currentSessionId) {
+      return null;
+    }
+
+    const customer = await this.prismaService.customer.findUnique({
+      where: { supabaseUserId },
+      select: {
+        id: true,
+      },
+    });
+
+    if (!customer) {
+      throw new NotFoundException("Customer session profile not found.");
+    }
+
+    const session = await this.prismaService.customerAuthSession.findUnique({
+      where: { id: currentSessionId },
+      select: {
+        id: true,
+        tokenVersion: true,
+        clientPlatform: true,
+        trustedAt: true,
+        trustChallengeCodeHash: true,
+        trustChallengeExpiresAt: true,
+        trustChallengeSentAt: true,
+        userAgent: true,
+        ipAddress: true,
+        createdAt: true,
+        lastSeenAt: true,
+        revokedAt: true,
+        customerId: true,
+      },
+    });
+
+    if (!session || session.customerId !== customer.id || session.revokedAt) {
+      throw new UnauthorizedException("Session is no longer valid.");
+    }
+
+    return session;
+  }
+
+  private assertSessionTrustChallengeCooldown(input: {
+    trustChallengeSentAt?: Date | null;
+  }): void {
+    if (
+      input.trustChallengeSentAt &&
+      input.trustChallengeSentAt.getTime() + this.challengeStartCooldownMs >
+        Date.now()
+    ) {
+      throw new BadRequestException(
+        "Wait before sending another session verification code.",
+      );
+    }
+  }
+
+  private async issueCustomerSessionTrustChallenge(input: {
+    customerId: string;
+    actorId: string;
+    email: string;
+    sessionId: string;
+    context?: CustomerSessionContext;
+    existingSentAt?: Date | null;
+    ignoreCooldown?: boolean;
+  }): Promise<{
+    expiresAt: string;
+    previewCode: string | null;
+  }> {
+    if (!input.ignoreCooldown) {
+      this.assertSessionTrustChallengeCooldown({
+        trustChallengeSentAt: input.existingSentAt,
+      });
+    }
+
+    const code = generateEmailOtpCode();
+    const expiresAt = new Date(Date.now() + this.emailOtpExpiryMs);
+
+    await this.prismaService.customerAuthSession.update({
+      where: { id: input.sessionId },
+      data: {
+        trustedAt: null,
+        trustChallengeCodeHash: createOtpHash(code),
+        trustChallengeExpiresAt: expiresAt,
+        trustChallengeSentAt: new Date(),
+      },
+    });
+
+    try {
+      const deliveryResult = await this.customerMfaEmailDeliveryService.sendCode({
+        customerId: input.customerId,
+        actorId: input.actorId,
+        email: input.email,
+        challengeId: input.sessionId,
+        purpose: "session_trust_verification",
+        code,
+        expiresAt: expiresAt.toISOString(),
+      });
+
+      await this.appendAuditEvent({
+        customerId: input.customerId,
+        actorId: input.actorId,
+        action: "customer_account.session_trust_challenge_started",
+        targetType: "CustomerAuthSession",
+        targetId: input.sessionId,
+        metadata: {
+          sessionId: input.sessionId,
+          purpose: "session_trust_verification",
+          method: "email_otp",
+          clientPlatform: this.normalizeSessionPlatform(
+            input.context?.clientPlatform,
+          ),
+          userAgent: this.normalizeOptionalText(input.context?.userAgent),
+          ipAddress: this.normalizeOptionalText(input.context?.ipAddress),
+          deliveryBackendType: deliveryResult.backendType,
+          deliveryBackendReference: deliveryResult.backendReference,
+        } as PrismaJsonValue,
+      });
+
+      return {
+        expiresAt: expiresAt.toISOString(),
+        previewCode: deliveryResult.previewCode,
+      };
+    } catch (error) {
+      await this.prismaService.customerAuthSession.update({
+        where: { id: input.sessionId },
+        data: {
+          trustChallengeCodeHash: null,
+          trustChallengeExpiresAt: null,
+          trustChallengeSentAt: null,
+        },
+      });
+
+      throw error;
+    }
+  }
+
   private async appendAuditEvent(input: {
     customerId: string;
     actorId: string;
@@ -573,6 +747,22 @@ export class AuthService {
     return normalized ? normalized : null;
   }
 
+  private buildCustomerSessionSecurityStatus(
+    session?: { trustedAt?: Date | null } | null,
+  ): CustomerSessionSecurityStatus {
+    if (!session) {
+      return {
+        currentSessionTrusted: true,
+        currentSessionRequiresVerification: false,
+      };
+    }
+
+    return {
+      currentSessionTrusted: Boolean(session.trustedAt),
+      currentSessionRequiresVerification: !session.trustedAt,
+    };
+  }
+
   private async hasRecognizedCustomerSessionSignature(
     customerId: string,
     context?: CustomerSessionContext,
@@ -611,6 +801,7 @@ export class AuthService {
       id: session.id,
       current: currentSessionId === session.id,
       clientPlatform: session.clientPlatform,
+      trusted: Boolean(session.trustedAt),
       userAgent: session.userAgent,
       ipAddress: session.ipAddress,
       createdAt: session.createdAt.toISOString(),
@@ -696,6 +887,11 @@ export class AuthService {
           ...base,
           kind: "mfa_step_up_verified",
         };
+      case "customer_account.session_trusted":
+        return {
+          ...base,
+          kind: "session_trust_verified",
+        };
       default:
         return null;
     }
@@ -707,12 +903,14 @@ export class AuthService {
       customerId: string;
       tokenVersion: number;
       context?: CustomerSessionContext;
+      trusted?: boolean;
     },
   ): Promise<string> {
     const createdSession = await transaction.customerAuthSession.create({
       data: {
         customerId: input.customerId,
         tokenVersion: input.tokenVersion,
+        trustedAt: input.trusted ? new Date() : undefined,
         clientPlatform: this.normalizeSessionPlatform(
           input.context?.clientPlatform,
         ),
@@ -754,6 +952,7 @@ export class AuthService {
       supabaseUserId: string;
       email: string;
       authTokenVersion: number;
+      trusted?: boolean;
     },
     context?: CustomerSessionContext,
     revokedOtherSessions = true,
@@ -762,6 +961,7 @@ export class AuthService {
       customerId: input.customerId,
       tokenVersion: input.authTokenVersion,
       context,
+      trusted: input.trusted,
     });
 
     return {
@@ -784,6 +984,7 @@ export class AuthService {
       authTokenVersion: number;
       revocationReason: CustomerAuthSessionRevocationReason;
       context?: CustomerSessionContext;
+      trusted?: boolean;
     },
   ): Promise<CustomerSessionRefreshData> {
     await transaction.customerAuthSession.updateMany({
@@ -801,6 +1002,7 @@ export class AuthService {
       customerId: input.customerId,
       tokenVersion: input.authTokenVersion,
       context: input.context,
+      trusted: input.trusted,
     });
 
     return {
@@ -843,6 +1045,7 @@ export class AuthService {
       authTokenVersion: updatedCustomer.authTokenVersion,
       revocationReason: input.revocationReason,
       context: input.context,
+      trusted: true,
     });
   }
 
@@ -1740,15 +1943,27 @@ export class AuthService {
 
   async assertCustomerMoneyMovementEnabled(
     supabaseUserId: string,
+    currentSessionId?: string | null,
   ): Promise<void> {
     const customer =
       await this.getCustomerMfaRecordBySupabaseUserId(supabaseUserId);
+    const sessionSecurity = this.buildCustomerSessionSecurityStatus(
+      await this.getCurrentCustomerSessionRecord(supabaseUserId, currentSessionId),
+    );
+    this.assertCurrentSessionTrusted(sessionSecurity);
     this.assertMoneyMovementEnabled(this.buildCustomerMfaStatus(customer));
   }
 
-  async assertCustomerStepUpFresh(supabaseUserId: string): Promise<void> {
+  async assertCustomerStepUpFresh(
+    supabaseUserId: string,
+    currentSessionId?: string | null,
+  ): Promise<void> {
     const customer =
       await this.getCustomerMfaRecordBySupabaseUserId(supabaseUserId);
+    const sessionSecurity = this.buildCustomerSessionSecurityStatus(
+      await this.getCurrentCustomerSessionRecord(supabaseUserId, currentSessionId),
+    );
+    this.assertCurrentSessionTrusted(sessionSecurity);
     this.assertStepUpFresh(this.buildCustomerMfaStatus(customer));
   }
 
@@ -2207,6 +2422,157 @@ export class AuthService {
     }
   }
 
+  async getCurrentCustomerSessionSecurityStatus(
+    supabaseUserId: string,
+    currentSessionId?: string | null,
+  ): Promise<CustomerSessionSecurityStatus> {
+    return this.buildCustomerSessionSecurityStatus(
+      await this.getCurrentCustomerSessionRecord(supabaseUserId, currentSessionId),
+    );
+  }
+
+  async startCurrentSessionTrustChallenge(
+    supabaseUserId: string,
+    context?: CustomerSessionContext,
+  ): Promise<CustomJsonResponse<StartSessionTrustChallengeResponseData>> {
+    const session = await this.getCurrentCustomerSessionRecord(
+      supabaseUserId,
+      context?.currentSessionId,
+    );
+    const customer = await this.prismaService.customer.findUnique({
+      where: { supabaseUserId },
+      select: {
+        id: true,
+        supabaseUserId: true,
+        email: true,
+      },
+    });
+
+    if (!session || !customer) {
+      throw new NotFoundException("Customer session profile not found.");
+    }
+
+    if (session.trustedAt) {
+      throw new BadRequestException("Current session is already trusted.");
+    }
+
+    const delivery = await this.issueCustomerSessionTrustChallenge({
+      customerId: customer.id,
+      actorId: customer.supabaseUserId,
+      email: customer.email,
+      sessionId: session.id,
+      context,
+      existingSentAt: session.trustChallengeSentAt,
+    });
+
+    return {
+      status: "success",
+      message: "Session verification code sent successfully.",
+      data: {
+        sessionSecurity: this.buildCustomerSessionSecurityStatus(session),
+        expiresAt: delivery.expiresAt,
+        deliveryChannel: "email",
+        previewCode: delivery.previewCode,
+      },
+    };
+  }
+
+  async verifyCurrentSessionTrust(
+    supabaseUserId: string,
+    currentSessionId: string | null | undefined,
+    code: string,
+  ): Promise<CustomJsonResponse<SessionTrustStatusResponseData>> {
+    const session = await this.getCurrentCustomerSessionRecord(
+      supabaseUserId,
+      currentSessionId,
+    );
+    const customer = await this.prismaService.customer.findUnique({
+      where: { supabaseUserId },
+      select: {
+        id: true,
+        supabaseUserId: true,
+      },
+    });
+
+    if (!session || !customer) {
+      throw new NotFoundException("Customer session profile not found.");
+    }
+
+    if (session.trustedAt) {
+      return {
+        status: "success",
+        message: "Current session is already trusted.",
+        data: {
+          sessionSecurity: this.buildCustomerSessionSecurityStatus(session),
+        },
+      };
+    }
+
+    if (
+      !session.trustChallengeCodeHash ||
+      !session.trustChallengeExpiresAt ||
+      session.trustChallengeExpiresAt.getTime() <= Date.now()
+    ) {
+      throw new BadRequestException(
+        "Session verification expired. Send a new code.",
+      );
+    }
+
+    if (!otpHashMatches(code.trim(), session.trustChallengeCodeHash)) {
+      throw new BadRequestException("Session verification code is invalid.");
+    }
+
+    const trustedAt = new Date();
+    const updatedSession = await this.prismaService.customerAuthSession.update({
+      where: { id: session.id },
+      data: {
+        trustedAt,
+        trustChallengeCodeHash: null,
+        trustChallengeExpiresAt: null,
+        trustChallengeSentAt: null,
+      },
+      select: {
+        id: true,
+        tokenVersion: true,
+        clientPlatform: true,
+        trustedAt: true,
+        trustChallengeCodeHash: true,
+        trustChallengeExpiresAt: true,
+        trustChallengeSentAt: true,
+        userAgent: true,
+        ipAddress: true,
+        createdAt: true,
+        lastSeenAt: true,
+        revokedAt: true,
+        customerId: true,
+      },
+    });
+
+    await this.appendAuditEvent({
+      customerId: customer.id,
+      actorId: customer.supabaseUserId,
+      action: "customer_account.session_trusted",
+      targetType: "CustomerAuthSession",
+      targetId: session.id,
+      metadata: {
+        sessionId: session.id,
+        method: "email_otp",
+        clientPlatform: updatedSession.clientPlatform,
+        userAgent: updatedSession.userAgent,
+        ipAddress: updatedSession.ipAddress,
+        trustedAt: trustedAt.toISOString(),
+      } as PrismaJsonValue,
+    });
+
+    return {
+      status: "success",
+      message: "Current session verified successfully.",
+      data: {
+        sessionSecurity: this.buildCustomerSessionSecurityStatus(updatedSession),
+      },
+    };
+  }
+
   async updatePassword(
     supabaseUserId: string,
     currentPassword: string,
@@ -2241,6 +2607,14 @@ export class AuthService {
       );
     }
 
+    this.assertCurrentSessionTrusted(
+      this.buildCustomerSessionSecurityStatus(
+        await this.getCurrentCustomerSessionRecord(
+          supabaseUserId,
+          context?.currentSessionId,
+        ),
+      ),
+    );
     this.assertStepUpFresh(this.buildCustomerMfaStatus(customer));
 
     const passwordValid = await bcrypt.compare(
@@ -2372,6 +2746,10 @@ export class AuthService {
         customerId: true,
         tokenVersion: true,
         clientPlatform: true,
+        trustedAt: true,
+        trustChallengeCodeHash: true,
+        trustChallengeExpiresAt: true,
+        trustChallengeSentAt: true,
         userAgent: true,
         ipAddress: true,
         createdAt: true,
@@ -2409,6 +2787,7 @@ export class AuthService {
 
     const actions = [
       "customer_account.session_created",
+      "customer_account.session_trusted",
       "customer_account.session_revoked",
       "customer_account.sessions_revoked",
       "customer_account.password_rotated",
@@ -3207,15 +3586,20 @@ export class AuthService {
 
     const recognizedSessionSignature =
       await this.hasRecognizedCustomerSessionSignature(customer.id, context);
-    const session = await this.buildSessionRefresh(
-      {
-        customerId: customer.id,
-        supabaseUserId: customer.supabaseUserId,
-        email: customer.email,
-        authTokenVersion: customer.authTokenVersion,
-      },
+    const sessionId = await this.createCustomerAuthSession(this.prismaService, {
+      customerId: customer.id,
+      tokenVersion: customer.authTokenVersion,
       context,
-      false,
+      trusted: recognizedSessionSignature,
+    });
+    const sessionSecurity = this.buildCustomerSessionSecurityStatus({
+      trustedAt: recognizedSessionSignature ? new Date() : null,
+    });
+    const token = this.signToken(
+      customer.supabaseUserId,
+      customer.email,
+      customer.authTokenVersion,
+      sessionId,
     );
 
     await this.appendAuditEvent({
@@ -3243,13 +3627,22 @@ export class AuthService {
           occurredAt: new Date().toISOString(),
         })
         .catch(() => undefined);
+
+      void this.issueCustomerSessionTrustChallenge({
+        customerId: customer.id,
+        actorId: customer.supabaseUserId,
+        email: customer.email,
+        sessionId,
+        context,
+        ignoreCooldown: true,
+      }).catch(() => undefined);
     }
 
     return {
       status: "success",
       message: "User logged in successfully.",
       data: {
-        token: session.token,
+        token,
         user: {
           id: user.id,
           supabaseUserId: customer.supabaseUserId,
@@ -3258,6 +3651,7 @@ export class AuthService {
           firstName: user.firstName,
           lastName: user.lastName,
           mfa: this.buildCustomerMfaStatus(customer),
+          sessionSecurity,
         },
       },
     };
