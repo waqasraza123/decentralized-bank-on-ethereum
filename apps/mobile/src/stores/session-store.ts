@@ -7,6 +7,68 @@ const userStorageKey = "stb.mobile.user";
 
 type PendingRequestCache = Record<string, string>;
 
+function readWebStorage(key: string): string | null {
+  if (typeof globalThis.localStorage === "undefined") {
+    return null;
+  }
+
+  try {
+    return globalThis.localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function writeWebStorage(key: string, value: string) {
+  if (typeof globalThis.localStorage === "undefined") {
+    return;
+  }
+
+  try {
+    globalThis.localStorage.setItem(key, value);
+  } catch {
+    // Ignore browser storage failures and leave the session in memory.
+  }
+}
+
+function deleteWebStorage(key: string) {
+  if (typeof globalThis.localStorage === "undefined") {
+    return;
+  }
+
+  try {
+    globalThis.localStorage.removeItem(key);
+  } catch {
+    // Ignore browser storage failures and leave the session in memory.
+  }
+}
+
+async function readPersistedValue(key: string): Promise<string | null> {
+  if (typeof globalThis.localStorage !== "undefined") {
+    return readWebStorage(key);
+  }
+
+  return SecureStore.getItemAsync(key);
+}
+
+async function writePersistedValue(key: string, value: string): Promise<void> {
+  if (typeof globalThis.localStorage !== "undefined") {
+    writeWebStorage(key, value);
+    return;
+  }
+
+  await SecureStore.setItemAsync(key, value);
+}
+
+async function deletePersistedValue(key: string): Promise<void> {
+  if (typeof globalThis.localStorage !== "undefined") {
+    deleteWebStorage(key);
+    return;
+  }
+
+  await SecureStore.deleteItemAsync(key);
+}
+
 type SessionState = {
   token: string | null;
   user: SessionUser | null;
@@ -23,13 +85,13 @@ type SessionState = {
 };
 
 async function persistSession(token: string, user: SessionUser) {
-  await SecureStore.setItemAsync(tokenStorageKey, token);
-  await SecureStore.setItemAsync(userStorageKey, JSON.stringify(user));
+  await writePersistedValue(tokenStorageKey, token);
+  await writePersistedValue(userStorageKey, JSON.stringify(user));
 }
 
 async function clearPersistedSession() {
-  await SecureStore.deleteItemAsync(tokenStorageKey);
-  await SecureStore.deleteItemAsync(userStorageKey);
+  await deletePersistedValue(tokenStorageKey);
+  await deletePersistedValue(userStorageKey);
 }
 
 export const useSessionStore = create<SessionState>((set, get) => ({
@@ -39,8 +101,8 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   pendingRequestKeys: {},
   hydrate: async () => {
     const [token, userValue] = await Promise.all([
-      SecureStore.getItemAsync(tokenStorageKey),
-      SecureStore.getItemAsync(userStorageKey)
+      readPersistedValue(tokenStorageKey),
+      readPersistedValue(userStorageKey)
     ]);
 
     let user: SessionUser | null = null;
