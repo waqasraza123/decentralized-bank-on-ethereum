@@ -24,6 +24,16 @@ export type CustomerMfaStatus = {
   lockedUntil: string | null;
 };
 
+export type CustomerSessionProjection = {
+  id: string;
+  current: boolean;
+  clientPlatform: "web" | "mobile" | "unknown";
+  userAgent: string | null;
+  ipAddress: string | null;
+  createdAt: string;
+  lastSeenAt: string;
+};
+
 export type UserProfileProjection = {
   id: number | null;
   customerId: string | null;

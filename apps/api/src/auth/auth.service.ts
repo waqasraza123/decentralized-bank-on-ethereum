@@ -9,6 +9,8 @@ import {
 } from "@nestjs/common";
 import {
   AccountLifecycleStatus,
+  CustomerAuthSessionPlatform,
+  CustomerAuthSessionRevocationReason,
   CustomerMfaRecoveryRequestStatus,
   CustomerMfaRecoveryRequestType,
   Prisma,
@@ -99,6 +101,13 @@ type CustomerMfaChallengePurpose =
   | "withdrawal_step_up"
   | "password_step_up";
 
+type CustomerSessionContext = {
+  currentSessionId?: string | null;
+  clientPlatform?: "web" | "mobile" | "unknown" | null;
+  userAgent?: string | null;
+  ipAddress?: string | null;
+};
+
 type CustomerMfaChallengeRecord = {
   id: string;
   purpose: CustomerMfaChallengePurpose;
@@ -154,6 +163,26 @@ type CustomerSessionRefreshData = {
   revokedOtherSessions: boolean;
 };
 
+type CustomerSessionProjection = {
+  id: string;
+  current: boolean;
+  clientPlatform: "web" | "mobile" | "unknown";
+  userAgent: string | null;
+  ipAddress: string | null;
+  createdAt: string;
+  lastSeenAt: string;
+};
+
+type ListCustomerSessionsResponseData = {
+  sessions: CustomerSessionProjection[];
+  activeSessionCount: number;
+};
+
+type RevokeCustomerSessionResponseData = {
+  revokedSessionId: string;
+  activeSessionCount: number;
+};
+
 type UpdatePasswordResponseData = {
   passwordRotationAvailable: boolean;
   session: CustomerSessionRefreshData;
@@ -194,6 +223,20 @@ type StartMfaChallengeResponseData = {
 type RevokeCustomerSessionsResponseData = {
   session: CustomerSessionRefreshData;
 };
+
+type CustomerAuthSessionRecord = Prisma.CustomerAuthSessionGetPayload<{
+  select: {
+    id: true;
+    tokenVersion: true;
+    clientPlatform: true;
+    userAgent: true;
+    ipAddress: true;
+    createdAt: true;
+    lastSeenAt: true;
+    revokedAt: true;
+    customerId: true;
+  };
+}>;
 
 type CustomerMfaRecoveryRequestRecord =
   Prisma.CustomerMfaRecoveryRequestGetPayload<{
@@ -470,6 +513,185 @@ export class AuthService {
     });
   }
 
+  private normalizeSessionPlatform(
+    value?: string | null,
+  ): CustomerAuthSessionPlatform {
+    if (value === "web") {
+      return CustomerAuthSessionPlatform.web;
+    }
+
+    if (value === "mobile") {
+      return CustomerAuthSessionPlatform.mobile;
+    }
+
+    return CustomerAuthSessionPlatform.unknown;
+  }
+
+  private normalizeOptionalText(value?: string | null): string | null {
+    const normalized = value?.trim();
+    return normalized ? normalized : null;
+  }
+
+  private mapCustomerSession(
+    session: CustomerAuthSessionRecord,
+    currentSessionId?: string | null,
+  ): CustomerSessionProjection {
+    return {
+      id: session.id,
+      current: currentSessionId === session.id,
+      clientPlatform: session.clientPlatform,
+      userAgent: session.userAgent,
+      ipAddress: session.ipAddress,
+      createdAt: session.createdAt.toISOString(),
+      lastSeenAt: session.lastSeenAt.toISOString(),
+    };
+  }
+
+  private async createCustomerAuthSession(
+    transaction: Prisma.TransactionClient,
+    input: {
+      customerId: string;
+      tokenVersion: number;
+      context?: CustomerSessionContext;
+    },
+  ): Promise<string> {
+    const createdSession = await transaction.customerAuthSession.create({
+      data: {
+        customerId: input.customerId,
+        tokenVersion: input.tokenVersion,
+        clientPlatform: this.normalizeSessionPlatform(
+          input.context?.clientPlatform,
+        ),
+        userAgent: this.normalizeOptionalText(input.context?.userAgent) ?? undefined,
+        ipAddress: this.normalizeOptionalText(input.context?.ipAddress) ?? undefined,
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    return createdSession.id;
+  }
+
+  private signToken(
+    sub: string,
+    email: string,
+    authTokenVersion: number,
+    sessionId?: string | null,
+  ): string {
+    const { jwtSecret, jwtExpirySeconds } = loadJwtRuntimeConfig();
+    return jwt.sign(
+      {
+        sub,
+        email,
+        v: authTokenVersion,
+        ...(sessionId ? { sid: sessionId } : {}),
+      },
+      jwtSecret,
+      {
+        expiresIn: jwtExpirySeconds,
+      },
+    );
+  }
+
+  private async buildSessionRefresh(
+    input: {
+      customerId: string;
+      supabaseUserId: string;
+      email: string;
+      authTokenVersion: number;
+    },
+    context?: CustomerSessionContext,
+    revokedOtherSessions = true,
+  ): Promise<CustomerSessionRefreshData> {
+    const sessionId = await this.createCustomerAuthSession(this.prismaService, {
+      customerId: input.customerId,
+      tokenVersion: input.authTokenVersion,
+      context,
+    });
+
+    return {
+      token: this.signToken(
+        input.supabaseUserId,
+        input.email,
+        input.authTokenVersion,
+        sessionId,
+      ),
+      revokedOtherSessions,
+    };
+  }
+
+  private async replaceActiveCustomerSessions(
+    transaction: Prisma.TransactionClient,
+    input: {
+      customerId: string;
+      supabaseUserId: string;
+      email: string;
+      authTokenVersion: number;
+      revocationReason: CustomerAuthSessionRevocationReason;
+      context?: CustomerSessionContext;
+    },
+  ): Promise<CustomerSessionRefreshData> {
+    await transaction.customerAuthSession.updateMany({
+      where: {
+        customerId: input.customerId,
+        revokedAt: null,
+      },
+      data: {
+        revokedAt: new Date(),
+        revokedReason: input.revocationReason,
+      },
+    });
+
+    const sessionId = await this.createCustomerAuthSession(transaction, {
+      customerId: input.customerId,
+      tokenVersion: input.authTokenVersion,
+      context: input.context,
+    });
+
+    return {
+      token: this.signToken(
+        input.supabaseUserId,
+        input.email,
+        input.authTokenVersion,
+        sessionId,
+      ),
+      revokedOtherSessions: true,
+    };
+  }
+
+  private async rotateCustomerSession(
+    transaction: Prisma.TransactionClient,
+    input: {
+      customerId: string;
+      supabaseUserId: string;
+      email: string;
+      revocationReason: CustomerAuthSessionRevocationReason;
+      context?: CustomerSessionContext;
+    },
+  ): Promise<CustomerSessionRefreshData> {
+    const updatedCustomer = await transaction.customer.update({
+      where: { id: input.customerId },
+      data: {
+        authTokenVersion: {
+          increment: 1,
+        },
+      },
+      select: {
+        authTokenVersion: true,
+      },
+    });
+
+    return this.replaceActiveCustomerSessions(transaction, {
+      customerId: input.customerId,
+      supabaseUserId: input.supabaseUserId,
+      email: input.email,
+      authTokenVersion: updatedCustomer.authTokenVersion,
+      revocationReason: input.revocationReason,
+      context: input.context,
+    });
+  }
+
   private mapCustomerMfaRecoveryRequest(
     request: CustomerMfaRecoveryRequestRecord,
   ): CustomerMfaRecoveryRequestProjection {
@@ -739,6 +961,7 @@ export class AuthService {
   async verifyTotpEnrollment(
     supabaseUserId: string,
     code: string,
+    context?: CustomerSessionContext,
   ): Promise<CustomJsonResponse<VerifyMfaResponseData>> {
     const customer =
       await this.getCustomerMfaRecordBySupabaseUserId(supabaseUserId);
@@ -784,6 +1007,7 @@ export class AuthService {
         },
       },
       select: {
+        id: true,
         supabaseUserId: true,
         email: true,
         authTokenVersion: true,
@@ -811,7 +1035,14 @@ export class AuthService {
       message: "Authenticator enrolled successfully.",
       data: {
         mfa: this.buildCustomerMfaStatus(updatedCustomer),
-        session: this.buildSessionRefresh(updatedCustomer),
+        session: await this.replaceActiveCustomerSessions(this.prismaService, {
+          customerId: updatedCustomer.id,
+          supabaseUserId: updatedCustomer.supabaseUserId,
+          email: updatedCustomer.email,
+          authTokenVersion: updatedCustomer.authTokenVersion,
+          revocationReason: CustomerAuthSessionRevocationReason.mfa_enrollment,
+          context,
+        }),
       },
     };
   }
@@ -897,6 +1128,7 @@ export class AuthService {
     supabaseUserId: string,
     challengeId: string,
     code: string,
+    context?: CustomerSessionContext,
   ): Promise<CustomJsonResponse<VerifyMfaResponseData>> {
     const customer =
       await this.getCustomerMfaRecordBySupabaseUserId(supabaseUserId);
@@ -939,6 +1171,7 @@ export class AuthService {
         },
       },
       select: {
+        id: true,
         supabaseUserId: true,
         email: true,
         authTokenVersion: true,
@@ -966,7 +1199,14 @@ export class AuthService {
       message: "Backup email MFA enrolled successfully.",
       data: {
         mfa: this.buildCustomerMfaStatus(updatedCustomer),
-        session: this.buildSessionRefresh(updatedCustomer),
+        session: await this.replaceActiveCustomerSessions(this.prismaService, {
+          customerId: updatedCustomer.id,
+          supabaseUserId: updatedCustomer.supabaseUserId,
+          email: updatedCustomer.email,
+          authTokenVersion: updatedCustomer.authTokenVersion,
+          revocationReason: CustomerAuthSessionRevocationReason.mfa_enrollment,
+          context,
+        }),
       },
     };
   }
@@ -1063,6 +1303,7 @@ export class AuthService {
     supabaseUserId: string,
     challengeId: string,
     code: string,
+    context?: CustomerSessionContext,
   ): Promise<CustomJsonResponse<VerifyMfaResponseData>> {
     const customer =
       await this.getCustomerMfaRecordBySupabaseUserId(supabaseUserId);
@@ -1109,6 +1350,7 @@ export class AuthService {
         },
       },
       select: {
+        id: true,
         supabaseUserId: true,
         email: true,
         authTokenVersion: true,
@@ -1137,7 +1379,14 @@ export class AuthService {
       message: "Customer MFA recovery completed successfully.",
       data: {
         mfa: this.buildCustomerMfaStatus(updatedCustomer),
-        session: this.buildSessionRefresh(updatedCustomer),
+        session: await this.replaceActiveCustomerSessions(this.prismaService, {
+          customerId: updatedCustomer.id,
+          supabaseUserId: updatedCustomer.supabaseUserId,
+          email: updatedCustomer.email,
+          authTokenVersion: updatedCustomer.authTokenVersion,
+          revocationReason: CustomerAuthSessionRevocationReason.mfa_recovery,
+          context,
+        }),
       },
     };
   }
@@ -1347,35 +1596,6 @@ export class AuthService {
     const customer =
       await this.getCustomerMfaRecordBySupabaseUserId(supabaseUserId);
     this.assertStepUpFresh(this.buildCustomerMfaStatus(customer));
-  }
-
-  private signToken(
-    sub: string,
-    email: string,
-    authTokenVersion: number,
-  ): string {
-    const { jwtSecret, jwtExpirySeconds } = loadJwtRuntimeConfig();
-    return jwt.sign({ sub, email, v: authTokenVersion }, jwtSecret, {
-      expiresIn: jwtExpirySeconds,
-    });
-  }
-
-  private buildSessionRefresh(
-    input: {
-      supabaseUserId: string;
-      email: string;
-      authTokenVersion: number;
-    },
-    revokedOtherSessions = true,
-  ): CustomerSessionRefreshData {
-    return {
-      token: this.signToken(
-        input.supabaseUserId,
-        input.email,
-        input.authTokenVersion,
-      ),
-      revokedOtherSessions,
-    };
   }
 
   private normalizeEmail(email: string): string {
@@ -1757,7 +1977,9 @@ export class AuthService {
     };
   }
 
-  async validateToken(token: string): Promise<{ id: string; email: string }> {
+  async validateToken(
+    token: string,
+  ): Promise<{ id: string; email: string; sessionId: string | null }> {
     try {
       const { jwtSecret } = loadJwtRuntimeConfig();
       const payload = jwt.verify(token, jwtSecret);
@@ -1769,6 +1991,8 @@ export class AuthService {
       const sub = payload["sub"];
       const email = payload["email"];
       const authTokenVersion = payload["v"];
+      const sessionId =
+        typeof payload["sid"] === "string" ? payload["sid"] : null;
 
       if (
         typeof sub !== "string" ||
@@ -1781,6 +2005,7 @@ export class AuthService {
       const customer = await this.prismaService.customer.findUnique({
         where: { supabaseUserId: sub },
         select: {
+          id: true,
           authTokenVersion: true,
         },
       });
@@ -1789,7 +2014,40 @@ export class AuthService {
         throw new UnauthorizedException("Session is no longer valid.");
       }
 
-      return { id: sub, email };
+      if (!sessionId) {
+        return { id: sub, email, sessionId: null };
+      }
+
+      const session = await this.prismaService.customerAuthSession.findUnique({
+        where: { id: sessionId },
+        select: {
+          id: true,
+          customerId: true,
+          tokenVersion: true,
+          lastSeenAt: true,
+          revokedAt: true,
+        },
+      });
+
+      if (
+        !session ||
+        session.customerId !== customer.id ||
+        session.tokenVersion !== authTokenVersion ||
+        session.revokedAt
+      ) {
+        throw new UnauthorizedException("Session is no longer valid.");
+      }
+
+      if (session.lastSeenAt.getTime() + 15 * 60 * 1000 <= Date.now()) {
+        await this.prismaService.customerAuthSession.update({
+          where: { id: session.id },
+          data: {
+            lastSeenAt: new Date(),
+          },
+        });
+      }
+
+      return { id: sub, email, sessionId };
     } catch {
       throw new UnauthorizedException("Invalid or expired token.");
     }
@@ -1881,7 +2139,10 @@ export class AuthService {
       message: "Password updated successfully.",
       data: {
         passwordRotationAvailable: true,
-        session: this.buildSessionRefresh(rotatedSession),
+        session: await this.buildSessionRefresh({
+          customerId: customer.id,
+          ...rotatedSession,
+        }),
       },
     };
   }
@@ -1930,7 +2191,10 @@ export class AuthService {
       status: "success",
       message: "Customer sessions revoked successfully.",
       data: {
-        session: this.buildSessionRefresh(updatedCustomer),
+        session: await this.buildSessionRefresh({
+          customerId: customer.id,
+          ...updatedCustomer,
+        }),
       },
     };
   }

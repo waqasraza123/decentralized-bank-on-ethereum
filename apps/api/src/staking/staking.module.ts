@@ -1,6 +1,4 @@
 import { Module } from "@nestjs/common";
-import { InternalOperatorBearerGuard } from "../auth/guards/internal-operator-bearer.guard";
-import { AuthService } from "../auth/auth.service";
 import { GovernedExecutionModule } from "../governed-execution/governed-execution.module";
 import { PrismaService } from "../prisma/prisma.service";
 import { SolvencyModule } from "../solvency/solvency.module";
@@ -16,8 +14,6 @@ import { StakingService } from "./staking.service";
     StakingService,
     StakingPoolGovernanceService,
     PrismaService,
-    AuthService,
-    InternalOperatorBearerGuard
   ],
 })
 export class StakingPoolModule {}
