@@ -77,7 +77,7 @@ describe("DashboardScreen", () => {
     });
   });
 
-  it("renders stale operational data notice and navigates to history", () => {
+  it("renders stale operational data notice and opens direct actions", () => {
     const screen = renderMobile(<DashboardScreen />, {
       user: {
         id: 1,
@@ -95,8 +95,8 @@ describe("DashboardScreen", () => {
       )
     ).toBeTruthy();
 
-    fireEvent.press(screen.getByText("View history"));
+    fireEvent.press(screen.getByTestId("dashboard-action-deposit"));
 
-    expect(mockNavigate).toHaveBeenCalledWith("Transactions");
+    expect(mockNavigate).toHaveBeenCalledWith("Wallet", { focus: "deposit" });
   });
 });

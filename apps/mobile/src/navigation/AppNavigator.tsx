@@ -90,14 +90,34 @@ function SignedInTabs() {
     <MainTabs.Navigator
       screenOptions={({ route }) => ({
         headerShown: false,
+        tabBarHideOnKeyboard: true,
         tabBarStyle: {
+          position: "absolute",
+          left: 16,
+          right: 16,
+          bottom: 14,
           backgroundColor: "#fffdf8",
-          borderTopColor: "#d7d0c5",
-          height: 74,
-          paddingTop: 10
+          borderTopWidth: 0,
+          borderWidth: 1,
+          borderColor: "#d7d0c5",
+          borderRadius: 28,
+          height: 82,
+          paddingTop: 10,
+          paddingBottom: 12,
+          shadowColor: "#14212b",
+          shadowOpacity: 0.08,
+          shadowRadius: 18,
+          shadowOffset: {
+            width: 0,
+            height: 10
+          },
+          elevation: 8
         },
         tabBarLabelStyle: {
           fontSize: 11
+        },
+        tabBarItemStyle: {
+          paddingVertical: 2
         },
         tabBarActiveTintColor: "#14212b",
         tabBarInactiveTintColor: "#72808d",
@@ -128,16 +148,12 @@ function SignedInTabs() {
         component={DashboardScreen}
         options={{ tabBarLabel: t("navigation.dashboard") }}
       />
-      <MainTabs.Screen
-        name="Wallet"
-        component={WalletScreen}
-        options={{ tabBarLabel: t("navigation.wallet") }}
-      />
-      <MainTabs.Screen
-        name="Yield"
-        component={YieldScreen}
-        options={{ tabBarLabel: t("navigation.yield") }}
-      />
+      <MainTabs.Screen name="Wallet" options={{ tabBarLabel: t("navigation.wallet") }}>
+        {({ route }) => <WalletScreen initialFocus={route.params?.focus} />}
+      </MainTabs.Screen>
+      <MainTabs.Screen name="Yield" options={{ tabBarLabel: t("navigation.yield") }}>
+        {({ route }) => <YieldScreen initialFocus={route.params?.focus} />}
+      </MainTabs.Screen>
       <MainTabs.Screen
         name="Transactions"
         component={TransactionsScreen}

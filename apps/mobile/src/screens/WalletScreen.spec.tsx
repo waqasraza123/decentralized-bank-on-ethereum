@@ -119,7 +119,7 @@ describe("WalletScreen", () => {
       )
     ).toBeTruthy();
 
-    fireEvent.changeText(screen.getAllByLabelText("Amount")[0], "1.5");
+    fireEvent.changeText(screen.getByLabelText("Amount"), "1.5");
     fireEvent.press(screen.getByText("Create deposit request"));
 
     await waitFor(() => {
@@ -155,11 +155,12 @@ describe("WalletScreen", () => {
       }
     });
 
+    fireEvent.press(screen.getByTestId("wallet-action-withdraw"));
     fireEvent.changeText(
       screen.getByLabelText("Destination address"),
       "0x1234567890123456789012345678901234567890"
     );
-    fireEvent.changeText(screen.getAllByLabelText("Amount")[1], "1.2");
+    fireEvent.changeText(screen.getByLabelText("Amount"), "1.2");
     fireEvent.press(screen.getByText("Create withdrawal request"));
 
     await waitFor(() => {

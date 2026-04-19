@@ -1,15 +1,23 @@
-import { View } from "react-native";
+import { Pressable, View } from "react-native";
 import { useNavigation } from "@react-navigation/native";
-import { formatRelativeTimeLabel, isTimestampOlderThan } from "@stealth-trails-bank/ui-foundation";
+import {
+  formatRelativeTimeLabel,
+  isTimestampOlderThan
+} from "@stealth-trails-bank/ui-foundation";
+import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { AppScreen } from "../components/ui/AppScreen";
 import { AppButton } from "../components/ui/AppButton";
 import { AppText } from "../components/ui/AppText";
+import { FeatureActionCard } from "../components/ui/FeatureActionCard";
 import { InlineNotice } from "../components/ui/InlineNotice";
 import { LanguageToggle } from "../components/ui/LanguageToggle";
 import { SectionCard } from "../components/ui/SectionCard";
 import { StatusChip } from "../components/ui/StatusChip";
 import { AnimatedSection } from "../components/ui/AnimatedSection";
-import { useBalancesQuery, useTransactionHistoryQuery } from "../hooks/use-customer-queries";
+import {
+  useBalancesQuery,
+  useTransactionHistoryQuery
+} from "../hooks/use-customer-queries";
 import { useLocale } from "../i18n/use-locale";
 import { useT } from "../i18n/use-t";
 import {
@@ -33,6 +41,10 @@ export function DashboardScreen() {
   const intents = historyQuery.data?.intents ?? [];
   const pendingAssetCount = balances.filter(
     (balance) => Number(balance.pendingBalance) > 0
+  ).length;
+  const fundedAssetCount = balances.filter(
+    (balance) =>
+      Number(balance.availableBalance) > 0 || Number(balance.pendingBalance) > 0
   ).length;
   const latestBalanceUpdate = balances
     .map((balance) => balance.updatedAt)
@@ -64,47 +76,90 @@ export function DashboardScreen() {
       ) : null}
 
       <AnimatedSection delayOrder={2} variant="up">
-        <SectionCard className="gap-4 bg-ink">
-          <AppText className="text-sm text-sea" weight="semibold">
-            {t("dashboard.managedWallet")}
-          </AppText>
-          <AppText className="text-2xl text-white" weight="bold">
-            {formatShortAddress(user?.ethereumAddress, t("wallet.noWallet"))}
-          </AppText>
-          <AppButton
-            label={t("navigation.loans")}
-            onPress={() => navigation.navigate("Loans")}
-            variant="secondary"
-          />
-        </SectionCard>
+        <View className="overflow-hidden rounded-[36px] bg-ink px-5 py-6">
+          <View className="absolute -right-10 -top-8 h-32 w-32 rounded-full bg-white/10" />
+          <View className="absolute bottom-0 left-0 h-24 w-24 rounded-tr-[40px] bg-sea/20" />
+          <View className="gap-4">
+            <View className="gap-2">
+              <AppText className="text-sm uppercase tracking-[1.4px] text-sea" weight="semibold">
+                {t("dashboard.managedWallet")}
+              </AppText>
+              <AppText className="text-2xl text-white" weight="bold">
+                {formatShortAddress(user?.ethereumAddress, t("wallet.noWallet"))}
+              </AppText>
+              <AppText className="text-sm leading-6 text-sand">
+                {t("dashboard.primaryActionsDescription")}
+              </AppText>
+            </View>
+            <View className="flex-row flex-wrap gap-3">
+              <View className="min-w-[46%] flex-1 rounded-[24px] bg-white/8 px-4 py-4">
+                <AppText className="text-xs uppercase tracking-[1.2px] text-sea">
+                  {t("dashboard.fundedAssets")}
+                </AppText>
+                <AppText className="mt-2 text-3xl text-white" weight="bold">
+                  {fundedAssetCount}
+                </AppText>
+              </View>
+              <View className="min-w-[46%] flex-1 rounded-[24px] bg-white/8 px-4 py-4">
+                <AppText className="text-xs uppercase tracking-[1.2px] text-sea">
+                  {t("dashboard.pendingReview")}
+                </AppText>
+                <AppText className="mt-2 text-3xl text-white" weight="bold">
+                  {pendingAssetCount}
+                </AppText>
+              </View>
+            </View>
+          </View>
+        </View>
       </AnimatedSection>
 
       <AnimatedSection delayOrder={3}>
-        <View className="flex-row flex-wrap gap-3">
-          <SectionCard className="min-w-[30%] flex-1 gap-2">
-            <AppText className="text-xs uppercase tracking-[1px] text-slate">
-              {t("dashboard.availableAssets")}
-            </AppText>
-            <AppText className="text-3xl text-ink" weight="bold">
-              {balances.length}
-            </AppText>
-          </SectionCard>
-          <SectionCard className="min-w-[30%] flex-1 gap-2">
-            <AppText className="text-xs uppercase tracking-[1px] text-slate">
-              {t("dashboard.pendingAssets")}
-            </AppText>
-            <AppText className="text-3xl text-ink" weight="bold">
-              {pendingAssetCount}
-            </AppText>
-          </SectionCard>
-          <SectionCard className="min-w-[30%] flex-1 gap-2">
-            <AppText className="text-xs uppercase tracking-[1px] text-slate">
-              {t("dashboard.moneyMovement")}
-            </AppText>
-            <AppText className="text-3xl text-ink" weight="bold">
-              {intents.length}
-            </AppText>
-          </SectionCard>
+        <View className="gap-3">
+          <AppText className="text-xl text-ink" weight="bold">
+            {t("dashboard.primaryActions")}
+          </AppText>
+          <View className="flex-row flex-wrap gap-3">
+            <View className="min-w-[47%] flex-1">
+              <FeatureActionCard
+                description={t("dashboard.actionDepositDescription")}
+                icon="arrow-down-bold-circle-outline"
+                label={t("wallet.deposit")}
+                onPress={() => navigation.navigate("Wallet", { focus: "deposit" })}
+                testID="dashboard-action-deposit"
+                tone="dark"
+              />
+            </View>
+            <View className="min-w-[47%] flex-1">
+              <FeatureActionCard
+                description={t("dashboard.actionWithdrawDescription")}
+                icon="bank-transfer-out"
+                label={t("wallet.withdraw")}
+                onPress={() => navigation.navigate("Wallet", { focus: "withdraw" })}
+                testID="dashboard-action-withdraw"
+                tone="light"
+              />
+            </View>
+            <View className="min-w-[47%] flex-1">
+              <FeatureActionCard
+                description={t("dashboard.actionSendDescription")}
+                icon="send-circle-outline"
+                label={t("wallet.send")}
+                onPress={() => navigation.navigate("Wallet", { focus: "send" })}
+                testID="dashboard-action-send"
+                tone="accent"
+              />
+            </View>
+            <View className="min-w-[47%] flex-1">
+              <FeatureActionCard
+                description={t("dashboard.actionStakeDescription")}
+                icon="chart-timeline-variant"
+                label={t("wallet.stake")}
+                onPress={() => navigation.navigate("Yield", { focus: "stake" })}
+                testID="dashboard-action-stake"
+                tone="light"
+              />
+            </View>
+          </View>
         </View>
       </AnimatedSection>
 
@@ -120,6 +175,80 @@ export function DashboardScreen() {
       </AnimatedSection>
 
       <AnimatedSection delayOrder={5}>
+        <SectionCard className="gap-4">
+          <View className="flex-row items-center justify-between">
+            <View className="gap-1">
+              <AppText className="text-xl text-ink" weight="bold">
+                {t("dashboard.moreTools")}
+              </AppText>
+              <AppText className="text-sm leading-6 text-slate">
+                {t("dashboard.moreToolsDescription")}
+              </AppText>
+            </View>
+          </View>
+          <View className="gap-3">
+            <Pressable
+              className="flex-row items-center justify-between rounded-[24px] border border-border bg-white px-4 py-4"
+              onPress={() => navigation.navigate("Transactions")}
+            >
+              <View className="flex-row items-center gap-3">
+                <View className="h-10 w-10 items-center justify-center rounded-2xl bg-ink/6">
+                  <MaterialCommunityIcons color="#14212b" name="timeline-text-outline" size={20} />
+                </View>
+                <View className="gap-1">
+                  <AppText className="text-base text-ink" weight="semibold">
+                    {t("dashboard.viewHistory")}
+                  </AppText>
+                  <AppText className="text-sm text-slate">
+                    {t("dashboard.viewHistoryDescription")}
+                  </AppText>
+                </View>
+              </View>
+              <MaterialCommunityIcons color="#72808d" name="chevron-right" size={22} />
+            </Pressable>
+            <Pressable
+              className="flex-row items-center justify-between rounded-[24px] border border-border bg-white px-4 py-4"
+              onPress={() => navigation.navigate("Loans")}
+            >
+              <View className="flex-row items-center gap-3">
+                <View className="h-10 w-10 items-center justify-center rounded-2xl bg-ink/6">
+                  <MaterialCommunityIcons color="#14212b" name="hand-coin-outline" size={20} />
+                </View>
+                <View className="gap-1">
+                  <AppText className="text-base text-ink" weight="semibold">
+                    {t("navigation.loans")}
+                  </AppText>
+                  <AppText className="text-sm text-slate">
+                    {t("dashboard.loansDescription")}
+                  </AppText>
+                </View>
+              </View>
+              <MaterialCommunityIcons color="#72808d" name="chevron-right" size={22} />
+            </Pressable>
+            <Pressable
+              className="flex-row items-center justify-between rounded-[24px] border border-border bg-white px-4 py-4"
+              onPress={() => navigation.navigate("Profile")}
+            >
+              <View className="flex-row items-center gap-3">
+                <View className="h-10 w-10 items-center justify-center rounded-2xl bg-ink/6">
+                  <MaterialCommunityIcons color="#14212b" name="shield-account-outline" size={20} />
+                </View>
+                <View className="gap-1">
+                  <AppText className="text-base text-ink" weight="semibold">
+                    {t("navigation.profile")}
+                  </AppText>
+                  <AppText className="text-sm text-slate">
+                    {t("dashboard.profileDescription")}
+                  </AppText>
+                </View>
+              </View>
+              <MaterialCommunityIcons color="#72808d" name="chevron-right" size={22} />
+            </Pressable>
+          </View>
+        </SectionCard>
+      </AnimatedSection>
+
+      <AnimatedSection delayOrder={6}>
         <SectionCard className="gap-4">
           <View className="flex-row items-center justify-between">
             <AppText className="text-xl text-ink" weight="bold">

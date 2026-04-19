@@ -11,6 +11,7 @@ export const mobileMessages = {
     close: "Close",
     signOut: "Sign out",
     open: "Open",
+    managedRail: "Ethereum managed rail",
     noData: "No data available yet.",
     somethingWentWrong: "Something went wrong",
     crashRecovery:
@@ -57,6 +58,25 @@ export const mobileMessages = {
     title: "Managed money overview",
     description:
       "A clear view of balances, pending movement, and the next action that matters.",
+    primaryActions: "Move money now",
+    primaryActionsDescription:
+      "Open the core Ethereum actions directly from home, then leave history and account controls behind them.",
+    actionDepositDescription:
+      "Record inbound funding and track it through review and final settlement.",
+    actionWithdrawDescription:
+      "Reserve managed balance for a withdrawal that will clear through governed rails.",
+    actionSendDescription:
+      "Send ETH outward through the same controlled withdrawal rail with a faster handoff path.",
+    actionStakeDescription:
+      "Open staking posture, move into a pool, and manage reward flows from one place.",
+    moreTools: "More tools",
+    moreToolsDescription:
+      "History, lending, and account review stay available without competing with the main money actions.",
+    viewHistoryDescription: "Inspect references, statuses, and chain evidence.",
+    loansDescription: "Open managed lending, quotes, and agreement state.",
+    profileDescription: "Review security posture, wallet identity, and account controls.",
+    fundedAssets: "Funded assets",
+    pendingReview: "Pending review",
     availableAssets: "Tracked assets",
     pendingAssets: "Pending assets",
     moneyMovement: "Money movement",
@@ -73,6 +93,18 @@ export const mobileMessages = {
     title: "Deposit and withdraw",
     description:
       "Use the managed wallet rails to record deposits, reserve withdrawals, and follow every request through a clear status trail.",
+    primaryActions: "Direct money actions",
+    depositDescription:
+      "Open a deposit request first, then complete funding into the managed wallet address shown below.",
+    withdrawDescription:
+      "Reserve managed balance for an outbound withdrawal under operator-controlled review and settlement.",
+    send: "Send",
+    stake: "Stake",
+    sendDescription:
+      "Send uses the governed withdrawal rail, but keeps the action framed as money leaving your managed balance to another address.",
+    depositShort: "Add funds",
+    withdrawShort: "Move out",
+    sendShort: "Pay an address",
     balances: "Balances",
     supportedAssets: "Supported assets",
     fundedAssets: "Funded assets",
@@ -87,8 +119,10 @@ export const mobileMessages = {
     hideQr: "Hide QR",
     createDepositRequest: "Create deposit request",
     createWithdrawalRequest: "Create withdrawal request",
+    createSendRequest: "Create send request",
     latestDepositRequest: "Latest deposit request",
     latestWithdrawalRequest: "Latest withdrawal request",
+    latestSendRequest: "Latest send request",
     createdAt: "Created",
     reference: "Reference",
     noWallet: "No managed wallet assigned yet.",
@@ -107,8 +141,13 @@ export const mobileMessages = {
     depositReviewStatusNote:
       "This deposit is paused for operator review before custody execution or final settlement continues.",
     withdrawalRecorded: "Withdrawal request recorded.",
+    sendRoutingNote:
+      "Send requests still move through the governed withdrawal rail. The amount is reserved immediately and released only after policy checks and execution.",
     reservationNote:
-      "Withdrawal requests immediately move the requested amount from available to pending while review continues."
+      "Withdrawal requests immediately move the requested amount from available to pending while review continues.",
+    secondaryTools: "Behind the money rail",
+    secondaryToolsDescription:
+      "Address copy, QR, and balance context stay below the live composer so the next action remains obvious."
   },
   transactions: {
     title: "Transaction history",
@@ -151,6 +190,16 @@ export const mobileMessages = {
     title: "Yield and staking posture",
     description:
       "Execution remains governed. Review eligibility, read-model posture, and pool state before any action.",
+    primaryActions: "Direct staking actions",
+    stakeDescription:
+      "Push fresh balance into a governed pool once the pool state and execution policy are both green.",
+    withdrawDescription:
+      "Pull staked balance back through the governed staking rail when pool conditions allow it.",
+    claimDescription:
+      "Claim available rewards directly from the selected pool once execution is enabled.",
+    stakeShort: "Add to pool",
+    withdrawShort: "Pull stake back",
+    claimShort: "Collect rewards",
     pools: "Pools",
     payoutWallet: "Payout wallet",
     execution: "Execution",
@@ -160,12 +209,19 @@ export const mobileMessages = {
     emergencyWithdraw: "Emergency withdraw",
     pendingReward: "Pending reward",
     totalStaked: "Total staked",
+    stakedBalance: "Your stake",
     rewardsPaid: "Rewards paid",
     executionEnabled: "Enabled",
     executionPolicyGated: "Policy gated",
     poolLabel: "Pool",
+    poolStatus: "Pool status",
     readModelLimited: "Live position reads are limited right now.",
-    noPools: "No staking pools are currently available."
+    noPools: "No staking pools are currently available.",
+    secondaryTools: "Pool context",
+    secondaryToolsDescription:
+      "Emergency exits and lower-frequency pool details stay below the live staking composer.",
+    positionUnavailable:
+      "Live position detail is limited for this pool right now, so balance reads may lag."
   },
   loans: {
     title: "Managed lending",

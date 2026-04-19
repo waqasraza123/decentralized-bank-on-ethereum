@@ -1,7 +1,8 @@
 import * as Clipboard from "expo-clipboard";
 import { Alert, View } from "react-native";
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import QRCode from "react-native-qrcode-svg";
+import { MaterialCommunityIcons } from "@expo/vector-icons";
 import type {
   CreateDepositIntentResult,
   CreateWithdrawalIntentResult
@@ -10,6 +11,7 @@ import { useSessionStore } from "../stores/session-store";
 import { AppScreen } from "../components/ui/AppScreen";
 import { AppButton } from "../components/ui/AppButton";
 import { AppText } from "../components/ui/AppText";
+import { FeatureActionCard } from "../components/ui/FeatureActionCard";
 import { FieldInput } from "../components/ui/FieldInput";
 import { InlineNotice } from "../components/ui/InlineNotice";
 import { LanguageToggle } from "../components/ui/LanguageToggle";
@@ -39,7 +41,13 @@ import {
   isPositiveDecimalString
 } from "../lib/finance";
 
-export function WalletScreen() {
+type WalletPrimaryAction = "deposit" | "withdraw" | "send";
+
+type WalletScreenProps = {
+  initialFocus?: WalletPrimaryAction;
+};
+
+export function WalletScreen({ initialFocus }: WalletScreenProps = {}) {
   const t = useT();
   const { locale } = useLocale();
   const user = useSessionStore((state) => state.user);
@@ -58,6 +66,9 @@ export function WalletScreen() {
   const [depositAmount, setDepositAmount] = useState("");
   const [withdrawAmount, setWithdrawAmount] = useState("");
   const [withdrawAddress, setWithdrawAddress] = useState("");
+  const [activeAction, setActiveAction] = useState<WalletPrimaryAction>(
+    initialFocus ?? "deposit"
+  );
   const [latestDeposit, setLatestDeposit] =
     useState<CreateDepositIntentResult | null>(null);
   const [latestWithdrawal, setLatestWithdrawal] =
@@ -70,6 +81,38 @@ export function WalletScreen() {
   const activeWithdrawAsset = withdrawAsset || assets[0]?.symbol || "";
   const selectedBalance =
     balances.find((balance) => balance.asset.symbol === activeWithdrawAsset) ?? null;
+  const fundedAssetCount = balances.filter(
+    (balance) =>
+      Number(balance.availableBalance) > 0 || Number(balance.pendingBalance) > 0
+  ).length;
+
+  useEffect(() => {
+    if (initialFocus) {
+      setActiveAction(initialFocus);
+    }
+  }, [initialFocus]);
+
+  const highlightedActionTitle = useMemo(() => {
+    switch (activeAction) {
+      case "send":
+        return t("wallet.send");
+      case "withdraw":
+        return t("wallet.withdraw");
+      default:
+        return t("wallet.deposit");
+    }
+  }, [activeAction, t]);
+
+  const highlightedActionDescription = useMemo(() => {
+    switch (activeAction) {
+      case "send":
+        return t("wallet.sendDescription");
+      case "withdraw":
+        return t("wallet.withdrawDescription");
+      default:
+        return t("wallet.depositDescription");
+    }
+  }, [activeAction, t]);
 
   function getIdempotencyKey(signature: string, prefix: string) {
     const existing = consumeRequestKey(signature);
@@ -212,6 +255,267 @@ export function WalletScreen() {
       ) : null}
 
       <AnimatedSection delayOrder={2} variant="up">
+        <View className="overflow-hidden rounded-[36px] bg-ink px-5 py-6">
+          <View className="absolute -right-10 -top-6 h-32 w-32 rounded-full bg-white/10" />
+          <View className="gap-4">
+            <View className="gap-2">
+              <AppText className="text-sm uppercase tracking-[1.3px] text-sea" weight="semibold">
+                {t("wallet.primaryActions")}
+              </AppText>
+              <AppText className="text-3xl text-white" weight="bold">
+                {highlightedActionTitle}
+              </AppText>
+              <AppText className="text-sm leading-6 text-sand">
+                {highlightedActionDescription}
+              </AppText>
+            </View>
+            <View className="flex-row flex-wrap gap-3">
+              <View className="min-w-[46%] flex-1 rounded-[24px] bg-white/8 px-4 py-4">
+                <AppText className="text-xs uppercase tracking-[1.2px] text-sea">
+                  {t("wallet.fundedAssets")}
+                </AppText>
+                <AppText className="mt-2 text-3xl text-white" weight="bold">
+                  {fundedAssetCount}
+                </AppText>
+              </View>
+              <View className="min-w-[46%] flex-1 rounded-[24px] bg-white/8 px-4 py-4">
+                <AppText className="text-xs uppercase tracking-[1.2px] text-sea">
+                  {t("wallet.walletReference")}
+                </AppText>
+                <AppText className="mt-2 text-sm text-white" weight="semibold">
+                  {formatShortAddress(
+                    user?.ethereumAddress,
+                    t("wallet.noWallet"),
+                    8,
+                    6
+                  )}
+                </AppText>
+              </View>
+            </View>
+          </View>
+        </View>
+      </AnimatedSection>
+
+      <AnimatedSection delayOrder={3}>
+        <View className="gap-3">
+          <AppText className="text-xl text-ink" weight="bold">
+            {t("wallet.primaryActions")}
+          </AppText>
+          <View className="flex-row flex-wrap gap-3">
+            <View className="min-w-[31%] flex-1">
+              <FeatureActionCard
+                active={activeAction === "deposit"}
+                compact
+                description={t("wallet.depositShort")}
+                icon="arrow-down-bold-circle-outline"
+                label={t("wallet.deposit")}
+                onPress={() => setActiveAction("deposit")}
+                testID="wallet-action-deposit"
+                tone={activeAction === "deposit" ? "dark" : "light"}
+              />
+            </View>
+            <View className="min-w-[31%] flex-1">
+              <FeatureActionCard
+                active={activeAction === "withdraw"}
+                compact
+                description={t("wallet.withdrawShort")}
+                icon="bank-transfer-out"
+                label={t("wallet.withdraw")}
+                onPress={() => setActiveAction("withdraw")}
+                testID="wallet-action-withdraw"
+                tone={activeAction === "withdraw" ? "dark" : "light"}
+              />
+            </View>
+            <View className="min-w-[31%] flex-1">
+              <FeatureActionCard
+                active={activeAction === "send"}
+                compact
+                description={t("wallet.sendShort")}
+                icon="send-circle-outline"
+                label={t("wallet.send")}
+                onPress={() => setActiveAction("send")}
+                testID="wallet-action-send"
+                tone={activeAction === "send" ? "dark" : "accent"}
+              />
+            </View>
+          </View>
+        </View>
+      </AnimatedSection>
+
+      <AnimatedSection delayOrder={4}>
+        <SectionCard className="gap-4">
+          <View className="flex-row items-center justify-between gap-3">
+            <View className="flex-1 gap-1">
+              <AppText className="text-xl text-ink" weight="bold">
+                {highlightedActionTitle}
+              </AppText>
+              <AppText className="text-sm leading-6 text-slate">
+                {highlightedActionDescription}
+              </AppText>
+            </View>
+            <View className="h-11 w-11 items-center justify-center rounded-2xl bg-ink/6">
+              <MaterialCommunityIcons
+                color="#14212b"
+                name={
+                  activeAction === "deposit"
+                    ? "arrow-down-bold-circle-outline"
+                    : activeAction === "send"
+                      ? "send-circle-outline"
+                      : "bank-transfer-out"
+                }
+                size={22}
+              />
+            </View>
+          </View>
+          {activeAction === "deposit" ? (
+            <>
+              <InlineNotice
+                message={t("wallet.depositSecurityNote")}
+                tone="warning"
+              />
+              <OptionChips
+                onChange={setDepositAsset}
+                options={assetOptions}
+                value={activeDepositAsset}
+              />
+              <FieldInput
+                keyboardType="decimal-pad"
+                label={t("wallet.amount")}
+                onChangeText={setDepositAmount}
+                value={depositAmount}
+              />
+              <AppButton
+                disabled={depositMutation.isPending}
+                label={t("wallet.createDepositRequest")}
+                onPress={() => {
+                  void handleDeposit();
+                }}
+              />
+              {latestDeposit ? (
+                <AnimatedSection delayOrder={1}>
+                  <View className="gap-3 rounded-2xl border border-border bg-white px-4 py-4">
+                    <View className="flex-row items-center justify-between gap-3">
+                      <View className="flex-1 gap-1">
+                        <AppText className="text-base text-ink" weight="semibold">
+                          {t("wallet.latestDepositRequest")}
+                        </AppText>
+                        <AppText className="text-sm text-slate">
+                          {t("wallet.reference")}: {latestDeposit.intent.id}
+                        </AppText>
+                      </View>
+                      <StatusChip
+                        label={formatIntentStatusLabel(
+                          latestDeposit.intent.status,
+                          locale
+                        )}
+                        tone={getIntentStatusTone(latestDeposit.intent.status)}
+                      />
+                    </View>
+                    <TimelineList events={buildIntentTimeline(latestDeposit.intent)} />
+                    {latestDeposit.intent.status === "review_required" ? (
+                      <InlineNotice
+                        message={t("wallet.depositReviewStatusNote")}
+                        tone="warning"
+                      />
+                    ) : null}
+                  </View>
+                </AnimatedSection>
+              ) : null}
+            </>
+          ) : (
+            <>
+              <InlineNotice
+                message={
+                  activeAction === "send"
+                    ? t("wallet.sendRoutingNote")
+                    : t("wallet.reservationNote")
+                }
+                tone="warning"
+              />
+              <OptionChips
+                onChange={setWithdrawAsset}
+                options={assetOptions}
+                value={activeWithdrawAsset}
+              />
+              <AppText className="text-sm text-slate">
+                {selectedBalance
+                  ? `${formatTokenAmount(
+                      selectedBalance.availableBalance,
+                      locale
+                    )} available / ${formatTokenAmount(
+                      selectedBalance.pendingBalance,
+                      locale
+                    )} pending`
+                  : t("common.notAvailable")}
+              </AppText>
+              <FieldInput
+                autoCapitalize="none"
+                label={t("wallet.destinationAddress")}
+                onChangeText={setWithdrawAddress}
+                value={withdrawAddress}
+              />
+              <FieldInput
+                keyboardType="decimal-pad"
+                label={t("wallet.amount")}
+                onChangeText={setWithdrawAmount}
+                value={withdrawAmount}
+              />
+              <AppButton
+                disabled={withdrawalMutation.isPending}
+                label={
+                  activeAction === "send"
+                    ? t("wallet.createSendRequest")
+                    : t("wallet.createWithdrawalRequest")
+                }
+                onPress={() => {
+                  void handleWithdrawal();
+                }}
+              />
+              {latestWithdrawal ? (
+                <AnimatedSection delayOrder={1}>
+                  <View className="gap-3 rounded-2xl border border-border bg-white px-4 py-4">
+                    <View className="flex-row items-center justify-between gap-3">
+                      <View className="flex-1 gap-1">
+                        <AppText className="text-base text-ink" weight="semibold">
+                          {activeAction === "send"
+                            ? t("wallet.latestSendRequest")
+                            : t("wallet.latestWithdrawalRequest")}
+                        </AppText>
+                        <AppText className="text-sm text-slate">
+                          {t("wallet.reference")}: {latestWithdrawal.intent.id}
+                        </AppText>
+                      </View>
+                      <StatusChip
+                        label={formatIntentStatusLabel(
+                          latestWithdrawal.intent.status,
+                          locale
+                        )}
+                        tone={getIntentStatusTone(latestWithdrawal.intent.status)}
+                      />
+                    </View>
+                    <TimelineList
+                      events={buildIntentTimeline(latestWithdrawal.intent)}
+                    />
+                  </View>
+                </AnimatedSection>
+              ) : null}
+            </>
+          )}
+        </SectionCard>
+      </AnimatedSection>
+
+      <AnimatedSection delayOrder={5}>
+        <View className="gap-1 px-1">
+          <AppText className="text-xl text-ink" weight="bold">
+            {t("wallet.secondaryTools")}
+          </AppText>
+          <AppText className="text-sm leading-6 text-slate">
+            {t("wallet.secondaryToolsDescription")}
+          </AppText>
+        </View>
+      </AnimatedSection>
+
+      <AnimatedSection delayOrder={6}>
         <SectionCard className="gap-4">
           <AppText className="text-xl text-ink" weight="bold">
             {t("wallet.walletReference")}
@@ -245,11 +549,13 @@ export function WalletScreen() {
         </SectionCard>
       </AnimatedSection>
 
-      <AnimatedSection delayOrder={3}>
+      <AnimatedSection delayOrder={7}>
         <SectionCard className="gap-4">
-          <AppText className="text-xl text-ink" weight="bold">
-            {t("wallet.balances")}
-          </AppText>
+          <View className="flex-row items-center justify-between">
+            <AppText className="text-xl text-ink" weight="bold">
+              {t("wallet.balances")}
+            </AppText>
+          </View>
           {balances.length === 0 ? (
             <AppText className="text-sm text-slate">{t("common.noData")}</AppText>
           ) : (
@@ -276,122 +582,6 @@ export function WalletScreen() {
               ))}
             </View>
           )}
-        </SectionCard>
-      </AnimatedSection>
-
-      <AnimatedSection delayOrder={4}>
-        <SectionCard className="gap-4">
-          <AppText className="text-xl text-ink" weight="bold">
-            {t("wallet.deposit")}
-          </AppText>
-          <InlineNotice message={t("wallet.depositSecurityNote")} tone="warning" />
-          <OptionChips
-            onChange={setDepositAsset}
-            options={assetOptions}
-            value={activeDepositAsset}
-          />
-          <FieldInput
-            keyboardType="decimal-pad"
-            label={t("wallet.amount")}
-            onChangeText={setDepositAmount}
-            value={depositAmount}
-          />
-          <AppButton
-            disabled={depositMutation.isPending}
-            label={t("wallet.createDepositRequest")}
-            onPress={() => {
-              void handleDeposit();
-            }}
-          />
-          {latestDeposit ? (
-            <AnimatedSection delayOrder={1}>
-              <View className="gap-3 rounded-2xl border border-border bg-white px-4 py-4">
-                <View className="flex-row items-center justify-between gap-3">
-                  <View className="flex-1 gap-1">
-                    <AppText className="text-base text-ink" weight="semibold">
-                      {t("wallet.latestDepositRequest")}
-                    </AppText>
-                    <AppText className="text-sm text-slate">
-                      {t("wallet.reference")}: {latestDeposit.intent.id}
-                    </AppText>
-                  </View>
-                  <StatusChip
-                    label={formatIntentStatusLabel(latestDeposit.intent.status, locale)}
-                    tone={getIntentStatusTone(latestDeposit.intent.status)}
-                  />
-                </View>
-                <TimelineList events={buildIntentTimeline(latestDeposit.intent)} />
-                {latestDeposit.intent.status === "review_required" ? (
-                  <InlineNotice
-                    message={t("wallet.depositReviewStatusNote")}
-                    tone="warning"
-                  />
-                ) : null}
-              </View>
-            </AnimatedSection>
-          ) : null}
-        </SectionCard>
-      </AnimatedSection>
-
-      <AnimatedSection delayOrder={5}>
-        <SectionCard className="gap-4">
-          <AppText className="text-xl text-ink" weight="bold">
-            {t("wallet.withdraw")}
-          </AppText>
-          <InlineNotice message={t("wallet.reservationNote")} tone="warning" />
-          <OptionChips
-            onChange={setWithdrawAsset}
-            options={assetOptions}
-            value={activeWithdrawAsset}
-          />
-          <AppText className="text-sm text-slate">
-            {selectedBalance
-              ? `${formatTokenAmount(selectedBalance.availableBalance, locale)} available / ${formatTokenAmount(
-                  selectedBalance.pendingBalance,
-                  locale
-                )} pending`
-              : t("common.notAvailable")}
-          </AppText>
-          <FieldInput
-            autoCapitalize="none"
-            label={t("wallet.destinationAddress")}
-            onChangeText={setWithdrawAddress}
-            value={withdrawAddress}
-          />
-          <FieldInput
-            keyboardType="decimal-pad"
-            label={t("wallet.amount")}
-            onChangeText={setWithdrawAmount}
-            value={withdrawAmount}
-          />
-          <AppButton
-            disabled={withdrawalMutation.isPending}
-            label={t("wallet.createWithdrawalRequest")}
-            onPress={() => {
-              void handleWithdrawal();
-            }}
-          />
-          {latestWithdrawal ? (
-            <AnimatedSection delayOrder={1}>
-              <View className="gap-3 rounded-2xl border border-border bg-white px-4 py-4">
-                <View className="flex-row items-center justify-between gap-3">
-                  <View className="flex-1 gap-1">
-                    <AppText className="text-base text-ink" weight="semibold">
-                      {t("wallet.latestWithdrawalRequest")}
-                    </AppText>
-                    <AppText className="text-sm text-slate">
-                      {t("wallet.reference")}: {latestWithdrawal.intent.id}
-                    </AppText>
-                  </View>
-                  <StatusChip
-                    label={formatIntentStatusLabel(latestWithdrawal.intent.status, locale)}
-                    tone={getIntentStatusTone(latestWithdrawal.intent.status)}
-                  />
-                </View>
-                <TimelineList events={buildIntentTimeline(latestWithdrawal.intent)} />
-              </View>
-            </AnimatedSection>
-          ) : null}
         </SectionCard>
       </AnimatedSection>
     </AppScreen>

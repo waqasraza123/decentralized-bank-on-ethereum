@@ -13,6 +13,7 @@ export const mobileMessagesAr: MobileMessages = {
     close: "إغلاق",
     signOut: "تسجيل الخروج",
     open: "فتح",
+    managedRail: "مسار إيثيريوم المُدار",
     noData: "لا توجد بيانات بعد.",
     somethingWentWrong: "حدث خطأ غير متوقع",
     crashRecovery:
@@ -59,6 +60,25 @@ export const mobileMessagesAr: MobileMessages = {
     title: "نظرة عامة على الأموال المُدارة",
     description:
       "عرض واضح للأرصدة والحركة المعلقة والخطوة التالية المهمة.",
+    primaryActions: "حرّك الأموال الآن",
+    primaryActionsDescription:
+      "افتح إجراءات إيثيريوم الأساسية مباشرة من الشاشة الرئيسية، واترك السجل وضوابط الحساب خلفها في المرتبة الثانية.",
+    actionDepositDescription:
+      "سجّل التمويل الداخل وتابعه حتى المراجعة والتسوية النهائية.",
+    actionWithdrawDescription:
+      "احجز الرصيد المُدار لطلب سحب يمر عبر مسارات خاضعة للحوكمة.",
+    actionSendDescription:
+      "أرسل ETH إلى الخارج عبر مسار السحب نفسه لكن بواجهة أسرع وأكثر وضوحاً.",
+    actionStakeDescription:
+      "افتح وضع الاستيكينغ وادخل إلى المجمع وتابع المكافآت من مكان واحد.",
+    moreTools: "أدوات إضافية",
+    moreToolsDescription:
+      "يبقى السجل والإقراض ومراجعة الحساب متاحة دون أن تزاحم إجراءات الأموال الرئيسية.",
+    viewHistoryDescription: "راجع المراجع والحالات وأدلة السلسلة.",
+    loansDescription: "افتح الإقراض المُدار والتسعير وحالة الاتفاقيات.",
+    profileDescription: "راجع وضع الأمان وهوية المحفظة وضوابط الحساب.",
+    fundedAssets: "الأصول الممولة",
+    pendingReview: "بانتظار المراجعة",
     availableAssets: "الأصول المتتبعة",
     pendingAssets: "الأصول المعلقة",
     moneyMovement: "حركة الأموال",
@@ -75,6 +95,18 @@ export const mobileMessagesAr: MobileMessages = {
     title: "الإيداع والسحب",
     description:
       "استخدم المسارات المُدارة لتسجيل الإيداعات وحجز السحوبات ومتابعة كل طلب عبر حالة واضحة.",
+    primaryActions: "إجراءات الأموال المباشرة",
+    depositDescription:
+      "ابدأ بطلب إيداع أولاً، ثم أكمِل التمويل إلى عنوان المحفظة المُدارة الظاهر أدناه.",
+    withdrawDescription:
+      "احجز الرصيد المُدار لسحب خارجي يخضع للمراجعة والتسوية التشغيلية.",
+    send: "إرسال",
+    stake: "استيكينغ",
+    sendDescription:
+      "يستخدم الإرسال مسار السحب الخاضع للحوكمة، لكنه يعرض العملية كخروج أموال من رصيدك المُدار إلى عنوان آخر.",
+    depositShort: "أضف أموالاً",
+    withdrawShort: "أخرج رصيداً",
+    sendShort: "ادفع إلى عنوان",
     balances: "الأرصدة",
     supportedAssets: "الأصول المدعومة",
     fundedAssets: "الأصول الممولة",
@@ -89,8 +121,10 @@ export const mobileMessagesAr: MobileMessages = {
     hideQr: "إخفاء الرمز",
     createDepositRequest: "إنشاء طلب إيداع",
     createWithdrawalRequest: "إنشاء طلب سحب",
+    createSendRequest: "إنشاء طلب إرسال",
     latestDepositRequest: "أحدث طلب إيداع",
     latestWithdrawalRequest: "أحدث طلب سحب",
+    latestSendRequest: "أحدث طلب إرسال",
     createdAt: "تاريخ الإنشاء",
     reference: "المرجع",
     noWallet: "لا توجد محفظة مُدارة مخصصة بعد.",
@@ -107,8 +141,13 @@ export const mobileMessagesAr: MobileMessages = {
     depositReviewStatusNote:
       "هذا الإيداع متوقف حالياً للمراجعة التشغيلية قبل متابعة التنفيذ أو التسوية النهائية.",
     withdrawalRecorded: "تم تسجيل طلب السحب.",
+    sendRoutingNote:
+      "طلبات الإرسال تمر أيضاً عبر مسار السحب الخاضع للحوكمة. يُحجز المبلغ فوراً ولا يخرج إلا بعد فحوص السياسات والتنفيذ.",
     reservationNote:
-      "طلبات السحب تنقل المبلغ المطلوب من المتاح إلى المعلق مباشرة أثناء استمرار المراجعة."
+      "طلبات السحب تنقل المبلغ المطلوب من المتاح إلى المعلق مباشرة أثناء استمرار المراجعة.",
+    secondaryTools: "خلف مسار الأموال",
+    secondaryToolsDescription:
+      "يبقى نسخ العنوان ورمز QR وسياق الأرصدة أسفل مساحة التنفيذ الحية حتى يظل الإجراء التالي واضحاً."
   },
   transactions: {
     title: "سجل المعاملات",
@@ -150,6 +189,16 @@ export const mobileMessagesAr: MobileMessages = {
     title: "وضع العائد والاستيكينغ",
     description:
       "يبقى التنفيذ خاضعاً للحوكمة. راجع الأهلية ووضع نموذج القراءة وحالة المجمع قبل أي إجراء.",
+    primaryActions: "إجراءات الاستيكينغ المباشرة",
+    stakeDescription:
+      "أدخل رصيداً جديداً إلى مجمع خاضع للحوكمة عندما تكون حالة المجمع وسياسة التنفيذ جاهزتين.",
+    withdrawDescription:
+      "أخرج الرصيد المستثمر عبر مسار الاستيكينغ الخاضع للحوكمة عندما تسمح حالة المجمع.",
+    claimDescription:
+      "احصل على المكافآت المتاحة مباشرة من المجمع المختار عندما يكون التنفيذ مفعّلاً.",
+    stakeShort: "أضف إلى المجمع",
+    withdrawShort: "اسحب الاستيكينغ",
+    claimShort: "اجمع المكافآت",
     pools: "المجمعات",
     payoutWallet: "محفظة الدفع",
     execution: "التنفيذ",
@@ -159,12 +208,19 @@ export const mobileMessagesAr: MobileMessages = {
     emergencyWithdraw: "سحب طارئ",
     pendingReward: "المكافأة المعلقة",
     totalStaked: "إجمالي المبلغ المستثمر",
+    stakedBalance: "رصيدك المستثمر",
     rewardsPaid: "المكافآت المدفوعة",
     executionEnabled: "مفعّل",
     executionPolicyGated: "مقيّد بالسياسات",
     poolLabel: "المجمع",
+    poolStatus: "حالة المجمع",
     readModelLimited: "قراءات المراكز الحية محدودة حالياً.",
-    noPools: "لا توجد مجمعات استيكينغ متاحة حالياً."
+    noPools: "لا توجد مجمعات استيكينغ متاحة حالياً.",
+    secondaryTools: "سياق المجمع",
+    secondaryToolsDescription:
+      "تبقى مخارج الطوارئ وتفاصيل المجمع الأقل استخداماً أسفل مساحة الاستيكينغ الحية.",
+    positionUnavailable:
+      "تفاصيل المركز الحية محدودة لهذا المجمع حالياً، لذلك قد تتأخر قراءات الرصيد."
   },
   loans: {
     title: "القروض المُدارة",

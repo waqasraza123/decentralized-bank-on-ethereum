@@ -9,8 +9,16 @@ export type AuthStackParamList = {
 
 export type MainTabParamList = {
   Dashboard: undefined;
-  Wallet: undefined;
-  Yield: undefined;
+  Wallet:
+    | {
+        focus?: "deposit" | "withdraw" | "send";
+      }
+    | undefined;
+  Yield:
+    | {
+        focus?: "stake" | "withdraw" | "claim";
+      }
+    | undefined;
   Transactions: undefined;
   Profile: undefined;
 };
