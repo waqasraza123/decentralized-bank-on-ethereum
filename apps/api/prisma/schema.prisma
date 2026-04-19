@@ -167,6 +167,7 @@ model TransactionIntent {
   updatedAt                    DateTime                @updatedAt
   blockchainTransactions       BlockchainTransaction[]
   depositSettlementProof       DepositSettlementProof?
+  depositSettlementReplayApprovalRequests DepositSettlementReplayApprovalRequest[]
   reviewCases                  ReviewCase[]
 
   @@index([customerAccountId])
@@ -228,6 +229,34 @@ model DepositSettlementProof {
 
   @@unique([chainId, txHash])
   @@index([assetId])
+}
+
+model DepositSettlementReplayApprovalRequest {
+  id                      String                                     @id @default(cuid())
+  transactionIntentId     String
+  transactionIntent       TransactionIntent                          @relation(fields: [transactionIntentId], references: [id])
+  chainId                 Int
+  replayAction            DepositSettlementReplayAction
+  status                  DepositSettlementReplayApprovalRequestStatus @default(pending_approval)
+  requestedByOperatorId   String
+  requestedByOperatorRole String
+  requestNote             String?
+  requestedAt             DateTime                                   @default(now())
+  approvedByOperatorId    String?
+  approvedByOperatorRole  String?
+  approvalNote            String?
+  approvedAt              DateTime?
+  executedByOperatorId    String?
+  executedByOperatorRole  String?
+  executedAt              DateTime?
+  createdAt               DateTime                                   @default(now())
+  updatedAt               DateTime                                   @updatedAt
+
+  @@index([transactionIntentId, status, requestedAt])
+  @@index([status, requestedAt])
+  @@index([requestedByOperatorId, requestedAt])
+  @@index([approvedByOperatorId, approvedAt])
+  @@index([executedByOperatorId, executedAt])
 }
 
 model ReviewCase {
@@ -377,6 +406,18 @@ enum WithdrawalExecutionFailureCategory {
   retryable
   permanent
   manual_intervention_required
+}
+
+enum DepositSettlementReplayAction {
+  confirm
+  settle
+}
+
+enum DepositSettlementReplayApprovalRequestStatus {
+  pending_approval
+  approved
+  executed
+  rejected
 }
 
 enum ReviewCaseStatus {

@@ -260,6 +260,9 @@ type DepositTransitionActor = {
   actorRole: string | null;
   reconciliationReplay: boolean;
   replayReason: string | null;
+  replayApprovalRequestId: string | null;
+  replayRequestedByOperatorId: string | null;
+  replayRequestedByOperatorRole: string | null;
 };
 
 @Injectable()
@@ -703,7 +706,10 @@ export class TransactionIntentsService {
           note: args.note,
           reviewCaseId: reviewCase.reviewCase.id,
           reconciliationReplay: actor.reconciliationReplay,
-          replayReason: actor.replayReason
+          replayReason: actor.replayReason,
+          replayApprovalRequestId: actor.replayApprovalRequestId,
+          replayRequestedByOperatorId: actor.replayRequestedByOperatorId,
+          replayRequestedByOperatorRole: actor.replayRequestedByOperatorRole
         }
       }
     });
@@ -1060,8 +1066,16 @@ export class TransactionIntentsService {
   async replayConfirmDepositIntent(
     intentId: string,
     operatorId: string,
-    note: string | null
+    note: string | null,
+    operatorRole?: string,
+    approvalContext?: {
+      approvalRequestId: string;
+      requestedByOperatorId: string;
+      requestedByOperatorRole: string | null;
+    }
   ): Promise<ConfirmDepositIntentResult> {
+    const normalizedOperatorRole = this.assertCanOperateCustody(operatorRole);
+
     return this.confirmDepositIntentWithActor(
       intentId,
       null,
@@ -1069,9 +1083,14 @@ export class TransactionIntentsService {
       {
         actorType: "operator",
         actorId: operatorId,
-        actorRole: null,
+        actorRole: normalizedOperatorRole,
         reconciliationReplay: true,
-        replayReason: "deposit_settlement_reconciliation"
+        replayReason: "deposit_settlement_reconciliation",
+        replayApprovalRequestId: approvalContext?.approvalRequestId ?? null,
+        replayRequestedByOperatorId:
+          approvalContext?.requestedByOperatorId ?? null,
+        replayRequestedByOperatorRole:
+          approvalContext?.requestedByOperatorRole ?? null
       }
     );
   }
@@ -1079,17 +1098,30 @@ export class TransactionIntentsService {
   async replaySettleConfirmedDepositIntent(
     intentId: string,
     operatorId: string,
-    note: string | null
+    note: string | null,
+    operatorRole?: string,
+    approvalContext?: {
+      approvalRequestId: string;
+      requestedByOperatorId: string;
+      requestedByOperatorRole: string | null;
+    }
   ): Promise<SettleConfirmedDepositIntentResult> {
+    const normalizedOperatorRole = this.assertCanOperateCustody(operatorRole);
+
     return this.settleConfirmedDepositIntentWithActor(
       intentId,
       note,
       {
         actorType: "operator",
         actorId: operatorId,
-        actorRole: null,
+        actorRole: normalizedOperatorRole,
         reconciliationReplay: true,
-        replayReason: "deposit_settlement_reconciliation"
+        replayReason: "deposit_settlement_reconciliation",
+        replayApprovalRequestId: approvalContext?.approvalRequestId ?? null,
+        replayRequestedByOperatorId:
+          approvalContext?.requestedByOperatorId ?? null,
+        replayRequestedByOperatorRole:
+          approvalContext?.requestedByOperatorRole ?? null
       }
     );
   }
@@ -1828,7 +1860,10 @@ export class TransactionIntentsService {
       actorId: workerId,
       actorRole: null,
       reconciliationReplay: false,
-      replayReason: null
+      replayReason: null,
+      replayApprovalRequestId: null,
+      replayRequestedByOperatorId: null,
+      replayRequestedByOperatorRole: null
     });
   }
 
@@ -1845,7 +1880,10 @@ export class TransactionIntentsService {
       actorId: operatorId,
       actorRole: normalizedOperatorRole,
       reconciliationReplay: false,
-      replayReason: null
+      replayReason: null,
+      replayApprovalRequestId: null,
+      replayRequestedByOperatorId: null,
+      replayRequestedByOperatorRole: null
     });
   }
 
@@ -2045,7 +2083,10 @@ export class TransactionIntentsService {
               operatorRole: actor.actorRole,
               executionChannel: this.resolveExecutionChannel(actor),
               reconciliationReplay: actor.reconciliationReplay,
-              replayReason: actor.replayReason
+              replayReason: actor.replayReason,
+              replayApprovalRequestId: actor.replayApprovalRequestId,
+              replayRequestedByOperatorId: actor.replayRequestedByOperatorId,
+              replayRequestedByOperatorRole: actor.replayRequestedByOperatorRole
             }
           }
         });
@@ -2128,7 +2169,10 @@ export class TransactionIntentsService {
       actorId: workerId,
       actorRole: null,
       reconciliationReplay: false,
-      replayReason: null
+      replayReason: null,
+      replayApprovalRequestId: null,
+      replayRequestedByOperatorId: null,
+      replayRequestedByOperatorRole: null
     });
   }
 
@@ -2145,7 +2189,10 @@ export class TransactionIntentsService {
       actorId: operatorId,
       actorRole: normalizedOperatorRole,
       reconciliationReplay: false,
-      replayReason: null
+      replayReason: null,
+      replayApprovalRequestId: null,
+      replayRequestedByOperatorId: null,
+      replayRequestedByOperatorRole: null
     });
   }
 
@@ -2351,7 +2398,10 @@ export class TransactionIntentsService {
               operatorRole: actor.actorRole,
               executionChannel: this.resolveExecutionChannel(actor),
               reconciliationReplay: actor.reconciliationReplay,
-              replayReason: actor.replayReason
+              replayReason: actor.replayReason,
+              replayApprovalRequestId: actor.replayApprovalRequestId,
+              replayRequestedByOperatorId: actor.replayRequestedByOperatorId,
+              replayRequestedByOperatorRole: actor.replayRequestedByOperatorRole
             }
           }
         });
@@ -2598,7 +2648,10 @@ export class TransactionIntentsService {
         actorId: workerId,
         actorRole: null,
         reconciliationReplay: false,
-        replayReason: null
+        replayReason: null,
+        replayApprovalRequestId: null,
+        replayRequestedByOperatorId: null,
+        replayRequestedByOperatorRole: null
       }
     );
   }
@@ -2620,7 +2673,10 @@ export class TransactionIntentsService {
         actorId: operatorId,
         actorRole: normalizedOperatorRole,
         reconciliationReplay: false,
-        replayReason: null
+        replayReason: null,
+        replayApprovalRequestId: null,
+        replayRequestedByOperatorId: null,
+        replayRequestedByOperatorRole: null
       }
     );
   }
@@ -2863,7 +2919,10 @@ export class TransactionIntentsService {
               executionChannel: this.resolveExecutionChannel(actor),
               note,
               reconciliationReplay: actor.reconciliationReplay,
-              replayReason: actor.replayReason
+              replayReason: actor.replayReason,
+              replayApprovalRequestId: actor.replayApprovalRequestId,
+              replayRequestedByOperatorId: actor.replayRequestedByOperatorId,
+              replayRequestedByOperatorRole: actor.replayRequestedByOperatorRole
             }
           }
         });
@@ -2949,7 +3008,10 @@ export class TransactionIntentsService {
         actorId: workerId,
         actorRole: null,
         reconciliationReplay: false,
-        replayReason: null
+        replayReason: null,
+        replayApprovalRequestId: null,
+        replayRequestedByOperatorId: null,
+        replayRequestedByOperatorRole: null
       }
     );
   }
@@ -2970,7 +3032,10 @@ export class TransactionIntentsService {
         actorId: operatorId,
         actorRole: normalizedOperatorRole,
         reconciliationReplay: false,
-        replayReason: null
+        replayReason: null,
+        replayApprovalRequestId: null,
+        replayRequestedByOperatorId: null,
+        replayRequestedByOperatorRole: null
       }
     );
   }
@@ -3293,7 +3358,10 @@ export class TransactionIntentsService {
               executionChannel: this.resolveExecutionChannel(actor),
               note,
               reconciliationReplay: actor.reconciliationReplay,
-              replayReason: actor.replayReason
+              replayReason: actor.replayReason,
+              replayApprovalRequestId: actor.replayApprovalRequestId,
+              replayRequestedByOperatorId: actor.replayRequestedByOperatorId,
+              replayRequestedByOperatorRole: actor.replayRequestedByOperatorRole
             }
           }
         });

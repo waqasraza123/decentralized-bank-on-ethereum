@@ -1,6 +1,8 @@
-import { ConflictException } from "@nestjs/common";
+import { ConflictException, ForbiddenException } from "@nestjs/common";
 import {
   BlockchainTransactionStatus,
+  DepositSettlementReplayAction,
+  DepositSettlementReplayApprovalRequestStatus,
   PolicyDecision,
   TransactionIntentStatus
 } from "@prisma/client";
@@ -9,6 +11,13 @@ import { DepositSettlementReconciliationService } from "./deposit-settlement-rec
 jest.mock("@stealth-trails-bank/config/api", () => ({
   loadProductChainRuntimeConfig: () => ({
     productChainId: 8453
+  }),
+  loadSensitiveOperatorActionPolicyRuntimeConfig: () => ({
+    custodyOperationAllowedOperatorRoles: [
+      "operations_admin",
+      "senior_operator",
+      "treasury"
+    ]
   })
 }));
 
@@ -104,12 +113,81 @@ function createRecord(
   };
 }
 
+function createApprovalRequest(
+  overrides: Partial<{
+    id: string;
+    transactionIntentId: string;
+    replayAction: DepositSettlementReplayAction;
+    status: DepositSettlementReplayApprovalRequestStatus;
+    requestedByOperatorId: string;
+    requestedByOperatorRole: string;
+    requestNote: string | null;
+    approvedByOperatorId: string | null;
+    approvedByOperatorRole: string | null;
+    approvalNote: string | null;
+    approvedAt: Date | null;
+    executedByOperatorId: string | null;
+    executedByOperatorRole: string | null;
+    executedAt: Date | null;
+  }> = {}
+) {
+  return {
+    id: overrides.id ?? "approval_1",
+    transactionIntentId: overrides.transactionIntentId ?? "intent_1",
+    transactionIntent: {
+      id: overrides.transactionIntentId ?? "intent_1",
+      chainId: 8453
+    },
+    chainId: 8453,
+    replayAction: overrides.replayAction ?? DepositSettlementReplayAction.confirm,
+    status:
+      overrides.status ??
+      DepositSettlementReplayApprovalRequestStatus.pending_approval,
+    requestedByOperatorId: overrides.requestedByOperatorId ?? "ops_requester",
+    requestedByOperatorRole:
+      overrides.requestedByOperatorRole ?? "operations_admin",
+    requestNote: overrides.requestNote ?? "Please approve replay.",
+    requestedAt: new Date("2026-04-01T11:00:00.000Z"),
+    approvedByOperatorId: overrides.approvedByOperatorId ?? null,
+    approvedByOperatorRole: overrides.approvedByOperatorRole ?? null,
+    approvalNote: overrides.approvalNote ?? null,
+    approvedAt: overrides.approvedAt ?? null,
+    executedByOperatorId: overrides.executedByOperatorId ?? null,
+    executedByOperatorRole: overrides.executedByOperatorRole ?? null,
+    executedAt: overrides.executedAt ?? null,
+    createdAt: new Date("2026-04-01T11:00:00.000Z"),
+    updatedAt: new Date("2026-04-01T11:00:00.000Z")
+  };
+}
+
 function createService() {
+  const prismaTransaction = {
+    depositSettlementReplayApprovalRequest: {
+      create: jest.fn(),
+      update: jest.fn()
+    },
+    auditEvent: {
+      create: jest.fn()
+    }
+  };
+
   const prismaService = {
     transactionIntent: {
       findMany: jest.fn(),
       findFirst: jest.fn()
+    },
+    depositSettlementReplayApprovalRequest: {
+      findFirst: jest.fn(),
+      findUnique: jest.fn(),
+      update: jest.fn()
+    },
+    auditEvent: {
+      create: jest.fn()
     }
+    ,
+    $transaction: jest.fn(async (callback: (tx: typeof prismaTransaction) => unknown) =>
+      callback(prismaTransaction)
+    )
   };
 
   const transactionIntentsService = {
@@ -128,7 +206,8 @@ function createService() {
   return {
     service,
     prismaService,
-    transactionIntentsService
+    transactionIntentsService,
+    prismaTransaction
   };
 }
 
@@ -177,8 +256,8 @@ describe("DepositSettlementReconciliationService", () => {
     expect(result.actionableCount).toBe(2);
   });
 
-  it("replays confirm only when the classification allows it", async () => {
-    const { service, prismaService, transactionIntentsService } = createService();
+  it("creates a governed replay approval request for a replayable deposit", async () => {
+    const { service, prismaService, prismaTransaction } = createService();
 
     prismaService.transactionIntent.findFirst.mockResolvedValue(
       createRecord({
@@ -190,17 +269,132 @@ describe("DepositSettlementReconciliationService", () => {
       })
     );
 
+    prismaService.depositSettlementReplayApprovalRequest.findFirst.mockResolvedValue(
+      null
+    );
+    prismaTransaction.depositSettlementReplayApprovalRequest.create.mockResolvedValue(
+      createApprovalRequest({
+        replayAction: DepositSettlementReplayAction.confirm
+      })
+    );
+    prismaTransaction.auditEvent.create.mockResolvedValue({ id: "audit_1" });
+
+    const result = await service.requestReplayApproval(
+      "intent_1",
+      "ops_1",
+      "operations_admin",
+      {
+        replayAction: "confirm",
+        note: "Replay missed confirm."
+      }
+    );
+
+    expect(result.stateReused).toBe(false);
+    expect(result.request.replayAction).toBe(DepositSettlementReplayAction.confirm);
+    expect(
+      prismaTransaction.depositSettlementReplayApprovalRequest.create
+    ).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        transactionIntentId: "intent_1",
+        replayAction: DepositSettlementReplayAction.confirm,
+        requestedByOperatorId: "ops_1",
+        requestedByOperatorRole: "operations_admin"
+      }),
+      include: expect.any(Object)
+    });
+  });
+
+  it("replays confirm only with a governed approval request from a different operator", async () => {
+    const { service, prismaService, transactionIntentsService, prismaTransaction } =
+      createService();
+
+    prismaService.transactionIntent.findFirst.mockResolvedValue(
+      createRecord({
+        status: TransactionIntentStatus.broadcast,
+        blockchainStatus: BlockchainTransactionStatus.confirmed,
+        hasLedgerJournal: false,
+        hasSettlementProof: false,
+        settledAmount: null
+      })
+    );
+    prismaService.depositSettlementReplayApprovalRequest.findUnique
+      .mockResolvedValueOnce(
+        createApprovalRequest({
+          replayAction: DepositSettlementReplayAction.confirm
+        })
+      )
+      .mockResolvedValueOnce(
+        createApprovalRequest({
+          replayAction: DepositSettlementReplayAction.confirm,
+          status: DepositSettlementReplayApprovalRequestStatus.executed,
+          approvedByOperatorId: "ops_approver",
+          approvedByOperatorRole: "operations_admin",
+          approvedAt: new Date("2026-04-01T11:05:00.000Z"),
+          approvalNote: "Approved replay.",
+          executedByOperatorId: "ops_approver",
+          executedByOperatorRole: "operations_admin",
+          executedAt: new Date("2026-04-01T11:05:00.000Z")
+        })
+      );
+    prismaService.depositSettlementReplayApprovalRequest.update.mockResolvedValue(
+      createApprovalRequest({
+        replayAction: DepositSettlementReplayAction.confirm,
+        status: DepositSettlementReplayApprovalRequestStatus.approved,
+        approvedByOperatorId: "ops_approver",
+        approvedByOperatorRole: "operations_admin",
+        approvedAt: new Date("2026-04-01T11:05:00.000Z"),
+        approvalNote: "Approved replay."
+      })
+    );
     transactionIntentsService.replayConfirmDepositIntent.mockResolvedValue({
       confirmReused: false
     });
-
-    await service.replayConfirm("intent_1", "ops_1", {
-      note: "Replay missed confirm."
-    });
+    prismaTransaction.depositSettlementReplayApprovalRequest.update.mockResolvedValue(
+      createApprovalRequest({
+        replayAction: DepositSettlementReplayAction.confirm,
+        status: DepositSettlementReplayApprovalRequestStatus.executed,
+        approvedByOperatorId: "ops_approver",
+        approvedByOperatorRole: "operations_admin",
+        approvedAt: new Date("2026-04-01T11:05:00.000Z"),
+        approvalNote: "Approved replay.",
+        executedByOperatorId: "ops_approver",
+        executedByOperatorRole: "operations_admin",
+        executedAt: new Date("2026-04-01T11:06:00.000Z")
+      })
+    );
+    prismaTransaction.auditEvent.create.mockResolvedValue({ id: "audit_1" });
 
     expect(
       transactionIntentsService.replayConfirmDepositIntent
-    ).toHaveBeenCalledWith("intent_1", "ops_1", "Replay missed confirm.");
+    ).not.toHaveBeenCalled();
+
+    const result = await service.replayConfirm(
+      "intent_1",
+      "ops_approver",
+      "operations_admin",
+      {
+        approvalRequestId: "approval_1",
+        note: "Replay missed confirm."
+      }
+    );
+
+    expect(result.confirmReused).toBe(false);
+    expect(result.approvalRequest.status).toBe(
+      DepositSettlementReplayApprovalRequestStatus.executed
+    );
+    expect(
+      transactionIntentsService.replayConfirmDepositIntent
+    ).toHaveBeenCalledWith(
+      "intent_1",
+      "ops_approver",
+      "Replay missed confirm.",
+      "operations_admin",
+      {
+        approvalRequestId: "approval_1",
+        requestedByOperatorId: "ops_requester",
+        requestedByOperatorRole: "operations_admin"
+      }
+    );
   });
 
   it("rejects settle replay when the classification is not settle-replayable", async () => {
@@ -217,8 +411,36 @@ describe("DepositSettlementReconciliationService", () => {
     );
 
     await expect(
-      service.replaySettle("intent_1", "ops_1", {})
+      service.replaySettle("intent_1", "ops_1", "operations_admin", {
+        approvalRequestId: "approval_1"
+      })
     ).rejects.toBeInstanceOf(ConflictException);
+  });
+
+  it("rejects self-approval for governed deposit replays", async () => {
+    const { service, prismaService } = createService();
+
+    prismaService.transactionIntent.findFirst.mockResolvedValue(
+      createRecord({
+        status: TransactionIntentStatus.broadcast,
+        blockchainStatus: BlockchainTransactionStatus.confirmed,
+        hasLedgerJournal: false,
+        hasSettlementProof: false,
+        settledAmount: null
+      })
+    );
+    prismaService.depositSettlementReplayApprovalRequest.findUnique.mockResolvedValue(
+      createApprovalRequest({
+        replayAction: DepositSettlementReplayAction.confirm,
+        requestedByOperatorId: "ops_1"
+      })
+    );
+
+    await expect(
+      service.replayConfirm("intent_1", "ops_1", "operations_admin", {
+        approvalRequestId: "approval_1"
+      })
+    ).rejects.toBeInstanceOf(ForbiddenException);
   });
 
   it("flags settled deposits with missing proof anchors as manual-review-required", async () => {

@@ -15,10 +15,12 @@ import { CustomJsonResponse } from "../types/CustomJsonResponse";
 import { DepositSettlementReconciliationService } from "./deposit-settlement-reconciliation.service";
 import { ListDepositSettlementReconciliationDto } from "./dto/list-deposit-settlement-reconciliation.dto";
 import { ReplayDepositSettlementStepDto } from "./dto/replay-deposit-settlement-step.dto";
+import { RequestDepositSettlementReplayApprovalDto } from "./dto/request-deposit-settlement-replay-approval.dto";
 
 type InternalOperatorRequest = {
   internalOperator: {
     operatorId: string;
+    operatorRole?: string | null;
   };
 };
 
@@ -52,6 +54,35 @@ export class DepositSettlementReconciliationController {
     };
   }
 
+  @Post("deposit-settlements/:intentId/request-replay-approval")
+  async requestReplayApproval(
+    @Param("intentId") intentId: string,
+    @Body(
+      new ValidationPipe({
+        whitelist: true,
+        forbidNonWhitelisted: true
+      })
+    )
+    dto: RequestDepositSettlementReplayApprovalDto,
+    @Request() request: InternalOperatorRequest
+  ): Promise<CustomJsonResponse> {
+    const result =
+      await this.depositSettlementReconciliationService.requestReplayApproval(
+        intentId,
+        request.internalOperator.operatorId,
+        request.internalOperator.operatorRole ?? null,
+        dto
+      );
+
+    return {
+      status: "success",
+      message: result.stateReused
+        ? "Deposit replay approval request reused successfully."
+        : "Deposit replay approval request created successfully.",
+      data: result
+    };
+  }
+
   @Post("deposit-settlements/:intentId/replay-confirm")
   async replayConfirm(
     @Param("intentId") intentId: string,
@@ -67,6 +98,7 @@ export class DepositSettlementReconciliationController {
     const result = await this.depositSettlementReconciliationService.replayConfirm(
       intentId,
       request.internalOperator.operatorId,
+      request.internalOperator.operatorRole ?? null,
       dto
     );
 
@@ -94,6 +126,7 @@ export class DepositSettlementReconciliationController {
     const result = await this.depositSettlementReconciliationService.replaySettle(
       intentId,
       request.internalOperator.operatorId,
+      request.internalOperator.operatorRole ?? null,
       dto
     );
 

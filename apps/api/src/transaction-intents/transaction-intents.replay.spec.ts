@@ -217,7 +217,13 @@ describe("TransactionIntentsService replay methods", () => {
     const result = await service.replayConfirmDepositIntent(
       "intent_1",
       "ops_1",
-      "Replay missed confirm."
+      "Replay missed confirm.",
+      "operations_admin",
+      {
+        approvalRequestId: "approval_1",
+        requestedByOperatorId: "ops_requester",
+        requestedByOperatorRole: "operations_admin"
+      }
     );
 
     expect(result.confirmReused).toBe(false);
@@ -229,7 +235,10 @@ describe("TransactionIntentsService replay methods", () => {
         metadata: expect.objectContaining({
           reconciliationReplay: true,
           replayReason: "deposit_settlement_reconciliation",
-          note: "Replay missed confirm."
+          note: "Replay missed confirm.",
+          replayApprovalRequestId: "approval_1",
+          replayRequestedByOperatorId: "ops_requester",
+          replayRequestedByOperatorRole: "operations_admin"
         })
       })
     });
@@ -281,7 +290,13 @@ describe("TransactionIntentsService replay methods", () => {
     const result = await service.replaySettleConfirmedDepositIntent(
       "intent_1",
       "ops_1",
-      "Replay missed settlement."
+      "Replay missed settlement.",
+      "operations_admin",
+      {
+        approvalRequestId: "approval_2",
+        requestedByOperatorId: "ops_requester",
+        requestedByOperatorRole: "operations_admin"
+      }
     );
 
     expect(result.settlementReused).toBe(false);
@@ -294,9 +309,32 @@ describe("TransactionIntentsService replay methods", () => {
         metadata: expect.objectContaining({
           reconciliationReplay: true,
           replayReason: "deposit_settlement_reconciliation",
-          note: "Replay missed settlement."
+          note: "Replay missed settlement.",
+          replayApprovalRequestId: "approval_2",
+          replayRequestedByOperatorId: "ops_requester",
+          replayRequestedByOperatorRole: "operations_admin"
         })
       })
     });
+  });
+
+  it("rejects replay settlement when the operator role is not custody-authorized", async () => {
+    const { service } = createService();
+
+    await expect(
+      service.replaySettleConfirmedDepositIntent(
+        "intent_1",
+        "ops_1",
+        "Replay missed settlement.",
+        "analyst",
+        {
+          approvalRequestId: "approval_2",
+          requestedByOperatorId: "ops_requester",
+          requestedByOperatorRole: "operations_admin"
+        }
+      )
+    ).rejects.toThrow(
+      "Operator role is not authorized to execute manual custody actions."
+    );
   });
 });
