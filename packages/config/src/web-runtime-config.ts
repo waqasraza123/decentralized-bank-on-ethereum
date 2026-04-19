@@ -6,7 +6,7 @@ import {
 
 export type WebRuntimeConfig = {
   readonly serverUrl: string;
-  readonly telemetryEndpoint: string | null;
+  readonly telemetryEndpoint: string;
   readonly telemetryEnvironment: string;
   readonly telemetryRelease: string | null;
 };
@@ -14,10 +14,13 @@ export type WebRuntimeConfig = {
 export function loadWebRuntimeConfig(
   env: RuntimeEnvShape
 ): WebRuntimeConfig {
+  const serverUrl = readRequiredRuntimeEnv(env, "VITE_SERVER_URL");
+
   return {
-    serverUrl: readRequiredRuntimeEnv(env, "VITE_SERVER_URL"),
+    serverUrl,
     telemetryEndpoint:
-      readOptionalRuntimeEnv(env, "VITE_TELEMETRY_ENDPOINT") ?? null,
+      readOptionalRuntimeEnv(env, "VITE_TELEMETRY_ENDPOINT") ??
+      `${serverUrl.replace(/\/+$/, "")}/client-observability/events`,
     telemetryEnvironment:
       readOptionalRuntimeEnv(env, "VITE_TELEMETRY_ENVIRONMENT") ??
       "development",

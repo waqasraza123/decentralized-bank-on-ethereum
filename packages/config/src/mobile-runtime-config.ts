@@ -5,7 +5,7 @@ import {
 
 export type MobileRuntimeConfig = {
   readonly apiBaseUrl: string;
-  readonly telemetryEndpoint: string | null;
+  readonly telemetryEndpoint: string;
   readonly telemetryEnvironment: string;
   readonly telemetryRelease: string | null;
 };
@@ -42,7 +42,8 @@ export function loadMobileRuntimeConfig(
   return {
     apiBaseUrl,
     telemetryEndpoint:
-      readOptionalRuntimeEnv(env, "EXPO_PUBLIC_TELEMETRY_ENDPOINT") ?? null,
+      readOptionalRuntimeEnv(env, "EXPO_PUBLIC_TELEMETRY_ENDPOINT") ??
+      `${apiBaseUrl.replace(/\/+$/, "")}/client-observability/events`,
     telemetryEnvironment:
       readOptionalRuntimeEnv(env, "EXPO_PUBLIC_TELEMETRY_ENVIRONMENT") ??
       "development",
