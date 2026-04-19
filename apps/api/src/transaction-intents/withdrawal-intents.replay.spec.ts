@@ -165,7 +165,13 @@ describe("WithdrawalIntentsService replay methods", () => {
     await service.replayConfirmWithdrawalIntent(
       "intent_1",
       "ops_1",
-      "Replay missed confirm."
+      "Replay missed confirm.",
+      "operations_admin",
+      {
+        approvalRequestId: "approval_1",
+        requestedByOperatorId: "ops_requester",
+        requestedByOperatorRole: "operations_admin"
+      }
     );
 
     expect(transaction.auditEvent.create).toHaveBeenCalledWith({
@@ -174,7 +180,10 @@ describe("WithdrawalIntentsService replay methods", () => {
         metadata: expect.objectContaining({
           reconciliationReplay: true,
           replayReason: "withdrawal_settlement_reconciliation",
-          note: "Replay missed confirm."
+          note: "Replay missed confirm.",
+          replayApprovalRequestId: "approval_1",
+          replayRequestedByOperatorId: "ops_requester",
+          replayRequestedByOperatorRole: "operations_admin"
         })
       })
     });
@@ -229,7 +238,13 @@ describe("WithdrawalIntentsService replay methods", () => {
     await service.replaySettleConfirmedWithdrawalIntent(
       "intent_1",
       "ops_1",
-      "Replay missed settle."
+      "Replay missed settle.",
+      "operations_admin",
+      {
+        approvalRequestId: "approval_2",
+        requestedByOperatorId: "ops_requester",
+        requestedByOperatorRole: "operations_admin"
+      }
     );
 
     expect(transaction.auditEvent.create).toHaveBeenCalledWith({
@@ -238,9 +253,32 @@ describe("WithdrawalIntentsService replay methods", () => {
         metadata: expect.objectContaining({
           reconciliationReplay: true,
           replayReason: "withdrawal_settlement_reconciliation",
-          note: "Replay missed settle."
+          note: "Replay missed settle.",
+          replayApprovalRequestId: "approval_2",
+          replayRequestedByOperatorId: "ops_requester",
+          replayRequestedByOperatorRole: "operations_admin"
         })
       })
     });
+  });
+
+  it("rejects replay confirm when the operator role is not custody-authorized", async () => {
+    const { service } = createService();
+
+    await expect(
+      service.replayConfirmWithdrawalIntent(
+        "intent_1",
+        "ops_1",
+        "Replay missed confirm.",
+        "analyst",
+        {
+          approvalRequestId: "approval_1",
+          requestedByOperatorId: "ops_requester",
+          requestedByOperatorRole: "operations_admin"
+        }
+      )
+    ).rejects.toThrow(
+      "Operator role is not authorized to execute manual custody actions."
+    );
   });
 });

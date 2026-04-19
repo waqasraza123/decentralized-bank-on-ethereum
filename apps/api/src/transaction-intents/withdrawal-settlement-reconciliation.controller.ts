@@ -14,11 +14,13 @@ import { OpenReconciliationReviewCaseDto } from "../review-cases/dto/open-reconc
 import { CustomJsonResponse } from "../types/CustomJsonResponse";
 import { ListWithdrawalSettlementReconciliationDto } from "./dto/list-withdrawal-settlement-reconciliation.dto";
 import { ReplayWithdrawalSettlementStepDto } from "./dto/replay-withdrawal-settlement-step.dto";
+import { RequestWithdrawalSettlementReplayApprovalDto } from "./dto/request-withdrawal-settlement-replay-approval.dto";
 import { WithdrawalSettlementReconciliationService } from "./withdrawal-settlement-reconciliation.service";
 
 type InternalOperatorRequest = {
   internalOperator: {
     operatorId: string;
+    operatorRole?: string | null;
   };
 };
 
@@ -52,6 +54,35 @@ export class WithdrawalSettlementReconciliationController {
     };
   }
 
+  @Post("withdrawal-settlements/:intentId/request-replay-approval")
+  async requestReplayApproval(
+    @Param("intentId") intentId: string,
+    @Body(
+      new ValidationPipe({
+        whitelist: true,
+        forbidNonWhitelisted: true
+      })
+    )
+    dto: RequestWithdrawalSettlementReplayApprovalDto,
+    @Request() request: InternalOperatorRequest
+  ): Promise<CustomJsonResponse> {
+    const result =
+      await this.withdrawalSettlementReconciliationService.requestReplayApproval(
+        intentId,
+        request.internalOperator.operatorId,
+        request.internalOperator.operatorRole ?? null,
+        dto
+      );
+
+    return {
+      status: "success",
+      message: result.stateReused
+        ? "Withdrawal replay approval request reused successfully."
+        : "Withdrawal replay approval request created successfully.",
+      data: result
+    };
+  }
+
   @Post("withdrawal-settlements/:intentId/replay-confirm")
   async replayConfirm(
     @Param("intentId") intentId: string,
@@ -68,6 +99,7 @@ export class WithdrawalSettlementReconciliationController {
       await this.withdrawalSettlementReconciliationService.replayConfirm(
         intentId,
         request.internalOperator.operatorId,
+        request.internalOperator.operatorRole ?? null,
         dto
       );
 
@@ -96,6 +128,7 @@ export class WithdrawalSettlementReconciliationController {
       await this.withdrawalSettlementReconciliationService.replaySettle(
         intentId,
         request.internalOperator.operatorId,
+        request.internalOperator.operatorRole ?? null,
         dto
       );
 

@@ -342,6 +342,9 @@ type WithdrawalTransitionActor = {
   actorRole: string | null;
   reconciliationReplay: boolean;
   replayReason: string | null;
+  replayApprovalRequestId: string | null;
+  replayRequestedByOperatorId: string | null;
+  replayRequestedByOperatorRole: string | null;
 };
 
 type WithdrawalExecutionFailureResolution = {
@@ -1941,7 +1944,10 @@ export class WithdrawalIntentsService {
               actorId: workerId,
               actorRole: null,
               reconciliationReplay: false,
-              replayReason: null
+              replayReason: null,
+              replayApprovalRequestId: null,
+              replayRequestedByOperatorId: null,
+              replayRequestedByOperatorRole: null
             })
           }
         }
@@ -2203,7 +2209,10 @@ export class WithdrawalIntentsService {
                 actorId: workerId,
                 actorRole: null,
                 reconciliationReplay: false,
-                replayReason: null
+                replayReason: null,
+                replayApprovalRequestId: null,
+                replayRequestedByOperatorId: null,
+                replayRequestedByOperatorRole: null
               })
             }
           }
@@ -2290,7 +2299,10 @@ export class WithdrawalIntentsService {
       actorId: workerId,
       actorRole: null,
       reconciliationReplay: false,
-      replayReason: null
+      replayReason: null,
+      replayApprovalRequestId: null,
+      replayRequestedByOperatorId: null,
+      replayRequestedByOperatorRole: null
     });
   }
 
@@ -2307,7 +2319,10 @@ export class WithdrawalIntentsService {
       actorId: operatorId,
       actorRole: normalizedOperatorRole,
       reconciliationReplay: false,
-      replayReason: null
+      replayReason: null,
+      replayApprovalRequestId: null,
+      replayRequestedByOperatorId: null,
+      replayRequestedByOperatorRole: null
     });
   }
 
@@ -2514,7 +2529,10 @@ export class WithdrawalIntentsService {
               operatorRole: actor.actorRole,
               executionChannel: this.resolveExecutionChannel(actor),
               reconciliationReplay: actor.reconciliationReplay,
-              replayReason: actor.replayReason
+              replayReason: actor.replayReason,
+              replayApprovalRequestId: actor.replayApprovalRequestId,
+              replayRequestedByOperatorId: actor.replayRequestedByOperatorId,
+              replayRequestedByOperatorRole: actor.replayRequestedByOperatorRole
             }
           }
         });
@@ -2600,7 +2618,10 @@ export class WithdrawalIntentsService {
       actorId: workerId,
       actorRole: null,
       reconciliationReplay: false,
-      replayReason: null
+      replayReason: null,
+      replayApprovalRequestId: null,
+      replayRequestedByOperatorId: null,
+      replayRequestedByOperatorRole: null
     });
   }
 
@@ -2617,7 +2638,10 @@ export class WithdrawalIntentsService {
       actorId: operatorId,
       actorRole: normalizedOperatorRole,
       reconciliationReplay: false,
-      replayReason: null
+      replayReason: null,
+      replayApprovalRequestId: null,
+      replayRequestedByOperatorId: null,
+      replayRequestedByOperatorRole: null
     });
   }
 
@@ -2847,7 +2871,10 @@ export class WithdrawalIntentsService {
                 manualInterventionReviewCase?.reviewCase.id ?? null,
               executionChannel: this.resolveExecutionChannel(actor),
               reconciliationReplay: actor.reconciliationReplay,
-              replayReason: actor.replayReason
+              replayReason: actor.replayReason,
+              replayApprovalRequestId: actor.replayApprovalRequestId,
+              replayRequestedByOperatorId: actor.replayRequestedByOperatorId,
+              replayRequestedByOperatorRole: actor.replayRequestedByOperatorRole
             }
           }
         });
@@ -3036,28 +3063,54 @@ export class WithdrawalIntentsService {
   async replayConfirmWithdrawalIntent(
     intentId: string,
     operatorId: string,
-    note: string | null
+    note: string | null,
+    operatorRole?: string,
+    approvalContext?: {
+      approvalRequestId: string;
+      requestedByOperatorId: string;
+      requestedByOperatorRole: string | null;
+    }
   ): Promise<ConfirmWithdrawalIntentResult> {
+    const normalizedOperatorRole = this.assertCanOperateCustody(operatorRole);
+
     return this.confirmWithdrawalIntentWithActor(intentId, null, note, {
       actorType: "operator",
       actorId: operatorId,
-      actorRole: null,
+      actorRole: normalizedOperatorRole,
       reconciliationReplay: true,
-      replayReason: "withdrawal_settlement_reconciliation"
+      replayReason: "withdrawal_settlement_reconciliation",
+      replayApprovalRequestId: approvalContext?.approvalRequestId ?? null,
+      replayRequestedByOperatorId:
+        approvalContext?.requestedByOperatorId ?? null,
+      replayRequestedByOperatorRole:
+        approvalContext?.requestedByOperatorRole ?? null
     });
   }
 
   async replaySettleConfirmedWithdrawalIntent(
     intentId: string,
     operatorId: string,
-    note: string | null
+    note: string | null,
+    operatorRole?: string,
+    approvalContext?: {
+      approvalRequestId: string;
+      requestedByOperatorId: string;
+      requestedByOperatorRole: string | null;
+    }
   ): Promise<SettleConfirmedWithdrawalIntentResult> {
+    const normalizedOperatorRole = this.assertCanOperateCustody(operatorRole);
+
     return this.settleConfirmedWithdrawalIntentWithActor(intentId, note, {
       actorType: "operator",
       actorId: operatorId,
-      actorRole: null,
+      actorRole: normalizedOperatorRole,
       reconciliationReplay: true,
-      replayReason: "withdrawal_settlement_reconciliation"
+      replayReason: "withdrawal_settlement_reconciliation",
+      replayApprovalRequestId: approvalContext?.approvalRequestId ?? null,
+      replayRequestedByOperatorId:
+        approvalContext?.requestedByOperatorId ?? null,
+      replayRequestedByOperatorRole:
+        approvalContext?.requestedByOperatorRole ?? null
     });
   }
 
@@ -3078,7 +3131,10 @@ export class WithdrawalIntentsService {
         actorId: operatorId,
         actorRole: normalizedOperatorRole,
         reconciliationReplay: false,
-        replayReason: null
+        replayReason: null,
+        replayApprovalRequestId: null,
+        replayRequestedByOperatorId: null,
+        replayRequestedByOperatorRole: null
       }
     );
   }
@@ -3098,7 +3154,10 @@ export class WithdrawalIntentsService {
         actorId: workerId,
         actorRole: null,
         reconciliationReplay: false,
-        replayReason: null
+        replayReason: null,
+        replayApprovalRequestId: null,
+        replayRequestedByOperatorId: null,
+        replayRequestedByOperatorRole: null
       }
     );
   }
@@ -3274,7 +3333,10 @@ export class WithdrawalIntentsService {
               executionChannel: this.resolveExecutionChannel(actor),
               note,
               reconciliationReplay: actor.reconciliationReplay,
-              replayReason: actor.replayReason
+              replayReason: actor.replayReason,
+              replayApprovalRequestId: actor.replayApprovalRequestId,
+              replayRequestedByOperatorId: actor.replayRequestedByOperatorId,
+              replayRequestedByOperatorRole: actor.replayRequestedByOperatorRole
             }
           }
         });
@@ -3363,7 +3425,10 @@ export class WithdrawalIntentsService {
         actorId: workerId,
         actorRole: null,
         reconciliationReplay: false,
-        replayReason: null
+        replayReason: null,
+        replayApprovalRequestId: null,
+        replayRequestedByOperatorId: null,
+        replayRequestedByOperatorRole: null
       }
     );
   }
@@ -3384,7 +3449,10 @@ export class WithdrawalIntentsService {
         actorId: operatorId,
         actorRole: normalizedOperatorRole,
         reconciliationReplay: false,
-        replayReason: null
+        replayReason: null,
+        replayApprovalRequestId: null,
+        replayRequestedByOperatorId: null,
+        replayRequestedByOperatorRole: null
       }
     );
   }
@@ -3569,7 +3637,10 @@ export class WithdrawalIntentsService {
               executionChannel: this.resolveExecutionChannel(actor),
               note,
               reconciliationReplay: actor.reconciliationReplay,
-              replayReason: actor.replayReason
+              replayReason: actor.replayReason,
+              replayApprovalRequestId: actor.replayApprovalRequestId,
+              replayRequestedByOperatorId: actor.replayRequestedByOperatorId,
+              replayRequestedByOperatorRole: actor.replayRequestedByOperatorRole
             }
           }
         });

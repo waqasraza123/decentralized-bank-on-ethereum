@@ -168,6 +168,7 @@ model TransactionIntent {
   blockchainTransactions       BlockchainTransaction[]
   depositSettlementProof       DepositSettlementProof?
   depositSettlementReplayApprovalRequests DepositSettlementReplayApprovalRequest[]
+  withdrawalSettlementReplayApprovalRequests WithdrawalSettlementReplayApprovalRequest[]
   reviewCases                  ReviewCase[]
 
   @@index([customerAccountId])
@@ -251,6 +252,34 @@ model DepositSettlementReplayApprovalRequest {
   executedAt              DateTime?
   createdAt               DateTime                                   @default(now())
   updatedAt               DateTime                                   @updatedAt
+
+  @@index([transactionIntentId, status, requestedAt])
+  @@index([status, requestedAt])
+  @@index([requestedByOperatorId, requestedAt])
+  @@index([approvedByOperatorId, approvedAt])
+  @@index([executedByOperatorId, executedAt])
+}
+
+model WithdrawalSettlementReplayApprovalRequest {
+  id                      String                                        @id @default(cuid())
+  transactionIntentId     String
+  transactionIntent       TransactionIntent                             @relation(fields: [transactionIntentId], references: [id])
+  chainId                 Int
+  replayAction            WithdrawalSettlementReplayAction
+  status                  WithdrawalSettlementReplayApprovalRequestStatus @default(pending_approval)
+  requestedByOperatorId   String
+  requestedByOperatorRole String
+  requestNote             String?
+  requestedAt             DateTime                                      @default(now())
+  approvedByOperatorId    String?
+  approvedByOperatorRole  String?
+  approvalNote            String?
+  approvedAt              DateTime?
+  executedByOperatorId    String?
+  executedByOperatorRole  String?
+  executedAt              DateTime?
+  createdAt               DateTime                                      @default(now())
+  updatedAt               DateTime                                      @updatedAt
 
   @@index([transactionIntentId, status, requestedAt])
   @@index([status, requestedAt])
@@ -414,6 +443,18 @@ enum DepositSettlementReplayAction {
 }
 
 enum DepositSettlementReplayApprovalRequestStatus {
+  pending_approval
+  approved
+  executed
+  rejected
+}
+
+enum WithdrawalSettlementReplayAction {
+  confirm
+  settle
+}
+
+enum WithdrawalSettlementReplayApprovalRequestStatus {
   pending_approval
   approved
   executed

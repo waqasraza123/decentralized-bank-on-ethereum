@@ -1,22 +1,30 @@
 import {
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException
 } from "@nestjs/common";
-import { loadProductChainRuntimeConfig } from "@stealth-trails-bank/config/api";
+import {
+  loadProductChainRuntimeConfig,
+  loadSensitiveOperatorActionPolicyRuntimeConfig
+} from "@stealth-trails-bank/config/api";
 import {
   BlockchainTransactionStatus,
   LedgerJournalType,
   Prisma,
   ReviewCaseType,
   TransactionIntentStatus,
-  TransactionIntentType
+  TransactionIntentType,
+  WithdrawalSettlementReplayAction,
+  WithdrawalSettlementReplayApprovalRequestStatus
 } from "@prisma/client";
+import { assertOperatorRoleAuthorized } from "../auth/internal-operator-role-policy";
 import { PrismaService } from "../prisma/prisma.service";
 import { OpenReconciliationReviewCaseDto } from "../review-cases/dto/open-reconciliation-review-case.dto";
 import { ReviewCasesService } from "../review-cases/review-cases.service";
 import { ListWithdrawalSettlementReconciliationDto } from "./dto/list-withdrawal-settlement-reconciliation.dto";
 import { ReplayWithdrawalSettlementStepDto } from "./dto/replay-withdrawal-settlement-step.dto";
+import { RequestWithdrawalSettlementReplayApprovalDto } from "./dto/request-withdrawal-settlement-replay-approval.dto";
 import { classifyWithdrawalSettlementReconciliation } from "./domain/withdrawal-settlement-reconciliation";
 import type {
   WithdrawalSettlementReconciliationDecision,
@@ -147,9 +155,46 @@ type ListWithdrawalSettlementReconciliationResult = {
   limit: number;
 };
 
+type WithdrawalSettlementReplayApprovalRequestRecord =
+  Prisma.WithdrawalSettlementReplayApprovalRequestGetPayload<{
+    include: {
+      transactionIntent: {
+        select: {
+          id: true;
+          chainId: true;
+        };
+      };
+    };
+  }>;
+
+type WithdrawalSettlementReplayApprovalRequestProjection = {
+  id: string;
+  transactionIntentId: string;
+  chainId: number;
+  replayAction: WithdrawalSettlementReplayAction;
+  status: WithdrawalSettlementReplayApprovalRequestStatus;
+  requestedByOperatorId: string;
+  requestedByOperatorRole: string;
+  requestNote: string | null;
+  requestedAt: string;
+  approvedByOperatorId: string | null;
+  approvedByOperatorRole: string | null;
+  approvalNote: string | null;
+  approvedAt: string | null;
+  executedByOperatorId: string | null;
+  executedByOperatorRole: string | null;
+  executedAt: string | null;
+};
+
+type WithdrawalSettlementReplayApprovalRequestMutationResult = {
+  request: WithdrawalSettlementReplayApprovalRequestProjection;
+  stateReused: boolean;
+};
+
 @Injectable()
 export class WithdrawalSettlementReconciliationService {
   private readonly productChainId: number;
+  private readonly custodyOperationAllowedOperatorRoles: readonly string[];
 
   constructor(
     private readonly prismaService: PrismaService,
@@ -157,6 +202,18 @@ export class WithdrawalSettlementReconciliationService {
     private readonly reviewCasesService: ReviewCasesService
   ) {
     this.productChainId = loadProductChainRuntimeConfig().productChainId;
+    this.custodyOperationAllowedOperatorRoles = [
+      ...loadSensitiveOperatorActionPolicyRuntimeConfig()
+        .custodyOperationAllowedOperatorRoles
+    ];
+  }
+
+  private assertCanOperateCustody(operatorRole?: string | null): string {
+    return assertOperatorRoleAuthorized(
+      operatorRole,
+      this.custodyOperationAllowedOperatorRoles,
+      "Operator role is not authorized to execute governed withdrawal replay actions."
+    );
   }
 
   private createSummary(): WithdrawalSettlementReconciliationSummary {
@@ -166,6 +223,29 @@ export class WithdrawalSettlementReconciliationService {
       ready_for_settle_replay: 0,
       healthy_settled: 0,
       manual_review_required: 0
+    };
+  }
+
+  private mapReplayApprovalRequest(
+    request: WithdrawalSettlementReplayApprovalRequestRecord
+  ): WithdrawalSettlementReplayApprovalRequestProjection {
+    return {
+      id: request.id,
+      transactionIntentId: request.transactionIntentId,
+      chainId: request.chainId,
+      replayAction: request.replayAction,
+      status: request.status,
+      requestedByOperatorId: request.requestedByOperatorId,
+      requestedByOperatorRole: request.requestedByOperatorRole,
+      requestNote: request.requestNote ?? null,
+      requestedAt: request.requestedAt.toISOString(),
+      approvedByOperatorId: request.approvedByOperatorId ?? null,
+      approvedByOperatorRole: request.approvedByOperatorRole ?? null,
+      approvalNote: request.approvalNote ?? null,
+      approvedAt: request.approvedAt?.toISOString() ?? null,
+      executedByOperatorId: request.executedByOperatorId ?? null,
+      executedByOperatorRole: request.executedByOperatorRole ?? null,
+      executedAt: request.executedAt?.toISOString() ?? null
     };
   }
 
@@ -314,6 +394,37 @@ export class WithdrawalSettlementReconciliationService {
     });
   }
 
+  private async findReplayApprovalRequestById(
+    requestId: string
+  ): Promise<WithdrawalSettlementReplayApprovalRequestRecord | null> {
+    return this.prismaService.withdrawalSettlementReplayApprovalRequest.findUnique({
+      where: {
+        id: requestId
+      },
+      include: {
+        transactionIntent: {
+          select: {
+            id: true,
+            chainId: true
+          }
+        }
+      }
+    });
+  }
+
+  private assertReplayActionMatches(
+    item: WithdrawalSettlementReconciliationItem,
+    replayAction: WithdrawalSettlementReplayAction
+  ): void {
+    if (item.reconciliation.replayAction !== replayAction) {
+      throw new ConflictException(
+        replayAction === WithdrawalSettlementReplayAction.confirm
+          ? "Withdrawal transaction intent is not in a state that supports confirm replay."
+          : "Withdrawal transaction intent is not in a state that supports settle replay."
+      );
+    }
+  }
+
   async listWithdrawalSettlementReconciliation(
     query: ListWithdrawalSettlementReconciliationDto
   ): Promise<ListWithdrawalSettlementReconciliationResult> {
@@ -421,11 +532,13 @@ export class WithdrawalSettlementReconciliationService {
     };
   }
 
-  async replayConfirm(
+  async requestReplayApproval(
     intentId: string,
     operatorId: string,
-    dto: ReplayWithdrawalSettlementStepDto
-  ) {
+    operatorRole: string | null,
+    dto: RequestWithdrawalSettlementReplayApprovalDto
+  ): Promise<WithdrawalSettlementReplayApprovalRequestMutationResult> {
+    const normalizedOperatorRole = this.assertCanOperateCustody(operatorRole);
     const record = await this.findRecordByIntentId(intentId);
 
     if (!record) {
@@ -433,25 +546,255 @@ export class WithdrawalSettlementReconciliationService {
     }
 
     const item = this.mapItem(record);
+    this.assertReplayActionMatches(item, dto.replayAction);
 
-    if (item.reconciliation.replayAction !== "confirm") {
-      throw new ConflictException(
-        "Withdrawal transaction intent is not in a state that supports confirm replay."
+    const normalizedRequestNote = dto.note?.trim() || null;
+    const existingPendingRequest =
+      await this.prismaService.withdrawalSettlementReplayApprovalRequest.findFirst({
+        where: {
+          transactionIntentId: intentId,
+          replayAction: dto.replayAction,
+          status:
+            WithdrawalSettlementReplayApprovalRequestStatus.pending_approval
+        },
+        include: {
+          transactionIntent: {
+            select: {
+              id: true,
+              chainId: true
+            }
+          }
+        },
+        orderBy: {
+          requestedAt: "desc"
+        }
+      });
+
+    if (existingPendingRequest) {
+      if (existingPendingRequest.requestedByOperatorId !== operatorId) {
+        throw new ConflictException(
+          "A pending governed replay approval already exists for this withdrawal intent and replay action."
+        );
+      }
+
+      return {
+        request: this.mapReplayApprovalRequest(existingPendingRequest),
+        stateReused: true
+      };
+    }
+
+    const createdRequest = await this.prismaService.$transaction(
+      async (transaction) => {
+        const nextRequest =
+          await transaction.withdrawalSettlementReplayApprovalRequest.create({
+            data: {
+              transactionIntentId: item.intent.id,
+              chainId: item.intent.chainId,
+              replayAction: dto.replayAction,
+              status:
+                WithdrawalSettlementReplayApprovalRequestStatus.pending_approval,
+              requestedByOperatorId: operatorId,
+              requestedByOperatorRole: normalizedOperatorRole,
+              requestNote: normalizedRequestNote ?? undefined
+            },
+            include: {
+              transactionIntent: {
+                select: {
+                  id: true,
+                  chainId: true
+                }
+              }
+            }
+          });
+
+        await transaction.auditEvent.create({
+          data: {
+            customerId: item.intent.customer.customerId,
+            actorType: "operator",
+            actorId: operatorId,
+            action: "transaction_intent.withdrawal.replay_approval_requested",
+            targetType: "WithdrawalSettlementReplayApprovalRequest",
+            targetId: nextRequest.id,
+            metadata: {
+              transactionIntentId: item.intent.id,
+              replayAction: dto.replayAction,
+              reconciliationState: item.reconciliation.state,
+              reconciliationReasonCode: item.reconciliation.reasonCode,
+              operatorRole: normalizedOperatorRole,
+              requestNote: normalizedRequestNote,
+              chainId: item.intent.chainId
+            }
+          }
+        });
+
+        return nextRequest;
+      }
+    );
+
+    return {
+      request: this.mapReplayApprovalRequest(createdRequest),
+      stateReused: false
+    };
+  }
+
+  async replayConfirm(
+    intentId: string,
+    operatorId: string,
+    operatorRole: string | null,
+    dto: ReplayWithdrawalSettlementStepDto
+  ) {
+    const normalizedOperatorRole = this.assertCanOperateCustody(operatorRole);
+    const normalizedApprovalNote = dto.note?.trim() || null;
+    const record = await this.findRecordByIntentId(intentId);
+
+    if (!record) {
+      throw new NotFoundException("Withdrawal transaction intent not found.");
+    }
+
+    const item = this.mapItem(record);
+    this.assertReplayActionMatches(item, WithdrawalSettlementReplayAction.confirm);
+
+    const approvalRequest = await this.findReplayApprovalRequestById(
+      dto.approvalRequestId
+    );
+
+    if (!approvalRequest || approvalRequest.transactionIntentId !== intentId) {
+      throw new NotFoundException(
+        "Withdrawal replay approval request was not found."
       );
     }
 
-    return this.withdrawalIntentsService.replayConfirmWithdrawalIntent(
+    if (
+      approvalRequest.status !==
+        WithdrawalSettlementReplayApprovalRequestStatus.pending_approval &&
+      approvalRequest.status !==
+        WithdrawalSettlementReplayApprovalRequestStatus.approved
+    ) {
+      throw new ConflictException(
+        "Withdrawal replay approval request is not executable."
+      );
+    }
+
+    if (approvalRequest.replayAction !== WithdrawalSettlementReplayAction.confirm) {
+      throw new ConflictException(
+        "Withdrawal replay approval request does not authorize confirm replay."
+      );
+    }
+
+    if (approvalRequest.requestedByOperatorId === operatorId) {
+      throw new ForbiddenException(
+        "Withdrawal replay approval requires a different approver than the requester."
+      );
+    }
+
+    if (
+      approvalRequest.status ===
+      WithdrawalSettlementReplayApprovalRequestStatus.pending_approval
+    ) {
+      await this.prismaService.withdrawalSettlementReplayApprovalRequest.update({
+        where: {
+          id: approvalRequest.id
+        },
+        data: {
+          status: WithdrawalSettlementReplayApprovalRequestStatus.approved,
+          approvedByOperatorId: operatorId,
+          approvedByOperatorRole: normalizedOperatorRole,
+          approvalNote: normalizedApprovalNote ?? undefined,
+          approvedAt: new Date()
+        }
+      });
+    }
+
+    const result = await this.withdrawalIntentsService.replayConfirmWithdrawalIntent(
       intentId,
       operatorId,
-      dto.note?.trim() ?? null
+      normalizedApprovalNote,
+      normalizedOperatorRole,
+      {
+        approvalRequestId: approvalRequest.id,
+        requestedByOperatorId: approvalRequest.requestedByOperatorId,
+        requestedByOperatorRole: approvalRequest.requestedByOperatorRole
+      }
     );
+
+    const executedRequest = await this.prismaService.$transaction(
+      async (transaction) => {
+        const now = new Date();
+        const nextRequest =
+          await transaction.withdrawalSettlementReplayApprovalRequest.update({
+            where: {
+              id: approvalRequest.id
+            },
+            data: {
+              status: WithdrawalSettlementReplayApprovalRequestStatus.executed,
+              approvedByOperatorId:
+                approvalRequest.approvedByOperatorId ?? operatorId,
+              approvedByOperatorRole:
+                approvalRequest.approvedByOperatorRole ?? normalizedOperatorRole,
+              approvalNote:
+                approvalRequest.approvalNote ??
+                normalizedApprovalNote ??
+                undefined,
+              approvedAt: approvalRequest.approvedAt ?? now,
+              executedByOperatorId: operatorId,
+              executedByOperatorRole: normalizedOperatorRole,
+              executedAt: now
+            },
+            include: {
+              transactionIntent: {
+                select: {
+                  id: true,
+                  chainId: true
+                }
+              }
+            }
+          });
+
+        await transaction.auditEvent.create({
+          data: {
+            customerId: item.intent.customer.customerId,
+            actorType: "operator",
+            actorId: operatorId,
+            action: "transaction_intent.withdrawal.replay_executed",
+            targetType: "WithdrawalSettlementReplayApprovalRequest",
+            targetId: nextRequest.id,
+            metadata: {
+              transactionIntentId: intentId,
+              replayAction: WithdrawalSettlementReplayAction.confirm,
+              requestedByOperatorId: approvalRequest.requestedByOperatorId,
+              requestedByOperatorRole: approvalRequest.requestedByOperatorRole,
+              approvedByOperatorId:
+                approvalRequest.approvedByOperatorId ?? operatorId,
+              approvedByOperatorRole:
+                approvalRequest.approvedByOperatorRole ?? normalizedOperatorRole,
+              executedByOperatorId: operatorId,
+              executedByOperatorRole: normalizedOperatorRole,
+              requestNote: approvalRequest.requestNote ?? null,
+              approvalNote:
+                normalizedApprovalNote ?? approvalRequest.approvalNote ?? null,
+              chainId: item.intent.chainId
+            }
+          }
+        });
+
+        return nextRequest;
+      }
+    );
+
+    return {
+      ...result,
+      approvalRequest: this.mapReplayApprovalRequest(executedRequest)
+    };
   }
 
   async replaySettle(
     intentId: string,
     operatorId: string,
+    operatorRole: string | null,
     dto: ReplayWithdrawalSettlementStepDto
   ) {
+    const normalizedOperatorRole = this.assertCanOperateCustody(operatorRole);
+    const normalizedApprovalNote = dto.note?.trim() || null;
     const record = await this.findRecordByIntentId(intentId);
 
     if (!record) {
@@ -459,18 +802,140 @@ export class WithdrawalSettlementReconciliationService {
     }
 
     const item = this.mapItem(record);
+    this.assertReplayActionMatches(item, WithdrawalSettlementReplayAction.settle);
 
-    if (item.reconciliation.replayAction !== "settle") {
-      throw new ConflictException(
-        "Withdrawal transaction intent is not in a state that supports settle replay."
+    const approvalRequest = await this.findReplayApprovalRequestById(
+      dto.approvalRequestId
+    );
+
+    if (!approvalRequest || approvalRequest.transactionIntentId !== intentId) {
+      throw new NotFoundException(
+        "Withdrawal replay approval request was not found."
       );
     }
 
-    return this.withdrawalIntentsService.replaySettleConfirmedWithdrawalIntent(
+    if (
+      approvalRequest.status !==
+        WithdrawalSettlementReplayApprovalRequestStatus.pending_approval &&
+      approvalRequest.status !==
+        WithdrawalSettlementReplayApprovalRequestStatus.approved
+    ) {
+      throw new ConflictException(
+        "Withdrawal replay approval request is not executable."
+      );
+    }
+
+    if (approvalRequest.replayAction !== WithdrawalSettlementReplayAction.settle) {
+      throw new ConflictException(
+        "Withdrawal replay approval request does not authorize settle replay."
+      );
+    }
+
+    if (approvalRequest.requestedByOperatorId === operatorId) {
+      throw new ForbiddenException(
+        "Withdrawal replay approval requires a different approver than the requester."
+      );
+    }
+
+    if (
+      approvalRequest.status ===
+      WithdrawalSettlementReplayApprovalRequestStatus.pending_approval
+    ) {
+      await this.prismaService.withdrawalSettlementReplayApprovalRequest.update({
+        where: {
+          id: approvalRequest.id
+        },
+        data: {
+          status: WithdrawalSettlementReplayApprovalRequestStatus.approved,
+          approvedByOperatorId: operatorId,
+          approvedByOperatorRole: normalizedOperatorRole,
+          approvalNote: normalizedApprovalNote ?? undefined,
+          approvedAt: new Date()
+        }
+      });
+    }
+
+    const result =
+      await this.withdrawalIntentsService.replaySettleConfirmedWithdrawalIntent(
       intentId,
       operatorId,
-      dto.note?.trim() ?? null
+      normalizedApprovalNote,
+      normalizedOperatorRole,
+      {
+        approvalRequestId: approvalRequest.id,
+        requestedByOperatorId: approvalRequest.requestedByOperatorId,
+        requestedByOperatorRole: approvalRequest.requestedByOperatorRole
+      }
     );
+
+    const executedRequest = await this.prismaService.$transaction(
+      async (transaction) => {
+        const now = new Date();
+        const nextRequest =
+          await transaction.withdrawalSettlementReplayApprovalRequest.update({
+            where: {
+              id: approvalRequest.id
+            },
+            data: {
+              status: WithdrawalSettlementReplayApprovalRequestStatus.executed,
+              approvedByOperatorId:
+                approvalRequest.approvedByOperatorId ?? operatorId,
+              approvedByOperatorRole:
+                approvalRequest.approvedByOperatorRole ?? normalizedOperatorRole,
+              approvalNote:
+                approvalRequest.approvalNote ??
+                normalizedApprovalNote ??
+                undefined,
+              approvedAt: approvalRequest.approvedAt ?? now,
+              executedByOperatorId: operatorId,
+              executedByOperatorRole: normalizedOperatorRole,
+              executedAt: now
+            },
+            include: {
+              transactionIntent: {
+                select: {
+                  id: true,
+                  chainId: true
+                }
+              }
+            }
+          });
+
+        await transaction.auditEvent.create({
+          data: {
+            customerId: item.intent.customer.customerId,
+            actorType: "operator",
+            actorId: operatorId,
+            action: "transaction_intent.withdrawal.replay_executed",
+            targetType: "WithdrawalSettlementReplayApprovalRequest",
+            targetId: nextRequest.id,
+            metadata: {
+              transactionIntentId: intentId,
+              replayAction: WithdrawalSettlementReplayAction.settle,
+              requestedByOperatorId: approvalRequest.requestedByOperatorId,
+              requestedByOperatorRole: approvalRequest.requestedByOperatorRole,
+              approvedByOperatorId:
+                approvalRequest.approvedByOperatorId ?? operatorId,
+              approvedByOperatorRole:
+                approvalRequest.approvedByOperatorRole ?? normalizedOperatorRole,
+              executedByOperatorId: operatorId,
+              executedByOperatorRole: normalizedOperatorRole,
+              requestNote: approvalRequest.requestNote ?? null,
+              approvalNote:
+                normalizedApprovalNote ?? approvalRequest.approvalNote ?? null,
+              chainId: item.intent.chainId
+            }
+          }
+        });
+
+        return nextRequest;
+      }
+    );
+
+    return {
+      ...result,
+      approvalRequest: this.mapReplayApprovalRequest(executedRequest)
+    };
   }
 
   async openManualReviewCase(
