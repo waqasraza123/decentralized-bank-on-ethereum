@@ -25,7 +25,14 @@ export type ApiRequestContext = {
   };
   internalOperator?: {
     operatorId: string;
-    operatorRole?: string;
+    operatorRole?: string | null;
+    operatorDbId?: string | null;
+    operatorRoles?: string[];
+    operatorSupabaseUserId?: string | null;
+    operatorEmail?: string | null;
+    authSource?: "supabase_jwt" | "legacy_api_key";
+    environment?: string | null;
+    sessionCorrelationId?: string | null;
   };
   internalWorker?: {
     workerId: string;
@@ -75,12 +82,18 @@ export function resolveRequestActor(request: ApiRequestContext): {
   actorType: "customer" | "operator" | "worker" | "anonymous";
   actorId: string | null;
   actorRole: string | null;
+  authSource?: string | null;
+  environment?: string | null;
+  sessionCorrelationId?: string | null;
 } {
   if (request.internalOperator?.operatorId) {
     return {
       actorType: "operator",
       actorId: request.internalOperator.operatorId,
-      actorRole: request.internalOperator.operatorRole ?? null
+      actorRole: request.internalOperator.operatorRole ?? null,
+      authSource: request.internalOperator.authSource ?? null,
+      environment: request.internalOperator.environment ?? null,
+      sessionCorrelationId: request.internalOperator.sessionCorrelationId ?? null
     };
   }
 
@@ -88,7 +101,10 @@ export function resolveRequestActor(request: ApiRequestContext): {
     return {
       actorType: "worker",
       actorId: request.internalWorker.workerId,
-      actorRole: null
+      actorRole: null,
+      authSource: null,
+      environment: null,
+      sessionCorrelationId: null
     };
   }
 
@@ -96,13 +112,19 @@ export function resolveRequestActor(request: ApiRequestContext): {
     return {
       actorType: "customer",
       actorId: request.user.id,
-      actorRole: null
+      actorRole: null,
+      authSource: null,
+      environment: null,
+      sessionCorrelationId: null
     };
   }
 
   return {
     actorType: "anonymous",
     actorId: null,
-    actorRole: null
+    actorRole: null,
+    authSource: null,
+    environment: null,
+    sessionCorrelationId: null
   };
 }

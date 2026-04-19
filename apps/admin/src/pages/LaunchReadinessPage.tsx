@@ -292,7 +292,7 @@ function buildLaunchClosureManifestTemplate(args: {
       requesterRole: args.requesterRole?.trim() || "operations_admin",
       approverId: "ops_approver_1",
       approverRole: "compliance_lead",
-      apiKeyEnvironmentVariable: "INTERNAL_OPERATOR_API_KEY"
+      accessTokenEnvironmentVariable: "SUPABASE_OPERATOR_ACCESS_TOKEN"
     },
     artifacts: {
       apiReleaseId: `api-${releaseIdentifier}`,
@@ -313,6 +313,59 @@ function buildLaunchClosureManifestTemplate(args: {
       roleReviewReference: "ticket/GOV-12",
       roleReviewRosterReference: "ticket/GOV-12#launch-roster"
     },
+    governedCustody: {
+      governanceSafeAddress: "0x0000000000000000000000000000000000001101",
+      treasurySafeAddress: "0x0000000000000000000000000000000000001102",
+      emergencySafeAddress: "0x0000000000000000000000000000000000001103",
+      signerInventory: [
+        {
+          scope: "staking_execution",
+          keyReference: "kms/base-sepolia/staking",
+          signerAddress: "0x0000000000000000000000000000000000002101"
+        },
+        {
+          scope: "loan_execution",
+          keyReference: "kms/base-sepolia/loan",
+          signerAddress: "0x0000000000000000000000000000000000002102"
+        },
+        {
+          scope: "policy_withdrawal_authorization",
+          keyReference: "kms/base-sepolia/policy-auth",
+          signerAddress: "0x0000000000000000000000000000000000002103"
+        },
+        {
+          scope: "policy_withdrawal_executor",
+          keyReference: "kms/base-sepolia/policy-executor",
+          signerAddress: "0x0000000000000000000000000000000000002104"
+        }
+      ]
+    },
+    contracts: [
+      {
+        productSurface: "staking_v1",
+        version: "staking_v1",
+        address: "0x0000000000000000000000000000000000003101",
+        abiChecksumSha256: "pending-base-sepolia-staking-checksum"
+      },
+      {
+        productSurface: "loan_book_v1",
+        version: "loan_book_v1",
+        address: "0x0000000000000000000000000000000000003102",
+        abiChecksumSha256: "pending-base-sepolia-loan-checksum"
+      }
+    ],
+    operatorRoster: [
+      {
+        operatorId: args.requesterId?.trim() || "ops_requester_1",
+        role: args.requesterRole?.trim() || "operations_admin",
+        environment: "production_like"
+      },
+      {
+        operatorId: "ops_approver_1",
+        role: "compliance_lead",
+        environment: "production_like"
+      }
+    ],
     notes: {
       launchSummary:
         args.summary?.trim() ||
@@ -468,11 +521,14 @@ export function LaunchReadinessPage() {
     enabled: Boolean(session)
   });
 
+  const effectiveSelectedApprovalId =
+    selectedApprovalId ?? approvalsQuery.data?.approvals[0]?.id ?? null;
+
   const approvalLineageQuery = useQuery({
-    queryKey: ["launch-approval-lineage", session?.baseUrl, selectedApprovalId],
+    queryKey: ["launch-approval-lineage", session?.baseUrl, effectiveSelectedApprovalId],
     queryFn: () =>
-      getReleaseReadinessApprovalLineage(session!, selectedApprovalId!),
-    enabled: Boolean(session && selectedApprovalId)
+      getReleaseReadinessApprovalLineage(session!, effectiveSelectedApprovalId!),
+    enabled: Boolean(session && effectiveSelectedApprovalId)
   });
 
   const pendingReleasesQuery = useQuery({
@@ -743,7 +799,7 @@ export function LaunchReadinessPage() {
 
   const approveMutation = useMutation({
     mutationFn: () =>
-      approveReleaseReadinessApproval(session!, selectedApprovalId!, {
+      approveReleaseReadinessApproval(session!, effectiveSelectedApprovalId!, {
         expectedUpdatedAt: selectedApprovalMutationToken!,
         approvalNote: trimToUndefined(actionNote)
       }),
@@ -766,7 +822,7 @@ export function LaunchReadinessPage() {
     mutationFn: () =>
       rebindReleaseReadinessApprovalPack(
         session!,
-        selectedApprovalId!,
+        effectiveSelectedApprovalId!,
         {
           launchClosurePackId:
             selectedApproval!.launchClosureDrift!.latestPack!.id,
@@ -796,7 +852,7 @@ export function LaunchReadinessPage() {
 
   const rejectMutation = useMutation({
     mutationFn: () =>
-      rejectReleaseReadinessApproval(session!, selectedApprovalId!, {
+      rejectReleaseReadinessApproval(session!, effectiveSelectedApprovalId!, {
         expectedUpdatedAt: selectedApprovalMutationToken!,
         rejectionNote: actionNote.trim() || "Rejected from operator console."
       }),
@@ -971,7 +1027,7 @@ export function LaunchReadinessPage() {
     ) ?? null;
   const selectedApproval =
     approvalLineageQuery.data?.approval ??
-    scopedApprovals.find((approval) => approval.id === selectedApprovalId) ??
+    scopedApprovals.find((approval) => approval.id === effectiveSelectedApprovalId) ??
     null;
   const selectedApprovalLineage: ReleaseReadinessApproval[] =
     approvalLineageQuery.data?.lineage ?? (selectedApproval ? [selectedApproval] : []);

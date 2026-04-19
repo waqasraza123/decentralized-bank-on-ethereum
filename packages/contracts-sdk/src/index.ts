@@ -1,4 +1,5 @@
 import { ethers } from "ethers";
+import { readFileSync } from "node:fs";
 
 export const STAKING_CONTRACT_ABI = [
   "function createPool(uint256 _rewardRate, uint256 externalPoolId) external",
@@ -45,6 +46,64 @@ export const POLICY_CONTROLLED_WALLET_ABI = [
   "function executeAuthorizedTransfer(bytes32 intentId,address asset,address to,uint256 amount,uint256 authorizationNonce,uint256 authorizationDeadline,bytes authorizationSignature) external",
   "event WithdrawalExecuted(bytes32 indexed intentId, address indexed asset, address indexed to, uint256 amount, uint256 authorizationNonce, address executor)"
 ] as const;
+
+export const STAKING_V1_ABI = [
+  "function bindPositionBeneficiary(bytes32 positionId, address beneficiary) external",
+  "function recordDeposit(bytes32 positionId, address beneficiary) external payable",
+  "function recordWithdrawal(bytes32 positionId, uint256 amount, address recipient) external",
+  "function fundRewards() external payable",
+  "function recordRewardAccrual(bytes32 positionId, uint256 amount) external",
+  "function claimReward(bytes32 positionId, address recipient) external",
+  "function getPosition(bytes32 positionId) external view returns (address beneficiary, uint256 stakedAmount, uint256 accruedRewardAmount, uint256 claimedRewardAmount, bool initialized)"
+] as const;
+
+export const LOAN_BOOK_V1_ABI = [
+  "function createAgreement(bytes32 agreementId, address borrower, address borrowAsset, address collateralAsset, address treasuryReceiver, uint256 principalAmount, uint256 collateralAmount, uint256 serviceFeeAmount) external",
+  "function lockCollateral(bytes32 agreementId, uint256 amount) external payable",
+  "function fundAgreement(bytes32 agreementId, uint256 firstDueAt) external payable",
+  "function recordRepayment(bytes32 agreementId, uint256 amount) external payable",
+  "function startGracePeriod(bytes32 agreementId, uint256 gracePeriodEndsAt) external",
+  "function markDefaulted(bytes32 agreementId) external",
+  "function startLiquidationReview(bytes32 agreementId) external",
+  "function approveLiquidation(bytes32 agreementId) external",
+  "function executeLiquidation(bytes32 agreementId, uint256 recoveredAmount, uint256 shortfallAmount) external",
+  "function releaseCollateral(bytes32 agreementId) external",
+  "function closeAgreement(bytes32 agreementId) external",
+  "function getAgreement(bytes32 agreementId) external view returns (address borrower, address borrowAsset, address collateralAsset, address treasuryReceiver, uint256 principalAmount, uint256 collateralAmount, uint256 serviceFeeAmount, uint256 recoveredAmount, uint256 shortfallAmount, uint256 nextDueAt, uint8 state, bool collateralLocked, bool initialized)"
+] as const;
+
+export type GovernanceAuthorityManifest = {
+  authorityType: "governance_safe" | "treasury_safe" | "emergency_safe";
+  address: string;
+  chainId: number;
+  label?: string;
+};
+
+export type GovernedSignerManifest = {
+  scope:
+    | "staking_execution"
+    | "loan_execution"
+    | "policy_withdrawal_authorization"
+    | "policy_withdrawal_executor";
+  keyReference: string;
+  signerAddress: string;
+};
+
+export type ContractDeploymentManifestEntry = {
+  productSurface: "staking_v1" | "loan_book_v1";
+  version: string;
+  address: string;
+  abiChecksumSha256: string;
+  legacyPath: boolean;
+};
+
+export type GovernedCustodyManifest = {
+  environment: string;
+  chainId: number;
+  authorities: GovernanceAuthorityManifest[];
+  signers: GovernedSignerManifest[];
+  contracts: ContractDeploymentManifestEntry[];
+};
 
 export function createJsonRpcProvider(
   rpcUrl: string
@@ -121,6 +180,20 @@ export function createPolicyControlledWalletWriteContract(
   signer: ethers.Signer
 ): ethers.Contract {
   return new ethers.Contract(contractAddress, POLICY_CONTROLLED_WALLET_ABI, signer);
+}
+
+export function createStakingV1Contract(
+  contractAddress: string,
+  providerOrSigner: ethers.Signer | ethers.providers.Provider
+): ethers.Contract {
+  return new ethers.Contract(contractAddress, STAKING_V1_ABI, providerOrSigner);
+}
+
+export function createLoanBookV1Contract(
+  contractAddress: string,
+  providerOrSigner: ethers.Signer | ethers.providers.Provider
+): ethers.Contract {
+  return new ethers.Contract(contractAddress, LOAN_BOOK_V1_ABI, providerOrSigner);
 }
 
 export function formatEthAmount(value: ethers.BigNumberish): string {
@@ -203,4 +276,10 @@ export function normalizeEvmAddress(address: string | null | undefined): {
   return {
     normalizedAddress: ethers.utils.getAddress(rawAddress).toLowerCase()
   };
+}
+
+export function loadGovernedCustodyManifest(
+  manifestPath: string
+): GovernedCustodyManifest {
+  return JSON.parse(readFileSync(manifestPath, "utf8")) as GovernedCustodyManifest;
 }

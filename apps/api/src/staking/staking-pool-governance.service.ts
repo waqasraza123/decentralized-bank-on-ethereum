@@ -451,7 +451,7 @@ export class StakingPoolGovernanceService {
           rewardRate: request.rewardRate,
           chainId: await this.stakingService.getConfiguredChainId(),
           contractAddress: this.stakingService.getGovernedPoolContractAddress(),
-          contractMethod: "createPool",
+          contractMethod: this.stakingService.getGovernedPoolContractMethod(),
           requestNote: executionNote,
           requestedByActorType: "operator",
           requestedByActorId: operatorId,

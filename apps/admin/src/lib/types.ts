@@ -10,9 +10,28 @@ export type JsonValue =
 
 export type OperatorSession = {
   baseUrl: string;
+  accessToken: string;
   operatorId: string;
-  operatorRole: string;
-  apiKey: string;
+  operatorRole: string | null;
+  operatorRoles: string[];
+  operatorDbId: string | null;
+  operatorSupabaseUserId: string | null;
+  operatorEmail: string | null;
+  authSource: "supabase_jwt" | "legacy_api_key" | null;
+  environment: string | null;
+  sessionCorrelationId: string | null;
+};
+
+export type OperatorSessionInfo = {
+  operatorId: string;
+  operatorRole: string | null;
+  operatorRoles: string[];
+  operatorDbId: string | null;
+  operatorSupabaseUserId: string | null;
+  operatorEmail: string | null;
+  authSource: "supabase_jwt" | "legacy_api_key";
+  environment: string | null;
+  sessionCorrelationId: string | null;
 };
 
 export type ApiResponseEnvelope<T> = {
@@ -1583,7 +1602,8 @@ export type LaunchClosureManifest = {
     requesterRole: string;
     approverId: string;
     approverRole: string;
-    apiKeyEnvironmentVariable: string;
+    accessTokenEnvironmentVariable?: string;
+    apiKeyEnvironmentVariable?: string;
   };
   artifacts: {
     apiReleaseId: string;
@@ -1605,6 +1625,27 @@ export type LaunchClosureManifest = {
     roleReviewReference: string;
     roleReviewRosterReference: string;
   };
+  governedCustody?: {
+    governanceSafeAddress: string;
+    treasurySafeAddress: string;
+    emergencySafeAddress: string;
+    signerInventory: Array<{
+      scope: string;
+      keyReference: string;
+      signerAddress: string;
+    }>;
+  };
+  contracts?: Array<{
+    productSurface: "staking_v1" | "loan_book_v1";
+    version: string;
+    address: string;
+    abiChecksumSha256: string;
+  }>;
+  operatorRoster?: Array<{
+    operatorId: string;
+    role: string;
+    environment: string;
+  }>;
   notes: {
     launchSummary: string;
     requestNote?: string;

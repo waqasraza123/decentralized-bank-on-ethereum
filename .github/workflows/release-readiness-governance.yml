@@ -1,0 +1,46 @@
+name: release-readiness-governance
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_identifier:
+        description: "Release identifier"
+        required: true
+      environment:
+        description: "Target environment"
+        required: true
+        default: "production_like"
+
+jobs:
+  validate-candidate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Validate contract manifests
+        run: pnpm --filter @stealth-trails-bank/contracts validate:manifests
+
+      - name: Verify automated release readiness proofs
+        run: pnpm release:readiness:verify -- --proof all-auto --environment "${{ github.event.inputs.environment }}" --release-id "${{ github.event.inputs.release_identifier }}"
+
+      - name: Surface manual-gate reminder
+        run: |
+          echo "Manual staging/prod-like drills and governed approval are still required."
+          echo "Release: ${{ github.event.inputs.release_identifier }}"
+          echo "Environment: ${{ github.event.inputs.environment }}"

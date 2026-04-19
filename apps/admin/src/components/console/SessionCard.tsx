@@ -2,16 +2,10 @@ import { type FormEvent, useState } from "react";
 import { useT } from "@/i18n/use-t";
 import { useOperatorSession } from "@/state/operator-session";
 
-const operatorRoleOptions = [
-  "operations_admin",
-  "risk_manager",
-  "senior_operator",
-  "compliance_lead"
-];
-
 export function SessionCard() {
   const t = useT();
-  const { sessionDraft, setSessionDraft, saveSession } = useOperatorSession();
+  const { sessionDraft, setSessionDraft, saveSession, clearSession } =
+    useOperatorSession();
   const [flash, setFlash] = useState<string | null>(null);
 
   function handleSaveSession(event: FormEvent<HTMLFormElement>) {
@@ -43,49 +37,15 @@ export function SessionCard() {
       </label>
 
       <label>
-        <span>{t("credentials.operatorId")}</span>
+        <span>{t("credentials.operatorAccessToken")}</span>
         <input
-          aria-label={t("credentials.operatorId")}
-          value={sessionDraft.operatorId}
-          onChange={(event) =>
-            setSessionDraft((current) => ({
-              ...current,
-              operatorId: event.target.value
-            }))
-          }
-        />
-      </label>
-
-      <label>
-        <span>{t("credentials.operatorRole")}</span>
-        <select
-          aria-label={t("credentials.operatorRole")}
-          value={sessionDraft.operatorRole}
-          onChange={(event) =>
-            setSessionDraft((current) => ({
-              ...current,
-              operatorRole: event.target.value
-            }))
-          }
-        >
-          {operatorRoleOptions.map((option) => (
-            <option key={option} value={option}>
-              {option}
-            </option>
-          ))}
-        </select>
-      </label>
-
-      <label>
-        <span>{t("credentials.operatorApiKey")}</span>
-        <input
-          aria-label={t("credentials.operatorApiKey")}
+          aria-label={t("credentials.operatorAccessToken")}
           type="password"
-          value={sessionDraft.apiKey}
+          value={sessionDraft.accessToken}
           onChange={(event) =>
             setSessionDraft((current) => ({
               ...current,
-              apiKey: event.target.value
+              accessToken: event.target.value
             }))
           }
         />
@@ -95,6 +55,16 @@ export function SessionCard() {
 
       <button className="admin-primary-button" type="submit">
         {t("credentials.saveSession")}
+      </button>
+      <button
+        className="admin-secondary-button"
+        type="button"
+        onClick={() => {
+          clearSession();
+          setFlash(t("flash.updated"));
+        }}
+      >
+        {t("credentials.clearSession")}
       </button>
     </form>
   );

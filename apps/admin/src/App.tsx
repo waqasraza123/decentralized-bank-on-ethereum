@@ -4,6 +4,7 @@ import {
   inferSystemHealthStatus
 } from "@stealth-trails-bank/ui-foundation";
 import { QueryClient, QueryClientProvider, useQuery } from "@tanstack/react-query";
+import { useEffect } from "react";
 import {
   BrowserRouter,
   Navigate,
@@ -17,7 +18,11 @@ import { SessionCard } from "@/components/console/SessionCard";
 import { AdminI18nProvider } from "@/i18n/provider";
 import { useLocale } from "@/i18n/use-locale";
 import { useT } from "@/i18n/use-t";
-import { getOperationsStatus, getReleaseReadinessSummary } from "@/lib/api";
+import {
+  getOperatorSession,
+  getOperationsStatus,
+  getReleaseReadinessSummary
+} from "@/lib/api";
 import { useOperatorSession } from "@/state/operator-session";
 import { OperatorSessionProvider } from "@/state/operator-session";
 import { AlertsPage } from "@/pages/AlertsPage";
@@ -85,16 +90,34 @@ function AdminConsole() {
   const { locale } = useLocale();
   const t = useT();
   const location = useLocation();
-  const { configuredSession } = useOperatorSession();
+  const { configuredSession, setResolvedSessionInfo } = useOperatorSession();
+
+  const operatorSessionQuery = useQuery({
+    queryKey: ["operator-session", configuredSession?.baseUrl, configuredSession?.accessToken],
+    queryFn: () => getOperatorSession(configuredSession!),
+    enabled: Boolean(configuredSession)
+  });
+
+  useEffect(() => {
+    setResolvedSessionInfo(operatorSessionQuery.data ?? null);
+  }, [operatorSessionQuery.data, setResolvedSessionInfo]);
 
   const operationsStatusQuery = useQuery({
-    queryKey: ["shell-operations-status", configuredSession?.baseUrl],
+    queryKey: [
+      "shell-operations-status",
+      configuredSession?.baseUrl,
+      configuredSession?.accessToken
+    ],
     queryFn: () => getOperationsStatus(configuredSession!, { recentAlertLimit: 4 }),
     enabled: Boolean(configuredSession)
   });
 
   const releaseReadinessQuery = useQuery({
-    queryKey: ["shell-release-readiness", configuredSession?.baseUrl],
+    queryKey: [
+      "shell-release-readiness",
+      configuredSession?.baseUrl,
+      configuredSession?.accessToken
+    ],
     queryFn: () => getReleaseReadinessSummary(configuredSession!),
     enabled: Boolean(configuredSession)
   });
@@ -136,7 +159,13 @@ function AdminConsole() {
       incidentCount={operationsStatusQuery.data?.incidentSafety.openOversightIncidentCount ?? 0}
       operatorLabel={
         configuredSession
-          ? `${configuredSession.operatorId} · ${configuredSession.operatorRole}`
+          ? operatorSessionQuery.data
+            ? `${operatorSessionQuery.data.operatorId} · ${
+                operatorSessionQuery.data.operatorRole ?? "operator"
+              }`
+            : locale === "ar"
+              ? "جلسة قيد التحقق"
+              : "Resolving operator session"
           : locale === "ar"
             ? "جلسة غير محفوظة"
             : "Session not saved"

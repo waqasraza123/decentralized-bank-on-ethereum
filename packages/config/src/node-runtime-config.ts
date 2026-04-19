@@ -1,4 +1,5 @@
 import dotenv from "dotenv";
+import { readFileSync } from "node:fs";
 import {
   readOptionalRuntimeEnv,
   readRequiredRuntimeEnv,
@@ -123,12 +124,18 @@ const DEFAULT_LOCAL_INTERNAL_GOVERNED_EXECUTOR_API_KEY =
 const DEFAULT_LOCAL_GOVERNED_EXECUTOR_SIGNER_ADDRESSES = [
   "0x7E5F4552091A69125d5DfCb7b8C2659029395BDF"
 ] as const;
+const DEFAULT_LOCAL_OPERATOR_AUTH_JWT_SECRET = "local-dev-supabase-jwt-secret";
 const DEFAULT_SHARED_LOGIN_ENABLED = true;
 const DEFAULT_SHARED_LOGIN_EMAIL = "admin@gmail.com";
 const DEFAULT_SHARED_LOGIN_PASSWORD = "P@ssw0rd";
 const DEFAULT_SHARED_LOGIN_FIRST_NAME = "Shared";
 const DEFAULT_SHARED_LOGIN_LAST_NAME = "Admin";
 const DEFAULT_SHARED_LOGIN_SUPABASE_USER_ID = "shared-login-admin";
+const DEFAULT_OPERATOR_AUTH_REQUIRED_MFA_ENVIRONMENTS = [
+  "staging",
+  "production_like",
+  "production"
+] as const;
 
 let nodeRuntimeEnvInitialized = false;
 
@@ -193,6 +200,27 @@ function parseGovernedTreasuryExecutionMode(
 
   throw new Error(
     `${name} must be one of: direct_private_key, governed_external.`
+  );
+}
+
+function parseOperatorRuntimeEnvironment(
+  value: string | undefined
+): OperatorAuthRuntimeEnvironment {
+  if (!value) {
+    return "development";
+  }
+
+  if (
+    value === "development" ||
+    value === "staging" ||
+    value === "production_like" ||
+    value === "production"
+  ) {
+    return value;
+  }
+
+  throw new Error(
+    "OPERATOR_RUNTIME_ENVIRONMENT must be one of: development, staging, production_like, production."
   );
 }
 
@@ -276,6 +304,130 @@ function parseCommaSeparatedValues(value: string, name: string): string[] {
   return Array.from(new Set(values));
 }
 
+function parseGovernedCustodyManifest(
+  input: Record<string, unknown>,
+  name: string
+): GovernedCustodyRuntimeConfig {
+  const releaseEnvironment = parseOperatorRuntimeEnvironment(
+    typeof input.environment === "string" ? input.environment : undefined
+  );
+  const chainId = parsePositiveIntegerLike(input.chainId, `${name}.chainId`);
+  const authorities = Array.isArray(input.authorities) ? input.authorities : null;
+  const signers = Array.isArray(input.signers) ? input.signers : null;
+  const contracts = Array.isArray(input.contracts) ? input.contracts : null;
+
+  if (!authorities || authorities.length === 0) {
+    throw new Error(`${name}.authorities must be a non-empty array.`);
+  }
+
+  if (!signers || signers.length === 0) {
+    throw new Error(`${name}.signers must be a non-empty array.`);
+  }
+
+  if (!contracts || contracts.length === 0) {
+    throw new Error(`${name}.contracts must be a non-empty array.`);
+  }
+
+  return {
+    releaseEnvironment,
+    chainId,
+    authorities: authorities.map((entry, index) => {
+      if (!isRecord(entry)) {
+        throw new Error(`${name}.authorities[${index}] must be an object.`);
+      }
+
+      const authorityType = entry.authorityType;
+
+      if (
+        authorityType !== "governance_safe" &&
+        authorityType !== "treasury_safe" &&
+        authorityType !== "emergency_safe"
+      ) {
+        throw new Error(
+          `${name}.authorities[${index}].authorityType must be governance_safe, treasury_safe, or emergency_safe.`
+        );
+      }
+
+      return {
+        authorityType,
+        address: readStringLike(entry.address, `${name}.authorities[${index}].address`),
+        chainId: parsePositiveIntegerLike(
+          entry.chainId ?? chainId,
+          `${name}.authorities[${index}].chainId`
+        ),
+        label:
+          typeof entry.label === "string" && entry.label.trim().length > 0
+            ? entry.label.trim()
+            : null
+      };
+    }),
+    signers: signers.map((entry, index) => {
+      if (!isRecord(entry)) {
+        throw new Error(`${name}.signers[${index}] must be an object.`);
+      }
+
+      const scope = entry.scope;
+
+      if (
+        scope !== "staking_execution" &&
+        scope !== "loan_execution" &&
+        scope !== "policy_withdrawal_authorization" &&
+        scope !== "policy_withdrawal_executor"
+      ) {
+        throw new Error(
+          `${name}.signers[${index}].scope must be staking_execution, loan_execution, policy_withdrawal_authorization, or policy_withdrawal_executor.`
+        );
+      }
+
+      return {
+        scope,
+        keyReference: readStringLike(
+          entry.keyReference,
+          `${name}.signers[${index}].keyReference`
+        ),
+        signerAddress: readStringLike(
+          entry.signerAddress,
+          `${name}.signers[${index}].signerAddress`
+        )
+      };
+    }),
+    contracts: contracts.map((entry, index) => {
+      if (!isRecord(entry)) {
+        throw new Error(`${name}.contracts[${index}] must be an object.`);
+      }
+
+      const productSurface = entry.productSurface;
+
+      if (productSurface !== "staking_v1" && productSurface !== "loan_book_v1") {
+        throw new Error(
+          `${name}.contracts[${index}].productSurface must be staking_v1 or loan_book_v1.`
+        );
+      }
+
+      return {
+        productSurface,
+        version: readStringLike(entry.version, `${name}.contracts[${index}].version`),
+        address: readStringLike(entry.address, `${name}.contracts[${index}].address`),
+        abiChecksumSha256: readStringLike(
+          entry.abiChecksumSha256,
+          `${name}.contracts[${index}].abiChecksumSha256`
+        ),
+        legacyPath:
+          typeof entry.legacyPath === "boolean" ? entry.legacyPath : false
+      };
+    }),
+    rawManifest: input
+  };
+}
+
+function readStringLike(value: unknown, name: string): string {
+  if (typeof value !== "string" || value.trim().length === 0) {
+    throw new Error(`${name} must be a non-empty string.`);
+  }
+
+  return value.trim();
+}
+
 function parseCorsAllowedOrigins(value: string, name: string): string[] {
   const origins = value
     .split(",")
@@ -336,6 +488,37 @@ function parseBoolean(value: string, name: string): boolean {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function parseJsonObject(value: string, name: string): Record<string, unknown> {
+  let parsedValue: unknown;
+
+  try {
+    parsedValue = JSON.parse(value);
+  } catch {
+    throw new Error(`${name} must be valid JSON.`);
+  }
+
+  if (!isRecord(parsedValue)) {
+    throw new Error(`${name} must be a JSON object.`);
+  }
+
+  return parsedValue;
+}
+
+function parseJsonObjectFromFile(
+  value: string,
+  name: string
+): Record<string, unknown> {
+  try {
+    return parseJsonObject(readFileSync(value, "utf8"), name);
+  } catch (error) {
+    if (error instanceof Error) {
+      throw new Error(`${name} could not be loaded: ${error.message}`);
+    }
+
+    throw error;
+  }
 }
 
 function parsePlatformAlertDeliverySeverity(
@@ -750,6 +933,9 @@ export type OptionalBlockchainContractWriteRuntimeConfig = {
   readonly stakingContractAddress: string | null;
   readonly loanContractAddress: string | null;
   readonly ethereumPrivateKey: string | null;
+  readonly stakingContractVersion: string | null;
+  readonly loanContractVersion: string | null;
+  readonly governedCustody: GovernedCustodyRuntimeConfig | null;
 };
 
 export type ProductChainRuntimeConfig = {
@@ -808,6 +994,7 @@ export type SharedLoginBootstrapRuntimeConfig = {
 };
 
 export type InternalOperatorRuntimeConfig = {
+  readonly environment: ApiRuntimeEnvironment;
   readonly internalOperatorApiKey: string;
 };
 
@@ -843,6 +1030,57 @@ export type ReleaseReadinessApprovalRuntimeConfig = {
   readonly releaseReadinessApprovalRequestAllowedOperatorRoles: readonly string[];
   readonly releaseReadinessApprovalApproverAllowedOperatorRoles: readonly string[];
   readonly releaseReadinessApprovalMaxEvidenceAgeHours: number;
+};
+
+export type OperatorAuthRuntimeEnvironment =
+  | "development"
+  | "staging"
+  | "production_like"
+  | "production";
+
+export type OperatorAuthRuntimeConfig = {
+  readonly environment: ApiRuntimeEnvironment;
+  readonly operatorRuntimeEnvironment: OperatorAuthRuntimeEnvironment;
+  readonly supabaseJwtSecret: string;
+  readonly allowLegacyOperatorApiKeyAuth: boolean;
+  readonly requiredMfaEnvironments: readonly OperatorAuthRuntimeEnvironment[];
+};
+
+export type GovernanceAuthorityManifestRuntimeConfig = {
+  readonly authorityType:
+    | "governance_safe"
+    | "treasury_safe"
+    | "emergency_safe";
+  readonly address: string;
+  readonly chainId: number;
+  readonly label: string | null;
+};
+
+export type GovernedSignerRuntimeConfig = {
+  readonly scope:
+    | "staking_execution"
+    | "loan_execution"
+    | "policy_withdrawal_authorization"
+    | "policy_withdrawal_executor";
+  readonly keyReference: string;
+  readonly signerAddress: string;
+};
+
+export type ContractDeploymentRuntimeConfig = {
+  readonly productSurface: "staking_v1" | "loan_book_v1";
+  readonly version: string;
+  readonly address: string;
+  readonly abiChecksumSha256: string;
+  readonly legacyPath: boolean;
+};
+
+export type GovernedCustodyRuntimeConfig = {
+  readonly releaseEnvironment: OperatorAuthRuntimeEnvironment;
+  readonly chainId: number;
+  readonly authorities: readonly GovernanceAuthorityManifestRuntimeConfig[];
+  readonly signers: readonly GovernedSignerRuntimeConfig[];
+  readonly contracts: readonly ContractDeploymentRuntimeConfig[];
+  readonly rawManifest: Record<string, unknown>;
 };
 
 export type StakingPoolGovernanceRuntimeConfig = {
@@ -953,6 +1191,7 @@ export type GovernedExecutionRuntimeConfig = {
   readonly executorAllowedSignerAddresses: readonly string[];
   readonly requireOnchainExecutorReceiptVerification: boolean;
   readonly executorDeliveryBackendType: "internal_pull" | "webhook_push";
+  readonly governedCustody: GovernedCustodyRuntimeConfig | null;
 };
 
 function parsePlatformAlertDeliveryHealthSloConfig(
@@ -1129,6 +1368,8 @@ export function loadBlockchainContractReadRuntimeConfig(
 export function loadOptionalBlockchainContractReadRuntimeConfig(
   env: RuntimeEnvShape = getNodeRuntimeEnv()
 ): OptionalBlockchainContractReadRuntimeConfig {
+  const governedCustody = loadGovernedCustodyRuntimeConfig(env);
+
   return {
     environment: parseApiRuntimeEnvironment(
       readOptionalRuntimeEnv(env, "NODE_ENV")
@@ -1137,8 +1378,17 @@ export function loadOptionalBlockchainContractReadRuntimeConfig(
     stakingContractAddress: readOptionalRuntimeEnv(
       env,
       "STAKING_CONTRACT_ADDRESS"
-    ) ?? null,
-    loanContractAddress: readOptionalRuntimeEnv(env, "LOAN_CONTRACT_ADDRESS") ?? null
+    ) ??
+      governedCustody?.contracts.find(
+        (contract) => contract.productSurface === "staking_v1"
+      )?.address ??
+      null,
+    loanContractAddress:
+      readOptionalRuntimeEnv(env, "LOAN_CONTRACT_ADDRESS") ??
+      governedCustody?.contracts.find(
+        (contract) => contract.productSurface === "loan_book_v1"
+      )?.address ??
+      null
   };
 }
 
@@ -1159,17 +1409,53 @@ export function loadBlockchainContractWriteRuntimeConfig(
 export function loadOptionalBlockchainContractWriteRuntimeConfig(
   env: RuntimeEnvShape = getNodeRuntimeEnv()
 ): OptionalBlockchainContractWriteRuntimeConfig {
+  const environment = parseApiRuntimeEnvironment(
+    readOptionalRuntimeEnv(env, "NODE_ENV")
+  );
+  const governedCustody = loadGovernedCustodyRuntimeConfig(env);
+  const stakingContract =
+    governedCustody?.contracts.find(
+      (contract) => contract.productSurface === "staking_v1"
+    ) ?? null;
+  const loanContract =
+    governedCustody?.contracts.find(
+      (contract) => contract.productSurface === "loan_book_v1"
+    ) ?? null;
+  const ethereumPrivateKey = readOptionalRuntimeEnv(env, "ETHEREUM_PRIVATE_KEY") ?? null;
+
+  if (environment === "production" && ethereumPrivateKey) {
+    throw new Error(
+      "ETHEREUM_PRIVATE_KEY is not allowed when NODE_ENV=production. Governed custody manifest-backed execution is required."
+    );
+  }
+
+  if (environment === "production") {
+    if (!stakingContract || stakingContract.legacyPath) {
+      throw new Error(
+        "An active non-legacy staking_v1 contract manifest is required in production."
+      );
+    }
+
+    if (!loanContract || loanContract.legacyPath) {
+      throw new Error(
+        "An active non-legacy loan_book_v1 contract manifest is required in production."
+      );
+    }
+  }
+
   return {
-    environment: parseApiRuntimeEnvironment(
-      readOptionalRuntimeEnv(env, "NODE_ENV")
-    ),
+    environment,
     rpcUrl: readRequiredRuntimeEnv(env, "RPC_URL"),
     stakingContractAddress: readOptionalRuntimeEnv(
       env,
       "STAKING_CONTRACT_ADDRESS"
-    ) ?? null,
-    loanContractAddress: readOptionalRuntimeEnv(env, "LOAN_CONTRACT_ADDRESS") ?? null,
-    ethereumPrivateKey: readOptionalRuntimeEnv(env, "ETHEREUM_PRIVATE_KEY") ?? null
+    ) ?? stakingContract?.address ?? null,
+    loanContractAddress:
+      readOptionalRuntimeEnv(env, "LOAN_CONTRACT_ADDRESS") ?? loanContract?.address ?? null,
+    ethereumPrivateKey,
+    stakingContractVersion: stakingContract?.version ?? null,
+    loanContractVersion: loanContract?.version ?? null,
+    governedCustody
   };
 }
 
@@ -1433,10 +1719,16 @@ export function loadSharedLoginBootstrapRuntimeConfig(
   const environment = parseApiRuntimeEnvironment(
     readOptionalRuntimeEnv(env, "NODE_ENV")
   );
+  const operatorRuntimeEnvironment = parseOperatorRuntimeEnvironment(
+    readOptionalRuntimeEnv(env, "OPERATOR_RUNTIME_ENVIRONMENT") ??
+      (environment === "production" ? "production" : "development")
+  );
   const configuredEnabled = readOptionalRuntimeEnv(env, "SHARED_LOGIN_ENABLED");
   const enabled = configuredEnabled
     ? parseBoolean(configuredEnabled, "SHARED_LOGIN_ENABLED")
-    : environment === "production"
+    : environment === "production" ||
+        operatorRuntimeEnvironment === "staging" ||
+        operatorRuntimeEnvironment === "production_like"
       ? false
       : DEFAULT_SHARED_LOGIN_ENABLED;
 
@@ -1466,16 +1758,20 @@ export function loadSharedLoginBootstrapRuntimeConfig(
     };
   }
 
-  if (environment === "production") {
+  if (
+    environment === "production" ||
+    operatorRuntimeEnvironment === "staging" ||
+    operatorRuntimeEnvironment === "production_like"
+  ) {
     if (email === DEFAULT_SHARED_LOGIN_EMAIL) {
       throw new Error(
-        "SHARED_LOGIN_EMAIL must be explicitly overridden when shared login bootstrap is enabled in production."
+        "SHARED_LOGIN_EMAIL must be explicitly overridden when shared login bootstrap is enabled outside local development."
       );
     }
 
     if (password === DEFAULT_SHARED_LOGIN_PASSWORD) {
       throw new Error(
-        "SHARED_LOGIN_PASSWORD must be explicitly overridden when shared login bootstrap is enabled in production."
+        "SHARED_LOGIN_PASSWORD must be explicitly overridden when shared login bootstrap is enabled outside local development."
       );
     }
   }
@@ -1494,6 +1790,91 @@ export function loadSharedLoginBootstrapRuntimeConfig(
   };
 }
 
+export function loadOperatorAuthRuntimeConfig(
+  env: RuntimeEnvShape = getNodeRuntimeEnv()
+): OperatorAuthRuntimeConfig {
+  const environment = parseApiRuntimeEnvironment(
+    readOptionalRuntimeEnv(env, "NODE_ENV")
+  );
+  const operatorRuntimeEnvironment = parseOperatorRuntimeEnvironment(
+    readOptionalRuntimeEnv(env, "OPERATOR_RUNTIME_ENVIRONMENT") ??
+      (environment === "production" ? "production" : "development")
+  );
+  const configuredRequiredMfaEnvironments = readOptionalRuntimeEnv(
+    env,
+    "OPERATOR_REQUIRED_MFA_ENVIRONMENTS"
+  );
+  const supabaseJwtSecret =
+    readOptionalRuntimeEnv(env, "SUPABASE_JWT_SECRET") ??
+    (environment === "production"
+      ? readRequiredRuntimeEnv(env, "SUPABASE_JWT_SECRET")
+      : DEFAULT_LOCAL_OPERATOR_AUTH_JWT_SECRET);
+  const allowLegacyOperatorApiKeyAuth = parseBoolean(
+    readOptionalRuntimeEnv(env, "ALLOW_LEGACY_OPERATOR_API_KEY_AUTH") ??
+      (environment === "production" ? "false" : "true"),
+    "ALLOW_LEGACY_OPERATOR_API_KEY_AUTH"
+  );
+
+  if (environment === "production" && allowLegacyOperatorApiKeyAuth) {
+    throw new Error(
+      "ALLOW_LEGACY_OPERATOR_API_KEY_AUTH=true is not allowed when NODE_ENV=production."
+    );
+  }
+
+  return {
+    environment,
+    operatorRuntimeEnvironment,
+    supabaseJwtSecret,
+    allowLegacyOperatorApiKeyAuth,
+    requiredMfaEnvironments: configuredRequiredMfaEnvironments
+      ? (parseCommaSeparatedValues(
+          configuredRequiredMfaEnvironments,
+          "OPERATOR_REQUIRED_MFA_ENVIRONMENTS"
+        ) as OperatorAuthRuntimeEnvironment[])
+      : [...DEFAULT_OPERATOR_AUTH_REQUIRED_MFA_ENVIRONMENTS]
+  };
+}
+
+export function loadGovernedCustodyRuntimeConfig(
+  env: RuntimeEnvShape = getNodeRuntimeEnv()
+): GovernedCustodyRuntimeConfig | null {
+  const manifestJson = readOptionalRuntimeEnv(
+    env,
+    "GOVERNED_CUSTODY_MANIFEST_JSON"
+  );
+  const manifestPath = readOptionalRuntimeEnv(
+    env,
+    "GOVERNED_CUSTODY_MANIFEST_PATH"
+  );
+  const environment = parseApiRuntimeEnvironment(
+    readOptionalRuntimeEnv(env, "NODE_ENV")
+  );
+
+  if (!manifestJson && !manifestPath) {
+    if (environment === "production") {
+      throw new Error(
+        "GOVERNED_CUSTODY_MANIFEST_JSON or GOVERNED_CUSTODY_MANIFEST_PATH is required when NODE_ENV=production."
+      );
+    }
+
+    return null;
+  }
+
+  const manifest = manifestJson
+    ? parseJsonObject(manifestJson, "GOVERNED_CUSTODY_MANIFEST_JSON")
+    : parseJsonObjectFromFile(
+        manifestPath as string,
+        "GOVERNED_CUSTODY_MANIFEST_PATH"
+      );
+
+  return parseGovernedCustodyManifest(
+    manifest,
+    manifestJson
+      ? "GOVERNED_CUSTODY_MANIFEST_JSON"
+      : "GOVERNED_CUSTODY_MANIFEST_PATH"
+  );
+}
+
 export function loadInternalOperatorRuntimeConfig(
   env: RuntimeEnvShape = getNodeRuntimeEnv()
 ): InternalOperatorRuntimeConfig {
@@ -1502,6 +1883,7 @@ export function loadInternalOperatorRuntimeConfig(
   );
 
   return {
+    environment,
     internalOperatorApiKey: readDevelopmentAwareRequiredRuntimeEnv(
       env,
       environment,
@@ -1986,6 +2368,7 @@ export function loadGovernedExecutionRuntimeConfig(
   const environment = parseApiRuntimeEnvironment(
     readOptionalRuntimeEnv(env, "NODE_ENV")
   );
+  const governedCustody = loadGovernedCustodyRuntimeConfig(env);
   const configuredRequestRoles = readOptionalRuntimeEnv(
     env,
     "GOVERNED_EXECUTION_REQUEST_ALLOWED_OPERATOR_ROLES"
@@ -2019,14 +2402,39 @@ export function loadGovernedExecutionRuntimeConfig(
   const executorAllowedSignerAddresses = configuredExecutorSignerAddresses
     ? parseCommaSeparatedValues(
         configuredExecutorSignerAddresses,
-        "GOVERNED_EXECUTOR_ALLOWED_SIGNER_ADDRESSES"
+      "GOVERNED_EXECUTOR_ALLOWED_SIGNER_ADDRESSES"
       )
-    : [...DEFAULT_LOCAL_GOVERNED_EXECUTOR_SIGNER_ADDRESSES];
+    : governedCustody
+      ? governedCustody.signers.map((signer) => signer.signerAddress.toLowerCase())
+      : [...DEFAULT_LOCAL_GOVERNED_EXECUTOR_SIGNER_ADDRESSES];
 
   if (environment === "production" && !configuredExecutorSignerAddresses) {
     throw new Error(
-      "GOVERNED_EXECUTOR_ALLOWED_SIGNER_ADDRESSES is required in production."
+      "GOVERNED_EXECUTOR_ALLOWED_SIGNER_ADDRESSES or a governed custody manifest is required in production."
     );
+  }
+
+  const loanFundingExecutionMode = parseGovernedTreasuryExecutionMode(
+    readOptionalRuntimeEnv(env, "GOVERNED_LOAN_FUNDING_EXECUTION_MODE"),
+    "GOVERNED_LOAN_FUNDING_EXECUTION_MODE"
+  );
+  const stakingWriteExecutionMode = parseGovernedTreasuryExecutionMode(
+    readOptionalRuntimeEnv(env, "GOVERNED_STAKING_WRITE_EXECUTION_MODE"),
+    "GOVERNED_STAKING_WRITE_EXECUTION_MODE"
+  );
+
+  if (environment === "production") {
+    if (loanFundingExecutionMode !== "governed_external") {
+      throw new Error(
+        "GOVERNED_LOAN_FUNDING_EXECUTION_MODE must be governed_external in production."
+      );
+    }
+
+    if (stakingWriteExecutionMode !== "governed_external") {
+      throw new Error(
+        "GOVERNED_STAKING_WRITE_EXECUTION_MODE must be governed_external in production."
+      );
+    }
   }
 
   return {
@@ -2042,14 +2450,8 @@ export function loadGovernedExecutionRuntimeConfig(
           "GOVERNED_EXECUTION_ALLOWED_RESERVE_CUSTODY_TYPES"
         )
       : ["multisig_controlled", "contract_controlled"],
-    loanFundingExecutionMode: parseGovernedTreasuryExecutionMode(
-      readOptionalRuntimeEnv(env, "GOVERNED_LOAN_FUNDING_EXECUTION_MODE"),
-      "GOVERNED_LOAN_FUNDING_EXECUTION_MODE"
-    ),
-    stakingWriteExecutionMode: parseGovernedTreasuryExecutionMode(
-      readOptionalRuntimeEnv(env, "GOVERNED_STAKING_WRITE_EXECUTION_MODE"),
-      "GOVERNED_STAKING_WRITE_EXECUTION_MODE"
-    ),
+    loanFundingExecutionMode,
+    stakingWriteExecutionMode,
     requestAllowedOperatorRoles: configuredRequestRoles
       ? parseCommaSeparatedValues(
           configuredRequestRoles,
@@ -2091,6 +2493,7 @@ export function loadGovernedExecutionRuntimeConfig(
     executorDeliveryBackendType:
       configuredExecutorDeliveryBackendType === "webhook_push"
         ? "webhook_push"
-        : "internal_pull"
+        : "internal_pull",
+    governedCustody
   };
 }

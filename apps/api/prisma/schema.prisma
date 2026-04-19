@@ -1671,6 +1671,75 @@ enum StakingPoolGovernanceRequestStatus {
   execution_failed
 }
 
+enum OperatorStatus {
+  active
+  suspended
+  revoked
+}
+
+enum OperatorAssignmentStatus {
+  active
+  suspended
+  revoked
+}
+
+enum OperatorSessionAuthSource {
+  supabase_jwt
+  legacy_api_key
+}
+
+enum ApprovalAuthorityScope {
+  release_readiness
+  governed_execution
+  staking_governance
+  loan_governance
+  treasury_execution
+  incident_package_release
+}
+
+enum ApprovalAuthorityLevel {
+  request
+  approve
+  execute
+}
+
+enum GovernanceAuthorityType {
+  governance_safe
+  treasury_safe
+  emergency_safe
+}
+
+enum GovernanceManifestStatus {
+  draft
+  active
+  retired
+}
+
+enum GovernedSignerScope {
+  staking_execution
+  loan_execution
+  policy_withdrawal_authorization
+  policy_withdrawal_executor
+  governed_execution_package
+}
+
+enum GovernedSignerBackendKind {
+  kms
+  hsm
+  external_managed
+}
+
+enum ContractProductSurface {
+  staking_v1
+  loan_book_v1
+}
+
+enum ContractDeploymentStatus {
+  draft
+  active
+  retired
+}
+
 enum ReleaseReadinessEvidenceType {
   platform_alert_delivery_slo
   critical_alert_reescalation
@@ -1778,6 +1847,163 @@ model StakingPoolGovernanceRequest {
   @@index([requestedByOperatorId, requestedAt])
   @@index([approvedByOperatorId, approvedAt])
   @@index([executedByOperatorId, executedAt])
+}
+
+model Operator {
+  id                  String                     @id @default(cuid())
+  operatorId          String                     @unique
+  supabaseUserId      String?                    @unique
+  email               String                     @unique
+  displayName         String?
+  status              OperatorStatus             @default(active)
+  mfaRequired         Boolean                    @default(true)
+  mfaEnrolled         Boolean                    @default(false)
+  roleAssignments     OperatorRoleAssignment[]
+  environmentAccess   OperatorEnvironmentAccess[]
+  approvalAuthorities OperatorApprovalAuthority[]
+  sessionAudits       OperatorSessionAudit[]
+  createdAt           DateTime                   @default(now())
+  updatedAt           DateTime                   @updatedAt
+
+  @@index([status, createdAt])
+  @@index([email, status])
+  @@index([supabaseUserId, status])
+}
+
+model OperatorRoleAssignment {
+  id                  String                   @id @default(cuid())
+  operatorId          String
+  operator            Operator                 @relation(fields: [operatorId], references: [id])
+  role                String
+  status              OperatorAssignmentStatus @default(active)
+  isPrimary           Boolean                  @default(false)
+  grantedByOperatorId String?
+  note                String?
+  grantedAt           DateTime                 @default(now())
+  revokedAt           DateTime?
+  createdAt           DateTime                 @default(now())
+  updatedAt           DateTime                 @updatedAt
+
+  @@index([operatorId, status, grantedAt])
+  @@index([role, status, grantedAt])
+  @@index([isPrimary, status])
+}
+
+model OperatorEnvironmentAccess {
+  id                  String                      @id @default(cuid())
+  operatorId          String
+  operator            Operator                    @relation(fields: [operatorId], references: [id])
+  environment         ReleaseReadinessEnvironment
+  status              OperatorAssignmentStatus    @default(active)
+  grantedByOperatorId String?
+  note                String?
+  grantedAt           DateTime                    @default(now())
+  revokedAt           DateTime?
+  createdAt           DateTime                    @default(now())
+  updatedAt           DateTime                    @updatedAt
+
+  @@unique([operatorId, environment])
+  @@index([environment, status, grantedAt])
+}
+
+model OperatorApprovalAuthority {
+  id                  String                      @id @default(cuid())
+  operatorId          String
+  operator            Operator                    @relation(fields: [operatorId], references: [id])
+  scope               ApprovalAuthorityScope
+  level               ApprovalAuthorityLevel
+  environment         ReleaseReadinessEnvironment
+  status              OperatorAssignmentStatus    @default(active)
+  grantedByOperatorId String?
+  note                String?
+  grantedAt           DateTime                    @default(now())
+  revokedAt           DateTime?
+  createdAt           DateTime                    @default(now())
+  updatedAt           DateTime                    @updatedAt
+
+  @@index([operatorId, scope, level, status])
+  @@index([scope, level, environment, status])
+}
+
+model OperatorSessionAudit {
+  id                   String                    @id @default(cuid())
+  operatorId           String
+  operator             Operator                  @relation(fields: [operatorId], references: [id])
+  authSource           OperatorSessionAuthSource
+  environment          ReleaseReadinessEnvironment
+  requestPath          String?
+  requestId            String?
+  sessionCorrelationId String?
+  userAgent            String?
+  origin               String?
+  remoteAddress        String?
+  tokenAal             String?
+  roleSnapshot         String[]
+  observedAt           DateTime                  @default(now())
+  createdAt            DateTime                  @default(now())
+  updatedAt            DateTime                  @updatedAt
+
+  @@index([operatorId, observedAt])
+  @@index([environment, observedAt])
+  @@index([requestId, observedAt])
+  @@index([sessionCorrelationId, observedAt])
+}
+
+model GovernanceAuthorityManifest {
+  id             String                      @id @default(cuid())
+  environment    ReleaseReadinessEnvironment
+  chainId        Int
+  authorityType  GovernanceAuthorityType
+  address        String
+  ownerLabel     String?
+  manifestStatus GovernanceManifestStatus    @default(active)
+  manifestPayload Json?
+  createdAt      DateTime                    @default(now())
+  updatedAt      DateTime                    @updatedAt
+
+  @@unique([environment, chainId, authorityType, address])
+  @@index([environment, chainId, manifestStatus])
+}
+
+model GovernedSignerInventory {
+  id                String                    @id @default(cuid())
+  environment       ReleaseReadinessEnvironment
+  chainId           Int
+  signerScope       GovernedSignerScope
+  backendKind       GovernedSignerBackendKind
+  keyReference      String
+  signerAddress     String
+  allowedMethods    String[]
+  manifestVersion   String?
+  environmentBinding String?
+  active            Boolean                   @default(true)
+  createdAt         DateTime                  @default(now())
+  updatedAt         DateTime                  @updatedAt
+
+  @@unique([environment, chainId, signerScope, signerAddress])
+  @@index([environment, chainId, signerScope, active])
+}
+
+model ContractDeploymentManifest {
+  id                        String                      @id @default(cuid())
+  environment               ReleaseReadinessEnvironment
+  chainId                   Int
+  productSurface            ContractProductSurface
+  contractVersion           String
+  contractAddress           String
+  abiChecksumSha256         String
+  manifestStatus            ContractDeploymentStatus    @default(active)
+  legacyPath                Boolean                     @default(false)
+  governanceAuthorityId     String?
+  treasuryAuthorityId       String?
+  emergencyAuthorityId      String?
+  deploymentManifestPayload Json
+  createdAt                 DateTime                    @default(now())
+  updatedAt                 DateTime                    @updatedAt
+
+  @@unique([environment, chainId, productSurface, contractAddress])
+  @@index([environment, chainId, productSurface, manifestStatus])
+  @@index([contractVersion, manifestStatus])
 }
 
 model ReleaseReadinessEvidence {

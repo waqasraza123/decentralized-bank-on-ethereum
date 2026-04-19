@@ -27,7 +27,8 @@ export type LaunchClosureManifest = {
     requesterRole: string;
     approverId: string;
     approverRole: string;
-    apiKeyEnvironmentVariable: string;
+    accessTokenEnvironmentVariable?: string;
+    apiKeyEnvironmentVariable?: string;
   };
   artifacts: {
     apiReleaseId: string;
@@ -49,6 +50,27 @@ export type LaunchClosureManifest = {
     roleReviewReference: string;
     roleReviewRosterReference: string;
   };
+  governedCustody?: {
+    governanceSafeAddress: string;
+    treasurySafeAddress: string;
+    emergencySafeAddress: string;
+    signerInventory: Array<{
+      scope: string;
+      keyReference: string;
+      signerAddress: string;
+    }>;
+  };
+  contracts?: Array<{
+    productSurface: "staking_v1" | "loan_book_v1";
+    version: string;
+    address: string;
+    abiChecksumSha256: string;
+  }>;
+  operatorRoster?: Array<{
+    operatorId: string;
+    role: string;
+    environment: string;
+  }>;
   notes: {
     launchSummary: string;
     requestNote?: string;
@@ -254,9 +276,7 @@ function buildApprovalCurlCommand(manifest: LaunchClosureManifest): string {
   return [
     "curl -sS -X POST \\",
     `  '${manifest.baseUrls.api}/release-readiness/internal/approvals' \\`,
-    `  -H 'x-operator-api-key: $${manifest.operator.apiKeyEnvironmentVariable}' \\`,
-    `  -H 'x-operator-id: ${manifest.operator.requesterId}' \\`,
-    `  -H 'x-operator-role: ${manifest.operator.requesterRole}' \\`,
+    `  -H 'authorization: Bearer $${manifest.operator.accessTokenEnvironmentVariable}' \\`,
     "  -H 'content-type: application/json' \\",
     "  --data @approval-request.template.json"
   ].join("\n");
@@ -269,9 +289,7 @@ function buildEvidenceCurlCommand(
   return [
     "curl -sS -X POST \\",
     `  '${manifest.baseUrls.api}/release-readiness/internal/evidence' \\`,
-    `  -H 'x-operator-api-key: $${manifest.operator.apiKeyEnvironmentVariable}' \\`,
-    `  -H 'x-operator-id: ${manifest.operator.requesterId}' \\`,
-    `  -H 'x-operator-role: ${manifest.operator.requesterRole}' \\`,
+    `  -H 'authorization: Bearer $${manifest.operator.accessTokenEnvironmentVariable}' \\`,
     "  -H 'content-type: application/json' \\",
     `  --data @payloads/${evidenceType}.json`
   ].join("\n");
@@ -289,9 +307,7 @@ function buildApprovalDecisionCurlCommand(
   return [
     "curl -sS -X POST \\",
     `  '${manifest.baseUrls.api}/release-readiness/internal/approvals/<approval-id>/${action}' \\`,
-    `  -H 'x-operator-api-key: $${manifest.operator.apiKeyEnvironmentVariable}' \\`,
-    `  -H 'x-operator-id: ${manifest.operator.approverId}' \\`,
-    `  -H 'x-operator-role: ${manifest.operator.approverRole}' \\`,
+    `  -H 'authorization: Bearer $${manifest.operator.accessTokenEnvironmentVariable}' \\`,
     "  -H 'content-type: application/json' \\",
     `  --data @${templateName}`
   ].join("\n");
@@ -493,7 +509,7 @@ function buildLaunchClosureArtifacts(
         `Launch release identifier recorded with evidence: ${manifest.releaseIdentifier}`,
         `Current API release id: ${manifest.artifacts.apiReleaseId}`,
         `Requester operator: ${manifest.operator.requesterId} (${manifest.operator.requesterRole})`,
-        `Operator API key environment variable: ${manifest.operator.apiKeyEnvironmentVariable}`
+        `Operator access token environment variable: ${manifest.operator.accessTokenEnvironmentVariable}`
       ],
       steps: [
         "Generate sustained degraded or critical delivery-target behavior against the configured staging or production-like alert target.",
@@ -510,7 +526,7 @@ function buildLaunchClosureArtifacts(
         "--probe platform_alert_delivery_slo",
         `--base-url ${manifest.baseUrls.api}`,
         `--operator-id ${manifest.operator.requesterId}`,
-        `--api-key \"$${manifest.operator.apiKeyEnvironmentVariable}\"`,
+        `--access-token \"$${manifest.operator.accessTokenEnvironmentVariable}\"`,
         `--operator-role ${manifest.operator.requesterRole}`,
         `--expected-target-name ${manifest.alerting.expectedTargetName}`,
         `--expected-target-health-status ${manifest.alerting.expectedTargetHealthStatus}`,
@@ -550,7 +566,7 @@ function buildLaunchClosureArtifacts(
         "--probe critical_alert_reescalation",
         `--base-url ${manifest.baseUrls.api}`,
         `--operator-id ${manifest.operator.requesterId}`,
-        `--api-key \"$${manifest.operator.apiKeyEnvironmentVariable}\"`,
+        `--access-token \"$${manifest.operator.accessTokenEnvironmentVariable}\"`,
         `--operator-role ${manifest.operator.requesterRole}`,
         manifest.alerting.expectedAlertId
           ? `--expected-alert-id ${manifest.alerting.expectedAlertId}`
@@ -589,7 +605,7 @@ function buildLaunchClosureArtifacts(
         "--probe database_restore_drill",
         `--base-url ${manifest.baseUrls.restoreApi}`,
         `--operator-id ${manifest.operator.requesterId}`,
-        `--api-key \"$${manifest.operator.apiKeyEnvironmentVariable}\"`,
+        `--access-token \"$${manifest.operator.accessTokenEnvironmentVariable}\"`,
         `--operator-role ${manifest.operator.requesterRole}`,
         `--environment ${manifest.environment}`,
         `--release-id ${manifest.releaseIdentifier}`,
@@ -624,7 +640,7 @@ function buildLaunchClosureArtifacts(
         "--probe api_rollback_drill",
         `--base-url ${manifest.baseUrls.api}`,
         `--operator-id ${manifest.operator.requesterId}`,
-        `--api-key \"$${manifest.operator.apiKeyEnvironmentVariable}\"`,
+        `--access-token \"$${manifest.operator.accessTokenEnvironmentVariable}\"`,
         `--operator-role ${manifest.operator.requesterRole}`,
         `--environment ${manifest.environment}`,
         `--release-id ${manifest.releaseIdentifier}`,
@@ -660,7 +676,7 @@ function buildLaunchClosureArtifacts(
         "--probe worker_rollback_drill",
         `--base-url ${manifest.baseUrls.api}`,
         `--operator-id ${manifest.operator.requesterId}`,
-        `--api-key \"$${manifest.operator.apiKeyEnvironmentVariable}\"`,
+        `--access-token \"$${manifest.operator.accessTokenEnvironmentVariable}\"`,
         `--operator-role ${manifest.operator.requesterRole}`,
         `--expected-worker-id ${manifest.worker.identifier}`,
         "--expected-min-healthy-workers 1",
@@ -703,7 +719,7 @@ function buildLaunchClosureArtifacts(
         `--base-url ${manifest.baseUrls.api}`,
         `--operator-id ${manifest.operator.requesterId}`,
         `--operator-role ${manifest.operator.requesterRole}`,
-        `--api-key \"$${manifest.operator.apiKeyEnvironmentVariable}\"`
+        `--access-token \"$${manifest.operator.accessTokenEnvironmentVariable}\"`
       ])
     },
     {
@@ -740,7 +756,7 @@ function buildLaunchClosureArtifacts(
         `--base-url ${manifest.baseUrls.api}`,
         `--operator-id ${manifest.operator.requesterId}`,
         `--operator-role ${manifest.operator.requesterRole}`,
-        `--api-key \"$${manifest.operator.apiKeyEnvironmentVariable}\"`
+        `--access-token \"$${manifest.operator.accessTokenEnvironmentVariable}\"`
       ])
     },
     {
@@ -1095,8 +1111,9 @@ export function validateLaunchClosureManifest(
   );
 
   readString(
-    manifest.operator?.apiKeyEnvironmentVariable,
-    "operator.apiKeyEnvironmentVariable",
+    manifest.operator?.accessTokenEnvironmentVariable ??
+      manifest.operator?.apiKeyEnvironmentVariable,
+    "operator.accessTokenEnvironmentVariable",
     errors
   );
 
@@ -1198,6 +1215,44 @@ export function validateLaunchClosureManifest(
     "governance.roleReviewRosterReference",
     errors
   );
+
+  readString(
+    manifest.governedCustody?.governanceSafeAddress,
+    "governedCustody.governanceSafeAddress",
+    errors
+  );
+  readString(
+    manifest.governedCustody?.treasurySafeAddress,
+    "governedCustody.treasurySafeAddress",
+    errors
+  );
+  readString(
+    manifest.governedCustody?.emergencySafeAddress,
+    "governedCustody.emergencySafeAddress",
+    errors
+  );
+
+  if (
+    manifest.governedCustody &&
+    (!Array.isArray(manifest.governedCustody.signerInventory) ||
+      manifest.governedCustody.signerInventory.length < 4)
+  ) {
+    errors.push(
+      "Manifest field governedCustody.signerInventory must include at least four governed signers."
+    );
+  }
+
+  if (manifest.contracts && manifest.contracts.length < 2) {
+    errors.push(
+      "Manifest field contracts must include staking_v1 and loan_book_v1 entries."
+    );
+  }
+
+  if (manifest.operatorRoster && manifest.operatorRoster.length < 2) {
+    errors.push(
+      "Manifest field operatorRoster must include at least requester and approver records."
+    );
+  }
 
   readString(manifest.notes?.launchSummary, "notes.launchSummary", errors);
 

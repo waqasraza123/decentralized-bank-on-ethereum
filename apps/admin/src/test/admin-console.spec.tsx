@@ -34,8 +34,7 @@ describe("Admin console", () => {
     expect(
       screen.getByText(/Credentials required/i)
     ).toBeInTheDocument();
-    expect(screen.getByLabelText("Operator ID")).toBeInTheDocument();
-    expect(screen.getByLabelText("Operator API Key")).toBeInTheDocument();
+    expect(screen.getByLabelText("Operator Access Token")).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: "Save Session" })
     ).toBeInTheDocument();
@@ -46,23 +45,23 @@ describe("Admin console", () => {
 
     render(<App />);
 
-    await user.clear(screen.getByLabelText("Operator ID"));
-    await user.type(screen.getByLabelText("Operator ID"), "ops_saved");
-    await user.selectOptions(screen.getByLabelText("Operator Role"), "risk_manager");
-    await user.type(screen.getByLabelText("Operator API Key"), "local-dev-operator-key");
+    await user.type(screen.getByLabelText("Operator Access Token"), "session-token");
     await user.click(screen.getByRole("button", { name: "Save Session" }));
 
     await waitFor(() => {
       expect(
-        window.localStorage.getItem("stealth-trails-bank.admin.operator-session")
-      ).toContain("\"operatorId\":\"ops_saved\"");
+        window.localStorage.getItem(
+          "stealth-trails-bank.admin.operator-session-settings"
+        )
+      ).toContain("\"baseUrl\":\"http://localhost:9001\"");
     });
 
     cleanup();
     render(<App />);
 
-    expect(screen.getByLabelText("Operator ID")).toHaveValue("ops_saved");
-    expect(screen.getByLabelText("Operator Role")).toHaveValue("risk_manager");
+    expect(screen.getByLabelText("Operator Access Token")).toHaveValue(
+      "session-token"
+    );
   });
 
   it("switches the shell into Arabic and persists document rtl state", async () => {

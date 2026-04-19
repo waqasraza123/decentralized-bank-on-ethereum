@@ -14,6 +14,7 @@ import {
 import {
   createJsonRpcProvider,
   LOAN_BOOK_ABI,
+  LOAN_BOOK_V1_ABI,
   STAKING_CONTRACT_ABI
 } from "@stealth-trails-bank/contracts-sdk";
 import {
@@ -437,31 +438,68 @@ export class GovernedExecutionService {
         args.collateralAsset?.assetType === AssetType.native
           ? ethers.constants.AddressZero
           : args.collateralAsset?.contractAddress ?? ethers.constants.AddressZero;
-      const loanInterface = new ethers.utils.Interface(LOAN_BOOK_ABI);
-      const calldata = loanInterface.encodeFunctionData(args.contractMethod, [
-        args.walletAddress,
-        borrowAssetAddress,
-        collateralAssetAddress,
-        ethers.utils.parseUnits(
-          String(args.executionPayload.principalAmount ?? "0"),
-          args.borrowAsset?.decimals ?? 18
-        ),
-        ethers.utils.parseUnits(
-          String(args.executionPayload.collateralAmount ?? "0"),
-          args.collateralAsset?.decimals ?? 18
-        ),
-        ethers.utils.parseUnits(
-          String(args.executionPayload.serviceFeeAmount ?? "0"),
-          args.borrowAsset?.decimals ?? 18
-        ),
-        ethers.utils.parseUnits(
-          String(args.executionPayload.installmentAmount ?? "0"),
-          args.borrowAsset?.decimals ?? 18
-        ),
-        Number(args.executionPayload.installmentCount ?? 0),
-        Number(args.executionPayload.termMonths ?? 0),
-        Boolean(args.executionPayload.autopayEnabled ?? false)
-      ]);
+      if (
+        args.contractMethod === "createAgreement" &&
+        (!args.executionPayload.contractLoanId ||
+          !args.executionPayload.treasuryReceiverAddress)
+      ) {
+        return {
+          calldata: null,
+          calldataHash: null,
+          methodSelector: null
+        };
+      }
+      const calldata =
+        args.contractMethod === "createAgreement"
+          ? new ethers.utils.Interface(LOAN_BOOK_V1_ABI).encodeFunctionData(
+              args.contractMethod,
+              [
+                String(args.executionPayload.contractLoanId ?? ""),
+                args.walletAddress,
+                borrowAssetAddress,
+                collateralAssetAddress,
+                String(args.executionPayload.treasuryReceiverAddress ?? ""),
+                ethers.utils.parseUnits(
+                  String(args.executionPayload.principalAmount ?? "0"),
+                  args.borrowAsset?.decimals ?? 18
+                ),
+                ethers.utils.parseUnits(
+                  String(args.executionPayload.collateralAmount ?? "0"),
+                  args.collateralAsset?.decimals ?? 18
+                ),
+                ethers.utils.parseUnits(
+                  String(args.executionPayload.serviceFeeAmount ?? "0"),
+                  args.borrowAsset?.decimals ?? 18
+                )
+              ]
+            )
+          : new ethers.utils.Interface(LOAN_BOOK_ABI).encodeFunctionData(
+              args.contractMethod,
+              [
+                args.walletAddress,
+                borrowAssetAddress,
+                collateralAssetAddress,
+                ethers.utils.parseUnits(
+                  String(args.executionPayload.principalAmount ?? "0"),
+                  args.borrowAsset?.decimals ?? 18
+                ),
+                ethers.utils.parseUnits(
+                  String(args.executionPayload.collateralAmount ?? "0"),
+                  args.collateralAsset?.decimals ?? 18
+                ),
+                ethers.utils.parseUnits(
+                  String(args.executionPayload.serviceFeeAmount ?? "0"),
+                  args.borrowAsset?.decimals ?? 18
+                ),
+                ethers.utils.parseUnits(
+                  String(args.executionPayload.installmentAmount ?? "0"),
+                  args.borrowAsset?.decimals ?? 18
+                ),
+                Number(args.executionPayload.installmentCount ?? 0),
+                Number(args.executionPayload.termMonths ?? 0),
+                Boolean(args.executionPayload.autopayEnabled ?? false)
+              ]
+            );
 
       return {
         calldata,
@@ -2531,6 +2569,8 @@ export class GovernedExecutionService {
     contractAddress: string | null;
     contractMethod: string;
     borrowerWalletAddress: string | null;
+    contractLoanId?: string | null;
+    treasuryReceiverAddress?: string | null;
     principalAmount: string;
     collateralAmount: string;
     serviceFeeAmount: string;
@@ -2604,6 +2644,8 @@ export class GovernedExecutionService {
           GovernedTreasuryExecutionRequestType.loan_contract_creation,
         executionPayload: {
           borrowerWalletAddress: input.borrowerWalletAddress,
+          contractLoanId: input.contractLoanId ?? null,
+          treasuryReceiverAddress: input.treasuryReceiverAddress ?? null,
           principalAmount: input.principalAmount,
           collateralAmount: input.collateralAmount,
           serviceFeeAmount: input.serviceFeeAmount,
@@ -2632,6 +2674,8 @@ export class GovernedExecutionService {
           assetId: input.borrowAssetId,
           executionPayload: {
             borrowerWalletAddress: input.borrowerWalletAddress,
+            contractLoanId: input.contractLoanId ?? null,
+            treasuryReceiverAddress: input.treasuryReceiverAddress ?? null,
             principalAmount: input.principalAmount,
             collateralAmount: input.collateralAmount,
             serviceFeeAmount: input.serviceFeeAmount,

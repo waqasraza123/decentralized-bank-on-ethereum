@@ -10,6 +10,7 @@ import { loadOptionalBlockchainContractWriteRuntimeConfig } from "@stealth-trail
 import {
   createJsonRpcProvider,
   createStakingReadContract,
+  createStakingV1Contract,
   createStakingWriteContract,
   createStakingWriteWallet,
   formatEthAmount,
@@ -123,6 +124,7 @@ export type GovernedPoolCreationExecutionResult =
 export class StakingService {
   private readonly logger = new Logger(StakingService.name);
   private readonly provider: ethers.providers.JsonRpcProvider;
+  private readonly stakingContractVersion: string | null;
   private readonly readContract: ethers.Contract | null;
   private readonly writeWallet: ethers.Wallet | null;
   private readonly writeContract: ethers.Contract | null;
@@ -139,6 +141,7 @@ export class StakingService {
     >
   ) {
     const runtimeConfig = loadOptionalBlockchainContractWriteRuntimeConfig();
+    this.stakingContractVersion = runtimeConfig.stakingContractVersion;
 
     this.provider = createJsonRpcProvider(runtimeConfig.rpcUrl);
 
@@ -158,10 +161,15 @@ export class StakingService {
       return;
     }
 
-    this.readContract = createStakingReadContract(
-      runtimeConfig.stakingContractAddress,
-      this.provider
-    );
+    this.readContract = this.isStakingV1Contract()
+      ? createStakingV1Contract(
+          runtimeConfig.stakingContractAddress,
+          this.provider
+        )
+      : createStakingReadContract(
+          runtimeConfig.stakingContractAddress,
+          this.provider
+        );
 
     if (!runtimeConfig.ethereumPrivateKey) {
       this.writeWallet = null;
@@ -176,10 +184,28 @@ export class StakingService {
       runtimeConfig.ethereumPrivateKey,
       this.provider
     );
-    this.writeContract = createStakingWriteContract(
-      runtimeConfig.stakingContractAddress,
-      this.writeWallet
+    this.writeContract = this.isStakingV1Contract()
+      ? createStakingV1Contract(
+          runtimeConfig.stakingContractAddress,
+          this.writeWallet
+        )
+      : createStakingWriteContract(
+          runtimeConfig.stakingContractAddress,
+          this.writeWallet
+        );
+  }
+
+  private isStakingV1Contract(): boolean {
+    return (
+      typeof this.stakingContractVersion === "string" &&
+      this.stakingContractVersion.toLowerCase().startsWith("staking_v1")
     );
+  }
+
+  getGovernedPoolContractMethod(): string {
+    return this.isStakingV1Contract()
+      ? "activateStakingPoolReadModel"
+      : "createPool";
   }
 
   private describeError(error: unknown): string {
@@ -199,6 +225,10 @@ export class StakingService {
   }
 
   getGovernedPoolContractAddress(): string | null {
+    if (this.isStakingV1Contract()) {
+      return null;
+    }
+
     const address =
       (this.writeContract as { address?: string } | null)?.address ??
       (this.readContract as { address?: string } | null)?.address;
@@ -394,6 +424,59 @@ export class StakingService {
     };
   }
 
+  private buildPositionId(
+    context: CustomerStakingContext,
+    poolId: number
+  ): string {
+    return ethers.utils.solidityKeccak256(
+      ["string", "uint256"],
+      [context.customerAccount.id, poolId]
+    );
+  }
+
+  private async readPoolTotalStaked(
+    pool: { blockchainPoolId: number | null }
+  ): Promise<ethers.BigNumber> {
+    const readContract = this.requireReadContract();
+
+    if (this.isStakingV1Contract()) {
+      return readContract.totalStaked();
+    }
+
+    return readContract.getTotalStaked(pool.blockchainPoolId);
+  }
+
+  private async readCustomerPosition(
+    context: CustomerStakingContext,
+    pool: { id: number; blockchainPoolId: number | null }
+  ): Promise<{
+    stakedBalance: ethers.BigNumber;
+    pendingReward: ethers.BigNumber;
+  }> {
+    const readContract = this.requireReadContract();
+
+    if (this.isStakingV1Contract()) {
+      const positionId = this.buildPositionId(context, pool.id);
+      const [, stakedBalance, pendingReward] = await readContract.getPosition(positionId);
+
+      return {
+        stakedBalance,
+        pendingReward
+      };
+    }
+
+    return {
+      stakedBalance: await readContract.getStakedBalance(
+        context.wallet.address,
+        pool.blockchainPoolId
+      ),
+      pendingReward: await readContract.getPendingReward(
+        context.wallet.address,
+        pool.blockchainPoolId
+      )
+    };
+  }
+
   private resolveReadModelAvailability(
     context: CustomerStakingContext
   ): { available: boolean; message: string } {
@@ -478,8 +561,9 @@ export class StakingService {
     }
 
     if (
+      !this.isStakingV1Contract() &&
       context.wallet.address.toLowerCase() !==
-      this.writeWallet.address.toLowerCase()
+        this.writeWallet.address.toLowerCase()
     ) {
       return {
         available: false,
@@ -523,14 +607,11 @@ export class StakingService {
       throw new ConflictException("Managed wallet address is required.");
     }
 
-    const readContract = this.requireReadContract();
     const pool = await this.getPoolOrThrow(poolId);
-    const blockchainPoolId = pool.blockchainPoolId as number;
-
-    const [stakedBalance, pendingReward] = await Promise.all([
-      readContract.getStakedBalance(context.wallet.address, blockchainPoolId),
-      readContract.getPendingReward(context.wallet.address, blockchainPoolId)
-    ]);
+    const { stakedBalance, pendingReward } = await this.readCustomerPosition(
+      context,
+      pool
+    );
 
     return {
       pool,
@@ -601,6 +682,39 @@ export class StakingService {
       rewardRate: input.rewardRate,
       stakingPoolId: input.stakingPoolId
     });
+
+    if (this.isStakingV1Contract()) {
+      await this.prismaService.stakingPool.update({
+        where: {
+          id: preparedPool.poolId
+        },
+        data: {
+          poolStatus: PoolStatus.active
+        }
+      });
+
+      await this.writeAuditEvent({
+        customerId: null,
+        actor,
+        action: "staking.pool.executed",
+        targetType: "StakingPool",
+        targetId: preparedPool.poolId,
+        metadata: {
+          rewardRate: input.rewardRate,
+          poolStatus: PoolStatus.active,
+          blockchainPoolId: preparedPool.blockchainPoolId,
+          executionMode: "read_model_only"
+        }
+      });
+
+      return {
+        success: true,
+        poolId: preparedPool.poolId,
+        blockchainPoolId: preparedPool.blockchainPoolId,
+        transactionHash: "",
+        poolStatus: PoolStatus.active
+      };
+    }
 
     let transactionHash: string | null = null;
 
@@ -691,15 +805,14 @@ export class StakingService {
         if (readModel.available && pool.blockchainPoolId !== null && context.wallet.address) {
           try {
             const readContract = this.requireReadContract();
-            const [totalStaked, stakedBalance, pendingReward] = await Promise.all([
-              readContract.getTotalStaked(pool.blockchainPoolId),
-              readContract.getStakedBalance(context.wallet.address, pool.blockchainPoolId),
-              readContract.getPendingReward(context.wallet.address, pool.blockchainPoolId)
+            const [totalStaked, position] = await Promise.all([
+              this.readPoolTotalStaked(pool),
+              this.readCustomerPosition(context, pool)
             ]);
 
             totalStakedAmount = this.formatWeiToEth(totalStaked);
-            positionStakedBalance = this.formatWeiToEth(stakedBalance);
-            positionPendingReward = this.formatWeiToEth(pendingReward);
+            positionStakedBalance = this.formatWeiToEth(position.stakedBalance);
+            positionPendingReward = this.formatWeiToEth(position.pendingReward);
             canReadPosition = true;
           } catch (error) {
             this.logger.warn(
@@ -795,11 +908,15 @@ export class StakingService {
     });
 
     try {
-      const transaction = await writeContract.deposit(
-        pool.blockchainPoolId,
-        parsedAmount,
-        { value: parsedAmount }
-      );
+      const transaction = this.isStakingV1Contract()
+        ? await writeContract.recordDeposit(
+            this.buildPositionId(context, pool.id),
+            context.wallet.address,
+            { value: parsedAmount }
+          )
+        : await writeContract.deposit(pool.blockchainPoolId, parsedAmount, {
+            value: parsedAmount
+          });
       const receipt = await transaction.wait();
 
       await this.prismaService.poolDeposit.update({
@@ -933,10 +1050,13 @@ export class StakingService {
     });
 
     try {
-      const transaction = await writeContract.withdraw(
-        pool.blockchainPoolId,
-        parsedAmount
-      );
+      const transaction = this.isStakingV1Contract()
+        ? await writeContract.recordWithdrawal(
+            this.buildPositionId(context, pool.id),
+            parsedAmount,
+            context.wallet.address
+          )
+        : await writeContract.withdraw(pool.blockchainPoolId, parsedAmount);
       const receipt = await transaction.wait();
 
       await this.prismaService.poolWithdrawal.update({
@@ -1039,9 +1159,12 @@ export class StakingService {
     }
 
     try {
-      const transaction = await this.requireWriteContract().claimReward(
-        pool.blockchainPoolId
-      );
+      const transaction = this.isStakingV1Contract()
+        ? await this.requireWriteContract().claimReward(
+            this.buildPositionId(context, pool.id),
+            context.wallet.address
+          )
+        : await this.requireWriteContract().claimReward(pool.blockchainPoolId);
       const receipt = await transaction.wait();
 
       await this.writeAuditEvent({
@@ -1153,9 +1276,15 @@ export class StakingService {
     });
 
     try {
-      const transaction = await this.requireWriteContract().emergencyWithdraw(
-        pool.blockchainPoolId
-      );
+      const transaction = this.isStakingV1Contract()
+        ? await this.requireWriteContract().recordWithdrawal(
+            this.buildPositionId(context, pool.id),
+            stakedBalance,
+            context.wallet.address
+          )
+        : await this.requireWriteContract().emergencyWithdraw(
+            pool.blockchainPoolId
+          );
       const receipt = await transaction.wait();
 
       await this.prismaService.poolWithdrawal.update({
@@ -1262,9 +1391,8 @@ export class StakingService {
   async getTotalStaked(
     poolId: number
   ): Promise<CustomJsonResponse<{ totalStaked: string }>> {
-    const readContract = this.requireReadContract();
     const pool = await this.getPoolOrThrow(poolId);
-    const totalStaked = await readContract.getTotalStaked(pool.blockchainPoolId);
+    const totalStaked = await this.readPoolTotalStaked(pool);
 
     return {
       status: "success",

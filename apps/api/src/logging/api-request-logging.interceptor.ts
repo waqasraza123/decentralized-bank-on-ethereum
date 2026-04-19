@@ -47,6 +47,9 @@ export class ApiRequestLoggingInterceptor implements NestInterceptor {
       actorType: actor.actorType,
       actorId: actor.actorId,
       actorRole: actor.actorRole,
+      authSource: actor.authSource ?? null,
+      operatorEnvironment: actor.environment ?? null,
+      sessionCorrelationId: actor.sessionCorrelationId ?? null,
       userAgent:
         typeof request.headers["user-agent"] === "string"
           ? request.headers["user-agent"]

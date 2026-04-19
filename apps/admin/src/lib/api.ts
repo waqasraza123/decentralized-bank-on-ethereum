@@ -1,5 +1,4 @@
 import axios, { type AxiosRequestConfig } from "axios";
-import { buildInternalOperatorHeaders } from "@stealth-trails-bank/security";
 import type {
   AccountHoldList,
   AccountReleaseReviewMutationResult,
@@ -28,6 +27,7 @@ import type {
   ManualResolutionSummary,
   OperationsStatus,
   OperatorSession,
+  OperatorSessionInfo,
   OversightAlertList,
   OversightIncidentList,
   PlatformAlertDeliveryTargetHealthList,
@@ -72,11 +72,9 @@ function normalizeBaseUrl(baseUrl: string): string {
 function createClient(session: OperatorSession) {
   return axios.create({
     baseURL: normalizeBaseUrl(session.baseUrl),
-    headers: buildInternalOperatorHeaders({
-      apiKey: session.apiKey,
-      operatorId: session.operatorId,
-      operatorRole: session.operatorRole
-    })
+    headers: {
+      Authorization: `Bearer ${session.accessToken.trim()}`
+    }
   });
 }
 
@@ -101,6 +99,15 @@ export async function listReviewCases(
     method: "GET",
     url: "/review-cases/internal",
     params
+  });
+}
+
+export async function getOperatorSession(
+  session: OperatorSession
+): Promise<OperatorSessionInfo> {
+  return requestData(session, {
+    method: "GET",
+    url: "/auth/internal/operator/session"
   });
 }
 

@@ -907,19 +907,17 @@ describe("LaunchReadinessPage", () => {
     );
 
     expect(
-      await screen.findByText(
-        "Superseded, approved, and rejected approvals remain read-only for historical review."
-      )
+      (await screen.findAllByText("launch-2026.04.13.1-approval")).length
+    ).toBeGreaterThan(0);
+    expect(
+      screen.getByRole("button", { name: "Approve release" })
+    ).toBeDisabled();
+    expect(
+      screen.getByRole("button", { name: "Reject release" })
+    ).toBeDisabled();
+    expect(
+      screen.getByRole("button", { name: "Rebind to latest pack" })
     ).toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: "Approve release" })
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: "Reject release" })
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: "Rebind to latest pack" })
-    ).not.toBeInTheDocument();
   });
 
   it("shows an explicit refresh recovery flow for stale approval conflicts", async () => {

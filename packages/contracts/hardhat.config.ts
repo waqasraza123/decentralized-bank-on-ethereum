@@ -15,6 +15,21 @@ const config: HardhatUserConfig = {
       viaIR: true
     }
   },
+  networks: {
+    hardhat: {},
+    baseSepolia: {
+      url: process.env["BASE_SEPOLIA_RPC_URL"] ?? "http://127.0.0.1:8545",
+      accounts: process.env["DEPLOYER_PRIVATE_KEY"]
+        ? [process.env["DEPLOYER_PRIVATE_KEY"]]
+        : []
+    },
+    baseMainnet: {
+      url: process.env["BASE_MAINNET_RPC_URL"] ?? "http://127.0.0.1:8545",
+      accounts: process.env["DEPLOYER_PRIVATE_KEY"]
+        ? [process.env["DEPLOYER_PRIVATE_KEY"]]
+        : []
+    }
+  }
 };
 
 export default config;

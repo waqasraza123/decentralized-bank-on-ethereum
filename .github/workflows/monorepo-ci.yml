@@ -1,0 +1,56 @@
+name: monorepo-ci
+
+on:
+  pull_request:
+    paths-ignore:
+      - "docs/**"
+      - "**/*.md"
+  push:
+    branches:
+      - main
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm build
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Unit tests
+        run: pnpm test:unit
+
+      - name: Integration tests
+        run: pnpm test:integration
+
+      - name: Coverage
+        run: pnpm test:coverage
+
+      - name: Playwright critical flows
+        run: pnpm test:e2e
+
+      - name: Contracts compile and manifest validation
+        run: pnpm --filter @stealth-trails-bank/contracts compile && pnpm --filter @stealth-trails-bank/contracts validate:manifests
+
+      - name: Release readiness verification
+        run: pnpm release:readiness:verify -- --proof all-auto --environment ci

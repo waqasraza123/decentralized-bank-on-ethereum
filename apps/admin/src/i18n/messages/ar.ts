@@ -23,12 +23,11 @@ export const adminMessagesAr: AdminMessages = {
     kicker: "بيانات اعتماد المشغل",
     title: "جلسة محلية",
     description:
-      "يتطلب حارس واجهة برمجة التطبيقات الداخلية `x-operator-api-key` و `x-operator-id` واختيارياً `x-operator-role`. تحفظ هذه الوحدة هذه القيم في تخزين المتصفح المحلي فقط.",
+      "تستخدم وحدة المشغل الآن رمز وصول Supabase بصيغة Bearer. يُحفَظ عنوان API فقط في التخزين المحلي، بينما يبقى رمز الوصول ضمن الجلسة الحالية وتُحسم هوية المشغل من الخادم.",
     apiBaseUrl: "عنوان API الأساسي",
-    operatorId: "معرّف المشغل",
-    operatorRole: "دور المشغل",
-    operatorApiKey: "مفتاح API للمشغل",
-    saveSession: "حفظ الجلسة"
+    operatorAccessToken: "رمز وصول المشغل",
+    saveSession: "حفظ الجلسة",
+    clearSession: "مسح الجلسة"
   },
   sections: {
     alertDelivery: "تسليم التنبيهات",

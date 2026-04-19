@@ -27,13 +27,14 @@ const supportedEvidenceTypes = new Set<ReleaseReadinessEvidenceType>([
 
 function printUsage(): void {
   console.log(`Usage:
-  pnpm --filter @stealth-trails-bank/api release-readiness:probe -- --probe <evidenceType> --base-url <url> --operator-id <id> --api-key <key> [options]
+  pnpm --filter @stealth-trails-bank/api release-readiness:probe -- --probe <evidenceType> --base-url <url> [--access-token <token> | --operator-id <id> --api-key <key>] [options]
 
 Required:
   --probe                         One of: ${[...supportedEvidenceTypes].join(", ")}
   --base-url                      Operator API base URL for the target environment
-  --operator-id                   Operator identifier used for authenticated internal calls
-  --api-key                       Internal operator API key
+  --access-token                  Supabase operator bearer token
+  --operator-id                   Legacy operator identifier for compatibility mode
+  --api-key                       Legacy internal operator API key for compatibility mode
 
 Optional:
   --operator-role                 Operator role header
@@ -137,6 +138,16 @@ function readOptionalBooleanFlag(parsedArgs: ParsedArgs, key: string): boolean {
 }
 
 function buildSession(parsedArgs: ParsedArgs): ReleaseReadinessDrillSession {
+  const accessToken = readOptionalStringArg(parsedArgs, "access-token");
+
+  if (accessToken) {
+    return {
+      baseUrl: readRequiredStringArg(parsedArgs, "base-url"),
+      accessToken,
+      operatorRole: readOptionalStringArg(parsedArgs, "operator-role")
+    };
+  }
+
   return {
     baseUrl: readRequiredStringArg(parsedArgs, "base-url"),
     operatorId: readRequiredStringArg(parsedArgs, "operator-id"),

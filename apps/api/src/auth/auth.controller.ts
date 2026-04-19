@@ -11,6 +11,7 @@ import {
   ValidationPipe
 } from "@nestjs/common";
 import { JwtAuthGuard } from "./guards/jwt-auth.guard";
+import { InternalOperatorApiKeyGuard } from "./guards/internal-operator-api-key.guard";
 import { CustomJsonResponse } from "../types/CustomJsonResponse";
 import { AuthService } from "./auth.service";
 import { LoginDto } from "./dto/login.dto";
@@ -20,6 +21,20 @@ import { UpdatePasswordDto } from "./dto/update-password.dto";
 type AuthenticatedRequest = {
   user: {
     id: string;
+  };
+};
+
+type AuthenticatedOperatorRequest = {
+  internalOperator: {
+    operatorId: string;
+    operatorRole?: string | null;
+    operatorDbId?: string | null;
+    operatorRoles?: string[];
+    operatorSupabaseUserId?: string | null;
+    operatorEmail?: string | null;
+    authSource?: "supabase_jwt" | "legacy_api_key";
+    environment?: string | null;
+    sessionCorrelationId?: string | null;
   };
 };
 
@@ -104,6 +119,30 @@ export class AuthController {
       status: "success",
       message: "Customer wallet projection retrieved successfully.",
       data: projection
+    };
+  }
+
+  @UseGuards(InternalOperatorApiKeyGuard)
+  @Get("internal/operator/session")
+  async getOperatorSession(
+    @Request() request: AuthenticatedOperatorRequest
+  ): Promise<CustomJsonResponse> {
+    return {
+      status: "success",
+      message: "Operator session resolved successfully.",
+      data: {
+        operatorId: request.internalOperator.operatorId,
+        operatorRole: request.internalOperator.operatorRole ?? null,
+        operatorRoles: request.internalOperator.operatorRoles ?? [],
+        operatorDbId: request.internalOperator.operatorDbId ?? null,
+        operatorSupabaseUserId:
+          request.internalOperator.operatorSupabaseUserId ?? null,
+        operatorEmail: request.internalOperator.operatorEmail ?? null,
+        authSource: request.internalOperator.authSource ?? "legacy_api_key",
+        environment: request.internalOperator.environment ?? null,
+        sessionCorrelationId:
+          request.internalOperator.sessionCorrelationId ?? null
+      }
     };
   }
 }

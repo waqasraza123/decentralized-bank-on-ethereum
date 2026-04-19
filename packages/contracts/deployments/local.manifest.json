@@ -1,0 +1,62 @@
+{
+  "environment": "development",
+  "chainId": 31337,
+  "authorities": [
+    {
+      "authorityType": "governance_safe",
+      "address": "0x0000000000000000000000000000000000001001",
+      "chainId": 31337,
+      "label": "Local Governance Safe"
+    },
+    {
+      "authorityType": "treasury_safe",
+      "address": "0x0000000000000000000000000000000000001002",
+      "chainId": 31337,
+      "label": "Local Treasury Safe"
+    },
+    {
+      "authorityType": "emergency_safe",
+      "address": "0x0000000000000000000000000000000000001003",
+      "chainId": 31337,
+      "label": "Local Emergency Safe"
+    }
+  ],
+  "signers": [
+    {
+      "scope": "staking_execution",
+      "keyReference": "local-kms/staking",
+      "signerAddress": "0x0000000000000000000000000000000000002001"
+    },
+    {
+      "scope": "loan_execution",
+      "keyReference": "local-kms/loan",
+      "signerAddress": "0x0000000000000000000000000000000000002002"
+    },
+    {
+      "scope": "policy_withdrawal_authorization",
+      "keyReference": "local-kms/policy-auth",
+      "signerAddress": "0x0000000000000000000000000000000000002003"
+    },
+    {
+      "scope": "policy_withdrawal_executor",
+      "keyReference": "local-kms/policy-executor",
+      "signerAddress": "0x0000000000000000000000000000000000002004"
+    }
+  ],
+  "contracts": [
+    {
+      "productSurface": "staking_v1",
+      "version": "staking_v1",
+      "address": "0x0000000000000000000000000000000000003001",
+      "abiChecksumSha256": "pending-local-staking-checksum",
+      "legacyPath": false
+    },
+    {
+      "productSurface": "loan_book_v1",
+      "version": "loan_book_v1",
+      "address": "0x0000000000000000000000000000000000003002",
+      "abiChecksumSha256": "pending-local-loan-checksum",
+      "legacyPath": false
+    }
+  ]
+}

@@ -72,7 +72,8 @@ describe("StakingPoolGovernanceService", () => {
       executeGovernedPoolCreation: jest.fn(),
       prepareGovernedPoolCreation: jest.fn(),
       getConfiguredChainId: jest.fn().mockResolvedValue(8453),
-      getGovernedPoolContractAddress: jest.fn().mockReturnValue("0xstaking")
+      getGovernedPoolContractAddress: jest.fn().mockReturnValue("0xstaking"),
+      getGovernedPoolContractMethod: jest.fn().mockReturnValue("createPool")
     };
 
     const governedExecutionService = {

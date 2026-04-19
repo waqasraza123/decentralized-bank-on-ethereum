@@ -21,12 +21,11 @@ export const adminMessages = {
     kicker: "Operator Credentials",
     title: "Local session",
     description:
-      "The internal API guard requires `x-operator-api-key`, `x-operator-id`, and optionally `x-operator-role`. This console stores those values only in local browser storage.",
+      "The operator console now authenticates with a Supabase bearer token. Only the API base URL is kept in local storage; the current access token is session-scoped and operator identity is resolved by the API.",
     apiBaseUrl: "API Base URL",
-    operatorId: "Operator ID",
-    operatorRole: "Operator Role",
-    operatorApiKey: "Operator API Key",
-    saveSession: "Save Session"
+    operatorAccessToken: "Operator Access Token",
+    saveSession: "Save Session",
+    clearSession: "Clear Session"
   },
   sections: {
     alertDelivery: "Alert Delivery",

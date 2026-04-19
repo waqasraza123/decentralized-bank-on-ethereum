@@ -10,6 +10,7 @@ import { loadOptionalBlockchainContractWriteRuntimeConfig } from "@stealth-trail
 import {
   createJsonRpcProvider,
   createLoanBookReadContract,
+  createLoanBookV1Contract,
   createLoanBookWriteContract
 } from "@stealth-trails-bank/contracts-sdk";
 import type {
@@ -166,6 +167,8 @@ const NOTICE_REASON_COPY: Record<string, string> = {
 export class LoansService {
   private readonly logger = new Logger(LoansService.name);
   private readonly provider: ethers.providers.JsonRpcProvider;
+  private readonly loanContractVersion: string | null;
+  private readonly treasurySafeAddress: string | null;
   private readonly readContract: ethers.Contract | null;
   private readonly writeContract: ethers.Contract | null;
 
@@ -184,6 +187,11 @@ export class LoansService {
     >
   ) {
     const runtimeConfig = loadOptionalBlockchainContractWriteRuntimeConfig();
+    this.loanContractVersion = runtimeConfig.loanContractVersion;
+    this.treasurySafeAddress =
+      runtimeConfig.governedCustody?.authorities.find(
+        (authority) => authority.authorityType === "treasury_safe"
+      )?.address ?? null;
     this.provider = createJsonRpcProvider(runtimeConfig.rpcUrl);
 
     if (!runtimeConfig.loanContractAddress) {
@@ -195,16 +203,36 @@ export class LoansService {
       return;
     }
 
-    this.readContract = createLoanBookReadContract(
-      runtimeConfig.loanContractAddress,
-      this.provider
-    );
-    this.writeContract = runtimeConfig.ethereumPrivateKey
-      ? createLoanBookWriteContract(
+    this.readContract = this.isLoanBookV1Contract()
+      ? createLoanBookV1Contract(runtimeConfig.loanContractAddress, this.provider)
+      : createLoanBookReadContract(
           runtimeConfig.loanContractAddress,
-          new ethers.Wallet(runtimeConfig.ethereumPrivateKey, this.provider)
-        )
+          this.provider
+        );
+    this.writeContract = runtimeConfig.ethereumPrivateKey
+      ? this.isLoanBookV1Contract()
+        ? createLoanBookV1Contract(
+            runtimeConfig.loanContractAddress,
+            new ethers.Wallet(runtimeConfig.ethereumPrivateKey, this.provider)
+          )
+        : createLoanBookWriteContract(
+            runtimeConfig.loanContractAddress,
+            new ethers.Wallet(runtimeConfig.ethereumPrivateKey, this.provider)
+          )
       : null;
+  }
+
+  private isLoanBookV1Contract(): boolean {
+    return (
+      typeof this.loanContractVersion === "string" &&
+      this.loanContractVersion.toLowerCase().startsWith("loan_book_v1")
+    );
+  }
+
+  private buildContractAgreementId(referenceId: string): string {
+    return ethers.utils.keccak256(
+      ethers.utils.toUtf8Bytes(`loan-book-v1:${referenceId}`)
+    );
   }
 
   private normalizeOperatorRole(operatorRole?: string): string | null {
@@ -249,6 +277,7 @@ export class LoansService {
     };
     chainId: number;
     borrowerWalletAddress: string | null;
+    contractLoanId?: string | null;
     operatorId: string;
     operatorRole?: string;
     requestNote?: string | null;
@@ -264,8 +293,12 @@ export class LoansService {
       collateralAssetId: input.agreement.collateralAssetId,
       walletAddress: input.borrowerWalletAddress,
       contractAddress: this.getLoanContractAddress(),
-      contractMethod: "createLoan",
+      contractMethod: this.isLoanBookV1Contract()
+        ? "createAgreement"
+        : "createLoan",
       borrowerWalletAddress: input.borrowerWalletAddress,
+      contractLoanId: input.contractLoanId ?? null,
+      treasuryReceiverAddress: this.treasurySafeAddress,
       principalAmount: input.agreement.principalAmount.toString(),
       collateralAmount: input.agreement.collateralAmount.toString(),
       serviceFeeAmount: input.agreement.serviceFeeAmount.toString(),
@@ -634,6 +667,8 @@ export class LoansService {
   }
 
   private async maybeCreateOnchainLoan(input: {
+    contractLoanId?: string | null;
+    treasuryReceiverAddress?: string | null;
     walletAddress: string;
     borrowAsset: LoanAssetRecord;
     collateralAsset: LoanAssetRecord;
@@ -665,30 +700,58 @@ export class LoansService {
     const toUnits = (value: string, decimals: number) =>
       ethers.utils.parseUnits(value, decimals);
 
-    const contractLoanId = await this.writeContract.callStatic.createLoan(
-      borrower,
-      borrowAssetAddress,
-      collateralAssetAddress,
-      toUnits(input.principalAmount, input.borrowAsset.decimals),
-      toUnits(input.collateralAmount, input.collateralAsset.decimals),
-      toUnits(input.serviceFeeAmount, input.borrowAsset.decimals),
-      toUnits(input.installmentAmount, input.borrowAsset.decimals),
-      input.installmentCount,
-      input.termMonths,
-      input.autopayEnabled
-    );
-    const tx = await this.writeContract.createLoan(
-      borrower,
-      borrowAssetAddress,
-      collateralAssetAddress,
-      toUnits(input.principalAmount, input.borrowAsset.decimals),
-      toUnits(input.collateralAmount, input.collateralAsset.decimals),
-      toUnits(input.serviceFeeAmount, input.borrowAsset.decimals),
-      toUnits(input.installmentAmount, input.borrowAsset.decimals),
-      input.installmentCount,
-      input.termMonths,
-      input.autopayEnabled
-    );
+    const contractLoanId = this.isLoanBookV1Contract()
+      ? input.contractLoanId ?? null
+      : await this.writeContract.callStatic.createLoan(
+          borrower,
+          borrowAssetAddress,
+          collateralAssetAddress,
+          toUnits(input.principalAmount, input.borrowAsset.decimals),
+          toUnits(input.collateralAmount, input.collateralAsset.decimals),
+          toUnits(input.serviceFeeAmount, input.borrowAsset.decimals),
+          toUnits(input.installmentAmount, input.borrowAsset.decimals),
+          input.installmentCount,
+          input.termMonths,
+          input.autopayEnabled
+        );
+
+    if (this.isLoanBookV1Contract()) {
+      if (!input.contractLoanId) {
+        throw new ConflictException(
+          "LoanBookV1 contract creation requires a deterministic agreement identifier."
+        );
+      }
+
+      if (!input.treasuryReceiverAddress) {
+        throw new ConflictException(
+          "LoanBookV1 contract creation requires a treasury receiver address."
+        );
+      }
+    }
+
+    const tx = this.isLoanBookV1Contract()
+      ? await this.writeContract.createAgreement(
+          input.contractLoanId,
+          borrower,
+          borrowAssetAddress,
+          collateralAssetAddress,
+          input.treasuryReceiverAddress,
+          toUnits(input.principalAmount, input.borrowAsset.decimals),
+          toUnits(input.collateralAmount, input.collateralAsset.decimals),
+          toUnits(input.serviceFeeAmount, input.borrowAsset.decimals)
+        )
+      : await this.writeContract.createLoan(
+          borrower,
+          borrowAssetAddress,
+          collateralAssetAddress,
+          toUnits(input.principalAmount, input.borrowAsset.decimals),
+          toUnits(input.collateralAmount, input.collateralAsset.decimals),
+          toUnits(input.serviceFeeAmount, input.borrowAsset.decimals),
+          toUnits(input.installmentAmount, input.borrowAsset.decimals),
+          input.installmentCount,
+          input.termMonths,
+          input.autopayEnabled
+        );
     await tx.wait();
 
     return {
@@ -1282,6 +1345,11 @@ export class LoansService {
     }
 
     if (application.loanAgreement) {
+      const contractLoanId =
+        application.loanAgreement.contractLoanId ??
+        (this.isLoanBookV1Contract()
+          ? this.buildContractAgreementId(application.id)
+          : null);
       const reusedExecutionRequest = await this.queueGovernedLoanContractExecution({
         agreement: {
           id: application.loanAgreement.id,
@@ -1304,6 +1372,7 @@ export class LoansService {
                 )
               ).wallet.address
             : null,
+        contractLoanId,
         operatorId,
         operatorRole,
         requestNote: dto.note ?? null
@@ -1313,7 +1382,7 @@ export class LoansService {
         loanApplicationId: application.id,
         status: application.status,
         loanAgreementId: application.loanAgreement.id,
-        contractLoanId: application.loanAgreement.contractLoanId,
+        contractLoanId,
         governedExecutionRequestId: reusedExecutionRequest?.requestId,
         fundingExecutionMode: this.governedExecutionService?.isLoanFundingGovernedExternalEnabled?.()
           ? "governed_external"
@@ -1350,12 +1419,17 @@ export class LoansService {
     });
     const usesGovernedExternalFunding =
       this.governedExecutionService?.isLoanFundingGovernedExternalEnabled?.() ?? false;
+    const governedContractLoanId = this.isLoanBookV1Contract()
+      ? this.buildContractAgreementId(application.id)
+      : null;
     const onchain = usesGovernedExternalFunding
       ? {
-          contractLoanId: null,
+          contractLoanId: governedContractLoanId,
           transactionHash: null
         }
       : await this.maybeCreateOnchainLoan({
+          contractLoanId: governedContractLoanId,
+          treasuryReceiverAddress: this.treasurySafeAddress,
           walletAddress: walletProjection.wallet.address,
           borrowAsset,
           collateralAsset,
@@ -1498,6 +1572,7 @@ export class LoansService {
       },
       chainId: borrowAsset.chainId,
       borrowerWalletAddress: walletProjection.wallet.address,
+      contractLoanId: result.agreement.contractLoanId,
       operatorId,
       operatorRole,
       requestNote: dto.note ?? null
