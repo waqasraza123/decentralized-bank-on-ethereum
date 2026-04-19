@@ -2,9 +2,9 @@ import axios, { AxiosHeaders } from "axios";
 import { loadMobileRuntimeConfig } from "@stealth-trails-bank/config/mobile";
 import { useSessionStore } from "../../stores/session-store";
 
-const runtimeConfig = loadMobileRuntimeConfig(
-  process.env as Record<string, string | undefined>
-);
+const runtimeConfig = loadMobileRuntimeConfig({
+  EXPO_PUBLIC_API_BASE_URL: process.env.EXPO_PUBLIC_API_BASE_URL
+});
 
 export const apiClient = axios.create({
   baseURL: runtimeConfig.apiBaseUrl
