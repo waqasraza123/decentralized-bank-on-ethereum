@@ -116,7 +116,12 @@ export function WalletScreen() {
       clearRequestKey(signature);
       setLatestDeposit(result);
       setDepositAmount("");
-      Alert.alert(t("wallet.deposit"), t("wallet.depositRecorded"));
+      Alert.alert(
+        t("wallet.deposit"),
+        result.intent.status === "review_required"
+          ? t("wallet.depositReviewRecorded")
+          : t("wallet.depositRecorded")
+      );
     } catch (requestError) {
       Alert.alert(
         t("wallet.deposit"),
@@ -270,6 +275,7 @@ export function WalletScreen() {
         <AppText className="text-xl text-ink" weight="bold">
           {t("wallet.deposit")}
         </AppText>
+        <InlineNotice message={t("wallet.depositSecurityNote")} tone="warning" />
         <OptionChips
           onChange={setDepositAsset}
           options={assetOptions}
@@ -305,6 +311,12 @@ export function WalletScreen() {
               />
             </View>
             <TimelineList events={buildIntentTimeline(latestDeposit.intent)} />
+            {latestDeposit.intent.status === "review_required" ? (
+              <InlineNotice
+                message={t("wallet.depositReviewStatusNote")}
+                tone="warning"
+              />
+            ) : null}
           </View>
         ) : null}
       </SectionCard>

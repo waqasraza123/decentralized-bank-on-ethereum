@@ -100,6 +100,12 @@ export const mobileMessages = {
       "Destination address must be different from your managed wallet address.",
     insufficientBalance: "Requested amount exceeds the available balance.",
     depositRecorded: "Deposit request recorded.",
+    depositReviewRecorded:
+      "Deposit request recorded and routed for operator review.",
+    depositSecurityNote:
+      "Deposits are credited only after managed wallet detection, chain confirmation, and policy-safe settlement. Larger or anomalous deposits may pause for operator review.",
+    depositReviewStatusNote:
+      "This deposit is paused for operator review before custody execution or final settlement continues.",
     withdrawalRecorded: "Withdrawal request recorded.",
     reservationNote:
       "Withdrawal requests immediately move the requested amount from available to pending while review continues."

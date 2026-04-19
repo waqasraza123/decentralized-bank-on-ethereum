@@ -60,6 +60,8 @@ type TransactionIntentRecord = {
   idempotencyKey: string;
   failureCode: string | null;
   failureReason: string | null;
+  manualInterventionRequiredAt: Date | null;
+  manualInterventionReviewCaseId: string | null;
   executionClaimedAt: Date | null;
   executionClaimedByWorkerId: string | null;
   createdAt: Date;
@@ -95,6 +97,18 @@ type AuditEventRecord = {
   targetId: string;
   metadata: Record<string, unknown> | null;
   createdAt: Date;
+};
+
+type ReviewCaseRecord = {
+  id: string;
+  customerId: string;
+  customerAccountId: string;
+  transactionIntentId: string;
+  type: string;
+  status: string;
+  assignedOperatorId: string | null;
+  notes: string | null;
+  resolvedAt: Date | null;
 };
 
 type BalanceRecord = {
@@ -157,6 +171,7 @@ export class FinanceFlowIntegrationHarness {
   private readonly blockchainTransactions: BlockchainTransactionRecord[] = [];
   private readonly ledgerJournals: LedgerJournalRecord[] = [];
   private readonly auditEvents: AuditEventRecord[] = [];
+  private readonly reviewCases: ReviewCaseRecord[] = [];
   private readonly balances = new Map<string, BalanceRecord>();
   private eventSequence = 0;
   private intentSequence = 0;
@@ -277,6 +292,19 @@ export class FinanceFlowIntegrationHarness {
     auditEvent: {
       create: async (args: { data: Record<string, unknown> }) =>
         this.createAuditEvent(args.data)
+    },
+    reviewCase: {
+      findUnique: async (args?: { where?: Record<string, unknown> }) =>
+        this.findReviewCase(args),
+      update: async (args: {
+        where: { id: string };
+        data: Record<string, unknown>;
+      }) => this.updateReviewCase(args.where.id, args.data)
+    },
+    reviewCaseEvent: {
+      create: async () => ({
+        id: this.nextId("review_case_event", this.eventSequence + 1)
+      })
     },
     ledgerJournal: {
       findUnique: async (args?: { where?: Record<string, unknown> }) =>
@@ -517,6 +545,16 @@ export class FinanceFlowIntegrationHarness {
       if (
         typeof value === "object" &&
         value !== null &&
+        "in" in value
+      ) {
+        const candidates = (value as { in?: unknown[] }).in;
+
+        return Array.isArray(candidates) ? candidates.includes(candidate) : false;
+      }
+
+      if (
+        typeof value === "object" &&
+        value !== null &&
         "lte" in value &&
         candidate instanceof Date
       ) {
@@ -525,6 +563,46 @@ export class FinanceFlowIntegrationHarness {
         return threshold instanceof Date
           ? candidate.getTime() <= threshold.getTime()
           : false;
+      }
+
+      if (
+        key === "ledgerJournals" &&
+        typeof value === "object" &&
+        value !== null &&
+        "none" in value
+      ) {
+        const filter = (value as { none?: { journalType?: string } }).none;
+
+        if (!filter || typeof filter !== "object") {
+          return true;
+        }
+
+        return !this.ledgerJournals.some(
+          (ledgerJournal) =>
+            ledgerJournal.transactionIntentId === intent.id &&
+            (!filter.journalType || filter.journalType === "deposit_settlement")
+        );
+      }
+
+      if (
+        key === "blockchainTransactions" &&
+        typeof value === "object" &&
+        value !== null &&
+        "some" in value
+      ) {
+        const filter = (
+          value as { some?: { status?: BlockchainTransactionStatus } }
+        ).some;
+
+        if (!filter || typeof filter !== "object") {
+          return false;
+        }
+
+        return this.blockchainTransactions.some(
+          (blockchainTransaction) =>
+            blockchainTransaction.transactionIntentId === intent.id &&
+            (!filter.status || blockchainTransaction.status === filter.status)
+        );
       }
 
       return candidate === value;
@@ -620,6 +698,10 @@ export class FinanceFlowIntegrationHarness {
       idempotencyKey: data.idempotencyKey as string,
       failureCode: (data.failureCode as string | null) ?? null,
       failureReason: (data.failureReason as string | null) ?? null,
+      manualInterventionRequiredAt:
+        (data.manualInterventionRequiredAt as Date | null) ?? null,
+      manualInterventionReviewCaseId:
+        (data.manualInterventionReviewCaseId as string | null) ?? null,
       executionClaimedAt: (data.executionClaimedAt as Date | null) ?? null,
       executionClaimedByWorkerId:
         (data.executionClaimedByWorkerId as string | null) ?? null,
@@ -660,6 +742,15 @@ export class FinanceFlowIntegrationHarness {
 
     if ("failureReason" in data) {
       intent.failureReason = data.failureReason ?? null;
+    }
+
+    if ("manualInterventionRequiredAt" in data) {
+      intent.manualInterventionRequiredAt = data.manualInterventionRequiredAt ?? null;
+    }
+
+    if ("manualInterventionReviewCaseId" in data) {
+      intent.manualInterventionReviewCaseId =
+        data.manualInterventionReviewCaseId ?? null;
     }
 
     if ("executionClaimedAt" in data) {
@@ -789,9 +880,13 @@ export class FinanceFlowIntegrationHarness {
   private findLedgerJournal(args?: {
     where?: Record<string, unknown>;
   }): LedgerJournalRecord | null {
-    const transactionIntentId = args?.where?.transactionIntentId as
-      | string
-      | undefined;
+    const transactionIntentId =
+      (args?.where?.transactionIntentId as string | undefined) ??
+      (
+        args?.where?.transactionIntentId_journalType as
+          | { transactionIntentId?: string }
+          | undefined
+      )?.transactionIntentId;
 
     if (!transactionIntentId) {
       return null;
@@ -803,6 +898,86 @@ export class FinanceFlowIntegrationHarness {
           ledgerJournal.transactionIntentId === transactionIntentId
       ) ?? null
     );
+  }
+
+  private findReviewCase(args?: {
+    where?: Record<string, unknown>;
+  }): ReviewCaseRecord | null {
+    const reviewCaseId = args?.where?.id as string | undefined;
+
+    if (!reviewCaseId) {
+      return null;
+    }
+
+    const existingReviewCase = this.reviewCases.find(
+      (reviewCase) => reviewCase.id === reviewCaseId
+    );
+
+    if (existingReviewCase) {
+      return {
+        ...existingReviewCase
+      };
+    }
+
+    const linkedIntent = this.transactionIntents.find(
+      (intent) => intent.manualInterventionReviewCaseId === reviewCaseId
+    );
+
+    if (!linkedIntent) {
+      return null;
+    }
+
+    const reviewCase: ReviewCaseRecord = {
+      id: reviewCaseId,
+      customerId: this.customer.id,
+      customerAccountId: this.customerAccount.id,
+      transactionIntentId: linkedIntent.id,
+      type: "manual_intervention",
+      status: "open",
+      assignedOperatorId: null,
+      notes: null,
+      resolvedAt: null
+    };
+
+    this.reviewCases.push(reviewCase);
+
+    return {
+      ...reviewCase
+    };
+  }
+
+  private updateReviewCase(
+    reviewCaseId: string,
+    data: Record<string, unknown>
+  ): ReviewCaseRecord {
+    const reviewCase = this.reviewCases.find(
+      (candidate) => candidate.id === reviewCaseId
+    );
+
+    if (!reviewCase) {
+      throw new Error(`Unknown review case: ${reviewCaseId}`);
+    }
+
+    if ("status" in data) {
+      reviewCase.status = data.status as string;
+    }
+
+    if ("assignedOperatorId" in data) {
+      reviewCase.assignedOperatorId =
+        (data.assignedOperatorId as string | null) ?? null;
+    }
+
+    if ("notes" in data) {
+      reviewCase.notes = (data.notes as string | null) ?? null;
+    }
+
+    if ("resolvedAt" in data) {
+      reviewCase.resolvedAt = (data.resolvedAt as Date | null) ?? null;
+    }
+
+    return {
+      ...reviewCase
+    };
   }
 
   private reserveWithdrawalBalance(args: {

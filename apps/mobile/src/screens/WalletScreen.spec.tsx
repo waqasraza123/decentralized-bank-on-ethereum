@@ -94,8 +94,8 @@ describe("WalletScreen", () => {
         },
         destinationWalletAddress: "0x1234567890123456789012345678901234567890",
         intentType: "deposit",
-        status: "requested",
-        policyDecision: "pending",
+        status: "review_required",
+        policyDecision: "review_required",
         requestedAmount: "1.5",
         createdAt: "2026-04-18T08:00:00.000Z",
         updatedAt: "2026-04-18T08:00:00.000Z"
@@ -113,6 +113,12 @@ describe("WalletScreen", () => {
       }
     });
 
+    expect(
+      screen.getByText(
+        "Deposits are credited only after managed wallet detection, chain confirmation, and policy-safe settlement. Larger or anomalous deposits may pause for operator review."
+      )
+    ).toBeTruthy();
+
     fireEvent.changeText(screen.getAllByLabelText("Amount")[0], "1.5");
     fireEvent.press(screen.getByText("Create deposit request"));
 
@@ -126,6 +132,15 @@ describe("WalletScreen", () => {
 
     expect(screen.getByText("Latest deposit request")).toBeTruthy();
     expect(screen.getByText("Reference: deposit-1")).toBeTruthy();
+    expect(
+      screen.getByText(
+        "This deposit is paused for operator review before custody execution or final settlement continues."
+      )
+    ).toBeTruthy();
+    expect(Alert.alert).toHaveBeenCalledWith(
+      "Deposit",
+      "Deposit request recorded and routed for operator review."
+    );
   });
 
   it("rejects self-directed withdrawals before calling the mutation", async () => {

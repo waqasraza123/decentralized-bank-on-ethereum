@@ -1,4 +1,7 @@
 jest.mock("@stealth-trails-bank/config/api", () => ({
+  loadDepositRiskPolicyRuntimeConfig: () => ({
+    autoApproveThresholds: []
+  }),
   loadInternalOperatorRuntimeConfig: () => ({
     internalOperatorApiKey: "test-operator-key"
   }),
@@ -33,6 +36,7 @@ import { AuthService } from "../auth/auth.service";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { InternalOperatorApiKeyGuard } from "../auth/guards/internal-operator-api-key.guard";
 import { InternalWorkerApiKeyGuard } from "../auth/guards/internal-worker-api-key.guard";
+import { OperatorIdentityService } from "../auth/operator-identity.service";
 import { LedgerService } from "../ledger/ledger.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { ReviewCasesService } from "../review-cases/review-cases.service";
@@ -63,6 +67,40 @@ describe("Finance flows integration", () => {
   const authHeaders = {
     Authorization: "Bearer test-token"
   };
+  const operatorIdentityService = {
+    resolveFromBearerToken: jest.fn(async () => null),
+    resolveFromLegacyApiKey: jest.fn(
+      ({
+        headers
+      }: {
+        headers: Record<string, string | string[] | undefined>;
+      }) => {
+        const apiKey = headers["x-operator-api-key"];
+        const operatorId = headers["x-operator-id"];
+        const operatorRole = headers["x-operator-role"];
+
+        if (
+          apiKey !== "test-operator-key" ||
+          typeof operatorId !== "string" ||
+          typeof operatorRole !== "string"
+        ) {
+          return null;
+        }
+
+        return {
+          operatorDbId: null,
+          operatorId,
+          operatorRole,
+          operatorRoles: [operatorRole],
+          operatorSupabaseUserId: null,
+          operatorEmail: null,
+          authSource: "legacy_api_key" as const,
+          environment: "development",
+          sessionCorrelationId: null
+        };
+      }
+    )
+  };
 
   beforeEach(async () => {
     harness = new FinanceFlowIntegrationHarness();
@@ -91,13 +129,22 @@ describe("Finance flows integration", () => {
           useValue: harness.prismaService
         },
         {
+          provide: OperatorIdentityService,
+          useValue: operatorIdentityService
+        },
+        {
           provide: LedgerService,
           useValue: harness.ledgerService
         },
         {
           provide: ReviewCasesService,
           useValue: {
-            openOrReuseReviewCase: jest.fn()
+            openOrReuseReviewCase: jest.fn().mockResolvedValue({
+              reviewCase: {
+                id: "review_case_1"
+              },
+              reviewCaseReused: false
+            })
           }
         }
       ]
@@ -122,7 +169,10 @@ describe("Finance flows integration", () => {
 
     expect(createResponse.status).toBe(201);
     expect(createResponse.body.data.idempotencyReused).toBe(false);
-    expect(createResponse.body.data.intent.status).toBe("requested");
+    expect(createResponse.body.data.intent.status).toBe("review_required");
+    expect(createResponse.body.data.intent.policyDecision).toBe(
+      "review_required"
+    );
     expect(createResponse.body.data.intent.destinationWalletAddress).toBe(
       harness.wallet.address
     );

@@ -57,6 +57,7 @@ const DEFAULT_CUSTODY_OPERATION_ALLOWED_OPERATOR_ROLES = [
   "senior_operator",
   "treasury"
 ] as const;
+const POSITIVE_DECIMAL_STRING_PATTERN = /^(?:0|[1-9]\d*)(?:\.\d{1,18})?$/;
 const DEFAULT_STAKING_GOVERNANCE_ALLOWED_OPERATOR_ROLES = [
   "treasury",
   "risk_manager",
@@ -173,6 +174,19 @@ function parsePositiveIntegerLike(value: unknown, name: string): number {
   return Number(value);
 }
 
+function parsePositiveDecimalString(value: string, name: string): string {
+  const normalizedValue = value.trim();
+
+  if (
+    !POSITIVE_DECIMAL_STRING_PATTERN.test(normalizedValue) ||
+    Number(normalizedValue) <= 0
+  ) {
+    throw new Error(`${name} must be a positive decimal string.`);
+  }
+
+  return normalizedValue;
+}
+
 function parseIntegerInRange(
   value: unknown,
   name: string,
@@ -203,6 +217,52 @@ function parseGovernedTreasuryExecutionMode(
   throw new Error(
     `${name} must be one of: direct_private_key, governed_external.`
   );
+}
+
+function parseDepositRiskAutoApproveThresholds(
+  value: string,
+  name: string
+): DepositRiskAutoApproveThresholdRuntimeConfig[] {
+  let parsedValue: unknown;
+
+  try {
+    parsedValue = JSON.parse(value);
+  } catch {
+    throw new Error(`${name} must be valid JSON.`);
+  }
+
+  if (!Array.isArray(parsedValue)) {
+    throw new Error(`${name} must be a JSON array.`);
+  }
+
+  return parsedValue.map((entry, index) => {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+      throw new Error(`${name}[${index}] must be an object.`);
+    }
+
+    const assetSymbol =
+      typeof entry["assetSymbol"] === "string"
+        ? entry["assetSymbol"].trim().toUpperCase()
+        : "";
+
+    if (!assetSymbol) {
+      throw new Error(`${name}[${index}].assetSymbol must be a non-empty string.`);
+    }
+
+    if (typeof entry["maxRequestedAmount"] !== "string") {
+      throw new Error(
+        `${name}[${index}].maxRequestedAmount must be a string.`
+      );
+    }
+
+    return {
+      assetSymbol,
+      maxRequestedAmount: parsePositiveDecimalString(
+        entry["maxRequestedAmount"],
+        `${name}[${index}].maxRequestedAmount`
+      )
+    };
+  });
 }
 
 function parseOperatorRuntimeEnvironment(
@@ -1010,6 +1070,15 @@ export type InternalGovernedExecutorRuntimeConfig = {
 
 export type ManualResolutionPolicyRuntimeConfig = {
   readonly manualResolutionAllowedOperatorRoles: readonly string[];
+};
+
+export type DepositRiskAutoApproveThresholdRuntimeConfig = {
+  readonly assetSymbol: string;
+  readonly maxRequestedAmount: string;
+};
+
+export type DepositRiskPolicyRuntimeConfig = {
+  readonly autoApproveThresholds: readonly DepositRiskAutoApproveThresholdRuntimeConfig[];
 };
 
 export type AccountHoldPolicyRuntimeConfig = {
@@ -1950,6 +2019,24 @@ export function loadManualResolutionPolicyRuntimeConfig(
       configuredRoles,
       "MANUAL_RESOLUTION_ALLOWED_OPERATOR_ROLES"
     )
+  };
+}
+
+export function loadDepositRiskPolicyRuntimeConfig(
+  env: RuntimeEnvShape = getNodeRuntimeEnv()
+): DepositRiskPolicyRuntimeConfig {
+  const configuredThresholds = readOptionalRuntimeEnv(
+    env,
+    "DEPOSIT_AUTO_APPROVE_THRESHOLDS_JSON"
+  );
+
+  return {
+    autoApproveThresholds: configuredThresholds
+      ? parseDepositRiskAutoApproveThresholds(
+          configuredThresholds,
+          "DEPOSIT_AUTO_APPROVE_THRESHOLDS_JSON"
+        )
+      : []
   };
 }
 

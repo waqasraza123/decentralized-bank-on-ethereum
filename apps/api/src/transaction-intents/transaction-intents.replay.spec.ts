@@ -7,7 +7,12 @@ import {
 } from "@prisma/client";
 import { TransactionIntentsService } from "./transaction-intents.service";
 
+const loadDepositRiskPolicyRuntimeConfigMock = jest.fn();
+
 jest.mock("@stealth-trails-bank/config/api", () => ({
+  loadDepositRiskPolicyRuntimeConfig: (
+    env?: Record<string, string | undefined>
+  ) => loadDepositRiskPolicyRuntimeConfigMock(env),
   loadProductChainRuntimeConfig: () => ({
     productChainId: 8453
   }),
@@ -35,6 +40,8 @@ function createIntentRecord(
     policyDecision: PolicyDecision;
     blockchainStatus: BlockchainTransactionStatus;
     settledAmount: string | null;
+    fromAddress: string | null;
+    toAddress: string | null;
   }> = {}
 ) {
   return {
@@ -85,8 +92,12 @@ function createIntentRecord(
         txHash:
           "0x1111111111111111111111111111111111111111111111111111111111111111",
         status: overrides.blockchainStatus ?? BlockchainTransactionStatus.confirmed,
-        fromAddress: null,
-        toAddress: null,
+        fromAddress:
+          overrides.fromAddress ??
+          "0x0000000000000000000000000000000000000def",
+        toAddress:
+          overrides.toAddress ??
+          "0x0000000000000000000000000000000000000abc",
         createdAt: new Date("2026-04-01T10:05:00.000Z"),
         updatedAt: new Date("2026-04-01T10:05:00.000Z"),
         confirmedAt:
@@ -108,6 +119,13 @@ function createService() {
     transactionIntent: {
       findFirst: jest.fn(),
       update: jest.fn()
+    },
+    reviewCase: {
+      findUnique: jest.fn(),
+      update: jest.fn()
+    },
+    reviewCaseEvent: {
+      create: jest.fn()
     },
     blockchainTransaction: {
       update: jest.fn()
@@ -134,7 +152,15 @@ function createService() {
 
   const service = new TransactionIntentsService(
     prismaService as never,
-    ledgerService as never
+    ledgerService as never,
+    {
+      openOrReuseReviewCase: jest.fn().mockResolvedValue({
+        reviewCase: {
+          id: "review_case_1"
+        },
+        reviewCaseReused: false
+      })
+    } as never
   );
 
   return {
@@ -148,6 +174,9 @@ function createService() {
 describe("TransactionIntentsService replay methods", () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    loadDepositRiskPolicyRuntimeConfigMock.mockReturnValue({
+      autoApproveThresholds: []
+    });
   });
 
   it("replays confirm with operator audit metadata", async () => {

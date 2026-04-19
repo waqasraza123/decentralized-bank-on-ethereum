@@ -143,6 +143,11 @@ describe("wallet page", () => {
     expect(
       screen.getAllByText("0x1111222233334444555566667777888899990000").length
     ).toBeGreaterThan(0);
+    expect(
+      screen.getByText(
+        /Deposits are credited only after managed-wallet detection, chain confirmation, and policy-safe settlement/i
+      )
+    ).toBeInTheDocument();
     expect(screen.getByText(/Available:/i)).toBeInTheDocument();
     expect(screen.getAllByText(/2.5 ETH/i).length).toBeGreaterThan(0);
     expect(screen.queryByText(/Transfer Funds/i)).not.toBeInTheDocument();
@@ -165,8 +170,8 @@ describe("wallet page", () => {
         },
         destinationWalletAddress: "0x1111222233334444555566667777888899990000",
         intentType: "deposit",
-        status: "requested",
-        policyDecision: "pending",
+        status: "review_required",
+        policyDecision: "review_required",
         requestedAmount: "1.25",
         createdAt: "2026-04-05T10:00:00.000Z",
         updatedAt: "2026-04-05T10:00:00.000Z"
@@ -190,6 +195,11 @@ describe("wallet page", () => {
 
     expect(screen.getByText(/Latest deposit request/i)).toBeInTheDocument();
     expect(screen.getByText(/1.25 ETH/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        /This deposit is paused for operator review before execution or final settlement continues/i
+      )
+    ).toBeInTheDocument();
   });
 
   it("submits a withdrawal request with validated destination and live balance context", async () => {

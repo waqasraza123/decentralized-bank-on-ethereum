@@ -1,4 +1,7 @@
 jest.mock("@stealth-trails-bank/config/api", () => ({
+  loadDepositRiskPolicyRuntimeConfig: () => ({
+    autoApproveThresholds: []
+  }),
   loadInternalOperatorRuntimeConfig: () => ({
     internalOperatorApiKey: "test-operator-key"
   }),
@@ -27,8 +30,10 @@ import type { INestApplication } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import request from "supertest";
 import { InternalOperatorApiKeyGuard } from "../auth/guards/internal-operator-api-key.guard";
+import { OperatorIdentityService } from "../auth/operator-identity.service";
 import { LedgerService } from "../ledger/ledger.service";
 import { PrismaService } from "../prisma/prisma.service";
+import { ReviewCasesService } from "../review-cases/review-cases.service";
 import { createIntegrationTestApp } from "../test-utils/create-integration-test-app";
 import { TransactionIntentsInternalController } from "./transaction-intents-internal.controller";
 import { TransactionIntentsService } from "./transaction-intents.service";
@@ -55,8 +60,8 @@ function buildReviewIntentRecord(
     externalAddress: null,
     chainId: 8453,
     intentType: "deposit",
-    status: "requested",
-    policyDecision: "pending",
+    status: "review_required",
+    policyDecision: "review_required",
     requestedAmount: new Prisma.Decimal("125.50"),
     settledAmount: null,
     idempotencyKey: "deposit-intent-001",
@@ -83,6 +88,40 @@ function buildReviewIntentRecord(
 describe("TransactionIntentsInternalController integration", () => {
   let app: INestApplication;
   let currentIntent: ReturnType<typeof buildReviewIntentRecord>;
+  const operatorIdentityService = {
+    resolveFromBearerToken: jest.fn(async () => null),
+    resolveFromLegacyApiKey: jest.fn(
+      ({
+        headers
+      }: {
+        headers: Record<string, string | string[] | undefined>;
+      }) => {
+        const apiKey = headers["x-operator-api-key"];
+        const operatorId = headers["x-operator-id"];
+        const operatorRole = headers["x-operator-role"];
+
+        if (
+          apiKey !== "test-operator-key" ||
+          typeof operatorId !== "string" ||
+          typeof operatorRole !== "string"
+        ) {
+          return null;
+        }
+
+        return {
+          operatorDbId: null,
+          operatorId,
+          operatorRole,
+          operatorRoles: [operatorRole],
+          operatorSupabaseUserId: null,
+          operatorEmail: null,
+          authSource: "legacy_api_key" as const,
+          environment: "development",
+          sessionCorrelationId: null
+        };
+      }
+    )
+  };
 
   const prismaTransaction = {
     transactionIntent: {
@@ -145,15 +184,55 @@ describe("TransactionIntentsInternalController integration", () => {
       create: jest.fn(async () => ({
         id: "audit_1"
       }))
+    },
+    reviewCase: {
+      findUnique: jest.fn(async () => ({
+        id: "review_case_1",
+        customerId: currentIntent.customerAccount.customer.id,
+        customerAccountId: currentIntent.customerAccount.id,
+        transactionIntentId: currentIntent.id,
+        type: "manual_intervention",
+        status: "open",
+        assignedOperatorId: null
+      })),
+      update: jest.fn(async () => ({
+        id: "review_case_1"
+      }))
+    },
+    reviewCaseEvent: {
+      create: jest.fn(async () => ({
+        id: "review_case_event_1"
+      }))
     }
   };
 
   const prismaService = {
     transactionIntent: {
       findMany: jest.fn(async ({ where }: { where: Record<string, unknown> }) => {
+        const statusFilter = where.status as
+          | string
+          | { in?: string[] }
+          | undefined;
+        const policyDecisionFilter = where.policyDecision as
+          | string
+          | { in?: string[] }
+          | undefined;
+        const statusMatches =
+          typeof statusFilter === "string"
+            ? statusFilter === currentIntent.status
+            : Array.isArray(statusFilter?.in)
+              ? statusFilter.in.includes(currentIntent.status)
+              : false;
+        const policyMatches =
+          typeof policyDecisionFilter === "string"
+            ? policyDecisionFilter === currentIntent.policyDecision
+            : Array.isArray(policyDecisionFilter?.in)
+              ? policyDecisionFilter.in.includes(currentIntent.policyDecision)
+              : false;
+
         if (
-          where.status === currentIntent.status &&
-          where.policyDecision === currentIntent.policyDecision
+          statusMatches &&
+          policyMatches
         ) {
           return [currentIntent];
         }
@@ -184,8 +263,23 @@ describe("TransactionIntentsInternalController integration", () => {
           useValue: prismaService
         },
         {
+          provide: OperatorIdentityService,
+          useValue: operatorIdentityService
+        },
+        {
           provide: LedgerService,
           useValue: {}
+        },
+        {
+          provide: ReviewCasesService,
+          useValue: {
+            openOrReuseReviewCase: jest.fn().mockResolvedValue({
+              reviewCase: {
+                id: "review_case_1"
+              },
+              reviewCaseReused: false
+            })
+          }
         }
       ]
     });
@@ -208,7 +302,9 @@ describe("TransactionIntentsInternalController integration", () => {
     );
 
     expect(response.status).toBe(401);
-    expect(response.body.message).toBe("Missing operator API key.");
+    expect(response.body.message).toBe(
+      "Operator authentication requires a bearer token or an allowed legacy operator API key."
+    );
   });
 
   it("lists pending deposit intents over the guarded internal operator API", async () => {
@@ -222,7 +318,7 @@ describe("TransactionIntentsInternalController integration", () => {
     expect(response.body.status).toBe("success");
     expect(response.body.data.limit).toBe(10);
     expect(response.body.data.intents).toHaveLength(1);
-    expect(response.body.data.intents[0].status).toBe("requested");
+    expect(response.body.data.intents[0].status).toBe("review_required");
     expect(response.body.data.intents[0].customer.email).toBe("ada@example.com");
   });
 

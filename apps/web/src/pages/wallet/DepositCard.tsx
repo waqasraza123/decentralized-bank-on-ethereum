@@ -154,8 +154,12 @@ const DepositCard = ({
               : "Deposit request recorded",
         description:
           locale === "ar"
-            ? "يمكنك الآن تتبع الطلب من سجل المعاملات ومن بطاقة التتبع أدناه."
-            : "You can now track the request from transaction history and the tracker below."
+            ? result.intent.status === "review_required"
+              ? "تم تسجيل الطلب وتحويله إلى مراجعة تشغيلية قبل متابعة التنفيذ أو التسوية."
+              : "يمكنك الآن تتبع الطلب من سجل المعاملات ومن بطاقة التتبع أدناه."
+            : result.intent.status === "review_required"
+              ? "The request was recorded and routed for operator review before execution or settlement continues."
+              : "You can now track the request from transaction history and the tracker below."
       });
     } catch (error) {
       const message = readApiErrorMessage(
@@ -303,8 +307,8 @@ const DepositCard = ({
 
           <div className="stb-trust-note text-sm text-amber-800" data-tone="warning">
             {locale === "ar"
-              ? "سجّل الطلب قبل الإرسال حتى تستطيع المنصة تفسير الأموال الواردة على أنها إيداع متوقع."
-              : "Record the request before sending funds so the platform can interpret the incoming transfer as expected deposit activity."}
+              ? "سجّل الطلب قبل الإرسال. لا يتم اعتماد الإيداعات إلا بعد رصد المحفظة المُدارة وتأكيد السلسلة وإتمام التسوية وفق السياسات، وقد تتطلب الحالات الكبيرة أو غير المعتادة مراجعة تشغيلية."
+              : "Record the request before sending funds. Deposits are credited only after managed-wallet detection, chain confirmation, and policy-safe settlement, and larger or anomalous transfers may require operator review."}
           </div>
 
           {assetsErrorMessage ? (
@@ -364,6 +368,16 @@ const DepositCard = ({
             <div className="mt-5">
               <TimelineList events={buildIntentTimeline(latestRequest.intent)} />
             </div>
+            {latestRequest.intent.status === "review_required" ? (
+              <div
+                className="stb-trust-note mt-4 text-sm text-amber-800"
+                data-tone="warning"
+              >
+                {locale === "ar"
+                  ? "هذا الإيداع متوقف حالياً للمراجعة التشغيلية قبل متابعة التنفيذ أو التسوية النهائية."
+                  : "This deposit is paused for operator review before execution or final settlement continues."}
+              </div>
+            ) : null}
           </div>
         ) : null}
       </CardContent>

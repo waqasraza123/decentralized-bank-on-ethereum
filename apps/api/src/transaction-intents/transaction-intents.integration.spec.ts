@@ -1,3 +1,28 @@
+jest.mock("@stealth-trails-bank/config/api", () => ({
+  loadDepositRiskPolicyRuntimeConfig: () => ({
+    autoApproveThresholds: []
+  }),
+  loadProductChainRuntimeConfig: () => ({
+    productChainId: 8453
+  }),
+  loadSensitiveOperatorActionPolicyRuntimeConfig: () => ({
+    transactionIntentDecisionAllowedOperatorRoles: [
+      "operations_admin",
+      "risk_manager"
+    ],
+    custodyOperationAllowedOperatorRoles: [
+      "operations_admin",
+      "senior_operator",
+      "treasury"
+    ],
+    stakingGovernanceAllowedOperatorRoles: [
+      "treasury",
+      "risk_manager",
+      "compliance_lead"
+    ]
+  })
+}));
+
 import type { INestApplication } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import request from "supertest";
@@ -5,6 +30,7 @@ import { AuthService } from "../auth/auth.service";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { LedgerService } from "../ledger/ledger.service";
 import { PrismaService } from "../prisma/prisma.service";
+import { ReviewCasesService } from "../review-cases/review-cases.service";
 import { createIntegrationTestApp } from "../test-utils/create-integration-test-app";
 import { TransactionIntentsController } from "./transaction-intents.controller";
 import { TransactionIntentsService } from "./transaction-intents.service";
@@ -31,8 +57,8 @@ function buildIntentRecord(
     externalAddress: null,
     chainId: 8453,
     intentType: "deposit",
-    status: "requested",
-    policyDecision: "pending",
+    status: "review_required",
+    policyDecision: "review_required",
     requestedAmount: new Prisma.Decimal("125.50"),
     settledAmount: null,
     idempotencyKey: "deposit-intent-001",
@@ -53,7 +79,8 @@ describe("TransactionIntentsController integration", () => {
 
   const prismaTransaction = {
     transactionIntent: {
-      create: jest.fn()
+      create: jest.fn(),
+      update: jest.fn()
     },
     auditEvent: {
       create: jest.fn()
@@ -74,6 +101,9 @@ describe("TransactionIntentsController integration", () => {
       callback(prismaTransaction)
     )
   };
+  const reviewCasesService = {
+    openOrReuseReviewCase: jest.fn()
+  };
 
   beforeAll(async () => {
     const integrationApp = await createIntegrationTestApp({
@@ -92,6 +122,10 @@ describe("TransactionIntentsController integration", () => {
         {
           provide: LedgerService,
           useValue: {}
+        },
+        {
+          provide: ReviewCasesService,
+          useValue: reviewCasesService
         }
       ]
     });
@@ -126,8 +160,20 @@ describe("TransactionIntentsController integration", () => {
       status: "active"
     });
     prismaService.transactionIntent.findUnique.mockResolvedValue(null);
+    reviewCasesService.openOrReuseReviewCase.mockResolvedValue({
+      reviewCase: {
+        id: "review_case_1"
+      },
+      reviewCaseReused: false
+    });
     prismaTransaction.transactionIntent.create.mockResolvedValue(
       buildIntentRecord()
+    );
+    prismaTransaction.transactionIntent.update.mockResolvedValue(
+      buildIntentRecord({
+        manualInterventionReviewCaseId: "review_case_1",
+        manualInterventionRequiredAt: new Date("2026-04-06T18:00:00.000Z")
+      })
     );
     prismaTransaction.auditEvent.create.mockResolvedValue({
       id: "audit_1"
@@ -198,8 +244,8 @@ describe("TransactionIntentsController integration", () => {
           externalAddress: null,
           chainId: 8453,
           intentType: "deposit",
-          status: "requested",
-          policyDecision: "pending",
+          status: "review_required",
+          policyDecision: "review_required",
           requestedAmount: "125.5",
           settledAmount: null,
           idempotencyKey: "deposit-intent-001",
@@ -220,6 +266,7 @@ describe("TransactionIntentsController integration", () => {
       })
     );
     expect(prismaTransaction.transactionIntent.create).toHaveBeenCalled();
+    expect(reviewCasesService.openOrReuseReviewCase).toHaveBeenCalled();
     expect(prismaTransaction.auditEvent.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
