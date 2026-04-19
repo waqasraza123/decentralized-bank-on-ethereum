@@ -10,9 +10,7 @@ import { createIntegrationTestApp } from "../test-utils/create-integration-test-
 import { WithdrawalIntentsController } from "./withdrawal-intents.controller";
 import { WithdrawalIntentsService } from "./withdrawal-intents.service";
 
-function buildIntentRecord(
-  overrides: Partial<Record<string, unknown>> = {}
-) {
+function buildIntentRecord(overrides: Partial<Record<string, unknown>> = {}) {
   return {
     id: "intent_1",
     customerAccountId: "account_1",
@@ -21,7 +19,7 @@ function buildIntentRecord(
       symbol: "USDC",
       displayName: "USD Coin",
       decimals: 6,
-      chainId: 8453
+      chainId: 8453,
     },
     sourceWalletId: "wallet_1",
     destinationWalletId: null,
@@ -40,9 +38,9 @@ function buildIntentRecord(
     sourceWallet: {
       id: "wallet_1",
       address: "0x0000000000000000000000000000000000000111",
-      custodyType: "managed"
+      custodyType: "managed",
     },
-    ...overrides
+    ...overrides,
   };
 }
 
@@ -50,40 +48,41 @@ describe("WithdrawalIntentsController integration", () => {
   let app: INestApplication;
 
   const authService = {
-    validateToken: jest.fn()
+    validateToken: jest.fn(),
+    assertCustomerStepUpFresh: jest.fn(),
   };
 
   const prismaTransaction = {
     transactionIntent: {
-      create: jest.fn()
+      create: jest.fn(),
     },
     auditEvent: {
-      create: jest.fn()
-    }
+      create: jest.fn(),
+    },
   };
 
   const prismaService = {
     customerAccount: {
-      findFirst: jest.fn()
+      findFirst: jest.fn(),
     },
     asset: {
-      findUnique: jest.fn()
+      findUnique: jest.fn(),
     },
     transactionIntent: {
-      findUnique: jest.fn()
+      findUnique: jest.fn(),
     },
     $transaction: jest.fn(
       async (callback: (tx: typeof prismaTransaction) => unknown) =>
-        callback(prismaTransaction)
-    )
+        callback(prismaTransaction),
+    ),
   };
 
   const ledgerService = {
-    reserveWithdrawalBalance: jest.fn()
+    reserveWithdrawalBalance: jest.fn(),
   };
 
   const reviewCasesService = {
-    openWithdrawalReviewCase: jest.fn()
+    openWithdrawalReviewCase: jest.fn(),
   };
 
   beforeAll(async () => {
@@ -94,21 +93,21 @@ describe("WithdrawalIntentsController integration", () => {
         JwtAuthGuard,
         {
           provide: AuthService,
-          useValue: authService
+          useValue: authService,
         },
         {
           provide: PrismaService,
-          useValue: prismaService
+          useValue: prismaService,
         },
         {
           provide: LedgerService,
-          useValue: ledgerService
+          useValue: ledgerService,
         },
         {
           provide: ReviewCasesService,
-          useValue: reviewCasesService
-        }
-      ]
+          useValue: reviewCasesService,
+        },
+      ],
     });
 
     app = integrationApp.app;
@@ -118,39 +117,40 @@ describe("WithdrawalIntentsController integration", () => {
     jest.clearAllMocks();
 
     authService.validateToken.mockResolvedValue({
-      id: "supabase_1"
+      id: "supabase_1",
     });
+    authService.assertCustomerStepUpFresh.mockResolvedValue(undefined);
     prismaService.customerAccount.findFirst.mockResolvedValue({
       id: "account_1",
       status: "active",
       customer: {
-        id: "customer_1"
+        id: "customer_1",
       },
       wallets: [
         {
           id: "wallet_1",
           address: "0x0000000000000000000000000000000000000111",
-          custodyType: "managed"
-        }
-      ]
+          custodyType: "managed",
+        },
+      ],
     });
     prismaService.asset.findUnique.mockResolvedValue({
       id: "asset_1",
       symbol: "USDC",
       displayName: "USD Coin",
       decimals: 6,
-      status: "active"
+      status: "active",
     });
     prismaService.transactionIntent.findUnique.mockResolvedValue(null);
     ledgerService.reserveWithdrawalBalance.mockResolvedValue({
       availableBalance: "75",
-      pendingBalance: "25"
+      pendingBalance: "25",
     });
     prismaTransaction.transactionIntent.create.mockResolvedValue(
-      buildIntentRecord()
+      buildIntentRecord(),
     );
     prismaTransaction.auditEvent.create.mockResolvedValue({
-      id: "audit_1"
+      id: "audit_1",
     });
   });
 
@@ -165,7 +165,7 @@ describe("WithdrawalIntentsController integration", () => {
         idempotencyKey: "withdraw-intent-001",
         assetSymbol: "USDC",
         amount: "25",
-        destinationAddress: "0x0000000000000000000000000000000000000222"
+        destinationAddress: "0x0000000000000000000000000000000000000222",
       });
 
     expect(response.status).toBe(401);
@@ -180,7 +180,7 @@ describe("WithdrawalIntentsController integration", () => {
         idempotencyKey: "short",
         assetSymbol: "U",
         amount: "1e3",
-        destinationAddress: "invalid"
+        destinationAddress: "invalid",
       });
 
     expect(response.status).toBe(400);
@@ -195,7 +195,7 @@ describe("WithdrawalIntentsController integration", () => {
         idempotencyKey: "withdraw-intent-001",
         assetSymbol: "usdc",
         amount: "25",
-        destinationAddress: "0x0000000000000000000000000000000000000222"
+        destinationAddress: "0x0000000000000000000000000000000000000222",
       });
 
     expect(response.status).toBe(201);
@@ -212,7 +212,7 @@ describe("WithdrawalIntentsController integration", () => {
             symbol: "USDC",
             displayName: "USD Coin",
             decimals: 6,
-            chainId: 8453
+            chainId: 8453,
           },
           sourceWalletId: "wallet_1",
           sourceWalletAddress: "0x0000000000000000000000000000000000000111",
@@ -234,26 +234,29 @@ describe("WithdrawalIntentsController integration", () => {
           failureCode: null,
           failureReason: null,
           createdAt: "2026-04-06T18:00:00.000Z",
-          updatedAt: "2026-04-06T18:00:00.000Z"
-        }
-      }
+          updatedAt: "2026-04-06T18:00:00.000Z",
+        },
+      },
     });
     expect(prismaService.customerAccount.findFirst).toHaveBeenCalledWith(
       expect.objectContaining({
         where: {
           customer: {
-            supabaseUserId: "supabase_1"
-          }
-        }
-      })
+            supabaseUserId: "supabase_1",
+          },
+        },
+      }),
+    );
+    expect(authService.assertCustomerStepUpFresh).toHaveBeenCalledWith(
+      "supabase_1",
     );
     expect(ledgerService.reserveWithdrawalBalance).toHaveBeenCalledWith(
       prismaTransaction,
       expect.objectContaining({
         customerAccountId: "account_1",
         assetId: "asset_1",
-        amount: new Prisma.Decimal("25")
-      })
+        amount: new Prisma.Decimal("25"),
+      }),
     );
     expect(prismaTransaction.transactionIntent.create).toHaveBeenCalled();
     expect(prismaTransaction.auditEvent.create).toHaveBeenCalledWith(
@@ -262,17 +265,17 @@ describe("WithdrawalIntentsController integration", () => {
           customerId: "customer_1",
           actorType: "customer",
           actorId: "supabase_1",
-          action: "transaction_intent.withdrawal.requested"
-        })
-      })
+          action: "transaction_intent.withdrawal.requested",
+        }),
+      }),
     );
   });
 
   it("reuses an existing withdrawal intent for the same idempotency key", async () => {
     prismaService.transactionIntent.findUnique.mockResolvedValue(
       buildIntentRecord({
-        id: "intent_existing"
-      })
+        id: "intent_existing",
+      }),
     );
 
     const response = await request(app.getHttpServer())
@@ -282,11 +285,13 @@ describe("WithdrawalIntentsController integration", () => {
         idempotencyKey: "withdraw-intent-001",
         assetSymbol: "USDC",
         amount: "25",
-        destinationAddress: "0x0000000000000000000000000000000000000222"
+        destinationAddress: "0x0000000000000000000000000000000000000222",
       });
 
     expect(response.status).toBe(201);
-    expect(response.body.message).toBe("Withdrawal request reused successfully.");
+    expect(response.body.message).toBe(
+      "Withdrawal request reused successfully.",
+    );
     expect(response.body.data.idempotencyReused).toBe(true);
     expect(response.body.data.intent.id).toBe("intent_existing");
     expect(prismaService.$transaction).not.toHaveBeenCalled();

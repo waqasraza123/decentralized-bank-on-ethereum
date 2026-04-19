@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import {
   readOptionalRuntimeEnv,
   readRequiredRuntimeEnv,
-  type RuntimeEnvShape
+  type RuntimeEnvShape,
 } from "./runtime-env";
 
 const DEFAULT_PRODUCT_CHAIN_ID = 8453;
@@ -14,64 +14,64 @@ const DEFAULT_LOCAL_CORS_ALLOWED_ORIGINS = [
   "http://localhost:4173",
   "http://127.0.0.1:4173",
   "http://localhost:5173",
-  "http://127.0.0.1:5173"
+  "http://127.0.0.1:5173",
 ] as const;
 const DEFAULT_MANUAL_RESOLUTION_ALLOWED_OPERATOR_ROLES = [
   "operations_admin",
   "risk_manager",
-  "senior_operator"
+  "senior_operator",
 ] as const;
 const DEFAULT_ACCOUNT_HOLD_APPLY_ALLOWED_OPERATOR_ROLES = [
   "operations_admin",
-  "risk_manager"
+  "risk_manager",
 ] as const;
 const DEFAULT_ACCOUNT_HOLD_RELEASE_ALLOWED_OPERATOR_ROLES = [
   "operations_admin",
   "risk_manager",
-  "compliance_lead"
+  "compliance_lead",
 ] as const;
 const DEFAULT_INCIDENT_PACKAGE_EXPORT_MAX_RECENT_LIMIT = 100;
 const DEFAULT_INCIDENT_PACKAGE_EXPORT_MAX_TIMELINE_LIMIT = 500;
 const DEFAULT_INCIDENT_PACKAGE_EXPORT_MAX_SINCE_DAYS = 90;
 const DEFAULT_INCIDENT_PACKAGE_RELEASE_APPROVER_ALLOWED_OPERATOR_ROLES = [
   "compliance_lead",
-  "risk_manager"
+  "risk_manager",
 ] as const;
 const DEFAULT_INCIDENT_PACKAGE_RELEASE_APPROVAL_EXPIRY_HOURS = 72;
 const DEFAULT_RELEASE_READINESS_APPROVAL_REQUEST_ALLOWED_OPERATOR_ROLES = [
   "operations_admin",
   "compliance_lead",
-  "risk_manager"
+  "risk_manager",
 ] as const;
 const DEFAULT_RELEASE_READINESS_APPROVER_ALLOWED_OPERATOR_ROLES = [
   "compliance_lead",
-  "risk_manager"
+  "risk_manager",
 ] as const;
 const DEFAULT_RELEASE_READINESS_MAX_EVIDENCE_AGE_HOURS = 72;
 const DEFAULT_TRANSACTION_INTENT_DECISION_ALLOWED_OPERATOR_ROLES = [
   "operations_admin",
-  "risk_manager"
+  "risk_manager",
 ] as const;
 const DEFAULT_CUSTODY_OPERATION_ALLOWED_OPERATOR_ROLES = [
   "operations_admin",
   "senior_operator",
-  "treasury"
+  "treasury",
 ] as const;
 const POSITIVE_DECIMAL_STRING_PATTERN = /^(?:0|[1-9]\d*)(?:\.\d{1,18})?$/;
 const DEFAULT_STAKING_GOVERNANCE_ALLOWED_OPERATOR_ROLES = [
   "treasury",
   "risk_manager",
-  "compliance_lead"
+  "compliance_lead",
 ] as const;
 const DEFAULT_STAKING_POOL_GOVERNANCE_REQUEST_ALLOWED_OPERATOR_ROLES = [
-  ...DEFAULT_STAKING_GOVERNANCE_ALLOWED_OPERATOR_ROLES
+  ...DEFAULT_STAKING_GOVERNANCE_ALLOWED_OPERATOR_ROLES,
 ] as const;
 const DEFAULT_STAKING_POOL_GOVERNANCE_APPROVER_ALLOWED_OPERATOR_ROLES = [
   "risk_manager",
-  "compliance_lead"
+  "compliance_lead",
 ] as const;
 const DEFAULT_STAKING_POOL_GOVERNANCE_EXECUTOR_ALLOWED_OPERATOR_ROLES = [
-  "treasury"
+  "treasury",
 ] as const;
 const DEFAULT_PLATFORM_ALERT_DELIVERY_REQUEST_TIMEOUT_MS = 5_000;
 const DEFAULT_PLATFORM_ALERT_DELIVERY_HEALTH_SLO_LOOKBACK_HOURS = 24;
@@ -99,19 +99,19 @@ const DEFAULT_WORKER_MANAGED_WITHDRAWAL_CLAIM_TIMEOUT_MS = 60_000;
 const DEFAULT_WORKER_POLICY_CONTROLLED_WITHDRAWAL_AUTHORIZATION_TTL_SECONDS = 300;
 const DEFAULT_SOLVENCY_RESUME_REQUEST_ALLOWED_OPERATOR_ROLES = [
   "operations_admin",
-  "risk_manager"
+  "risk_manager",
 ] as const;
 const DEFAULT_SOLVENCY_RESUME_APPROVER_ALLOWED_OPERATOR_ROLES = [
   "compliance_lead",
-  "risk_manager"
+  "risk_manager",
 ] as const;
 const DEFAULT_GOVERNED_EXECUTION_REQUEST_ALLOWED_OPERATOR_ROLES = [
   "operations_admin",
-  "risk_manager"
+  "risk_manager",
 ] as const;
 const DEFAULT_GOVERNED_EXECUTION_APPROVER_ALLOWED_OPERATOR_ROLES = [
   "compliance_lead",
-  "risk_manager"
+  "risk_manager",
 ] as const;
 const DEFAULT_GOVERNED_EXECUTION_OVERRIDE_MAX_HOURS = 12;
 const DEFAULT_LOCAL_SOLVENCY_REPORT_SIGNER_PRIVATE_KEY =
@@ -125,7 +125,7 @@ const DEFAULT_LOCAL_INTERNAL_OPERATOR_API_KEY = "local-dev-operator-key";
 const DEFAULT_LOCAL_INTERNAL_GOVERNED_EXECUTOR_API_KEY =
   "local-dev-governed-executor-key";
 const DEFAULT_LOCAL_GOVERNED_EXECUTOR_SIGNER_ADDRESSES = [
-  "0x7E5F4552091A69125d5DfCb7b8C2659029395BDF"
+  "0x7E5F4552091A69125d5DfCb7b8C2659029395BDF",
 ] as const;
 const DEFAULT_LOCAL_OPERATOR_AUTH_JWT_SECRET = "local-dev-supabase-jwt-secret";
 const DEFAULT_SHARED_LOGIN_ENABLED = true;
@@ -137,7 +137,7 @@ const DEFAULT_SHARED_LOGIN_SUPABASE_USER_ID = "shared-login-admin";
 const DEFAULT_OPERATOR_AUTH_REQUIRED_MFA_ENVIRONMENTS = [
   "staging",
   "production_like",
-  "production"
+  "production",
 ] as const;
 
 let nodeRuntimeEnvInitialized = false;
@@ -191,11 +191,15 @@ function parseIntegerInRange(
   value: unknown,
   name: string,
   minimum: number,
-  maximum: number
+  maximum: number,
 ): number {
-  if (!Number.isInteger(value) || Number(value) < minimum || Number(value) > maximum) {
+  if (
+    !Number.isInteger(value) ||
+    Number(value) < minimum ||
+    Number(value) > maximum
+  ) {
     throw new Error(
-      `${name} must be an integer between ${minimum} and ${maximum}.`
+      `${name} must be an integer between ${minimum} and ${maximum}.`,
     );
   }
 
@@ -204,7 +208,7 @@ function parseIntegerInRange(
 
 function parseGovernedTreasuryExecutionMode(
   value: string | undefined,
-  name: string
+  name: string,
 ): GovernedTreasuryExecutionMode {
   if (!value) {
     return "direct_private_key";
@@ -215,13 +219,13 @@ function parseGovernedTreasuryExecutionMode(
   }
 
   throw new Error(
-    `${name} must be one of: direct_private_key, governed_external.`
+    `${name} must be one of: direct_private_key, governed_external.`,
   );
 }
 
 function parseDepositRiskAutoApproveThresholds(
   value: string,
-  name: string
+  name: string,
 ): DepositRiskAutoApproveThresholdRuntimeConfig[] {
   let parsedValue: unknown;
 
@@ -246,27 +250,27 @@ function parseDepositRiskAutoApproveThresholds(
         : "";
 
     if (!assetSymbol) {
-      throw new Error(`${name}[${index}].assetSymbol must be a non-empty string.`);
+      throw new Error(
+        `${name}[${index}].assetSymbol must be a non-empty string.`,
+      );
     }
 
     if (typeof entry["maxRequestedAmount"] !== "string") {
-      throw new Error(
-        `${name}[${index}].maxRequestedAmount must be a string.`
-      );
+      throw new Error(`${name}[${index}].maxRequestedAmount must be a string.`);
     }
 
     return {
       assetSymbol,
       maxRequestedAmount: parsePositiveDecimalString(
         entry["maxRequestedAmount"],
-        `${name}[${index}].maxRequestedAmount`
-      )
+        `${name}[${index}].maxRequestedAmount`,
+      ),
     };
   });
 }
 
 function parseOperatorRuntimeEnvironment(
-  value: string | undefined
+  value: string | undefined,
 ): OperatorAuthRuntimeEnvironment {
   if (!value) {
     return "development";
@@ -282,12 +286,12 @@ function parseOperatorRuntimeEnvironment(
   }
 
   throw new Error(
-    "OPERATOR_RUNTIME_ENVIRONMENT must be one of: development, staging, production_like, production."
+    "OPERATOR_RUNTIME_ENVIRONMENT must be one of: development, staging, production_like, production.",
   );
 }
 
 function parseApiRuntimeEnvironment(
-  value: string | undefined
+  value: string | undefined,
 ): "development" | "test" | "production" {
   if (!value) {
     return "development";
@@ -297,14 +301,14 @@ function parseApiRuntimeEnvironment(
     return value;
   }
 
-  throw new Error(
-    "NODE_ENV must be one of: development, test, production."
-  );
+  throw new Error("NODE_ENV must be one of: development, test, production.");
 }
 
 function normalizeCorsAllowedOrigin(value: string, name: string): string {
   if (value === "*") {
-    throw new Error(`${name} must list explicit origins. Wildcard '*' is not allowed.`);
+    throw new Error(
+      `${name} must list explicit origins. Wildcard '*' is not allowed.`,
+    );
   }
 
   let parsedOrigin: URL;
@@ -327,7 +331,7 @@ function normalizeCorsAllowedOrigin(value: string, name: string): string {
     parsedOrigin.pathname !== "/"
   ) {
     throw new Error(
-      `${name} entries must be bare origins without credentials, paths, query strings, or fragments.`
+      `${name} entries must be bare origins without credentials, paths, query strings, or fragments.`,
     );
   }
 
@@ -368,13 +372,15 @@ function parseCommaSeparatedValues(value: string, name: string): string[] {
 
 function parseGovernedCustodyManifest(
   input: Record<string, unknown>,
-  name: string
+  name: string,
 ): GovernedCustodyRuntimeConfig {
   const releaseEnvironment = parseOperatorRuntimeEnvironment(
-    typeof input.environment === "string" ? input.environment : undefined
+    typeof input.environment === "string" ? input.environment : undefined,
   );
   const chainId = parsePositiveIntegerLike(input.chainId, `${name}.chainId`);
-  const authorities = Array.isArray(input.authorities) ? input.authorities : null;
+  const authorities = Array.isArray(input.authorities)
+    ? input.authorities
+    : null;
   const signers = Array.isArray(input.signers) ? input.signers : null;
   const contracts = Array.isArray(input.contracts) ? input.contracts : null;
 
@@ -406,21 +412,24 @@ function parseGovernedCustodyManifest(
         authorityType !== "emergency_safe"
       ) {
         throw new Error(
-          `${name}.authorities[${index}].authorityType must be governance_safe, treasury_safe, or emergency_safe.`
+          `${name}.authorities[${index}].authorityType must be governance_safe, treasury_safe, or emergency_safe.`,
         );
       }
 
       return {
         authorityType,
-        address: readStringLike(entry.address, `${name}.authorities[${index}].address`),
+        address: readStringLike(
+          entry.address,
+          `${name}.authorities[${index}].address`,
+        ),
         chainId: parsePositiveIntegerLike(
           entry.chainId ?? chainId,
-          `${name}.authorities[${index}].chainId`
+          `${name}.authorities[${index}].chainId`,
         ),
         label:
           typeof entry.label === "string" && entry.label.trim().length > 0
             ? entry.label.trim()
-            : null
+            : null,
       };
     }),
     signers: signers.map((entry, index) => {
@@ -437,7 +446,7 @@ function parseGovernedCustodyManifest(
         scope !== "policy_withdrawal_executor"
       ) {
         throw new Error(
-          `${name}.signers[${index}].scope must be staking_execution, loan_execution, policy_withdrawal_authorization, or policy_withdrawal_executor.`
+          `${name}.signers[${index}].scope must be staking_execution, loan_execution, policy_withdrawal_authorization, or policy_withdrawal_executor.`,
         );
       }
 
@@ -445,12 +454,12 @@ function parseGovernedCustodyManifest(
         scope,
         keyReference: readStringLike(
           entry.keyReference,
-          `${name}.signers[${index}].keyReference`
+          `${name}.signers[${index}].keyReference`,
         ),
         signerAddress: readStringLike(
           entry.signerAddress,
-          `${name}.signers[${index}].signerAddress`
-        )
+          `${name}.signers[${index}].signerAddress`,
+        ),
       };
     }),
     contracts: contracts.map((entry, index) => {
@@ -460,25 +469,34 @@ function parseGovernedCustodyManifest(
 
       const productSurface = entry.productSurface;
 
-      if (productSurface !== "staking_v1" && productSurface !== "loan_book_v1") {
+      if (
+        productSurface !== "staking_v1" &&
+        productSurface !== "loan_book_v1"
+      ) {
         throw new Error(
-          `${name}.contracts[${index}].productSurface must be staking_v1 or loan_book_v1.`
+          `${name}.contracts[${index}].productSurface must be staking_v1 or loan_book_v1.`,
         );
       }
 
       return {
         productSurface,
-        version: readStringLike(entry.version, `${name}.contracts[${index}].version`),
-        address: readStringLike(entry.address, `${name}.contracts[${index}].address`),
+        version: readStringLike(
+          entry.version,
+          `${name}.contracts[${index}].version`,
+        ),
+        address: readStringLike(
+          entry.address,
+          `${name}.contracts[${index}].address`,
+        ),
         abiChecksumSha256: readStringLike(
           entry.abiChecksumSha256,
-          `${name}.contracts[${index}].abiChecksumSha256`
+          `${name}.contracts[${index}].abiChecksumSha256`,
         ),
         legacyPath:
-          typeof entry.legacyPath === "boolean" ? entry.legacyPath : false
+          typeof entry.legacyPath === "boolean" ? entry.legacyPath : false,
       };
     }),
-    rawManifest: input
+    rawManifest: input,
   };
 }
 
@@ -505,22 +523,18 @@ function parseCorsAllowedOrigins(value: string, name: string): string[] {
 }
 
 function parseWorkerExecutionMode(
-  value: string | undefined
+  value: string | undefined,
 ): "monitor" | "synthetic" | "managed" {
   if (!value) {
     return "monitor";
   }
 
-  if (
-    value === "monitor" ||
-    value === "synthetic" ||
-    value === "managed"
-  ) {
+  if (value === "monitor" || value === "synthetic" || value === "managed") {
     return value;
   }
 
   throw new Error(
-    "WORKER_EXECUTION_MODE must be one of: monitor, synthetic, managed."
+    "WORKER_EXECUTION_MODE must be one of: monitor, synthetic, managed.",
   );
 }
 
@@ -570,7 +584,7 @@ function parseJsonObject(value: string, name: string): Record<string, unknown> {
 
 function parseJsonObjectFromFile(
   value: string,
-  name: string
+  name: string,
 ): Record<string, unknown> {
   try {
     return parseJsonObject(readFileSync(value, "utf8"), name);
@@ -585,7 +599,7 @@ function parseJsonObjectFromFile(
 
 function parsePlatformAlertDeliverySeverity(
   value: unknown,
-  name: string
+  name: string,
 ): PlatformAlertDeliverySeverity {
   if (value === "warning" || value === "critical") {
     return value;
@@ -596,7 +610,7 @@ function parsePlatformAlertDeliverySeverity(
 
 function parsePlatformAlertDeliveryMode(
   value: unknown,
-  name: string
+  name: string,
 ): PlatformAlertDeliveryMode {
   if (value === undefined) {
     return "direct";
@@ -611,7 +625,7 @@ function parsePlatformAlertDeliveryMode(
 
 function parsePlatformAlertDeliveryCategories(
   value: unknown,
-  name: string
+  name: string,
 ): PlatformAlertDeliveryCategory[] {
   if (!Array.isArray(value) || value.length === 0) {
     throw new Error(`${name} must be a non-empty array.`);
@@ -630,7 +644,7 @@ function parsePlatformAlertDeliveryCategories(
     }
 
     throw new Error(
-      `${name} contains an invalid category. Expected worker, reconciliation, queue, chain, treasury, or operations.`
+      `${name} contains an invalid category. Expected worker, reconciliation, queue, chain, treasury, or operations.`,
     );
   });
 
@@ -639,7 +653,7 @@ function parsePlatformAlertDeliveryCategories(
 
 function parsePlatformAlertDeliveryEventTypes(
   value: unknown,
-  name: string
+  name: string,
 ): PlatformAlertDeliveryEventType[] {
   if (!Array.isArray(value) || value.length === 0) {
     throw new Error(`${name} must be a non-empty array.`);
@@ -667,7 +681,7 @@ function parsePlatformAlertDeliveryEventTypes(
 
 function parsePlatformAlertDeliveryTargets(
   value: string,
-  name: string
+  name: string,
 ): PlatformAlertDeliveryTargetRuntimeConfig[] {
   let parsedValue: unknown;
 
@@ -698,24 +712,25 @@ function parsePlatformAlertDeliveryTargets(
       name: entry.name.trim().toLowerCase(),
       url: normalizeBaseUrl(entry.url.trim(), `${name}[${index}].url`),
       bearerToken:
-        typeof entry.bearerToken === "string" && entry.bearerToken.trim().length > 0
+        typeof entry.bearerToken === "string" &&
+        entry.bearerToken.trim().length > 0
           ? entry.bearerToken.trim()
           : null,
       deliveryMode: parsePlatformAlertDeliveryMode(
         entry.deliveryMode,
-        `${name}[${index}].deliveryMode`
+        `${name}[${index}].deliveryMode`,
       ),
       categories: parsePlatformAlertDeliveryCategories(
         entry.categories,
-        `${name}[${index}].categories`
+        `${name}[${index}].categories`,
       ),
       minimumSeverity: parsePlatformAlertDeliverySeverity(
         entry.minimumSeverity,
-        `${name}[${index}].minimumSeverity`
+        `${name}[${index}].minimumSeverity`,
       ),
       eventTypes: parsePlatformAlertDeliveryEventTypes(
         entry.eventTypes,
-        `${name}[${index}].eventTypes`
+        `${name}[${index}].eventTypes`,
       ),
       failoverTargetNames: Array.isArray(entry.failoverTargetNames)
         ? entry.failoverTargetNames.map((targetName, failoverIndex) => {
@@ -724,21 +739,26 @@ function parsePlatformAlertDeliveryTargets(
               targetName.trim().length === 0
             ) {
               throw new Error(
-                `${name}[${index}].failoverTargetNames[${failoverIndex}] must be a non-empty string.`
+                `${name}[${index}].failoverTargetNames[${failoverIndex}] must be a non-empty string.`,
               );
             }
 
             return targetName.trim().toLowerCase();
           })
-        : []
+        : [],
     };
   });
 
-  const targetsByName = new Map<string, PlatformAlertDeliveryTargetRuntimeConfig>();
+  const targetsByName = new Map<
+    string,
+    PlatformAlertDeliveryTargetRuntimeConfig
+  >();
 
   for (const target of targets) {
     if (targetsByName.has(target.name)) {
-      throw new Error(`${name} contains duplicate target name "${target.name}".`);
+      throw new Error(
+        `${name} contains duplicate target name "${target.name}".`,
+      );
     }
 
     targetsByName.set(target.name, target);
@@ -748,13 +768,13 @@ function parsePlatformAlertDeliveryTargets(
     for (const failoverTargetName of target.failoverTargetNames) {
       if (failoverTargetName === target.name) {
         throw new Error(
-          `${name} target "${target.name}" cannot fail over to itself.`
+          `${name} target "${target.name}" cannot fail over to itself.`,
         );
       }
 
       if (!targetsByName.has(failoverTargetName)) {
         throw new Error(
-          `${name} target "${target.name}" references unknown failover target "${failoverTargetName}".`
+          `${name} target "${target.name}" references unknown failover target "${failoverTargetName}".`,
         );
       }
     }
@@ -763,13 +783,10 @@ function parsePlatformAlertDeliveryTargets(
   const visitedTargetNames = new Set<string>();
   const visitingTargetNames = new Set<string>();
 
-  function validateNoFailoverCycles(
-    targetName: string,
-    path: string[]
-  ): void {
+  function validateNoFailoverCycles(targetName: string, path: string[]): void {
     if (visitingTargetNames.has(targetName)) {
       throw new Error(
-        `${name} contains a failover cycle: ${[...path, targetName].join(" -> ")}.`
+        `${name} contains a failover cycle: ${[...path, targetName].join(" -> ")}.`,
       );
     }
 
@@ -779,8 +796,8 @@ function parsePlatformAlertDeliveryTargets(
 
     visitingTargetNames.add(targetName);
 
-    for (const failoverTargetName of targetsByName.get(targetName)?.failoverTargetNames ??
-      []) {
+    for (const failoverTargetName of targetsByName.get(targetName)
+      ?.failoverTargetNames ?? []) {
       validateNoFailoverCycles(failoverTargetName, [...path, targetName]);
     }
 
@@ -797,7 +814,7 @@ function parsePlatformAlertDeliveryTargets(
 
 function parsePlatformAlertAutomationPolicies(
   value: string,
-  name: string
+  name: string,
 ): PlatformAlertAutomationPolicyRuntimeConfig[] {
   let parsedValue: unknown;
 
@@ -822,7 +839,7 @@ function parsePlatformAlertAutomationPolicies(
 
     if (typeof entry.autoRouteToReviewCase !== "boolean") {
       throw new Error(
-        `${name}[${index}].autoRouteToReviewCase must be a boolean.`
+        `${name}[${index}].autoRouteToReviewCase must be a boolean.`,
       );
     }
 
@@ -830,17 +847,17 @@ function parsePlatformAlertAutomationPolicies(
       name: entry.name.trim().toLowerCase(),
       categories: parsePlatformAlertDeliveryCategories(
         entry.categories,
-        `${name}[${index}].categories`
+        `${name}[${index}].categories`,
       ),
       minimumSeverity: parsePlatformAlertDeliverySeverity(
         entry.minimumSeverity,
-        `${name}[${index}].minimumSeverity`
+        `${name}[${index}].minimumSeverity`,
       ),
       autoRouteToReviewCase: entry.autoRouteToReviewCase,
       routeNote:
         typeof entry.routeNote === "string" && entry.routeNote.trim().length > 0
           ? entry.routeNote.trim()
-          : null
+          : null,
     };
   });
 
@@ -848,7 +865,9 @@ function parsePlatformAlertAutomationPolicies(
 
   for (const policy of policies) {
     if (policyNames.has(policy.name)) {
-      throw new Error(`${name} contains duplicate policy name "${policy.name}".`);
+      throw new Error(
+        `${name} contains duplicate policy name "${policy.name}".`,
+      );
     }
 
     policyNames.add(policy.name);
@@ -859,7 +878,7 @@ function parsePlatformAlertAutomationPolicies(
 
 function parseManagedWithdrawalSigners(
   value: string,
-  name: string
+  name: string,
 ): ManagedWithdrawalSignerRuntimeConfig[] {
   let parsedValue: unknown;
 
@@ -883,7 +902,7 @@ function parseManagedWithdrawalSigners(
       entry.walletAddress.trim().length === 0
     ) {
       throw new Error(
-        `${name}[${index}].walletAddress must be a non-empty string.`
+        `${name}[${index}].walletAddress must be a non-empty string.`,
       );
     }
 
@@ -892,13 +911,13 @@ function parseManagedWithdrawalSigners(
       entry.privateKey.trim().length === 0
     ) {
       throw new Error(
-        `${name}[${index}].privateKey must be a non-empty string.`
+        `${name}[${index}].privateKey must be a non-empty string.`,
       );
     }
 
     return {
       walletAddress: entry.walletAddress.trim(),
-      privateKey: entry.privateKey.trim()
+      privateKey: entry.privateKey.trim(),
     };
   });
 
@@ -909,7 +928,7 @@ function parseManagedWithdrawalSigners(
 
     if (walletAddresses.has(normalizedWalletAddress)) {
       throw new Error(
-        `${name} contains duplicate walletAddress "${signer.walletAddress}".`
+        `${name} contains duplicate walletAddress "${signer.walletAddress}".`,
       );
     }
 
@@ -922,7 +941,7 @@ function parseManagedWithdrawalSigners(
 function resolveWorkerExecutionMode(
   environment: ApiRuntimeEnvironment,
   configuredExecutionMode: string | undefined,
-  rpcUrl: string | undefined
+  rpcUrl: string | undefined,
 ): WorkerExecutionMode {
   if (configuredExecutionMode) {
     return parseWorkerExecutionMode(configuredExecutionMode);
@@ -939,7 +958,7 @@ function readDevelopmentAwareRequiredRuntimeEnv(
   env: RuntimeEnvShape,
   environment: ApiRuntimeEnvironment,
   name: string,
-  developmentDefaultValue: string
+  developmentDefaultValue: string,
 ): string {
   const configuredValue = readOptionalRuntimeEnv(env, name);
 
@@ -1079,6 +1098,15 @@ export type DepositRiskAutoApproveThresholdRuntimeConfig = {
 
 export type DepositRiskPolicyRuntimeConfig = {
   readonly autoApproveThresholds: readonly DepositRiskAutoApproveThresholdRuntimeConfig[];
+};
+
+export type CustomerMfaPolicyRuntimeConfig = {
+  readonly emailOtpExpirySeconds: number;
+  readonly totpEnrollmentExpirySeconds: number;
+  readonly stepUpFreshnessSeconds: number;
+  readonly maxFailedAttempts: number;
+  readonly lockoutSeconds: number;
+  readonly challengeStartCooldownSeconds: number;
 };
 
 export type AccountHoldPolicyRuntimeConfig = {
@@ -1245,7 +1273,9 @@ export type SolvencyRuntimeConfig = {
   readonly resumeApproverAllowedOperatorRoles: readonly string[];
 };
 
-export type GovernedTreasuryExecutionMode = "direct_private_key" | "governed_external";
+export type GovernedTreasuryExecutionMode =
+  | "direct_private_key"
+  | "governed_external";
 
 export type GovernedExecutionRuntimeConfig = {
   readonly environment: ApiRuntimeEnvironment;
@@ -1267,7 +1297,7 @@ export type GovernedExecutionRuntimeConfig = {
 
 function parsePlatformAlertDeliveryHealthSloConfig(
   value: string,
-  name: string
+  name: string,
 ): PlatformAlertDeliveryHealthSloRuntimeConfig {
   let parsedValue: unknown;
 
@@ -1286,14 +1316,14 @@ function parsePlatformAlertDeliveryHealthSloConfig(
       ? DEFAULT_PLATFORM_ALERT_DELIVERY_HEALTH_SLO_LOOKBACK_HOURS
       : parsePositiveIntegerLike(
           parsedValue.lookbackHours,
-          `${name}.lookbackHours`
+          `${name}.lookbackHours`,
         );
   const minimumRecentDeliveries =
     parsedValue.minimumRecentDeliveries === undefined
       ? DEFAULT_PLATFORM_ALERT_DELIVERY_HEALTH_SLO_MINIMUM_RECENT_DELIVERIES
       : parsePositiveIntegerLike(
           parsedValue.minimumRecentDeliveries,
-          `${name}.minimumRecentDeliveries`
+          `${name}.minimumRecentDeliveries`,
         );
   const warningFailureRatePercent =
     parsedValue.warningFailureRatePercent === undefined
@@ -1302,7 +1332,7 @@ function parsePlatformAlertDeliveryHealthSloConfig(
           parsedValue.warningFailureRatePercent,
           `${name}.warningFailureRatePercent`,
           1,
-          100
+          100,
         );
   const criticalFailureRatePercent =
     parsedValue.criticalFailureRatePercent === undefined
@@ -1311,72 +1341,72 @@ function parsePlatformAlertDeliveryHealthSloConfig(
           parsedValue.criticalFailureRatePercent,
           `${name}.criticalFailureRatePercent`,
           1,
-          100
+          100,
         );
   const warningPendingCount =
     parsedValue.warningPendingCount === undefined
       ? DEFAULT_PLATFORM_ALERT_DELIVERY_HEALTH_SLO_WARNING_PENDING_COUNT
       : parsePositiveIntegerLike(
           parsedValue.warningPendingCount,
-          `${name}.warningPendingCount`
+          `${name}.warningPendingCount`,
         );
   const criticalPendingCount =
     parsedValue.criticalPendingCount === undefined
       ? DEFAULT_PLATFORM_ALERT_DELIVERY_HEALTH_SLO_CRITICAL_PENDING_COUNT
       : parsePositiveIntegerLike(
           parsedValue.criticalPendingCount,
-          `${name}.criticalPendingCount`
+          `${name}.criticalPendingCount`,
         );
   const warningAverageDeliveryLatencyMs =
     parsedValue.warningAverageDeliveryLatencyMs === undefined
       ? DEFAULT_PLATFORM_ALERT_DELIVERY_HEALTH_SLO_WARNING_AVERAGE_LATENCY_MS
       : parsePositiveIntegerLike(
           parsedValue.warningAverageDeliveryLatencyMs,
-          `${name}.warningAverageDeliveryLatencyMs`
+          `${name}.warningAverageDeliveryLatencyMs`,
         );
   const criticalAverageDeliveryLatencyMs =
     parsedValue.criticalAverageDeliveryLatencyMs === undefined
       ? DEFAULT_PLATFORM_ALERT_DELIVERY_HEALTH_SLO_CRITICAL_AVERAGE_LATENCY_MS
       : parsePositiveIntegerLike(
           parsedValue.criticalAverageDeliveryLatencyMs,
-          `${name}.criticalAverageDeliveryLatencyMs`
+          `${name}.criticalAverageDeliveryLatencyMs`,
         );
   const warningConsecutiveFailures =
     parsedValue.warningConsecutiveFailures === undefined
       ? DEFAULT_PLATFORM_ALERT_DELIVERY_HEALTH_SLO_WARNING_CONSECUTIVE_FAILURES
       : parsePositiveIntegerLike(
           parsedValue.warningConsecutiveFailures,
-          `${name}.warningConsecutiveFailures`
+          `${name}.warningConsecutiveFailures`,
         );
   const criticalConsecutiveFailures =
     parsedValue.criticalConsecutiveFailures === undefined
       ? DEFAULT_PLATFORM_ALERT_DELIVERY_HEALTH_SLO_CRITICAL_CONSECUTIVE_FAILURES
       : parsePositiveIntegerLike(
           parsedValue.criticalConsecutiveFailures,
-          `${name}.criticalConsecutiveFailures`
+          `${name}.criticalConsecutiveFailures`,
         );
 
   if (warningFailureRatePercent > criticalFailureRatePercent) {
     throw new Error(
-      `${name}.warningFailureRatePercent must be less than or equal to ${name}.criticalFailureRatePercent.`
+      `${name}.warningFailureRatePercent must be less than or equal to ${name}.criticalFailureRatePercent.`,
     );
   }
 
   if (warningPendingCount > criticalPendingCount) {
     throw new Error(
-      `${name}.warningPendingCount must be less than or equal to ${name}.criticalPendingCount.`
+      `${name}.warningPendingCount must be less than or equal to ${name}.criticalPendingCount.`,
     );
   }
 
   if (warningAverageDeliveryLatencyMs > criticalAverageDeliveryLatencyMs) {
     throw new Error(
-      `${name}.warningAverageDeliveryLatencyMs must be less than or equal to ${name}.criticalAverageDeliveryLatencyMs.`
+      `${name}.warningAverageDeliveryLatencyMs must be less than or equal to ${name}.criticalAverageDeliveryLatencyMs.`,
     );
   }
 
   if (warningConsecutiveFailures > criticalConsecutiveFailures) {
     throw new Error(
-      `${name}.warningConsecutiveFailures must be less than or equal to ${name}.criticalConsecutiveFailures.`
+      `${name}.warningConsecutiveFailures must be less than or equal to ${name}.criticalConsecutiveFailures.`,
     );
   }
 
@@ -1390,126 +1420,126 @@ function parsePlatformAlertDeliveryHealthSloConfig(
     warningAverageDeliveryLatencyMs,
     criticalAverageDeliveryLatencyMs,
     warningConsecutiveFailures,
-    criticalConsecutiveFailures
+    criticalConsecutiveFailures,
   };
 }
 
 export function loadDatabaseRuntimeConfig(
-  env: RuntimeEnvShape = getNodeRuntimeEnv()
+  env: RuntimeEnvShape = getNodeRuntimeEnv(),
 ): DatabaseRuntimeConfig {
   return {
     databaseUrl: readRequiredRuntimeEnv(env, "DATABASE_URL"),
-    directUrl: readRequiredRuntimeEnv(env, "DIRECT_URL")
+    directUrl: readRequiredRuntimeEnv(env, "DIRECT_URL"),
   };
 }
 
 export function loadJwtRuntimeConfig(
-  env: RuntimeEnvShape = getNodeRuntimeEnv()
+  env: RuntimeEnvShape = getNodeRuntimeEnv(),
 ): JwtRuntimeConfig {
-  const rawExpiry = readOptionalRuntimeEnv(env, "JWT_EXPIRY_SECONDS") ?? "86400";
+  const rawExpiry =
+    readOptionalRuntimeEnv(env, "JWT_EXPIRY_SECONDS") ?? "86400";
 
   return {
     jwtSecret: readRequiredRuntimeEnv(env, "JWT_SECRET"),
-    jwtExpirySeconds: parsePositiveInteger(rawExpiry, "JWT_EXPIRY_SECONDS")
+    jwtExpirySeconds: parsePositiveInteger(rawExpiry, "JWT_EXPIRY_SECONDS"),
   };
 }
 
 export function loadBlockchainWalletRuntimeConfig(
-  env: RuntimeEnvShape = getNodeRuntimeEnv()
+  env: RuntimeEnvShape = getNodeRuntimeEnv(),
 ): BlockchainWalletRuntimeConfig {
   return {
     rpcUrl: readRequiredRuntimeEnv(env, "RPC_URL"),
-    ethereumPrivateKey: readRequiredRuntimeEnv(env, "ETHEREUM_PRIVATE_KEY")
+    ethereumPrivateKey: readRequiredRuntimeEnv(env, "ETHEREUM_PRIVATE_KEY"),
   };
 }
 
 export function loadBlockchainContractReadRuntimeConfig(
-  env: RuntimeEnvShape = getNodeRuntimeEnv()
+  env: RuntimeEnvShape = getNodeRuntimeEnv(),
 ): BlockchainContractReadRuntimeConfig {
   return {
     rpcUrl: readRequiredRuntimeEnv(env, "RPC_URL"),
     stakingContractAddress: readRequiredRuntimeEnv(
       env,
-      "STAKING_CONTRACT_ADDRESS"
+      "STAKING_CONTRACT_ADDRESS",
     ),
-    loanContractAddress: readRequiredRuntimeEnv(env, "LOAN_CONTRACT_ADDRESS")
+    loanContractAddress: readRequiredRuntimeEnv(env, "LOAN_CONTRACT_ADDRESS"),
   };
 }
 
 export function loadOptionalBlockchainContractReadRuntimeConfig(
-  env: RuntimeEnvShape = getNodeRuntimeEnv()
+  env: RuntimeEnvShape = getNodeRuntimeEnv(),
 ): OptionalBlockchainContractReadRuntimeConfig {
   const governedCustody = loadGovernedCustodyRuntimeConfig(env);
 
   return {
     environment: parseApiRuntimeEnvironment(
-      readOptionalRuntimeEnv(env, "NODE_ENV")
+      readOptionalRuntimeEnv(env, "NODE_ENV"),
     ),
     rpcUrl: readRequiredRuntimeEnv(env, "RPC_URL"),
-    stakingContractAddress: readOptionalRuntimeEnv(
-      env,
-      "STAKING_CONTRACT_ADDRESS"
-    ) ??
+    stakingContractAddress:
+      readOptionalRuntimeEnv(env, "STAKING_CONTRACT_ADDRESS") ??
       governedCustody?.contracts.find(
-        (contract) => contract.productSurface === "staking_v1"
+        (contract) => contract.productSurface === "staking_v1",
       )?.address ??
       null,
     loanContractAddress:
       readOptionalRuntimeEnv(env, "LOAN_CONTRACT_ADDRESS") ??
       governedCustody?.contracts.find(
-        (contract) => contract.productSurface === "loan_book_v1"
+        (contract) => contract.productSurface === "loan_book_v1",
       )?.address ??
-      null
+      null,
   };
 }
 
 export function loadBlockchainContractWriteRuntimeConfig(
-  env: RuntimeEnvShape = getNodeRuntimeEnv()
+  env: RuntimeEnvShape = getNodeRuntimeEnv(),
 ): BlockchainContractWriteRuntimeConfig {
   return {
     rpcUrl: readRequiredRuntimeEnv(env, "RPC_URL"),
     stakingContractAddress: readRequiredRuntimeEnv(
       env,
-      "STAKING_CONTRACT_ADDRESS"
+      "STAKING_CONTRACT_ADDRESS",
     ),
     loanContractAddress: readRequiredRuntimeEnv(env, "LOAN_CONTRACT_ADDRESS"),
-    ethereumPrivateKey: readRequiredRuntimeEnv(env, "ETHEREUM_PRIVATE_KEY")
+    ethereumPrivateKey: readRequiredRuntimeEnv(env, "ETHEREUM_PRIVATE_KEY"),
   };
 }
 
 export function loadOptionalBlockchainContractWriteRuntimeConfig(
-  env: RuntimeEnvShape = getNodeRuntimeEnv()
+  env: RuntimeEnvShape = getNodeRuntimeEnv(),
 ): OptionalBlockchainContractWriteRuntimeConfig {
   const environment = parseApiRuntimeEnvironment(
-    readOptionalRuntimeEnv(env, "NODE_ENV")
+    readOptionalRuntimeEnv(env, "NODE_ENV"),
   );
   const governedCustody = loadGovernedCustodyRuntimeConfig(env);
   const stakingContract =
     governedCustody?.contracts.find(
-      (contract) => contract.productSurface === "staking_v1"
+      (contract) => contract.productSurface === "staking_v1",
     ) ?? null;
   const loanContract =
     governedCustody?.contracts.find(
-      (contract) => contract.productSurface === "loan_book_v1"
+      (contract) => contract.productSurface === "loan_book_v1",
     ) ?? null;
-  const ethereumPrivateKey = readOptionalRuntimeEnv(env, "ETHEREUM_PRIVATE_KEY") ?? null;
+  const ethereumPrivateKey =
+    readOptionalRuntimeEnv(env, "ETHEREUM_PRIVATE_KEY") ?? null;
 
   if (environment === "production" && ethereumPrivateKey) {
     throw new Error(
-      "ETHEREUM_PRIVATE_KEY is not allowed when NODE_ENV=production. Governed custody manifest-backed execution is required."
+      "ETHEREUM_PRIVATE_KEY is not allowed when NODE_ENV=production. Governed custody manifest-backed execution is required.",
     );
   }
 
   if (environment === "production") {
     if (!stakingContract || stakingContract.legacyPath) {
       throw new Error(
-        "An active non-legacy staking_v1 contract manifest is required in production."
+        "An active non-legacy staking_v1 contract manifest is required in production.",
       );
     }
 
     if (!loanContract || loanContract.legacyPath) {
       throw new Error(
-        "An active non-legacy loan_book_v1 contract manifest is required in production."
+        "An active non-legacy loan_book_v1 contract manifest is required in production.",
       );
     }
   }
@@ -1517,56 +1547,58 @@ export function loadOptionalBlockchainContractWriteRuntimeConfig(
   return {
     environment,
     rpcUrl: readRequiredRuntimeEnv(env, "RPC_URL"),
-    stakingContractAddress: readOptionalRuntimeEnv(
-      env,
-      "STAKING_CONTRACT_ADDRESS"
-    ) ?? stakingContract?.address ?? null,
+    stakingContractAddress:
+      readOptionalRuntimeEnv(env, "STAKING_CONTRACT_ADDRESS") ??
+      stakingContract?.address ??
+      null,
     loanContractAddress:
-      readOptionalRuntimeEnv(env, "LOAN_CONTRACT_ADDRESS") ?? loanContract?.address ?? null,
+      readOptionalRuntimeEnv(env, "LOAN_CONTRACT_ADDRESS") ??
+      loanContract?.address ??
+      null,
     ethereumPrivateKey,
     stakingContractVersion: stakingContract?.version ?? null,
     loanContractVersion: loanContract?.version ?? null,
-    governedCustody
+    governedCustody,
   };
 }
 
 export function loadProductChainRuntimeConfig(
-  env: RuntimeEnvShape = getNodeRuntimeEnv()
+  env: RuntimeEnvShape = getNodeRuntimeEnv(),
 ): ProductChainRuntimeConfig {
   const configuredProductChainId = readOptionalRuntimeEnv(
     env,
-    "PRODUCT_CHAIN_ID"
+    "PRODUCT_CHAIN_ID",
   );
 
   if (!configuredProductChainId) {
     return {
-      productChainId: DEFAULT_PRODUCT_CHAIN_ID
+      productChainId: DEFAULT_PRODUCT_CHAIN_ID,
     };
   }
 
   return {
     productChainId: parsePositiveInteger(
       configuredProductChainId,
-      "PRODUCT_CHAIN_ID"
-    )
+      "PRODUCT_CHAIN_ID",
+    ),
   };
 }
 
 export function loadApiServerRuntimeConfig(
-  env: RuntimeEnvShape = getNodeRuntimeEnv()
+  env: RuntimeEnvShape = getNodeRuntimeEnv(),
 ): ApiServerRuntimeConfig {
   const environment = parseApiRuntimeEnvironment(
-    readOptionalRuntimeEnv(env, "NODE_ENV")
+    readOptionalRuntimeEnv(env, "NODE_ENV"),
   );
   const configuredPort = readOptionalRuntimeEnv(env, "API_PORT");
   const configuredCorsAllowedOrigins = readOptionalRuntimeEnv(
     env,
-    "CORS_ALLOWED_ORIGINS"
+    "CORS_ALLOWED_ORIGINS",
   );
 
   if (!configuredCorsAllowedOrigins && environment === "production") {
     throw new Error(
-      "CORS_ALLOWED_ORIGINS is required when NODE_ENV=production."
+      "CORS_ALLOWED_ORIGINS is required when NODE_ENV=production.",
     );
   }
 
@@ -1578,72 +1610,72 @@ export function loadApiServerRuntimeConfig(
     corsAllowedOrigins: configuredCorsAllowedOrigins
       ? parseCorsAllowedOrigins(
           configuredCorsAllowedOrigins,
-          "CORS_ALLOWED_ORIGINS"
+          "CORS_ALLOWED_ORIGINS",
         )
-      : [...DEFAULT_LOCAL_CORS_ALLOWED_ORIGINS]
+      : [...DEFAULT_LOCAL_CORS_ALLOWED_ORIGINS],
   };
 }
 
 export function loadWorkerRuntimeConfig(
-  env: RuntimeEnvShape = getNodeRuntimeEnv()
+  env: RuntimeEnvShape = getNodeRuntimeEnv(),
 ): WorkerRuntimeConfig {
   const environment = parseApiRuntimeEnvironment(
-    readOptionalRuntimeEnv(env, "NODE_ENV")
+    readOptionalRuntimeEnv(env, "NODE_ENV"),
   );
   const rpcUrl = readOptionalRuntimeEnv(env, "RPC_URL");
   const executionMode = resolveWorkerExecutionMode(
     environment,
     readOptionalRuntimeEnv(env, "WORKER_EXECUTION_MODE"),
-    rpcUrl
+    rpcUrl,
   );
 
   if (executionMode === "synthetic" && environment === "production") {
     throw new Error(
-      "WORKER_EXECUTION_MODE=synthetic is not allowed when NODE_ENV=production."
+      "WORKER_EXECUTION_MODE=synthetic is not allowed when NODE_ENV=production.",
     );
   }
 
   if ((executionMode === "monitor" || executionMode === "managed") && !rpcUrl) {
     throw new Error(
-      "RPC_URL is required when WORKER_EXECUTION_MODE=monitor or managed."
+      "RPC_URL is required when WORKER_EXECUTION_MODE=monitor or managed.",
     );
   }
 
   const depositSignerPrivateKey = readOptionalRuntimeEnv(
     env,
-    "WORKER_DEPOSIT_SIGNER_PRIVATE_KEY"
+    "WORKER_DEPOSIT_SIGNER_PRIVATE_KEY",
   );
   const governedExecutorDispatchBaseUrl = readOptionalRuntimeEnv(
     env,
-    "GOVERNED_EXECUTOR_DISPATCH_BASE_URL"
+    "GOVERNED_EXECUTOR_DISPATCH_BASE_URL",
   );
   const governedExecutorDispatchApiKey = readOptionalRuntimeEnv(
     env,
-    "GOVERNED_EXECUTOR_DISPATCH_API_KEY"
+    "GOVERNED_EXECUTOR_DISPATCH_API_KEY",
   );
   const policyControlledWithdrawalExecutorPrivateKey = readOptionalRuntimeEnv(
     env,
-    "WORKER_POLICY_CONTROLLED_WITHDRAWAL_EXECUTOR_PRIVATE_KEY"
+    "WORKER_POLICY_CONTROLLED_WITHDRAWAL_EXECUTOR_PRIVATE_KEY",
   );
   const policyControlledWithdrawalPolicySignerPrivateKey =
     readOptionalRuntimeEnv(
       env,
-      "WORKER_POLICY_CONTROLLED_WITHDRAWAL_POLICY_SIGNER_PRIVATE_KEY"
+      "WORKER_POLICY_CONTROLLED_WITHDRAWAL_POLICY_SIGNER_PRIVATE_KEY",
     );
   const managedWithdrawalSignersJson = readOptionalRuntimeEnv(
     env,
-    "WORKER_MANAGED_WITHDRAWAL_SIGNERS_JSON"
+    "WORKER_MANAGED_WITHDRAWAL_SIGNERS_JSON",
   );
   const managedWithdrawalSigners = managedWithdrawalSignersJson
     ? parseManagedWithdrawalSigners(
         managedWithdrawalSignersJson,
-        "WORKER_MANAGED_WITHDRAWAL_SIGNERS_JSON"
+        "WORKER_MANAGED_WITHDRAWAL_SIGNERS_JSON",
       )
     : [];
 
   if (executionMode === "managed" && !depositSignerPrivateKey) {
     throw new Error(
-      "WORKER_DEPOSIT_SIGNER_PRIVATE_KEY is required when WORKER_EXECUTION_MODE=managed."
+      "WORKER_DEPOSIT_SIGNER_PRIVATE_KEY is required when WORKER_EXECUTION_MODE=managed.",
     );
   }
 
@@ -1653,11 +1685,14 @@ export function loadWorkerRuntimeConfig(
       Boolean(policyControlledWithdrawalPolicySignerPrivateKey)
   ) {
     throw new Error(
-      "WORKER_POLICY_CONTROLLED_WITHDRAWAL_EXECUTOR_PRIVATE_KEY and WORKER_POLICY_CONTROLLED_WITHDRAWAL_POLICY_SIGNER_PRIVATE_KEY must be configured together."
+      "WORKER_POLICY_CONTROLLED_WITHDRAWAL_EXECUTOR_PRIVATE_KEY and WORKER_POLICY_CONTROLLED_WITHDRAWAL_POLICY_SIGNER_PRIVATE_KEY must be configured together.",
     );
   }
 
-  const configuredBatchLimit = readOptionalRuntimeEnv(env, "WORKER_BATCH_LIMIT");
+  const configuredBatchLimit = readOptionalRuntimeEnv(
+    env,
+    "WORKER_BATCH_LIMIT",
+  );
   const batchLimit = configuredBatchLimit
     ? parsePositiveInteger(configuredBatchLimit, "WORKER_BATCH_LIMIT")
     : DEFAULT_WORKER_BATCH_LIMIT;
@@ -1666,9 +1701,12 @@ export function loadWorkerRuntimeConfig(
     throw new Error("WORKER_BATCH_LIMIT must not be greater than 100.");
   }
 
-  if (Boolean(governedExecutorDispatchBaseUrl) !== Boolean(governedExecutorDispatchApiKey)) {
+  if (
+    Boolean(governedExecutorDispatchBaseUrl) !==
+    Boolean(governedExecutorDispatchApiKey)
+  ) {
     throw new Error(
-      "GOVERNED_EXECUTOR_DISPATCH_BASE_URL and GOVERNED_EXECUTOR_DISPATCH_API_KEY must be configured together."
+      "GOVERNED_EXECUTOR_DISPATCH_BASE_URL and GOVERNED_EXECUTOR_DISPATCH_API_KEY must be configured together.",
     );
   }
 
@@ -1678,91 +1716,90 @@ export function loadWorkerRuntimeConfig(
       env,
       environment,
       "WORKER_ID",
-      DEFAULT_LOCAL_WORKER_ID
+      DEFAULT_LOCAL_WORKER_ID,
     ),
     internalApiBaseUrl: normalizeBaseUrl(
       readDevelopmentAwareRequiredRuntimeEnv(
         env,
         environment,
         "INTERNAL_API_BASE_URL",
-        DEFAULT_LOCAL_INTERNAL_API_BASE_URL
+        DEFAULT_LOCAL_INTERNAL_API_BASE_URL,
       ),
-      "INTERNAL_API_BASE_URL"
+      "INTERNAL_API_BASE_URL",
     ),
     internalWorkerApiKey: readDevelopmentAwareRequiredRuntimeEnv(
       env,
       environment,
       "INTERNAL_WORKER_API_KEY",
-      DEFAULT_LOCAL_INTERNAL_WORKER_API_KEY
+      DEFAULT_LOCAL_INTERNAL_WORKER_API_KEY,
     ),
     executionMode,
     pollIntervalMs: parsePositiveInteger(
       readOptionalRuntimeEnv(env, "WORKER_POLL_INTERVAL_MS") ??
         String(DEFAULT_WORKER_POLL_INTERVAL_MS),
-      "WORKER_POLL_INTERVAL_MS"
+      "WORKER_POLL_INTERVAL_MS",
     ),
     batchLimit,
     requestTimeoutMs: parsePositiveInteger(
       readOptionalRuntimeEnv(env, "WORKER_REQUEST_TIMEOUT_MS") ??
         String(DEFAULT_WORKER_REQUEST_TIMEOUT_MS),
-      "WORKER_REQUEST_TIMEOUT_MS"
+      "WORKER_REQUEST_TIMEOUT_MS",
     ),
     internalApiStartupGracePeriodMs: parsePositiveInteger(
-      readOptionalRuntimeEnv(env, "WORKER_INTERNAL_API_STARTUP_GRACE_PERIOD_MS") ??
-        String(DEFAULT_WORKER_INTERNAL_API_STARTUP_GRACE_PERIOD_MS),
-      "WORKER_INTERNAL_API_STARTUP_GRACE_PERIOD_MS"
+      readOptionalRuntimeEnv(
+        env,
+        "WORKER_INTERNAL_API_STARTUP_GRACE_PERIOD_MS",
+      ) ?? String(DEFAULT_WORKER_INTERNAL_API_STARTUP_GRACE_PERIOD_MS),
+      "WORKER_INTERNAL_API_STARTUP_GRACE_PERIOD_MS",
     ),
     confirmationBlocks: parsePositiveInteger(
       readOptionalRuntimeEnv(env, "WORKER_CONFIRMATION_BLOCKS") ??
         String(DEFAULT_WORKER_CONFIRMATION_BLOCKS),
-      "WORKER_CONFIRMATION_BLOCKS"
+      "WORKER_CONFIRMATION_BLOCKS",
     ),
     reconciliationScanIntervalMs: parsePositiveInteger(
       readOptionalRuntimeEnv(env, "WORKER_RECONCILIATION_SCAN_INTERVAL_MS") ??
         "300000",
-      "WORKER_RECONCILIATION_SCAN_INTERVAL_MS"
+      "WORKER_RECONCILIATION_SCAN_INTERVAL_MS",
     ),
     platformAlertReEscalationIntervalMs: parsePositiveInteger(
       readOptionalRuntimeEnv(
         env,
-        "WORKER_PLATFORM_ALERT_REESCALATION_INTERVAL_MS"
+        "WORKER_PLATFORM_ALERT_REESCALATION_INTERVAL_MS",
       ) ?? String(DEFAULT_WORKER_PLATFORM_ALERT_REESCALATION_INTERVAL_MS),
-      "WORKER_PLATFORM_ALERT_REESCALATION_INTERVAL_MS"
+      "WORKER_PLATFORM_ALERT_REESCALATION_INTERVAL_MS",
     ),
     solvencySnapshotIntervalMs: parsePositiveInteger(
       readOptionalRuntimeEnv(env, "WORKER_SOLVENCY_SNAPSHOT_INTERVAL_MS") ??
         String(DEFAULT_WORKER_SOLVENCY_SNAPSHOT_INTERVAL_MS),
-      "WORKER_SOLVENCY_SNAPSHOT_INTERVAL_MS"
+      "WORKER_SOLVENCY_SNAPSHOT_INTERVAL_MS",
     ),
     governedExecutionDispatchIntervalMs: parsePositiveInteger(
       readOptionalRuntimeEnv(
         env,
-        "WORKER_GOVERNED_EXECUTION_DISPATCH_INTERVAL_MS"
+        "WORKER_GOVERNED_EXECUTION_DISPATCH_INTERVAL_MS",
       ) ?? String(DEFAULT_WORKER_GOVERNED_EXECUTION_DISPATCH_INTERVAL_MS),
-      "WORKER_GOVERNED_EXECUTION_DISPATCH_INTERVAL_MS"
+      "WORKER_GOVERNED_EXECUTION_DISPATCH_INTERVAL_MS",
     ),
     managedWithdrawalClaimTimeoutMs: parsePositiveInteger(
       readOptionalRuntimeEnv(
         env,
-        "WORKER_MANAGED_WITHDRAWAL_CLAIM_TIMEOUT_MS"
+        "WORKER_MANAGED_WITHDRAWAL_CLAIM_TIMEOUT_MS",
       ) ?? String(DEFAULT_WORKER_MANAGED_WITHDRAWAL_CLAIM_TIMEOUT_MS),
-      "WORKER_MANAGED_WITHDRAWAL_CLAIM_TIMEOUT_MS"
+      "WORKER_MANAGED_WITHDRAWAL_CLAIM_TIMEOUT_MS",
     ),
     governedExecutorDispatchBaseUrl: governedExecutorDispatchBaseUrl
       ? normalizeBaseUrl(
           governedExecutorDispatchBaseUrl,
-          "GOVERNED_EXECUTOR_DISPATCH_BASE_URL"
+          "GOVERNED_EXECUTOR_DISPATCH_BASE_URL",
         )
       : null,
     governedExecutorDispatchApiKey: governedExecutorDispatchApiKey ?? null,
     governedExecutorDispatchTimeoutMs: parsePositiveInteger(
-      readOptionalRuntimeEnv(
-        env,
-        "GOVERNED_EXECUTOR_DISPATCH_TIMEOUT_MS"
-      ) ??
-        (readOptionalRuntimeEnv(env, "WORKER_REQUEST_TIMEOUT_MS") ??
-          String(DEFAULT_WORKER_REQUEST_TIMEOUT_MS)),
-      "GOVERNED_EXECUTOR_DISPATCH_TIMEOUT_MS"
+      readOptionalRuntimeEnv(env, "GOVERNED_EXECUTOR_DISPATCH_TIMEOUT_MS") ??
+        readOptionalRuntimeEnv(env, "WORKER_REQUEST_TIMEOUT_MS") ??
+        String(DEFAULT_WORKER_REQUEST_TIMEOUT_MS),
+      "GOVERNED_EXECUTOR_DISPATCH_TIMEOUT_MS",
     ),
     policyControlledWithdrawalExecutorPrivateKey:
       policyControlledWithdrawalExecutorPrivateKey ?? null,
@@ -1771,28 +1808,28 @@ export function loadWorkerRuntimeConfig(
     policyControlledWithdrawalAuthorizationTtlSeconds: parsePositiveInteger(
       readOptionalRuntimeEnv(
         env,
-        "WORKER_POLICY_CONTROLLED_WITHDRAWAL_AUTHORIZATION_TTL_SECONDS"
+        "WORKER_POLICY_CONTROLLED_WITHDRAWAL_AUTHORIZATION_TTL_SECONDS",
       ) ??
         String(
-          DEFAULT_WORKER_POLICY_CONTROLLED_WITHDRAWAL_AUTHORIZATION_TTL_SECONDS
+          DEFAULT_WORKER_POLICY_CONTROLLED_WITHDRAWAL_AUTHORIZATION_TTL_SECONDS,
         ),
-      "WORKER_POLICY_CONTROLLED_WITHDRAWAL_AUTHORIZATION_TTL_SECONDS"
+      "WORKER_POLICY_CONTROLLED_WITHDRAWAL_AUTHORIZATION_TTL_SECONDS",
     ),
     rpcUrl: rpcUrl ?? null,
     depositSignerPrivateKey: depositSignerPrivateKey ?? null,
-    managedWithdrawalSigners
+    managedWithdrawalSigners,
   };
 }
 
 export function loadSharedLoginBootstrapRuntimeConfig(
-  env: RuntimeEnvShape = getNodeRuntimeEnv()
+  env: RuntimeEnvShape = getNodeRuntimeEnv(),
 ): SharedLoginBootstrapRuntimeConfig {
   const environment = parseApiRuntimeEnvironment(
-    readOptionalRuntimeEnv(env, "NODE_ENV")
+    readOptionalRuntimeEnv(env, "NODE_ENV"),
   );
   const operatorRuntimeEnvironment = parseOperatorRuntimeEnvironment(
     readOptionalRuntimeEnv(env, "OPERATOR_RUNTIME_ENVIRONMENT") ??
-      (environment === "production" ? "production" : "development")
+      (environment === "production" ? "production" : "development"),
   );
   const configuredEnabled = readOptionalRuntimeEnv(env, "SHARED_LOGIN_ENABLED");
   const nonDevelopmentOperatorEnvironment =
@@ -1806,7 +1843,8 @@ export function loadSharedLoginBootstrapRuntimeConfig(
       : DEFAULT_SHARED_LOGIN_ENABLED;
 
   const email =
-    readOptionalRuntimeEnv(env, "SHARED_LOGIN_EMAIL") ?? DEFAULT_SHARED_LOGIN_EMAIL;
+    readOptionalRuntimeEnv(env, "SHARED_LOGIN_EMAIL") ??
+    DEFAULT_SHARED_LOGIN_EMAIL;
   const password =
     readOptionalRuntimeEnv(env, "SHARED_LOGIN_PASSWORD") ??
     DEFAULT_SHARED_LOGIN_PASSWORD;
@@ -1820,9 +1858,12 @@ export function loadSharedLoginBootstrapRuntimeConfig(
     readOptionalRuntimeEnv(env, "SHARED_LOGIN_SUPABASE_USER_ID") ??
     DEFAULT_SHARED_LOGIN_SUPABASE_USER_ID;
 
-  if (enabled && (environment === "production" || nonDevelopmentOperatorEnvironment)) {
+  if (
+    enabled &&
+    (environment === "production" || nonDevelopmentOperatorEnvironment)
+  ) {
     throw new Error(
-      "SHARED_LOGIN_ENABLED=true is allowed only when OPERATOR_RUNTIME_ENVIRONMENT=development and NODE_ENV is not production."
+      "SHARED_LOGIN_ENABLED=true is allowed only when OPERATOR_RUNTIME_ENVIRONMENT=development and NODE_ENV is not production.",
     );
   }
 
@@ -1833,12 +1874,14 @@ export function loadSharedLoginBootstrapRuntimeConfig(
       password,
       firstName,
       lastName,
-      supabaseUserId
+      supabaseUserId,
     };
   }
 
   if (password.length < 8) {
-    throw new Error("SHARED_LOGIN_PASSWORD must be at least 8 characters long.");
+    throw new Error(
+      "SHARED_LOGIN_PASSWORD must be at least 8 characters long.",
+    );
   }
 
   return {
@@ -1847,23 +1890,23 @@ export function loadSharedLoginBootstrapRuntimeConfig(
     password,
     firstName,
     lastName,
-    supabaseUserId
+    supabaseUserId,
   };
 }
 
 export function loadOperatorAuthRuntimeConfig(
-  env: RuntimeEnvShape = getNodeRuntimeEnv()
+  env: RuntimeEnvShape = getNodeRuntimeEnv(),
 ): OperatorAuthRuntimeConfig {
   const environment = parseApiRuntimeEnvironment(
-    readOptionalRuntimeEnv(env, "NODE_ENV")
+    readOptionalRuntimeEnv(env, "NODE_ENV"),
   );
   const operatorRuntimeEnvironment = parseOperatorRuntimeEnvironment(
     readOptionalRuntimeEnv(env, "OPERATOR_RUNTIME_ENVIRONMENT") ??
-      (environment === "production" ? "production" : "development")
+      (environment === "production" ? "production" : "development"),
   );
   const configuredRequiredMfaEnvironments = readOptionalRuntimeEnv(
     env,
-    "OPERATOR_REQUIRED_MFA_ENVIRONMENTS"
+    "OPERATOR_REQUIRED_MFA_ENVIRONMENTS",
   );
   const supabaseJwtSecret =
     readOptionalRuntimeEnv(env, "SUPABASE_JWT_SECRET") ??
@@ -1873,12 +1916,12 @@ export function loadOperatorAuthRuntimeConfig(
   const allowLegacyOperatorApiKeyAuth = parseBoolean(
     readOptionalRuntimeEnv(env, "ALLOW_LEGACY_OPERATOR_API_KEY_AUTH") ??
       (environment === "production" ? "false" : "true"),
-    "ALLOW_LEGACY_OPERATOR_API_KEY_AUTH"
+    "ALLOW_LEGACY_OPERATOR_API_KEY_AUTH",
   );
 
   if (environment === "production" && allowLegacyOperatorApiKeyAuth) {
     throw new Error(
-      "ALLOW_LEGACY_OPERATOR_API_KEY_AUTH=true is not allowed when NODE_ENV=production."
+      "ALLOW_LEGACY_OPERATOR_API_KEY_AUTH=true is not allowed when NODE_ENV=production.",
     );
   }
 
@@ -1890,31 +1933,31 @@ export function loadOperatorAuthRuntimeConfig(
     requiredMfaEnvironments: configuredRequiredMfaEnvironments
       ? (parseCommaSeparatedValues(
           configuredRequiredMfaEnvironments,
-          "OPERATOR_REQUIRED_MFA_ENVIRONMENTS"
+          "OPERATOR_REQUIRED_MFA_ENVIRONMENTS",
         ) as OperatorAuthRuntimeEnvironment[])
-      : [...DEFAULT_OPERATOR_AUTH_REQUIRED_MFA_ENVIRONMENTS]
+      : [...DEFAULT_OPERATOR_AUTH_REQUIRED_MFA_ENVIRONMENTS],
   };
 }
 
 export function loadGovernedCustodyRuntimeConfig(
-  env: RuntimeEnvShape = getNodeRuntimeEnv()
+  env: RuntimeEnvShape = getNodeRuntimeEnv(),
 ): GovernedCustodyRuntimeConfig | null {
   const manifestJson = readOptionalRuntimeEnv(
     env,
-    "GOVERNED_CUSTODY_MANIFEST_JSON"
+    "GOVERNED_CUSTODY_MANIFEST_JSON",
   );
   const manifestPath = readOptionalRuntimeEnv(
     env,
-    "GOVERNED_CUSTODY_MANIFEST_PATH"
+    "GOVERNED_CUSTODY_MANIFEST_PATH",
   );
   const environment = parseApiRuntimeEnvironment(
-    readOptionalRuntimeEnv(env, "NODE_ENV")
+    readOptionalRuntimeEnv(env, "NODE_ENV"),
   );
 
   if (!manifestJson && !manifestPath) {
     if (environment === "production") {
       throw new Error(
-        "GOVERNED_CUSTODY_MANIFEST_JSON or GOVERNED_CUSTODY_MANIFEST_PATH is required when NODE_ENV=production."
+        "GOVERNED_CUSTODY_MANIFEST_JSON or GOVERNED_CUSTODY_MANIFEST_PATH is required when NODE_ENV=production.",
       );
     }
 
@@ -1925,22 +1968,22 @@ export function loadGovernedCustodyRuntimeConfig(
     ? parseJsonObject(manifestJson, "GOVERNED_CUSTODY_MANIFEST_JSON")
     : parseJsonObjectFromFile(
         manifestPath as string,
-        "GOVERNED_CUSTODY_MANIFEST_PATH"
+        "GOVERNED_CUSTODY_MANIFEST_PATH",
       );
 
   return parseGovernedCustodyManifest(
     manifest,
     manifestJson
       ? "GOVERNED_CUSTODY_MANIFEST_JSON"
-      : "GOVERNED_CUSTODY_MANIFEST_PATH"
+      : "GOVERNED_CUSTODY_MANIFEST_PATH",
   );
 }
 
 export function loadInternalOperatorRuntimeConfig(
-  env: RuntimeEnvShape = getNodeRuntimeEnv()
+  env: RuntimeEnvShape = getNodeRuntimeEnv(),
 ): InternalOperatorRuntimeConfig {
   const environment = parseApiRuntimeEnvironment(
-    readOptionalRuntimeEnv(env, "NODE_ENV")
+    readOptionalRuntimeEnv(env, "NODE_ENV"),
   );
 
   return {
@@ -1949,16 +1992,16 @@ export function loadInternalOperatorRuntimeConfig(
       env,
       environment,
       "INTERNAL_OPERATOR_API_KEY",
-      DEFAULT_LOCAL_INTERNAL_OPERATOR_API_KEY
-    )
+      DEFAULT_LOCAL_INTERNAL_OPERATOR_API_KEY,
+    ),
   };
 }
 
 export function loadInternalWorkerRuntimeConfig(
-  env: RuntimeEnvShape = getNodeRuntimeEnv()
+  env: RuntimeEnvShape = getNodeRuntimeEnv(),
 ): InternalWorkerRuntimeConfig {
   const environment = parseApiRuntimeEnvironment(
-    readOptionalRuntimeEnv(env, "NODE_ENV")
+    readOptionalRuntimeEnv(env, "NODE_ENV"),
   );
 
   return {
@@ -1966,16 +2009,16 @@ export function loadInternalWorkerRuntimeConfig(
       env,
       environment,
       "INTERNAL_WORKER_API_KEY",
-      DEFAULT_LOCAL_INTERNAL_WORKER_API_KEY
-    )
+      DEFAULT_LOCAL_INTERNAL_WORKER_API_KEY,
+    ),
   };
 }
 
 export function loadInternalGovernedExecutorRuntimeConfig(
-  env: RuntimeEnvShape = getNodeRuntimeEnv()
+  env: RuntimeEnvShape = getNodeRuntimeEnv(),
 ): InternalGovernedExecutorRuntimeConfig {
   const environment = parseApiRuntimeEnvironment(
-    readOptionalRuntimeEnv(env, "NODE_ENV")
+    readOptionalRuntimeEnv(env, "NODE_ENV"),
   );
 
   return {
@@ -1983,219 +2026,258 @@ export function loadInternalGovernedExecutorRuntimeConfig(
       env,
       environment,
       "INTERNAL_GOVERNED_EXECUTOR_API_KEY",
-      DEFAULT_LOCAL_INTERNAL_GOVERNED_EXECUTOR_API_KEY
-    )
+      DEFAULT_LOCAL_INTERNAL_GOVERNED_EXECUTOR_API_KEY,
+    ),
   };
 }
 
 export function loadManualResolutionPolicyRuntimeConfig(
-  env: RuntimeEnvShape = getNodeRuntimeEnv()
+  env: RuntimeEnvShape = getNodeRuntimeEnv(),
 ): ManualResolutionPolicyRuntimeConfig {
   const configuredRoles = readOptionalRuntimeEnv(
     env,
-    "MANUAL_RESOLUTION_ALLOWED_OPERATOR_ROLES"
+    "MANUAL_RESOLUTION_ALLOWED_OPERATOR_ROLES",
   );
 
   if (!configuredRoles) {
     return {
       manualResolutionAllowedOperatorRoles: [
-        ...DEFAULT_MANUAL_RESOLUTION_ALLOWED_OPERATOR_ROLES
-      ]
+        ...DEFAULT_MANUAL_RESOLUTION_ALLOWED_OPERATOR_ROLES,
+      ],
     };
   }
 
   return {
     manualResolutionAllowedOperatorRoles: parseCommaSeparatedValues(
       configuredRoles,
-      "MANUAL_RESOLUTION_ALLOWED_OPERATOR_ROLES"
-    )
+      "MANUAL_RESOLUTION_ALLOWED_OPERATOR_ROLES",
+    ),
   };
 }
 
 export function loadDepositRiskPolicyRuntimeConfig(
-  env: RuntimeEnvShape = getNodeRuntimeEnv()
+  env: RuntimeEnvShape = getNodeRuntimeEnv(),
 ): DepositRiskPolicyRuntimeConfig {
   const configuredThresholds = readOptionalRuntimeEnv(
     env,
-    "DEPOSIT_AUTO_APPROVE_THRESHOLDS_JSON"
+    "DEPOSIT_AUTO_APPROVE_THRESHOLDS_JSON",
   );
 
   return {
     autoApproveThresholds: configuredThresholds
       ? parseDepositRiskAutoApproveThresholds(
           configuredThresholds,
-          "DEPOSIT_AUTO_APPROVE_THRESHOLDS_JSON"
+          "DEPOSIT_AUTO_APPROVE_THRESHOLDS_JSON",
         )
-      : []
+      : [],
+  };
+}
+
+export function loadCustomerMfaPolicyRuntimeConfig(
+  env: RuntimeEnvShape = getNodeRuntimeEnv(),
+): CustomerMfaPolicyRuntimeConfig {
+  return {
+    emailOtpExpirySeconds: parsePositiveInteger(
+      readOptionalRuntimeEnv(env, "CUSTOMER_MFA_EMAIL_OTP_EXPIRY_SECONDS") ??
+        "600",
+      "CUSTOMER_MFA_EMAIL_OTP_EXPIRY_SECONDS",
+    ),
+    totpEnrollmentExpirySeconds: parsePositiveInteger(
+      readOptionalRuntimeEnv(
+        env,
+        "CUSTOMER_MFA_TOTP_ENROLLMENT_EXPIRY_SECONDS",
+      ) ?? "900",
+      "CUSTOMER_MFA_TOTP_ENROLLMENT_EXPIRY_SECONDS",
+    ),
+    stepUpFreshnessSeconds: parsePositiveInteger(
+      readOptionalRuntimeEnv(env, "CUSTOMER_MFA_STEP_UP_FRESHNESS_SECONDS") ??
+        "600",
+      "CUSTOMER_MFA_STEP_UP_FRESHNESS_SECONDS",
+    ),
+    maxFailedAttempts: parsePositiveInteger(
+      readOptionalRuntimeEnv(env, "CUSTOMER_MFA_MAX_FAILED_ATTEMPTS") ?? "5",
+      "CUSTOMER_MFA_MAX_FAILED_ATTEMPTS",
+    ),
+    lockoutSeconds: parsePositiveInteger(
+      readOptionalRuntimeEnv(env, "CUSTOMER_MFA_LOCKOUT_SECONDS") ?? "900",
+      "CUSTOMER_MFA_LOCKOUT_SECONDS",
+    ),
+    challengeStartCooldownSeconds: parsePositiveInteger(
+      readOptionalRuntimeEnv(
+        env,
+        "CUSTOMER_MFA_CHALLENGE_START_COOLDOWN_SECONDS",
+      ) ?? "60",
+      "CUSTOMER_MFA_CHALLENGE_START_COOLDOWN_SECONDS",
+    ),
   };
 }
 
 export function loadAccountHoldPolicyRuntimeConfig(
-  env: RuntimeEnvShape = getNodeRuntimeEnv()
+  env: RuntimeEnvShape = getNodeRuntimeEnv(),
 ): AccountHoldPolicyRuntimeConfig {
   const configuredApplyRoles = readOptionalRuntimeEnv(
     env,
-    "ACCOUNT_HOLD_APPLY_ALLOWED_OPERATOR_ROLES"
+    "ACCOUNT_HOLD_APPLY_ALLOWED_OPERATOR_ROLES",
   );
   const configuredReleaseRoles = readOptionalRuntimeEnv(
     env,
-    "ACCOUNT_HOLD_RELEASE_ALLOWED_OPERATOR_ROLES"
+    "ACCOUNT_HOLD_RELEASE_ALLOWED_OPERATOR_ROLES",
   );
 
   return {
     accountHoldApplyAllowedOperatorRoles: configuredApplyRoles
       ? parseCommaSeparatedValues(
           configuredApplyRoles,
-          "ACCOUNT_HOLD_APPLY_ALLOWED_OPERATOR_ROLES"
+          "ACCOUNT_HOLD_APPLY_ALLOWED_OPERATOR_ROLES",
         )
       : [...DEFAULT_ACCOUNT_HOLD_APPLY_ALLOWED_OPERATOR_ROLES],
     accountHoldReleaseAllowedOperatorRoles: configuredReleaseRoles
       ? parseCommaSeparatedValues(
           configuredReleaseRoles,
-          "ACCOUNT_HOLD_RELEASE_ALLOWED_OPERATOR_ROLES"
+          "ACCOUNT_HOLD_RELEASE_ALLOWED_OPERATOR_ROLES",
         )
-      : [...DEFAULT_ACCOUNT_HOLD_RELEASE_ALLOWED_OPERATOR_ROLES]
+      : [...DEFAULT_ACCOUNT_HOLD_RELEASE_ALLOWED_OPERATOR_ROLES],
   };
 }
 
 export function loadIncidentPackageExportGovernanceRuntimeConfig(
-  env: RuntimeEnvShape = getNodeRuntimeEnv()
+  env: RuntimeEnvShape = getNodeRuntimeEnv(),
 ): IncidentPackageExportGovernanceRuntimeConfig {
   const configuredMaxRecentLimit = readOptionalRuntimeEnv(
     env,
-    "INCIDENT_PACKAGE_EXPORT_MAX_RECENT_LIMIT"
+    "INCIDENT_PACKAGE_EXPORT_MAX_RECENT_LIMIT",
   );
   const configuredMaxTimelineLimit = readOptionalRuntimeEnv(
     env,
-    "INCIDENT_PACKAGE_EXPORT_MAX_TIMELINE_LIMIT"
+    "INCIDENT_PACKAGE_EXPORT_MAX_TIMELINE_LIMIT",
   );
   const configuredMaxSinceDays = readOptionalRuntimeEnv(
     env,
-    "INCIDENT_PACKAGE_EXPORT_MAX_SINCE_DAYS"
+    "INCIDENT_PACKAGE_EXPORT_MAX_SINCE_DAYS",
   );
 
   return {
     incidentPackageExportMaxRecentLimit: configuredMaxRecentLimit
       ? parsePositiveInteger(
           configuredMaxRecentLimit,
-          "INCIDENT_PACKAGE_EXPORT_MAX_RECENT_LIMIT"
+          "INCIDENT_PACKAGE_EXPORT_MAX_RECENT_LIMIT",
         )
       : DEFAULT_INCIDENT_PACKAGE_EXPORT_MAX_RECENT_LIMIT,
     incidentPackageExportMaxTimelineLimit: configuredMaxTimelineLimit
       ? parsePositiveInteger(
           configuredMaxTimelineLimit,
-          "INCIDENT_PACKAGE_EXPORT_MAX_TIMELINE_LIMIT"
+          "INCIDENT_PACKAGE_EXPORT_MAX_TIMELINE_LIMIT",
         )
       : DEFAULT_INCIDENT_PACKAGE_EXPORT_MAX_TIMELINE_LIMIT,
     incidentPackageExportMaxSinceDays: configuredMaxSinceDays
       ? parsePositiveInteger(
           configuredMaxSinceDays,
-          "INCIDENT_PACKAGE_EXPORT_MAX_SINCE_DAYS"
+          "INCIDENT_PACKAGE_EXPORT_MAX_SINCE_DAYS",
         )
-      : DEFAULT_INCIDENT_PACKAGE_EXPORT_MAX_SINCE_DAYS
+      : DEFAULT_INCIDENT_PACKAGE_EXPORT_MAX_SINCE_DAYS,
   };
 }
 
 export function loadIncidentPackageReleaseGovernanceRuntimeConfig(
-  env: RuntimeEnvShape = getNodeRuntimeEnv()
+  env: RuntimeEnvShape = getNodeRuntimeEnv(),
 ): IncidentPackageReleaseGovernanceRuntimeConfig {
   const configuredApproverRoles = readOptionalRuntimeEnv(
     env,
-    "INCIDENT_PACKAGE_RELEASE_APPROVER_ALLOWED_OPERATOR_ROLES"
+    "INCIDENT_PACKAGE_RELEASE_APPROVER_ALLOWED_OPERATOR_ROLES",
   );
   const configuredApprovalExpiryHours = readOptionalRuntimeEnv(
     env,
-    "INCIDENT_PACKAGE_RELEASE_APPROVAL_EXPIRY_HOURS"
+    "INCIDENT_PACKAGE_RELEASE_APPROVAL_EXPIRY_HOURS",
   );
 
   return {
     incidentPackageReleaseApproverAllowedOperatorRoles: configuredApproverRoles
       ? parseCommaSeparatedValues(
           configuredApproverRoles,
-          "INCIDENT_PACKAGE_RELEASE_APPROVER_ALLOWED_OPERATOR_ROLES"
+          "INCIDENT_PACKAGE_RELEASE_APPROVER_ALLOWED_OPERATOR_ROLES",
         )
       : [...DEFAULT_INCIDENT_PACKAGE_RELEASE_APPROVER_ALLOWED_OPERATOR_ROLES],
     incidentPackageReleaseApprovalExpiryHours: configuredApprovalExpiryHours
       ? parsePositiveInteger(
           configuredApprovalExpiryHours,
-          "INCIDENT_PACKAGE_RELEASE_APPROVAL_EXPIRY_HOURS"
+          "INCIDENT_PACKAGE_RELEASE_APPROVAL_EXPIRY_HOURS",
         )
-      : DEFAULT_INCIDENT_PACKAGE_RELEASE_APPROVAL_EXPIRY_HOURS
+      : DEFAULT_INCIDENT_PACKAGE_RELEASE_APPROVAL_EXPIRY_HOURS,
   };
 }
 
 export function loadReleaseReadinessApprovalRuntimeConfig(
-  env: RuntimeEnvShape = getNodeRuntimeEnv()
+  env: RuntimeEnvShape = getNodeRuntimeEnv(),
 ): ReleaseReadinessApprovalRuntimeConfig {
   const configuredRequestRoles = readOptionalRuntimeEnv(
     env,
-    "RELEASE_READINESS_APPROVAL_REQUEST_ALLOWED_OPERATOR_ROLES"
+    "RELEASE_READINESS_APPROVAL_REQUEST_ALLOWED_OPERATOR_ROLES",
   );
   const configuredApproverRoles = readOptionalRuntimeEnv(
     env,
-    "RELEASE_READINESS_APPROVER_ALLOWED_OPERATOR_ROLES"
+    "RELEASE_READINESS_APPROVER_ALLOWED_OPERATOR_ROLES",
   );
   const configuredLegacyApproverRoles = readOptionalRuntimeEnv(
     env,
-    "RELEASE_READINESS_APPROVAL_ALLOWED_OPERATOR_ROLES"
+    "RELEASE_READINESS_APPROVAL_ALLOWED_OPERATOR_ROLES",
   );
   const configuredMaxEvidenceAgeHours = readOptionalRuntimeEnv(
     env,
-    "RELEASE_READINESS_APPROVAL_MAX_EVIDENCE_AGE_HOURS"
+    "RELEASE_READINESS_APPROVAL_MAX_EVIDENCE_AGE_HOURS",
   );
 
   return {
     releaseReadinessApprovalRequestAllowedOperatorRoles: configuredRequestRoles
       ? parseCommaSeparatedValues(
           configuredRequestRoles,
-          "RELEASE_READINESS_APPROVAL_REQUEST_ALLOWED_OPERATOR_ROLES"
+          "RELEASE_READINESS_APPROVAL_REQUEST_ALLOWED_OPERATOR_ROLES",
         )
       : [...DEFAULT_RELEASE_READINESS_APPROVAL_REQUEST_ALLOWED_OPERATOR_ROLES],
     releaseReadinessApprovalApproverAllowedOperatorRoles:
       configuredApproverRoles
-      ? parseCommaSeparatedValues(
-          configuredApproverRoles,
-          "RELEASE_READINESS_APPROVER_ALLOWED_OPERATOR_ROLES"
-        )
-      : configuredLegacyApproverRoles
         ? parseCommaSeparatedValues(
-            configuredLegacyApproverRoles,
-            "RELEASE_READINESS_APPROVAL_ALLOWED_OPERATOR_ROLES"
+            configuredApproverRoles,
+            "RELEASE_READINESS_APPROVER_ALLOWED_OPERATOR_ROLES",
           )
-        : [...DEFAULT_RELEASE_READINESS_APPROVER_ALLOWED_OPERATOR_ROLES],
+        : configuredLegacyApproverRoles
+          ? parseCommaSeparatedValues(
+              configuredLegacyApproverRoles,
+              "RELEASE_READINESS_APPROVAL_ALLOWED_OPERATOR_ROLES",
+            )
+          : [...DEFAULT_RELEASE_READINESS_APPROVER_ALLOWED_OPERATOR_ROLES],
     releaseReadinessApprovalMaxEvidenceAgeHours: configuredMaxEvidenceAgeHours
       ? parsePositiveInteger(
           configuredMaxEvidenceAgeHours,
-          "RELEASE_READINESS_APPROVAL_MAX_EVIDENCE_AGE_HOURS"
+          "RELEASE_READINESS_APPROVAL_MAX_EVIDENCE_AGE_HOURS",
         )
-      : DEFAULT_RELEASE_READINESS_MAX_EVIDENCE_AGE_HOURS
+      : DEFAULT_RELEASE_READINESS_MAX_EVIDENCE_AGE_HOURS,
   };
 }
 
 export function loadStakingPoolGovernanceRuntimeConfig(
-  env: RuntimeEnvShape = getNodeRuntimeEnv()
+  env: RuntimeEnvShape = getNodeRuntimeEnv(),
 ): StakingPoolGovernanceRuntimeConfig {
   const configuredLegacyGovernanceRoles = readOptionalRuntimeEnv(
     env,
-    "STAKING_GOVERNANCE_ALLOWED_OPERATOR_ROLES"
+    "STAKING_GOVERNANCE_ALLOWED_OPERATOR_ROLES",
   );
   const configuredRequestRoles = readOptionalRuntimeEnv(
     env,
-    "STAKING_POOL_GOVERNANCE_REQUEST_ALLOWED_OPERATOR_ROLES"
+    "STAKING_POOL_GOVERNANCE_REQUEST_ALLOWED_OPERATOR_ROLES",
   );
   const configuredApproverRoles = readOptionalRuntimeEnv(
     env,
-    "STAKING_POOL_GOVERNANCE_APPROVER_ALLOWED_OPERATOR_ROLES"
+    "STAKING_POOL_GOVERNANCE_APPROVER_ALLOWED_OPERATOR_ROLES",
   );
   const configuredExecutorRoles = readOptionalRuntimeEnv(
     env,
-    "STAKING_POOL_GOVERNANCE_EXECUTOR_ALLOWED_OPERATOR_ROLES"
+    "STAKING_POOL_GOVERNANCE_EXECUTOR_ALLOWED_OPERATOR_ROLES",
   );
 
   const legacyGovernanceRoles = configuredLegacyGovernanceRoles
     ? parseCommaSeparatedValues(
         configuredLegacyGovernanceRoles,
-        "STAKING_GOVERNANCE_ALLOWED_OPERATOR_ROLES"
+        "STAKING_GOVERNANCE_ALLOWED_OPERATOR_ROLES",
       )
     : null;
 
@@ -2203,39 +2285,40 @@ export function loadStakingPoolGovernanceRuntimeConfig(
     stakingPoolGovernanceRequestAllowedOperatorRoles: configuredRequestRoles
       ? parseCommaSeparatedValues(
           configuredRequestRoles,
-          "STAKING_POOL_GOVERNANCE_REQUEST_ALLOWED_OPERATOR_ROLES"
+          "STAKING_POOL_GOVERNANCE_REQUEST_ALLOWED_OPERATOR_ROLES",
         )
-      : legacyGovernanceRoles ??
-        [...DEFAULT_STAKING_POOL_GOVERNANCE_REQUEST_ALLOWED_OPERATOR_ROLES],
+      : (legacyGovernanceRoles ?? [
+          ...DEFAULT_STAKING_POOL_GOVERNANCE_REQUEST_ALLOWED_OPERATOR_ROLES,
+        ]),
     stakingPoolGovernanceApproverAllowedOperatorRoles: configuredApproverRoles
       ? parseCommaSeparatedValues(
           configuredApproverRoles,
-          "STAKING_POOL_GOVERNANCE_APPROVER_ALLOWED_OPERATOR_ROLES"
+          "STAKING_POOL_GOVERNANCE_APPROVER_ALLOWED_OPERATOR_ROLES",
         )
       : [...DEFAULT_STAKING_POOL_GOVERNANCE_APPROVER_ALLOWED_OPERATOR_ROLES],
     stakingPoolGovernanceExecutorAllowedOperatorRoles: configuredExecutorRoles
       ? parseCommaSeparatedValues(
           configuredExecutorRoles,
-          "STAKING_POOL_GOVERNANCE_EXECUTOR_ALLOWED_OPERATOR_ROLES"
+          "STAKING_POOL_GOVERNANCE_EXECUTOR_ALLOWED_OPERATOR_ROLES",
         )
-      : [...DEFAULT_STAKING_POOL_GOVERNANCE_EXECUTOR_ALLOWED_OPERATOR_ROLES]
+      : [...DEFAULT_STAKING_POOL_GOVERNANCE_EXECUTOR_ALLOWED_OPERATOR_ROLES],
   };
 }
 
 export function loadSensitiveOperatorActionPolicyRuntimeConfig(
-  env: RuntimeEnvShape = getNodeRuntimeEnv()
+  env: RuntimeEnvShape = getNodeRuntimeEnv(),
 ): SensitiveOperatorActionPolicyRuntimeConfig {
   const configuredTransactionIntentDecisionRoles = readOptionalRuntimeEnv(
     env,
-    "TRANSACTION_INTENT_DECISION_ALLOWED_OPERATOR_ROLES"
+    "TRANSACTION_INTENT_DECISION_ALLOWED_OPERATOR_ROLES",
   );
   const configuredCustodyOperationRoles = readOptionalRuntimeEnv(
     env,
-    "CUSTODY_OPERATION_ALLOWED_OPERATOR_ROLES"
+    "CUSTODY_OPERATION_ALLOWED_OPERATOR_ROLES",
   );
   const configuredStakingGovernanceRoles = readOptionalRuntimeEnv(
     env,
-    "STAKING_GOVERNANCE_ALLOWED_OPERATOR_ROLES"
+    "STAKING_GOVERNANCE_ALLOWED_OPERATOR_ROLES",
   );
 
   return {
@@ -2243,85 +2326,86 @@ export function loadSensitiveOperatorActionPolicyRuntimeConfig(
       configuredTransactionIntentDecisionRoles
         ? parseCommaSeparatedValues(
             configuredTransactionIntentDecisionRoles,
-            "TRANSACTION_INTENT_DECISION_ALLOWED_OPERATOR_ROLES"
+            "TRANSACTION_INTENT_DECISION_ALLOWED_OPERATOR_ROLES",
           )
         : [...DEFAULT_TRANSACTION_INTENT_DECISION_ALLOWED_OPERATOR_ROLES],
     custodyOperationAllowedOperatorRoles: configuredCustodyOperationRoles
       ? parseCommaSeparatedValues(
           configuredCustodyOperationRoles,
-          "CUSTODY_OPERATION_ALLOWED_OPERATOR_ROLES"
+          "CUSTODY_OPERATION_ALLOWED_OPERATOR_ROLES",
         )
       : [...DEFAULT_CUSTODY_OPERATION_ALLOWED_OPERATOR_ROLES],
     stakingGovernanceAllowedOperatorRoles: configuredStakingGovernanceRoles
       ? parseCommaSeparatedValues(
           configuredStakingGovernanceRoles,
-          "STAKING_GOVERNANCE_ALLOWED_OPERATOR_ROLES"
+          "STAKING_GOVERNANCE_ALLOWED_OPERATOR_ROLES",
         )
-      : [...DEFAULT_STAKING_GOVERNANCE_ALLOWED_OPERATOR_ROLES]
+      : [...DEFAULT_STAKING_GOVERNANCE_ALLOWED_OPERATOR_ROLES],
   };
 }
 
 export function loadPlatformAlertDeliveryRuntimeConfig(
-  env: RuntimeEnvShape = getNodeRuntimeEnv()
+  env: RuntimeEnvShape = getNodeRuntimeEnv(),
 ): PlatformAlertDeliveryRuntimeConfig {
   const configuredTargets = readOptionalRuntimeEnv(
     env,
-    "PLATFORM_ALERT_DELIVERY_TARGETS_JSON"
+    "PLATFORM_ALERT_DELIVERY_TARGETS_JSON",
   );
   const configuredRequestTimeout = readOptionalRuntimeEnv(
     env,
-    "PLATFORM_ALERT_DELIVERY_REQUEST_TIMEOUT_MS"
+    "PLATFORM_ALERT_DELIVERY_REQUEST_TIMEOUT_MS",
   );
 
   return {
     requestTimeoutMs: configuredRequestTimeout
       ? parsePositiveInteger(
           configuredRequestTimeout,
-          "PLATFORM_ALERT_DELIVERY_REQUEST_TIMEOUT_MS"
+          "PLATFORM_ALERT_DELIVERY_REQUEST_TIMEOUT_MS",
         )
       : DEFAULT_PLATFORM_ALERT_DELIVERY_REQUEST_TIMEOUT_MS,
     targets: configuredTargets
       ? parsePlatformAlertDeliveryTargets(
           configuredTargets,
-          "PLATFORM_ALERT_DELIVERY_TARGETS_JSON"
+          "PLATFORM_ALERT_DELIVERY_TARGETS_JSON",
         )
-      : []
+      : [],
   };
 }
 
 export function loadPlatformAlertAutomationRuntimeConfig(
-  env: RuntimeEnvShape = getNodeRuntimeEnv()
+  env: RuntimeEnvShape = getNodeRuntimeEnv(),
 ): PlatformAlertAutomationRuntimeConfig {
   const configuredPolicies = readOptionalRuntimeEnv(
     env,
-    "PLATFORM_ALERT_AUTOMATION_POLICIES_JSON"
+    "PLATFORM_ALERT_AUTOMATION_POLICIES_JSON",
   );
 
   return {
     policies: configuredPolicies
       ? parsePlatformAlertAutomationPolicies(
           configuredPolicies,
-          "PLATFORM_ALERT_AUTOMATION_POLICIES_JSON"
+          "PLATFORM_ALERT_AUTOMATION_POLICIES_JSON",
         )
-      : []
+      : [],
   };
 }
 
 export function loadPlatformAlertDeliveryHealthSloRuntimeConfig(
-  env: RuntimeEnvShape = getNodeRuntimeEnv()
+  env: RuntimeEnvShape = getNodeRuntimeEnv(),
 ): PlatformAlertDeliveryHealthSloRuntimeConfig {
   const configuredSlo = readOptionalRuntimeEnv(
     env,
-    "PLATFORM_ALERT_DELIVERY_HEALTH_SLO_JSON"
+    "PLATFORM_ALERT_DELIVERY_HEALTH_SLO_JSON",
   );
 
   return configuredSlo
     ? parsePlatformAlertDeliveryHealthSloConfig(
         configuredSlo,
-        "PLATFORM_ALERT_DELIVERY_HEALTH_SLO_JSON"
+        "PLATFORM_ALERT_DELIVERY_HEALTH_SLO_JSON",
       )
     : {
-        lookbackHours: DEFAULT_PLATFORM_ALERT_DELIVERY_HEALTH_SLO_LOOKBACK_HOURS,
+        lookbackHours:
+          DEFAULT_PLATFORM_ALERT_DELIVERY_HEALTH_SLO_LOOKBACK_HOURS,
         minimumRecentDeliveries:
           DEFAULT_PLATFORM_ALERT_DELIVERY_HEALTH_SLO_MINIMUM_RECENT_DELIVERIES,
         warningFailureRatePercent:
@@ -2339,74 +2423,78 @@ export function loadPlatformAlertDeliveryHealthSloRuntimeConfig(
         warningConsecutiveFailures:
           DEFAULT_PLATFORM_ALERT_DELIVERY_HEALTH_SLO_WARNING_CONSECUTIVE_FAILURES,
         criticalConsecutiveFailures:
-          DEFAULT_PLATFORM_ALERT_DELIVERY_HEALTH_SLO_CRITICAL_CONSECUTIVE_FAILURES
+          DEFAULT_PLATFORM_ALERT_DELIVERY_HEALTH_SLO_CRITICAL_CONSECUTIVE_FAILURES,
       };
 }
 
 export function loadPlatformAlertReEscalationRuntimeConfig(
-  env: RuntimeEnvShape = getNodeRuntimeEnv()
+  env: RuntimeEnvShape = getNodeRuntimeEnv(),
 ): PlatformAlertReEscalationRuntimeConfig {
   return {
     unacknowledgedCriticalAlertThresholdSeconds: parsePositiveInteger(
       readOptionalRuntimeEnv(
         env,
-        "PLATFORM_ALERT_REESCALATION_UNACKNOWLEDGED_SECONDS"
+        "PLATFORM_ALERT_REESCALATION_UNACKNOWLEDGED_SECONDS",
       ) ?? String(DEFAULT_PLATFORM_ALERT_REESCALATION_UNACKNOWLEDGED_SECONDS),
-      "PLATFORM_ALERT_REESCALATION_UNACKNOWLEDGED_SECONDS"
+      "PLATFORM_ALERT_REESCALATION_UNACKNOWLEDGED_SECONDS",
     ),
     unownedCriticalAlertThresholdSeconds: parsePositiveInteger(
-      readOptionalRuntimeEnv(env, "PLATFORM_ALERT_REESCALATION_UNOWNED_SECONDS") ??
-        String(DEFAULT_PLATFORM_ALERT_REESCALATION_UNOWNED_SECONDS),
-      "PLATFORM_ALERT_REESCALATION_UNOWNED_SECONDS"
+      readOptionalRuntimeEnv(
+        env,
+        "PLATFORM_ALERT_REESCALATION_UNOWNED_SECONDS",
+      ) ?? String(DEFAULT_PLATFORM_ALERT_REESCALATION_UNOWNED_SECONDS),
+      "PLATFORM_ALERT_REESCALATION_UNOWNED_SECONDS",
     ),
     repeatIntervalSeconds: parsePositiveInteger(
-      readOptionalRuntimeEnv(env, "PLATFORM_ALERT_REESCALATION_REPEAT_SECONDS") ??
-        String(DEFAULT_PLATFORM_ALERT_REESCALATION_REPEAT_SECONDS),
-      "PLATFORM_ALERT_REESCALATION_REPEAT_SECONDS"
-    )
+      readOptionalRuntimeEnv(
+        env,
+        "PLATFORM_ALERT_REESCALATION_REPEAT_SECONDS",
+      ) ?? String(DEFAULT_PLATFORM_ALERT_REESCALATION_REPEAT_SECONDS),
+      "PLATFORM_ALERT_REESCALATION_REPEAT_SECONDS",
+    ),
   };
 }
 
 export function loadSolvencyRuntimeConfig(
-  env: RuntimeEnvShape = getNodeRuntimeEnv()
+  env: RuntimeEnvShape = getNodeRuntimeEnv(),
 ): SolvencyRuntimeConfig {
   const environment = parseApiRuntimeEnvironment(
-    readOptionalRuntimeEnv(env, "NODE_ENV")
+    readOptionalRuntimeEnv(env, "NODE_ENV"),
   );
   const evidenceStaleAfterSeconds = parsePositiveInteger(
     readOptionalRuntimeEnv(env, "SOLVENCY_EVIDENCE_STALE_AFTER_SECONDS") ??
       "300",
-    "SOLVENCY_EVIDENCE_STALE_AFTER_SECONDS"
+    "SOLVENCY_EVIDENCE_STALE_AFTER_SECONDS",
   );
   const criticalReserveRatioBps = parseIntegerInRange(
     Number(
       readOptionalRuntimeEnv(env, "SOLVENCY_CRITICAL_RESERVE_RATIO_BPS") ??
-        "10000"
+        "10000",
     ),
     "SOLVENCY_CRITICAL_RESERVE_RATIO_BPS",
     0,
-    100000
+    100000,
   );
   const warningReserveRatioBps = parseIntegerInRange(
     Number(
       readOptionalRuntimeEnv(env, "SOLVENCY_WARNING_RESERVE_RATIO_BPS") ??
-        "10500"
+        "10500",
     ),
     "SOLVENCY_WARNING_RESERVE_RATIO_BPS",
     criticalReserveRatioBps,
-    100000
+    100000,
   );
   const configuredReportSignerPrivateKey = readOptionalRuntimeEnv(
     env,
-    "SOLVENCY_REPORT_SIGNER_PRIVATE_KEY"
+    "SOLVENCY_REPORT_SIGNER_PRIVATE_KEY",
   );
   const configuredResumeRequestRoles = readOptionalRuntimeEnv(
     env,
-    "SOLVENCY_RESUME_REQUEST_ALLOWED_OPERATOR_ROLES"
+    "SOLVENCY_RESUME_REQUEST_ALLOWED_OPERATOR_ROLES",
   );
   const configuredResumeApproverRoles = readOptionalRuntimeEnv(
     env,
-    "SOLVENCY_RESUME_APPROVER_ALLOWED_OPERATOR_ROLES"
+    "SOLVENCY_RESUME_APPROVER_ALLOWED_OPERATOR_ROLES",
   );
   const reportSignerPrivateKey =
     configuredReportSignerPrivateKey?.trim() ||
@@ -2416,7 +2504,7 @@ export function loadSolvencyRuntimeConfig(
 
   if (!reportSignerPrivateKey) {
     throw new Error(
-      "SOLVENCY_REPORT_SIGNER_PRIVATE_KEY must be configured in production."
+      "SOLVENCY_REPORT_SIGNER_PRIVATE_KEY must be configured in production.",
     );
   }
 
@@ -2429,47 +2517,50 @@ export function loadSolvencyRuntimeConfig(
     resumeRequestAllowedOperatorRoles: configuredResumeRequestRoles
       ? parseCommaSeparatedValues(
           configuredResumeRequestRoles,
-          "SOLVENCY_RESUME_REQUEST_ALLOWED_OPERATOR_ROLES"
+          "SOLVENCY_RESUME_REQUEST_ALLOWED_OPERATOR_ROLES",
         )
       : [...DEFAULT_SOLVENCY_RESUME_REQUEST_ALLOWED_OPERATOR_ROLES],
     resumeApproverAllowedOperatorRoles: configuredResumeApproverRoles
       ? parseCommaSeparatedValues(
           configuredResumeApproverRoles,
-          "SOLVENCY_RESUME_APPROVER_ALLOWED_OPERATOR_ROLES"
+          "SOLVENCY_RESUME_APPROVER_ALLOWED_OPERATOR_ROLES",
         )
-      : [...DEFAULT_SOLVENCY_RESUME_APPROVER_ALLOWED_OPERATOR_ROLES]
+      : [...DEFAULT_SOLVENCY_RESUME_APPROVER_ALLOWED_OPERATOR_ROLES],
   };
 }
 
 export function loadGovernedExecutionRuntimeConfig(
-  env: RuntimeEnvShape = getNodeRuntimeEnv()
+  env: RuntimeEnvShape = getNodeRuntimeEnv(),
 ): GovernedExecutionRuntimeConfig {
   const environment = parseApiRuntimeEnvironment(
-    readOptionalRuntimeEnv(env, "NODE_ENV")
+    readOptionalRuntimeEnv(env, "NODE_ENV"),
   );
   const governedCustody = loadGovernedCustodyRuntimeConfig(env);
   const configuredRequestRoles = readOptionalRuntimeEnv(
     env,
-    "GOVERNED_EXECUTION_REQUEST_ALLOWED_OPERATOR_ROLES"
+    "GOVERNED_EXECUTION_REQUEST_ALLOWED_OPERATOR_ROLES",
   );
   const configuredApproverRoles = readOptionalRuntimeEnv(
     env,
-    "GOVERNED_EXECUTION_APPROVER_ALLOWED_OPERATOR_ROLES"
+    "GOVERNED_EXECUTION_APPROVER_ALLOWED_OPERATOR_ROLES",
   );
   const configuredReserveCustodyTypes = readOptionalRuntimeEnv(
     env,
-    "GOVERNED_EXECUTION_ALLOWED_RESERVE_CUSTODY_TYPES"
+    "GOVERNED_EXECUTION_ALLOWED_RESERVE_CUSTODY_TYPES",
   );
   const configuredExecutorSignerAddresses = readOptionalRuntimeEnv(
     env,
-    "GOVERNED_EXECUTOR_ALLOWED_SIGNER_ADDRESSES"
+    "GOVERNED_EXECUTOR_ALLOWED_SIGNER_ADDRESSES",
   );
   const configuredExecutorDeliveryBackendType = readOptionalRuntimeEnv(
     env,
-    "GOVERNED_EXECUTOR_DELIVERY_BACKEND_TYPE"
+    "GOVERNED_EXECUTOR_DELIVERY_BACKEND_TYPE",
   );
   const executionPackageSignerPrivateKey =
-    readOptionalRuntimeEnv(env, "GOVERNED_EXECUTION_PACKAGE_SIGNER_PRIVATE_KEY") ??
+    readOptionalRuntimeEnv(
+      env,
+      "GOVERNED_EXECUTION_PACKAGE_SIGNER_PRIVATE_KEY",
+    ) ??
     readOptionalRuntimeEnv(env, "SOLVENCY_REPORT_SIGNER_PRIVATE_KEY") ??
     (environment === "production"
       ? ""
@@ -2477,44 +2568,46 @@ export function loadGovernedExecutionRuntimeConfig(
 
   if (!executionPackageSignerPrivateKey) {
     throw new Error(
-      "GOVERNED_EXECUTION_PACKAGE_SIGNER_PRIVATE_KEY must be configured in production."
+      "GOVERNED_EXECUTION_PACKAGE_SIGNER_PRIVATE_KEY must be configured in production.",
     );
   }
 
   const executorAllowedSignerAddresses = configuredExecutorSignerAddresses
     ? parseCommaSeparatedValues(
         configuredExecutorSignerAddresses,
-      "GOVERNED_EXECUTOR_ALLOWED_SIGNER_ADDRESSES"
+        "GOVERNED_EXECUTOR_ALLOWED_SIGNER_ADDRESSES",
       )
     : governedCustody
-      ? governedCustody.signers.map((signer) => signer.signerAddress.toLowerCase())
+      ? governedCustody.signers.map((signer) =>
+          signer.signerAddress.toLowerCase(),
+        )
       : [...DEFAULT_LOCAL_GOVERNED_EXECUTOR_SIGNER_ADDRESSES];
 
   if (environment === "production" && !configuredExecutorSignerAddresses) {
     throw new Error(
-      "GOVERNED_EXECUTOR_ALLOWED_SIGNER_ADDRESSES or a governed custody manifest is required in production."
+      "GOVERNED_EXECUTOR_ALLOWED_SIGNER_ADDRESSES or a governed custody manifest is required in production.",
     );
   }
 
   const loanFundingExecutionMode = parseGovernedTreasuryExecutionMode(
     readOptionalRuntimeEnv(env, "GOVERNED_LOAN_FUNDING_EXECUTION_MODE"),
-    "GOVERNED_LOAN_FUNDING_EXECUTION_MODE"
+    "GOVERNED_LOAN_FUNDING_EXECUTION_MODE",
   );
   const stakingWriteExecutionMode = parseGovernedTreasuryExecutionMode(
     readOptionalRuntimeEnv(env, "GOVERNED_STAKING_WRITE_EXECUTION_MODE"),
-    "GOVERNED_STAKING_WRITE_EXECUTION_MODE"
+    "GOVERNED_STAKING_WRITE_EXECUTION_MODE",
   );
 
   if (environment === "production") {
     if (loanFundingExecutionMode !== "governed_external") {
       throw new Error(
-        "GOVERNED_LOAN_FUNDING_EXECUTION_MODE must be governed_external in production."
+        "GOVERNED_LOAN_FUNDING_EXECUTION_MODE must be governed_external in production.",
       );
     }
 
     if (stakingWriteExecutionMode !== "governed_external") {
       throw new Error(
-        "GOVERNED_STAKING_WRITE_EXECUTION_MODE must be governed_external in production."
+        "GOVERNED_STAKING_WRITE_EXECUTION_MODE must be governed_external in production.",
       );
     }
   }
@@ -2522,14 +2615,16 @@ export function loadGovernedExecutionRuntimeConfig(
   return {
     environment,
     governedExecutionRequiredInProduction: parseBoolean(
-      readOptionalRuntimeEnv(env, "GOVERNED_EXECUTION_REQUIRED_IN_PRODUCTION") ??
-        "true",
-      "GOVERNED_EXECUTION_REQUIRED_IN_PRODUCTION"
+      readOptionalRuntimeEnv(
+        env,
+        "GOVERNED_EXECUTION_REQUIRED_IN_PRODUCTION",
+      ) ?? "true",
+      "GOVERNED_EXECUTION_REQUIRED_IN_PRODUCTION",
     ),
     governedReserveCustodyTypes: configuredReserveCustodyTypes
       ? parseCommaSeparatedValues(
           configuredReserveCustodyTypes,
-          "GOVERNED_EXECUTION_ALLOWED_RESERVE_CUSTODY_TYPES"
+          "GOVERNED_EXECUTION_ALLOWED_RESERVE_CUSTODY_TYPES",
         )
       : ["multisig_controlled", "contract_controlled"],
     loanFundingExecutionMode,
@@ -2537,45 +2632,43 @@ export function loadGovernedExecutionRuntimeConfig(
     requestAllowedOperatorRoles: configuredRequestRoles
       ? parseCommaSeparatedValues(
           configuredRequestRoles,
-          "GOVERNED_EXECUTION_REQUEST_ALLOWED_OPERATOR_ROLES"
+          "GOVERNED_EXECUTION_REQUEST_ALLOWED_OPERATOR_ROLES",
         )
       : [...DEFAULT_GOVERNED_EXECUTION_REQUEST_ALLOWED_OPERATOR_ROLES],
     approverAllowedOperatorRoles: configuredApproverRoles
       ? parseCommaSeparatedValues(
           configuredApproverRoles,
-          "GOVERNED_EXECUTION_APPROVER_ALLOWED_OPERATOR_ROLES"
+          "GOVERNED_EXECUTION_APPROVER_ALLOWED_OPERATOR_ROLES",
         )
       : [...DEFAULT_GOVERNED_EXECUTION_APPROVER_ALLOWED_OPERATOR_ROLES],
     overrideMaxHours: parsePositiveInteger(
       readOptionalRuntimeEnv(env, "GOVERNED_EXECUTION_OVERRIDE_MAX_HOURS") ??
         String(DEFAULT_GOVERNED_EXECUTION_OVERRIDE_MAX_HOURS),
-      "GOVERNED_EXECUTION_OVERRIDE_MAX_HOURS"
+      "GOVERNED_EXECUTION_OVERRIDE_MAX_HOURS",
     ),
     executionPackageSignerPrivateKey,
     executionClaimLeaseSeconds: parsePositiveInteger(
       readOptionalRuntimeEnv(env, "GOVERNED_EXECUTION_CLAIM_LEASE_SECONDS") ??
         "300",
-      "GOVERNED_EXECUTION_CLAIM_LEASE_SECONDS"
+      "GOVERNED_EXECUTION_CLAIM_LEASE_SECONDS",
     ),
     executorClaimLeaseSeconds: parsePositiveInteger(
-      readOptionalRuntimeEnv(
-        env,
-        "GOVERNED_EXECUTOR_CLAIM_LEASE_SECONDS"
-      ) ?? "300",
-      "GOVERNED_EXECUTOR_CLAIM_LEASE_SECONDS"
+      readOptionalRuntimeEnv(env, "GOVERNED_EXECUTOR_CLAIM_LEASE_SECONDS") ??
+        "300",
+      "GOVERNED_EXECUTOR_CLAIM_LEASE_SECONDS",
     ),
     executorAllowedSignerAddresses,
     requireOnchainExecutorReceiptVerification: parseBoolean(
       readOptionalRuntimeEnv(
         env,
-        "GOVERNED_EXECUTOR_REQUIRE_ONCHAIN_RECEIPT_VERIFICATION"
+        "GOVERNED_EXECUTOR_REQUIRE_ONCHAIN_RECEIPT_VERIFICATION",
       ) ?? "true",
-      "GOVERNED_EXECUTOR_REQUIRE_ONCHAIN_RECEIPT_VERIFICATION"
+      "GOVERNED_EXECUTOR_REQUIRE_ONCHAIN_RECEIPT_VERIFICATION",
     ),
     executorDeliveryBackendType:
       configuredExecutorDeliveryBackendType === "webhook_push"
         ? "webhook_push"
         : "internal_pull",
-    governedCustody
+    governedCustody,
   };
 }

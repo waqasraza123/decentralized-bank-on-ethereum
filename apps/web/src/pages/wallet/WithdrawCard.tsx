@@ -5,7 +5,7 @@ import {
   CardContent,
   CardDescription,
   CardHeader,
-  CardTitle
+  CardTitle,
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { LoadingButton } from "@/components/ui/loading-button";
@@ -16,9 +16,14 @@ import { CustomerAssetBalance } from "@/hooks/balances/useMyBalances";
 import { SupportedAsset } from "@/hooks/assets/useSupportedAssets";
 import {
   CreateWithdrawalIntentResult,
-  useCreateWithdrawalIntent
+  useCreateWithdrawalIntent,
 } from "@/hooks/transaction-intents/useCreateWithdrawalIntent";
 import { readApiErrorMessage } from "@/lib/api";
+import { useUserStore } from "@/stores/userStore";
+import {
+  useStartCustomerMfaChallenge,
+  useVerifyCustomerMfaChallenge,
+} from "@/hooks/auth/useCustomerMfa";
 import {
   buildIntentTimeline,
   buildRequestIdempotencyKey,
@@ -28,7 +33,7 @@ import {
   formatTokenAmount,
   getIntentConfidenceStatus,
   isEthereumAddress,
-  isPositiveDecimalString
+  isPositiveDecimalString,
 } from "@/lib/customer-finance";
 import { useLocale } from "@/i18n/use-locale";
 import { getTransactionConfidenceTone } from "@stealth-trails-bank/ui-foundation";
@@ -50,16 +55,25 @@ const WithdrawCard = ({
   isAssetsLoading,
   isBalancesLoading,
   assetsErrorMessage,
-  balancesErrorMessage
+  balancesErrorMessage,
 }: WithdrawCardProps) => {
   const { locale } = useLocale();
+  const user = useUserStore((state) => state.user);
   const createWithdrawalIntent = useCreateWithdrawalIntent();
+  const startMfaChallenge = useStartCustomerMfaChallenge();
+  const verifyMfaChallenge = useVerifyCustomerMfaChallenge();
   const [preferredAssetSymbol, setPreferredAssetSymbol] = useState("");
   const [withdrawAddress, setWithdrawAddress] = useState("");
   const [withdrawAmount, setWithdrawAmount] = useState("");
   const [formError, setFormError] = useState<string | null>(null);
   const [latestRequest, setLatestRequest] =
     useState<CreateWithdrawalIntentResult | null>(null);
+  const [challengeId, setChallengeId] = useState<string | null>(null);
+  const [challengeMethod, setChallengeMethod] = useState<"totp" | "email_otp">(
+    "totp",
+  );
+  const [challengeCode, setChallengeCode] = useState("");
+  const [previewCode, setPreviewCode] = useState<string | null>(null);
   const lastSubmissionRef = useRef<{
     signature: string;
     idempotencyKey: string;
@@ -72,10 +86,15 @@ const WithdrawCard = ({
 
   const selectedBalance = useMemo(
     () =>
-      balances.find((balance) => balance.asset.symbol === selectedAssetSymbol) ??
-      null,
-    [balances, selectedAssetSymbol]
+      balances.find(
+        (balance) => balance.asset.symbol === selectedAssetSymbol,
+      ) ?? null,
+    [balances, selectedAssetSymbol],
   );
+  const moneyMovementBlocked = user?.mfa.moneyMovementBlocked ?? true;
+  const stepUpFresh =
+    Boolean(user?.mfa.stepUpFreshUntil) &&
+    Date.parse(user?.mfa.stepUpFreshUntil ?? "") > Date.now();
 
   function getIdempotencyKey(signature: string): string {
     if (lastSubmissionRef.current?.signature === signature) {
@@ -85,7 +104,7 @@ const WithdrawCard = ({
     const idempotencyKey = buildRequestIdempotencyKey("withdraw_req");
     lastSubmissionRef.current = {
       signature,
-      idempotencyKey
+      idempotencyKey,
     };
 
     return idempotencyKey;
@@ -97,11 +116,29 @@ const WithdrawCard = ({
     const normalizedAddress = withdrawAddress.trim();
     const normalizedAmount = withdrawAmount.trim();
 
+    if (moneyMovementBlocked) {
+      setFormError(
+        locale === "ar"
+          ? "أكمل إعداد المصادقة متعددة العوامل أولاً من الملف الشخصي."
+          : "Finish MFA setup from the profile page before sending or withdrawing.",
+      );
+      return;
+    }
+
+    if (!stepUpFresh) {
+      setFormError(
+        locale === "ar"
+          ? "أكمل تحقق MFA جديداً قبل إنشاء طلب السحب."
+          : "Complete a fresh MFA verification before creating a withdrawal request.",
+      );
+      return;
+    }
+
     if (!selectedAssetSymbol) {
       setFormError(
         locale === "ar"
           ? "اختر أصلاً قبل تسجيل الطلب."
-          : "Select an asset before creating a withdrawal request."
+          : "Select an asset before creating a withdrawal request.",
       );
       return;
     }
@@ -110,16 +147,19 @@ const WithdrawCard = ({
       setFormError(
         locale === "ar"
           ? "عنوان الوجهة يجب أن يكون عنوان EVM صالحاً."
-          : "Destination address must be a valid EVM address."
+          : "Destination address must be a valid EVM address.",
       );
       return;
     }
 
-    if (walletAddress && normalizedAddress.toLowerCase() === walletAddress.toLowerCase()) {
+    if (
+      walletAddress &&
+      normalizedAddress.toLowerCase() === walletAddress.toLowerCase()
+    ) {
       setFormError(
         locale === "ar"
           ? "يجب أن يكون عنوان الوجهة مختلفاً عن عنوان محفظتك المُدارة."
-          : "Destination address must be different from your managed wallet address."
+          : "Destination address must be different from your managed wallet address.",
       );
       return;
     }
@@ -128,7 +168,7 @@ const WithdrawCard = ({
       setFormError(
         locale === "ar"
           ? "أدخل مبلغاً موجباً بصيغة عشرية صالحة."
-          : "Amount must be a valid positive decimal value."
+          : "Amount must be a valid positive decimal value.",
       );
       return;
     }
@@ -140,12 +180,12 @@ const WithdrawCard = ({
         locale === "ar"
           ? `المبلغ المطلوب يتجاوز الرصيد المتاح ${formatTokenAmount(
               availableBalance,
-              locale
+              locale,
             )} ${selectedAssetSymbol}.`
           : `Requested amount exceeds the available balance of ${formatTokenAmount(
               availableBalance,
-              locale
-            )} ${selectedAssetSymbol}.`
+              locale,
+            )} ${selectedAssetSymbol}.`,
       );
       return;
     }
@@ -155,7 +195,7 @@ const WithdrawCard = ({
     const requestSignature = JSON.stringify({
       assetSymbol: selectedAssetSymbol,
       amount: normalizedAmount,
-      destinationAddress: normalizedAddress.toLowerCase()
+      destinationAddress: normalizedAddress.toLowerCase(),
     });
 
     try {
@@ -163,7 +203,7 @@ const WithdrawCard = ({
         idempotencyKey: getIdempotencyKey(requestSignature),
         assetSymbol: selectedAssetSymbol,
         amount: normalizedAmount,
-        destinationAddress: normalizedAddress
+        destinationAddress: normalizedAddress,
       });
 
       setLatestRequest(result);
@@ -183,20 +223,71 @@ const WithdrawCard = ({
         description:
           locale === "ar"
             ? "تم نقل الطلب إلى مسار المراجعة المُدار."
-            : "The request has moved into the managed review flow."
+            : "The request has moved into the managed review flow.",
       });
     } catch (error) {
       const message = readApiErrorMessage(
         error,
-        locale === "ar" ? "تعذر إنشاء طلب السحب." : "Failed to create withdrawal request."
+        locale === "ar"
+          ? "تعذر إنشاء طلب السحب."
+          : "Failed to create withdrawal request.",
       );
       setFormError(message);
 
       toast({
         title: locale === "ar" ? "فشل طلب السحب" : "Withdrawal request failed",
         description: message,
-        variant: "destructive"
+        variant: "destructive",
       });
+    }
+  }
+
+  async function handleStartChallenge(method: "totp" | "email_otp") {
+    try {
+      const result = await startMfaChallenge.mutateAsync({
+        method,
+        purpose: "withdrawal_step_up",
+      });
+      setChallengeMethod(method);
+      setChallengeId(result.challengeId);
+      setChallengeCode("");
+      setPreviewCode(result.previewCode);
+      setFormError(null);
+    } catch (error) {
+      setFormError(
+        readApiErrorMessage(
+          error,
+          locale === "ar"
+            ? "تعذر بدء تحقق MFA."
+            : "Failed to start MFA challenge.",
+        ),
+      );
+    }
+  }
+
+  async function handleVerifyChallenge() {
+    if (!challengeId) {
+      return;
+    }
+
+    try {
+      await verifyMfaChallenge.mutateAsync({
+        challengeId,
+        method: challengeMethod,
+        purpose: "withdrawal_step_up",
+        code: challengeCode,
+      });
+      setChallengeId(null);
+      setChallengeCode("");
+      setPreviewCode(null);
+      setFormError(null);
+    } catch (error) {
+      setFormError(
+        readApiErrorMessage(
+          error,
+          locale === "ar" ? "فشل تحقق MFA." : "Failed to verify MFA challenge.",
+        ),
+      );
     }
   }
 
@@ -205,7 +296,10 @@ const WithdrawCard = ({
     : null;
 
   return (
-    <Card className="stb-surface stb-reveal rounded-[2rem] border-0" data-delay="3">
+    <Card
+      className="stb-surface stb-reveal rounded-[2rem] border-0"
+      data-delay="3"
+    >
       <CardHeader className="space-y-3">
         <CardTitle className="text-2xl text-slate-950">
           {locale === "ar" ? "السحب" : "Withdraw"}
@@ -223,16 +317,25 @@ const WithdrawCard = ({
             {locale === "ar" ? "تسلسل السحب" : "Withdrawal sequence"}
           </div>
           <div className="mt-4 grid gap-3 text-sm text-white/72 sm:grid-cols-3">
-            <div>1. {locale === "ar" ? "تحقق من الوجهة" : "Validate destination"}</div>
+            <div>
+              1. {locale === "ar" ? "تحقق من الوجهة" : "Validate destination"}
+            </div>
             <div>2. {locale === "ar" ? "راجع الأثر" : "Review the impact"}</div>
-            <div>3. {locale === "ar" ? "تابع المراجعة والتنفيذ" : "Track review and execution"}</div>
+            <div>
+              3.{" "}
+              {locale === "ar"
+                ? "تابع المراجعة والتنفيذ"
+                : "Track review and execution"}
+            </div>
           </div>
         </div>
 
         <div className="stb-trust-note p-4 text-amber-900" data-tone="warning">
           <div className="flex items-center gap-2 text-sm font-medium text-amber-900">
             <AlertTriangle className="h-4 w-4" />
-            {locale === "ar" ? "سلوك حجز الرصيد" : "Balance reservation behavior"}
+            {locale === "ar"
+              ? "سلوك حجز الرصيد"
+              : "Balance reservation behavior"}
           </div>
           <p className="mt-2 text-sm leading-7 text-amber-800">
             {locale === "ar"
@@ -241,9 +344,85 @@ const WithdrawCard = ({
           </p>
         </div>
 
+        {moneyMovementBlocked ? (
+          <div
+            className="stb-trust-note p-4 text-amber-900"
+            data-tone="warning"
+          >
+            {locale === "ar"
+              ? "تظل عمليات السحب والإرسال محجوبة حتى تكتمل المصادقة متعددة العوامل من صفحة الملف الشخصي."
+              : "Withdraw and send remain blocked until MFA setup is complete from the profile page."}
+          </div>
+        ) : !stepUpFresh ? (
+          <div className="space-y-4 rounded-[1.5rem] border border-slate-200/70 bg-white/85 p-5">
+            <p className="text-sm font-medium text-slate-950">
+              {locale === "ar"
+                ? "أكمل تحقق MFA جديداً لهذا السحب"
+                : "Complete a fresh MFA verification for this withdrawal"}
+            </p>
+            <div className="flex flex-wrap gap-3">
+              <LoadingButton
+                type="button"
+                loading={
+                  startMfaChallenge.isPending && challengeMethod === "totp"
+                }
+                onClick={() => {
+                  void handleStartChallenge("totp");
+                }}
+              >
+                {locale === "ar" ? "استخدم التطبيق" : "Use authenticator"}
+              </LoadingButton>
+              {user?.mfa.emailOtpEnrolled ? (
+                <LoadingButton
+                  type="button"
+                  loading={
+                    startMfaChallenge.isPending &&
+                    challengeMethod === "email_otp"
+                  }
+                  onClick={() => {
+                    void handleStartChallenge("email_otp");
+                  }}
+                >
+                  {locale === "ar" ? "استخدم البريد" : "Use email backup"}
+                </LoadingButton>
+              ) : null}
+            </div>
+            {challengeId ? (
+              <div className="space-y-3">
+                {previewCode ? (
+                  <div className="stb-section-frame p-4 text-sm text-muted-foreground">
+                    {locale === "ar" ? "رمز المعاينة:" : "Preview code:"}{" "}
+                    <span className="font-semibold text-foreground">
+                      {previewCode}
+                    </span>
+                  </div>
+                ) : null}
+                <Input
+                  placeholder="123456"
+                  value={challengeCode}
+                  onChange={(event) => setChallengeCode(event.target.value)}
+                  className="bg-white"
+                />
+                <LoadingButton
+                  type="button"
+                  loading={verifyMfaChallenge.isPending}
+                  onClick={() => {
+                    void handleVerifyChallenge();
+                  }}
+                >
+                  {locale === "ar" ? "تحقق من الرمز" : "Verify challenge"}
+                </LoadingButton>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+
         <form className="space-y-4" onSubmit={handleSubmit}>
           <div className="space-y-2">
-            <label className="text-sm font-medium text-slate-700" htmlFor="withdraw-asset">
+            <label
+              className="text-sm font-medium text-slate-700"
+              htmlFor="withdraw-asset"
+            >
               {locale === "ar" ? "الأصل" : "Asset"}
             </label>
             <select
@@ -280,7 +459,7 @@ const WithdrawCard = ({
                       : "Loading..."
                     : `${formatTokenAmount(
                         selectedBalance?.availableBalance ?? "0",
-                        locale
+                        locale,
                       )} ${selectedAssetSymbol || ""}`.trim()}
                 </span>
               </div>
@@ -293,7 +472,7 @@ const WithdrawCard = ({
                       : "Loading..."
                     : `${formatTokenAmount(
                         selectedBalance?.pendingBalance ?? "0",
-                        locale
+                        locale,
                       )} ${selectedAssetSymbol || ""}`.trim()}
                 </span>
               </div>
@@ -302,7 +481,10 @@ const WithdrawCard = ({
 
           <div className="grid gap-4 md:grid-cols-2">
             <div className="space-y-2">
-              <label className="text-sm font-medium text-slate-700" htmlFor="withdraw-address">
+              <label
+                className="text-sm font-medium text-slate-700"
+                htmlFor="withdraw-address"
+              >
                 {locale === "ar" ? "عنوان الوجهة" : "Destination address"}
               </label>
               <Input
@@ -314,7 +496,10 @@ const WithdrawCard = ({
               />
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-medium text-slate-700" htmlFor="withdraw-amount">
+              <label
+                className="text-sm font-medium text-slate-700"
+                htmlFor="withdraw-amount"
+              >
                 {locale === "ar" ? "المبلغ" : "Amount"}
               </label>
               <Input
@@ -327,26 +512,38 @@ const WithdrawCard = ({
             </div>
           </div>
 
-          <div className="stb-trust-note text-sm text-slate-700" data-tone="neutral">
+          <div
+            className="stb-trust-note text-sm text-slate-700"
+            data-tone="neutral"
+          >
             {locale === "ar"
               ? "تأكد من الوجهة والمبلغ لأن الطلب سيدخل مسار مراجعة جاد وقد يظل معلقاً قبل الإرسال إلى الشبكة."
               : "Review the destination and amount carefully. The request enters a serious review path and may remain pending before network broadcast."}
           </div>
 
           {assetsErrorMessage ? (
-            <div className="stb-trust-note text-sm text-red-700" data-tone="critical">
+            <div
+              className="stb-trust-note text-sm text-red-700"
+              data-tone="critical"
+            >
               {assetsErrorMessage}
             </div>
           ) : null}
 
           {balancesErrorMessage ? (
-            <div className="stb-trust-note text-sm text-red-700" data-tone="critical">
+            <div
+              className="stb-trust-note text-sm text-red-700"
+              data-tone="critical"
+            >
               {balancesErrorMessage}
             </div>
           ) : null}
 
           {formError ? (
-            <div className="stb-trust-note text-sm text-red-700" data-tone="critical">
+            <div
+              className="stb-trust-note text-sm text-red-700"
+              data-tone="critical"
+            >
               {formError}
             </div>
           ) : null}
@@ -355,6 +552,7 @@ const WithdrawCard = ({
             type="submit"
             className="h-12 w-full rounded-2xl bg-slate-950 text-sm font-semibold text-white hover:bg-slate-900"
             loading={createWithdrawalIntent.isPending}
+            disabled={moneyMovementBlocked || !stepUpFresh}
           >
             {locale === "ar" ? "إنشاء طلب السحب" : "Create withdrawal request"}
           </LoadingButton>
@@ -365,16 +563,24 @@ const WithdrawCard = ({
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
                 <p className="text-sm font-semibold text-slate-950">
-                  {locale === "ar" ? "أحدث طلب سحب" : "Latest withdrawal request"}
+                  {locale === "ar"
+                    ? "أحدث طلب سحب"
+                    : "Latest withdrawal request"}
                 </p>
                 <p className="mt-1 text-sm text-slate-600">
-                  {formatTokenAmount(latestRequest.intent.requestedAmount, locale)}{" "}
+                  {formatTokenAmount(
+                    latestRequest.intent.requestedAmount,
+                    locale,
+                  )}{" "}
                   {latestRequest.intent.asset.symbol}
                 </p>
               </div>
               {latestConfidence ? (
                 <StatusBadge
-                  label={formatIntentStatusLabel(latestRequest.intent.status, locale)}
+                  label={formatIntentStatusLabel(
+                    latestRequest.intent.status,
+                    locale,
+                  )}
                   tone={getTransactionConfidenceTone(latestConfidence)}
                 />
               ) : null}
@@ -394,7 +600,9 @@ const WithdrawCard = ({
               </p>
             </div>
             <div className="mt-5">
-              <TimelineList events={buildIntentTimeline(latestRequest.intent)} />
+              <TimelineList
+                events={buildIntentTimeline(latestRequest.intent)}
+              />
             </div>
           </div>
         ) : null}

@@ -4,9 +4,10 @@ import {
   Post,
   Request,
   UseGuards,
-  ValidationPipe
+  ValidationPipe,
 } from "@nestjs/common";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
+import { AuthService } from "../auth/auth.service";
 import { CustomJsonResponse } from "../types/CustomJsonResponse";
 import { CreateWithdrawalIntentDto } from "./dto/create-withdrawal-intent.dto";
 import { WithdrawalIntentsService } from "./withdrawal-intents.service";
@@ -21,7 +22,8 @@ type AuthenticatedRequest = {
 @Controller("transaction-intents")
 export class WithdrawalIntentsController {
   constructor(
-    private readonly withdrawalIntentsService: WithdrawalIntentsService
+    private readonly authService: AuthService,
+    private readonly withdrawalIntentsService: WithdrawalIntentsService,
   ) {}
 
   @Post("withdrawal-requests")
@@ -29,15 +31,17 @@ export class WithdrawalIntentsController {
     @Body(
       new ValidationPipe({
         whitelist: true,
-        forbidNonWhitelisted: true
-      })
+        forbidNonWhitelisted: true,
+      }),
     )
     dto: CreateWithdrawalIntentDto,
-    @Request() request: AuthenticatedRequest
+    @Request() request: AuthenticatedRequest,
   ): Promise<CustomJsonResponse> {
+    await this.authService.assertCustomerStepUpFresh(request.user.id);
+
     const result = await this.withdrawalIntentsService.createWithdrawalIntent(
       request.user.id,
-      dto
+      dto,
     );
 
     return {
@@ -45,7 +49,7 @@ export class WithdrawalIntentsController {
       message: result.idempotencyReused
         ? "Withdrawal request reused successfully."
         : "Withdrawal request created successfully.",
-      data: result
+      data: result,
     };
   }
 }

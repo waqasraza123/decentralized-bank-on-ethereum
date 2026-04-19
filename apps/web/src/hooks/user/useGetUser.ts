@@ -7,7 +7,7 @@ import type { User } from "@/stores/userStore";
 import { useUserStore } from "@/stores/userStore";
 
 const webRuntimeConfig = loadWebRuntimeConfig(
-  import.meta.env as Record<string, string | boolean | undefined>
+  import.meta.env as Record<string, string | boolean | undefined>,
 );
 
 function mapUserProfileToStoreUser(profile: UserProfileProjection): User {
@@ -19,7 +19,8 @@ function mapUserProfileToStoreUser(profile: UserProfileProjection): User {
     supabaseUserId: profile.supabaseUserId,
     ethereumAddress: profile.ethereumAddress,
     passwordRotationAvailable: profile.passwordRotationAvailable,
-    notificationPreferences: profile.notificationPreferences
+    notificationPreferences: profile.notificationPreferences,
+    mfa: profile.mfa,
   };
 }
 
@@ -41,17 +42,17 @@ export function useGetUser(userId: string | undefined) {
 
       try {
         const response = await axios.get<ApiResponse<UserProfileProjection>>(
-        `${webRuntimeConfig.serverUrl}/user/${userId}`,
-        {
-          headers: {
-            Authorization: `Bearer ${token}`
-          }
-        }
+          `${webRuntimeConfig.serverUrl}/user/${userId}`,
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          },
         );
 
         if (response.data.status !== "success" || !response.data.data) {
           throw new Error(
-            response.data.message || "Failed to load user profile."
+            response.data.message || "Failed to load user profile.",
           );
         }
 
@@ -60,9 +61,9 @@ export function useGetUser(userId: string | undefined) {
         return response.data.data;
       } catch (error) {
         throw new Error(
-          readApiErrorMessage(error, "Failed to load user profile.")
+          readApiErrorMessage(error, "Failed to load user profile."),
         );
       }
-    }
+    },
   });
 }

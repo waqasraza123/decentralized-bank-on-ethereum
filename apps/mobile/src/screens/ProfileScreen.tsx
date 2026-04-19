@@ -11,9 +11,16 @@ import { LtrValue } from "../components/ui/LtrValue";
 import { SectionCard } from "../components/ui/SectionCard";
 import { StatusChip } from "../components/ui/StatusChip";
 import {
+  useMfaStatusQuery,
   useProfileQuery,
   useRotatePasswordMutation,
-  useUpdateNotificationPreferencesMutation
+  useStartEmailEnrollmentMutation,
+  useStartMfaChallengeMutation,
+  useStartTotpEnrollmentMutation,
+  useUpdateNotificationPreferencesMutation,
+  useVerifyEmailEnrollmentMutation,
+  useVerifyMfaChallengeMutation,
+  useVerifyTotpEnrollmentMutation,
 } from "../hooks/use-customer-queries";
 import { useLocale } from "../i18n/use-locale";
 import { useT } from "../i18n/use-t";
@@ -25,26 +32,62 @@ import { useSessionStore } from "../stores/session-store";
 const emptyPasswordForm = {
   currentPassword: "",
   newPassword: "",
-  confirmPassword: ""
+  confirmPassword: "",
 };
 
 export function ProfileScreen() {
   const t = useT();
   const { locale } = useLocale();
   const profileQuery = useProfileQuery();
+  useMfaStatusQuery();
   const signOut = useSessionStore((state) => state.signOut);
+  const sessionUser = useSessionStore((state) => state.user);
   const rotatePasswordMutation = useRotatePasswordMutation();
   const updatePreferencesMutation = useUpdateNotificationPreferencesMutation();
+  const startTotpEnrollmentMutation = useStartTotpEnrollmentMutation();
+  const verifyTotpEnrollmentMutation = useVerifyTotpEnrollmentMutation();
+  const startEmailEnrollmentMutation = useStartEmailEnrollmentMutation();
+  const verifyEmailEnrollmentMutation = useVerifyEmailEnrollmentMutation();
+  const startMfaChallengeMutation = useStartMfaChallengeMutation();
+  const verifyMfaChallengeMutation = useVerifyMfaChallengeMutation();
   const profile = profileQuery.data;
+  const mfa = profile?.mfa ?? sessionUser?.mfa;
   const [passwordForm, setPasswordForm] = useState(emptyPasswordForm);
   const [notificationDraft, setNotificationDraft] =
     useState<CustomerNotificationPreferences | null>(null);
+  const [totpSecret, setTotpSecret] = useState<string | null>(null);
+  const [totpCode, setTotpCode] = useState("");
+  const [emailChallengeId, setEmailChallengeId] = useState<string | null>(null);
+  const [emailCode, setEmailCode] = useState("");
+  const [emailPreviewCode, setEmailPreviewCode] = useState<string | null>(null);
+  const [passwordChallengeId, setPasswordChallengeId] = useState<string | null>(
+    null,
+  );
+  const [passwordChallengeMethod, setPasswordChallengeMethod] = useState<
+    "totp" | "email_otp"
+  >("totp");
+  const [passwordChallengeCode, setPasswordChallengeCode] = useState("");
+  const [passwordPreviewCode, setPasswordPreviewCode] = useState<string | null>(
+    null,
+  );
 
   useEffect(() => {
     setNotificationDraft(profile?.notificationPreferences ?? null);
   }, [profile?.notificationPreferences]);
 
+  const stepUpFresh =
+    Boolean(mfa?.stepUpFreshUntil) &&
+    Date.parse(mfa?.stepUpFreshUntil ?? "") > Date.now();
+
   async function handlePasswordUpdate() {
+    if (!stepUpFresh) {
+      Alert.alert(
+        t("profile.passwordManagement"),
+        t("profile.mfaPasswordStepUp"),
+      );
+      return;
+    }
+
     if (
       !isNonEmptyValue(passwordForm.currentPassword) ||
       !isNonEmptyValue(passwordForm.newPassword) ||
@@ -55,7 +98,10 @@ export function ProfileScreen() {
     }
 
     if (passwordForm.newPassword !== passwordForm.confirmPassword) {
-      Alert.alert(t("profile.passwordManagement"), t("profile.passwordsMustMatch"));
+      Alert.alert(
+        t("profile.passwordManagement"),
+        t("profile.passwordsMustMatch"),
+      );
       return;
     }
 
@@ -67,14 +113,19 @@ export function ProfileScreen() {
     try {
       await rotatePasswordMutation.mutateAsync({
         currentPassword: passwordForm.currentPassword.trim(),
-        newPassword: passwordForm.newPassword.trim()
+        newPassword: passwordForm.newPassword.trim(),
       });
       setPasswordForm(emptyPasswordForm);
-      Alert.alert(t("profile.passwordManagement"), t("profile.passwordUpdated"));
+      Alert.alert(
+        t("profile.passwordManagement"),
+        t("profile.passwordUpdated"),
+      );
     } catch (requestError) {
       Alert.alert(
         t("profile.passwordManagement"),
-        requestError instanceof Error ? requestError.message : String(requestError)
+        requestError instanceof Error
+          ? requestError.message
+          : String(requestError),
       );
     }
   }
@@ -90,7 +141,128 @@ export function ProfileScreen() {
     } catch (requestError) {
       Alert.alert(
         t("profile.notifications"),
-        requestError instanceof Error ? requestError.message : String(requestError)
+        requestError instanceof Error
+          ? requestError.message
+          : String(requestError),
+      );
+    }
+  }
+
+  async function handleStartTotpEnrollment() {
+    try {
+      const result = await startTotpEnrollmentMutation.mutateAsync();
+      setTotpSecret(result.secret);
+      setTotpCode("");
+    } catch (requestError) {
+      Alert.alert(
+        t("profile.mfaTitle"),
+        requestError instanceof Error
+          ? requestError.message
+          : String(requestError),
+      );
+    }
+  }
+
+  async function handleVerifyTotpEnrollment() {
+    try {
+      await verifyTotpEnrollmentMutation.mutateAsync({
+        code: totpCode.trim(),
+      });
+      setTotpSecret(null);
+      setTotpCode("");
+      Alert.alert(t("profile.mfaTitle"), t("profile.mfaTotpReady"));
+    } catch (requestError) {
+      Alert.alert(
+        t("profile.mfaTitle"),
+        requestError instanceof Error
+          ? requestError.message
+          : String(requestError),
+      );
+    }
+  }
+
+  async function handleStartEmailEnrollment() {
+    try {
+      const result = await startEmailEnrollmentMutation.mutateAsync();
+      setEmailChallengeId(result.challengeId);
+      setEmailCode("");
+      setEmailPreviewCode(result.previewCode);
+    } catch (requestError) {
+      Alert.alert(
+        t("profile.mfaTitle"),
+        requestError instanceof Error
+          ? requestError.message
+          : String(requestError),
+      );
+    }
+  }
+
+  async function handleVerifyEmailEnrollment() {
+    if (!emailChallengeId) {
+      return;
+    }
+
+    try {
+      await verifyEmailEnrollmentMutation.mutateAsync({
+        challengeId: emailChallengeId,
+        code: emailCode.trim(),
+      });
+      setEmailChallengeId(null);
+      setEmailCode("");
+      setEmailPreviewCode(null);
+      Alert.alert(t("profile.mfaTitle"), t("profile.mfaEmailReady"));
+    } catch (requestError) {
+      Alert.alert(
+        t("profile.mfaTitle"),
+        requestError instanceof Error
+          ? requestError.message
+          : String(requestError),
+      );
+    }
+  }
+
+  async function startPasswordStepUp(method: "totp" | "email_otp") {
+    try {
+      const result = await startMfaChallengeMutation.mutateAsync({
+        method,
+        purpose: "password_step_up",
+      });
+      setPasswordChallengeMethod(method);
+      setPasswordChallengeId(result.challengeId);
+      setPasswordChallengeCode("");
+      setPasswordPreviewCode(result.previewCode);
+    } catch (requestError) {
+      Alert.alert(
+        t("profile.passwordManagement"),
+        requestError instanceof Error
+          ? requestError.message
+          : String(requestError),
+      );
+    }
+  }
+
+  async function handleVerifyPasswordStepUp() {
+    if (!passwordChallengeId) {
+      return;
+    }
+
+    try {
+      await verifyMfaChallengeMutation.mutateAsync({
+        challengeId: passwordChallengeId,
+        method: passwordChallengeMethod,
+        purpose: "password_step_up",
+        code: passwordChallengeCode.trim(),
+      });
+      setPasswordChallengeId(null);
+      setPasswordChallengeCode("");
+      setPasswordPreviewCode(null);
+      Alert.alert(t("profile.passwordManagement"), t("profile.mfaStepUpReady"));
+    } catch (requestError) {
+      Alert.alert(
+        t("profile.passwordManagement"),
+        requestError instanceof Error
+          ? requestError.message
+          : String(requestError),
       );
     }
   }
@@ -130,9 +302,15 @@ export function ProfileScreen() {
               />
             </View>
             <View className="gap-3">
-              <AppText className="text-sm text-slate">{t("profile.customerId")}</AppText>
-              <LtrValue value={profile.customerId ?? t("common.notAvailable")} />
-              <AppText className="text-sm text-slate">{t("profile.supabaseUserId")}</AppText>
+              <AppText className="text-sm text-slate">
+                {t("profile.customerId")}
+              </AppText>
+              <LtrValue
+                value={profile.customerId ?? t("common.notAvailable")}
+              />
+              <AppText className="text-sm text-slate">
+                {t("profile.supabaseUserId")}
+              </AppText>
               <LtrValue value={profile.supabaseUserId} />
               <AppText className="text-sm text-slate">
                 {t("profile.productChainAddress")}
@@ -165,16 +343,178 @@ export function ProfileScreen() {
 
           <SectionCard className="gap-4">
             <AppText className="text-xl text-ink" weight="bold">
+              {t("profile.mfaTitle")}
+            </AppText>
+            <InlineNotice
+              message={
+                mfa?.requiresSetup
+                  ? t("profile.mfaSetupRequired")
+                  : stepUpFresh
+                    ? t("profile.mfaStepUpFresh")
+                    : t("profile.mfaStepUpRequired")
+              }
+              tone={mfa?.requiresSetup || !stepUpFresh ? "warning" : "positive"}
+            />
+            <View className="gap-3">
+              <View className="rounded-2xl border border-border bg-white px-4 py-4">
+                <AppText className="text-sm text-slate">
+                  {t("profile.mfaAuthenticator")}
+                </AppText>
+                <AppText className="mt-2 text-base text-ink" weight="semibold">
+                  {mfa?.totpEnrolled
+                    ? t("common.enabled")
+                    : t("common.disabled")}
+                </AppText>
+              </View>
+              <View className="rounded-2xl border border-border bg-white px-4 py-4">
+                <AppText className="text-sm text-slate">
+                  {t("profile.mfaEmailBackup")}
+                </AppText>
+                <AppText className="mt-2 text-base text-ink" weight="semibold">
+                  {mfa?.emailOtpEnrolled
+                    ? t("common.enabled")
+                    : t("common.disabled")}
+                </AppText>
+              </View>
+            </View>
+            {!mfa?.totpEnrolled ? (
+              <>
+                <AppButton
+                  disabled={startTotpEnrollmentMutation.isPending}
+                  label={t("profile.mfaStartAuthenticator")}
+                  onPress={() => {
+                    void handleStartTotpEnrollment();
+                  }}
+                />
+                {totpSecret ? (
+                  <View className="gap-3 rounded-2xl border border-border bg-white px-4 py-4">
+                    <AppText className="text-sm text-slate">
+                      {t("profile.mfaSecretLabel")}
+                    </AppText>
+                    <LtrValue value={totpSecret} />
+                    <FieldInput
+                      keyboardType="number-pad"
+                      label={t("profile.mfaCodeLabel")}
+                      onChangeText={setTotpCode}
+                      value={totpCode}
+                    />
+                    <AppButton
+                      disabled={verifyTotpEnrollmentMutation.isPending}
+                      label={t("profile.mfaVerifyAuthenticator")}
+                      onPress={() => {
+                        void handleVerifyTotpEnrollment();
+                      }}
+                    />
+                  </View>
+                ) : null}
+              </>
+            ) : null}
+            {mfa?.totpEnrolled && !mfa?.emailOtpEnrolled ? (
+              <>
+                <AppButton
+                  disabled={startEmailEnrollmentMutation.isPending}
+                  label={t("profile.mfaStartEmail")}
+                  onPress={() => {
+                    void handleStartEmailEnrollment();
+                  }}
+                  variant="secondary"
+                />
+                {emailChallengeId ? (
+                  <View className="gap-3 rounded-2xl border border-border bg-white px-4 py-4">
+                    <AppText className="text-sm text-slate">
+                      {t("profile.mfaEmailSent")}
+                    </AppText>
+                    {emailPreviewCode ? (
+                      <LtrValue
+                        value={`${t("profile.mfaPreviewCode")}: ${emailPreviewCode}`}
+                      />
+                    ) : null}
+                    <FieldInput
+                      keyboardType="number-pad"
+                      label={t("profile.mfaCodeLabel")}
+                      onChangeText={setEmailCode}
+                      value={emailCode}
+                    />
+                    <AppButton
+                      disabled={verifyEmailEnrollmentMutation.isPending}
+                      label={t("profile.mfaVerifyEmail")}
+                      onPress={() => {
+                        void handleVerifyEmailEnrollment();
+                      }}
+                    />
+                  </View>
+                ) : null}
+              </>
+            ) : null}
+            {!mfa?.requiresSetup && !stepUpFresh ? (
+              <View className="gap-3 rounded-2xl border border-border bg-white px-4 py-4">
+                <AppText className="text-sm text-slate">
+                  {t("profile.mfaPasswordStepUp")}
+                </AppText>
+                <View className="flex-row gap-3">
+                  <AppButton
+                    fullWidth={false}
+                    label={t("profile.mfaUseAuthenticator")}
+                    onPress={() => {
+                      void startPasswordStepUp("totp");
+                    }}
+                    variant="secondary"
+                  />
+                  {mfa?.emailOtpEnrolled ? (
+                    <AppButton
+                      fullWidth={false}
+                      label={t("profile.mfaUseEmail")}
+                      onPress={() => {
+                        void startPasswordStepUp("email_otp");
+                      }}
+                      variant="secondary"
+                    />
+                  ) : null}
+                </View>
+                {passwordChallengeId ? (
+                  <>
+                    {passwordPreviewCode ? (
+                      <LtrValue
+                        value={`${t("profile.mfaPreviewCode")}: ${passwordPreviewCode}`}
+                      />
+                    ) : null}
+                    <FieldInput
+                      keyboardType="number-pad"
+                      label={t("profile.mfaCodeLabel")}
+                      onChangeText={setPasswordChallengeCode}
+                      value={passwordChallengeCode}
+                    />
+                    <AppButton
+                      disabled={verifyMfaChallengeMutation.isPending}
+                      label={t("profile.mfaVerifyStepUp")}
+                      onPress={() => {
+                        void handleVerifyPasswordStepUp();
+                      }}
+                    />
+                  </>
+                ) : null}
+              </View>
+            ) : null}
+          </SectionCard>
+
+          <SectionCard className="gap-4">
+            <AppText className="text-xl text-ink" weight="bold">
               {t("profile.passwordManagement")}
             </AppText>
             {profile.passwordRotationAvailable ? (
               <>
+                {!stepUpFresh ? (
+                  <InlineNotice
+                    message={t("profile.mfaPasswordStepUp")}
+                    tone="warning"
+                  />
+                ) : null}
                 <FieldInput
                   label={t("auth.currentPassword")}
                   onChangeText={(value) =>
                     setPasswordForm((current) => ({
                       ...current,
-                      currentPassword: value
+                      currentPassword: value,
                     }))
                   }
                   secureTextEntry
@@ -185,7 +525,7 @@ export function ProfileScreen() {
                   onChangeText={(value) =>
                     setPasswordForm((current) => ({
                       ...current,
-                      newPassword: value
+                      newPassword: value,
                     }))
                   }
                   secureTextEntry
@@ -196,14 +536,14 @@ export function ProfileScreen() {
                   onChangeText={(value) =>
                     setPasswordForm((current) => ({
                       ...current,
-                      confirmPassword: value
+                      confirmPassword: value,
                     }))
                   }
                   secureTextEntry
                   value={passwordForm.confirmPassword}
                 />
                 <AppButton
-                  disabled={rotatePasswordMutation.isPending}
+                  disabled={rotatePasswordMutation.isPending || !stepUpFresh}
                   label={t("profile.updatePassword")}
                   onPress={() => {
                     void handlePasswordUpdate();
@@ -211,10 +551,7 @@ export function ProfileScreen() {
                 />
               </>
             ) : (
-              <InlineNotice
-                message={t("common.notAvailable")}
-                tone="warning"
-              />
+              <InlineNotice message={t("common.notAvailable")} tone="warning" />
             )}
           </SectionCard>
 
@@ -228,7 +565,10 @@ export function ProfileScreen() {
                   { key: "depositEmails", label: t("profile.deposits") },
                   { key: "withdrawalEmails", label: t("profile.withdrawals") },
                   { key: "loanEmails", label: t("profile.loans") },
-                  { key: "productUpdateEmails", label: t("profile.productUpdates") }
+                  {
+                    key: "productUpdateEmails",
+                    label: t("profile.productUpdates"),
+                  },
                 ].map((item) => (
                   <View
                     key={item.key}
@@ -244,12 +584,16 @@ export function ProfileScreen() {
                           current
                             ? {
                                 ...current,
-                                [item.key]: nextValue
+                                [item.key]: nextValue,
                               }
-                            : current
+                            : current,
                         )
                       }
-                      value={notificationDraft[item.key as keyof typeof notificationDraft]}
+                      value={
+                        notificationDraft[
+                          item.key as keyof typeof notificationDraft
+                        ]
+                      }
                     />
                   </View>
                 ))}

@@ -18,12 +18,12 @@ export const mobileMessagesAr: MobileMessages = {
     somethingWentWrong: "حدث خطأ غير متوقع",
     crashRecovery:
       "واجه التطبيق خطأً أثناء التشغيل. أعد ضبط واجهة التطبيق ثم حاول مرة أخرى.",
-    requiredField: "أكمل جميع الحقول المطلوبة قبل المتابعة."
+    requiredField: "أكمل جميع الحقول المطلوبة قبل المتابعة.",
   },
   locale: {
     label: "اللغة",
     english: "English",
-    arabic: "العربية"
+    arabic: "العربية",
   },
   navigation: {
     dashboard: "لوحة التحكم",
@@ -31,7 +31,7 @@ export const mobileMessagesAr: MobileMessages = {
     yield: "العائد",
     transactions: "المعاملات",
     profile: "الملف الشخصي",
-    loans: "القروض المُدارة"
+    loans: "القروض المُدارة",
   },
   auth: {
     signInTitle: "سجّل الدخول إلى حسابك المُدار",
@@ -54,12 +54,11 @@ export const mobileMessagesAr: MobileMessages = {
     demoFill: "استخدم بيانات العرض المشتركة",
     sessionExpired: "انتهت الجلسة. سجّل الدخول مرة أخرى.",
     emailInvalid: "أدخل بريداً إلكترونياً صالحاً.",
-    passwordTooShort: "يجب أن تتكون كلمة المرور من 8 أحرف على الأقل."
+    passwordTooShort: "يجب أن تتكون كلمة المرور من 8 أحرف على الأقل.",
   },
   dashboard: {
     title: "نظرة عامة على الأموال المُدارة",
-    description:
-      "عرض واضح للأرصدة والحركة المعلقة والخطوة التالية المهمة.",
+    description: "عرض واضح للأرصدة والحركة المعلقة والخطوة التالية المهمة.",
     primaryActions: "حرّك الأموال الآن",
     primaryActionsDescription:
       "افتح إجراءات إيثيريوم الأساسية مباشرة من الشاشة الرئيسية، واترك السجل وضوابط الحساب خلفها في المرتبة الثانية.",
@@ -86,10 +85,9 @@ export const mobileMessagesAr: MobileMessages = {
     viewHistory: "عرض السجل",
     latestSnapshotStale:
       "آخر لقطة تشغيلية أقدم من المتوقع. راجع حركة الأموال المعلقة أو أعد التحديث إذا استمر التأخير.",
-    latestSnapshotFresh:
-      "الأرصدة وحالة المعاملات ضمن نافذة التشغيل المتوقعة.",
+    latestSnapshotFresh: "الأرصدة وحالة المعاملات ضمن نافذة التشغيل المتوقعة.",
     noRecentActivity: "لم يتم تسجيل سجل معاملات لهذا الحساب بعد.",
-    managedWallet: "المحفظة المُدارة"
+    managedWallet: "المحفظة المُدارة",
   },
   wallet: {
     title: "الإيداع والسحب",
@@ -141,13 +139,23 @@ export const mobileMessagesAr: MobileMessages = {
     depositReviewStatusNote:
       "هذا الإيداع متوقف حالياً للمراجعة التشغيلية قبل متابعة التنفيذ أو التسوية النهائية.",
     withdrawalRecorded: "تم تسجيل طلب السحب.",
+    mfaSetupRequired:
+      "أكمل إعداد المصادقة متعددة العوامل في الملف الشخصي قبل استخدام الإرسال أو السحب.",
+    mfaStepUpRequired: "أكمل تحقق MFA جديداً قبل إنشاء طلب إرسال أو سحب.",
+    mfaStepUpReady: "اكتمل تحقق MFA لعمليات تحريك الأموال.",
+    mfaUseAuthenticator: "استخدم التطبيق",
+    mfaUseEmail: "استخدم البريد",
+    mfaCodeLabel: "رمز التحقق",
+    mfaPreviewCode: "رمز المعاينة",
+    mfaVerifyStepUp: "تحقق من التحدي",
+    openSecuritySetup: "افتح إعداد الأمان",
     sendRoutingNote:
       "طلبات الإرسال تمر أيضاً عبر مسار السحب الخاضع للحوكمة. يُحجز المبلغ فوراً ولا يخرج إلا بعد فحوص السياسات والتنفيذ.",
     reservationNote:
       "طلبات السحب تنقل المبلغ المطلوب من المتاح إلى المعلق مباشرة أثناء استمرار المراجعة.",
     secondaryTools: "خلف مسار الأموال",
     secondaryToolsDescription:
-      "يبقى نسخ العنوان ورمز QR وسياق الأرصدة أسفل مساحة التنفيذ الحية حتى يظل الإجراء التالي واضحاً."
+      "يبقى نسخ العنوان ورمز QR وسياق الأرصدة أسفل مساحة التنفيذ الحية حتى يظل الإجراء التالي واضحاً.",
   },
   transactions: {
     title: "سجل المعاملات",
@@ -160,7 +168,7 @@ export const mobileMessagesAr: MobileMessages = {
     internalReference: "المرجع الداخلي",
     address: "العنوان",
     chainHash: "هاش السلسلة",
-    empty: "لا توجد معاملات تطابق عوامل التصفية الحالية."
+    empty: "لا توجد معاملات تطابق عوامل التصفية الحالية.",
   },
   profile: {
     title: "الحساب والأمان",
@@ -177,13 +185,38 @@ export const mobileMessagesAr: MobileMessages = {
     passwordsMustMatch: "يجب أن تتطابق كلمتا المرور.",
     savePreferences: "حفظ التفضيلات",
     preferencesSaved: "تم حفظ تفضيلات الإشعارات.",
+    mfaTitle: "أمان متعدد العوامل",
+    mfaSetupRequired:
+      "أكمل إعداد تطبيق المصادقة وعامل البريد الاحتياطي الآن. يبقى التصفح متاحاً لكن الإرسال والسحب وتغيير كلمة المرور محجوبة حتى يكتمل الإعداد.",
+    mfaStepUpRequired:
+      "اكتمل إعداد MFA. تحقق مرة أخرى قبل تغيير كلمة المرور أو تحريك الأموال.",
+    mfaStepUpFresh:
+      "تم تفعيل عوامل المصادقة ويوجد تحقق حديث للإجراءات الحساسة.",
+    mfaAuthenticator: "تطبيق المصادقة",
+    mfaEmailBackup: "عامل البريد الاحتياطي",
+    mfaStartAuthenticator: "ابدأ إعداد التطبيق",
+    mfaVerifyAuthenticator: "تحقق من التطبيق",
+    mfaStartEmail: "أرسل رمز البريد الاحتياطي",
+    mfaVerifyEmail: "تحقق من البريد الاحتياطي",
+    mfaSecretLabel: "السر اليدوي",
+    mfaCodeLabel: "رمز مكوّن من 6 أرقام",
+    mfaEmailSent: "تم إنشاء رمز تحقق لعامل البريد الاحتياطي.",
+    mfaPreviewCode: "رمز المعاينة",
+    mfaPasswordStepUp:
+      "قبل تغيير كلمة المرور، أكمل تحدي MFA جديداً من هذه الشاشة.",
+    mfaUseAuthenticator: "استخدم التطبيق",
+    mfaUseEmail: "استخدم البريد",
+    mfaVerifyStepUp: "تحقق من التحدي",
+    mfaTotpReady: "اكتمل تسجيل تطبيق المصادقة.",
+    mfaEmailReady: "اكتمل تسجيل البريد الاحتياطي.",
+    mfaStepUpReady: "اكتمل تحقق MFA الحديث.",
     activatedAt: "تم التفعيل",
     restrictedAt: "تم التقييد",
     deposits: "رسائل الإيداع",
     withdrawals: "رسائل السحب",
     loans: "رسائل القروض",
     productUpdates: "تحديثات المنتج",
-    preferencesUnavailable: "تفضيلات الإشعارات غير متاحة لهذا الملف بعد."
+    preferencesUnavailable: "تفضيلات الإشعارات غير متاحة لهذا الملف بعد.",
   },
   yield: {
     title: "وضع العائد والاستيكينغ",
@@ -220,7 +253,7 @@ export const mobileMessagesAr: MobileMessages = {
     secondaryToolsDescription:
       "تبقى مخارج الطوارئ وتفاصيل المجمع الأقل استخداماً أسفل مساحة الاستيكينغ الحية.",
     positionUnavailable:
-      "تفاصيل المركز الحية محدودة لهذا المجمع حالياً، لذلك قد تتأخر قراءات الرصيد."
+      "تفاصيل المركز الحية محدودة لهذا المجمع حالياً، لذلك قد تتأخر قراءات الرصيد.",
   },
   loans: {
     title: "القروض المُدارة",
@@ -248,7 +281,7 @@ export const mobileMessagesAr: MobileMessages = {
     acknowledgementRequired: "أقر برسوم الخدمة الثابتة قبل إرسال الطلب.",
     acknowledgement:
       "أقر بأن رسوم الخدمة المعلنة ثابتة وغير قائمة على الفائدة.",
-    noEligibility: "الإقراض غير متاح لهذا الحساب حتى الآن."
+    noEligibility: "الإقراض غير متاح لهذا الحساب حتى الآن.",
   },
   status: {
     requested: "تم الطلب",
@@ -260,6 +293,6 @@ export const mobileMessagesAr: MobileMessages = {
     settled: "تمت التسوية",
     failed: "فشل",
     cancelled: "أُلغي",
-    manuallyResolved: "تمت المعالجة يدوياً"
-  }
+    manuallyResolved: "تمت المعالجة يدوياً",
+  },
 };

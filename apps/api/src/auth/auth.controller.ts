@@ -8,7 +8,7 @@ import {
   Request,
   UnauthorizedException,
   UseGuards,
-  ValidationPipe
+  ValidationPipe,
 } from "@nestjs/common";
 import { JwtAuthGuard } from "./guards/jwt-auth.guard";
 import { InternalOperatorBearerGuard } from "./guards/internal-operator-bearer.guard";
@@ -16,7 +16,11 @@ import { CustomJsonResponse } from "../types/CustomJsonResponse";
 import { AuthService } from "./auth.service";
 import { LoginDto } from "./dto/login.dto";
 import { SignUpDto } from "./dto/sign-up.dto";
+import { StartMfaChallengeDto } from "./dto/start-mfa-challenge.dto";
 import { UpdatePasswordDto } from "./dto/update-password.dto";
+import { VerifyEmailEnrollmentDto } from "./dto/verify-email-enrollment.dto";
+import { VerifyMfaChallengeDto } from "./dto/verify-mfa-challenge.dto";
+import { VerifyTotpEnrollmentDto } from "./dto/verify-totp-enrollment.dto";
 
 type AuthenticatedRequest = {
   user: {
@@ -44,19 +48,19 @@ export class AuthController {
 
   @Post(["signup", "signUp"])
   async signUp(
-    @Body(new ValidationPipe()) signUpDto: SignUpDto
+    @Body(new ValidationPipe()) signUpDto: SignUpDto,
   ): Promise<CustomJsonResponse> {
     return this.authService.signUp(
       signUpDto.firstName,
       signUpDto.lastName,
       signUpDto.email,
-      signUpDto.password
+      signUpDto.password,
     );
   }
 
   @Post("login")
   async login(
-    @Body(new ValidationPipe()) loginDto: LoginDto
+    @Body(new ValidationPipe()) loginDto: LoginDto,
   ): Promise<CustomJsonResponse> {
     return this.authService.login(loginDto.email, loginDto.password);
   }
@@ -65,12 +69,86 @@ export class AuthController {
   @Patch("password")
   async updatePassword(
     @Body(new ValidationPipe()) updatePasswordDto: UpdatePasswordDto,
-    @Request() request: AuthenticatedRequest
+    @Request() request: AuthenticatedRequest,
   ): Promise<CustomJsonResponse> {
     return this.authService.updatePassword(
       request.user.id,
       updatePasswordDto.currentPassword,
-      updatePasswordDto.newPassword
+      updatePasswordDto.newPassword,
+    );
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get("mfa/status")
+  async getMfaStatus(
+    @Request() request: AuthenticatedRequest,
+  ): Promise<CustomJsonResponse> {
+    return this.authService.getCustomerMfaStatus(request.user.id);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post("mfa/totp/enrollment/start")
+  async startTotpEnrollment(
+    @Request() request: AuthenticatedRequest,
+  ): Promise<CustomJsonResponse> {
+    return this.authService.startTotpEnrollment(request.user.id);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post("mfa/totp/enrollment/verify")
+  async verifyTotpEnrollment(
+    @Body(new ValidationPipe()) dto: VerifyTotpEnrollmentDto,
+    @Request() request: AuthenticatedRequest,
+  ): Promise<CustomJsonResponse> {
+    return this.authService.verifyTotpEnrollment(request.user.id, dto.code);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post("mfa/email/enrollment/start")
+  async startEmailEnrollment(
+    @Request() request: AuthenticatedRequest,
+  ): Promise<CustomJsonResponse> {
+    return this.authService.startEmailEnrollment(request.user.id);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post("mfa/email/enrollment/verify")
+  async verifyEmailEnrollment(
+    @Body(new ValidationPipe()) dto: VerifyEmailEnrollmentDto,
+    @Request() request: AuthenticatedRequest,
+  ): Promise<CustomJsonResponse> {
+    return this.authService.verifyEmailEnrollment(
+      request.user.id,
+      dto.challengeId,
+      dto.code,
+    );
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post("mfa/challenge/start")
+  async startMfaChallenge(
+    @Body(new ValidationPipe()) dto: StartMfaChallengeDto,
+    @Request() request: AuthenticatedRequest,
+  ): Promise<CustomJsonResponse> {
+    return this.authService.startMfaChallenge(
+      request.user.id,
+      dto.purpose,
+      dto.method,
+    );
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post("mfa/challenge/verify")
+  async verifyMfaChallenge(
+    @Body(new ValidationPipe()) dto: VerifyMfaChallengeDto,
+    @Request() request: AuthenticatedRequest,
+  ): Promise<CustomJsonResponse> {
+    return this.authService.verifyMfaChallenge(
+      request.user.id,
+      dto.challengeId,
+      dto.purpose,
+      dto.method,
+      dto.code,
     );
   }
 
@@ -78,23 +156,23 @@ export class AuthController {
   @Get("internal/customer-account/:supabaseUserId")
   async getCustomerAccountProjection(
     @Param("supabaseUserId") supabaseUserId: string,
-    @Request() request: AuthenticatedRequest
+    @Request() request: AuthenticatedRequest,
   ): Promise<CustomJsonResponse> {
     if (request.user.id !== supabaseUserId) {
       throw new UnauthorizedException(
-        "You are not authorized to access this customer account."
+        "You are not authorized to access this customer account.",
       );
     }
 
     const projection =
       await this.authService.getCustomerAccountProjectionBySupabaseUserId(
-        supabaseUserId
+        supabaseUserId,
       );
 
     return {
       status: "success",
       message: "Customer account projection retrieved successfully.",
-      data: projection
+      data: projection,
     };
   }
 
@@ -102,30 +180,30 @@ export class AuthController {
   @Get("internal/customer-wallet/:supabaseUserId")
   async getCustomerWalletProjection(
     @Param("supabaseUserId") supabaseUserId: string,
-    @Request() request: AuthenticatedRequest
+    @Request() request: AuthenticatedRequest,
   ): Promise<CustomJsonResponse> {
     if (request.user.id !== supabaseUserId) {
       throw new UnauthorizedException(
-        "You are not authorized to access this customer wallet."
+        "You are not authorized to access this customer wallet.",
       );
     }
 
     const projection =
       await this.authService.getCustomerWalletProjectionBySupabaseUserId(
-        supabaseUserId
+        supabaseUserId,
       );
 
     return {
       status: "success",
       message: "Customer wallet projection retrieved successfully.",
-      data: projection
+      data: projection,
     };
   }
 
   @UseGuards(InternalOperatorBearerGuard)
   @Get("internal/operator/session")
   async getOperatorSession(
-    @Request() request: AuthenticatedOperatorRequest
+    @Request() request: AuthenticatedOperatorRequest,
   ): Promise<CustomJsonResponse> {
     return {
       status: "success",
@@ -141,8 +219,8 @@ export class AuthController {
         authSource: request.internalOperator.authSource ?? "legacy_api_key",
         environment: request.internalOperator.environment ?? null,
         sessionCorrelationId:
-          request.internalOperator.sessionCorrelationId ?? null
-      }
+          request.internalOperator.sessionCorrelationId ?? null,
+      },
     };
   }
 }

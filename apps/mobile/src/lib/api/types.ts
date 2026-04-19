@@ -1,6 +1,7 @@
 import type {
+  CustomerMfaStatus,
   CustomerNotificationPreferences,
-  UserProfileProjection
+  UserProfileProjection,
 } from "@stealth-trails-bank/types";
 
 export type ApiEnvelope<T> = {
@@ -19,6 +20,38 @@ export type SessionUser = {
   ethereumAddress: string;
   passwordRotationAvailable?: boolean;
   notificationPreferences?: CustomerNotificationPreferences | null;
+  mfa?: CustomerMfaStatus;
+};
+
+export type MfaStatusResponseData = {
+  mfa: CustomerMfaStatus;
+};
+
+export type StartTotpEnrollmentResult = {
+  mfa: CustomerMfaStatus;
+  secret: string;
+  otpAuthUri: string;
+};
+
+export type StartEmailEnrollmentResult = {
+  mfa: CustomerMfaStatus;
+  challengeId: string;
+  expiresAt: string;
+  deliveryChannel: "email";
+  previewCode: string | null;
+};
+
+export type StartMfaChallengeResult = {
+  mfa: CustomerMfaStatus;
+  challengeId: string;
+  method: "totp" | "email_otp";
+  purpose: "withdrawal_step_up" | "password_step_up";
+  expiresAt: string;
+  previewCode: string | null;
+};
+
+export type VerifyMfaResult = {
+  mfa: CustomerMfaStatus;
 };
 
 export type SupportedAsset = {
@@ -382,6 +415,7 @@ export type LoginResponseData = {
     ethereumAddress: string;
     firstName: string;
     lastName: string;
+    mfa: CustomerMfaStatus;
   };
 };
 

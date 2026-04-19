@@ -1,4 +1,7 @@
-import type { CustomerNotificationPreferences } from "@stealth-trails-bank/types";
+import type {
+  CustomerMfaStatus,
+  CustomerNotificationPreferences,
+} from "@stealth-trails-bank/types";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
@@ -11,6 +14,7 @@ export interface User {
   ethereumAddress: string;
   passwordRotationAvailable?: boolean;
   notificationPreferences?: CustomerNotificationPreferences | null;
+  mfa?: CustomerMfaStatus;
 }
 
 interface UserState {
@@ -28,14 +32,14 @@ export const useUserStore = create<UserState>()(
       token: null,
       setUser: (user) => set({ user }),
       setToken: (token) => set({ token }),
-      clearUser: () => set({ user: null, token: null })
+      clearUser: () => set({ user: null, token: null }),
     }),
     {
       name: "user-storage",
       partialize: (state) => ({ user: state.user, token: state.token }),
-      skipHydration: true
-    }
-  )
+      skipHydration: true,
+    },
+  ),
 );
 
 export function initializeUserStore(): Promise<void> {

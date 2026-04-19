@@ -1,11 +1,12 @@
 import * as Clipboard from "expo-clipboard";
 import { Alert, View } from "react-native";
 import { useEffect, useMemo, useState } from "react";
+import { useNavigation } from "@react-navigation/native";
 import QRCode from "react-native-qrcode-svg";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import type {
   CreateDepositIntentResult,
-  CreateWithdrawalIntentResult
+  CreateWithdrawalIntentResult,
 } from "../lib/api/types";
 import { useSessionStore } from "../stores/session-store";
 import { AppScreen } from "../components/ui/AppScreen";
@@ -15,6 +16,7 @@ import { FeatureActionCard } from "../components/ui/FeatureActionCard";
 import { FieldInput } from "../components/ui/FieldInput";
 import { InlineNotice } from "../components/ui/InlineNotice";
 import { LanguageToggle } from "../components/ui/LanguageToggle";
+import { LtrValue } from "../components/ui/LtrValue";
 import { OptionChips } from "../components/ui/OptionChips";
 import { SectionCard } from "../components/ui/SectionCard";
 import { StatusChip } from "../components/ui/StatusChip";
@@ -24,7 +26,9 @@ import {
   useBalancesQuery,
   useCreateDepositIntentMutation,
   useCreateWithdrawalIntentMutation,
-  useSupportedAssetsQuery
+  useStartMfaChallengeMutation,
+  useSupportedAssetsQuery,
+  useVerifyMfaChallengeMutation,
 } from "../hooks/use-customer-queries";
 import { useLocale } from "../i18n/use-locale";
 import { useT } from "../i18n/use-t";
@@ -38,7 +42,7 @@ import {
   formatIntentStatusLabel,
   getIntentStatusTone,
   isEthereumAddress,
-  isPositiveDecimalString
+  isPositiveDecimalString,
 } from "../lib/finance";
 
 type WalletPrimaryAction = "deposit" | "withdraw" | "send";
@@ -50,14 +54,19 @@ type WalletScreenProps = {
 export function WalletScreen({ initialFocus }: WalletScreenProps = {}) {
   const t = useT();
   const { locale } = useLocale();
+  const navigation = useNavigation<any>();
   const user = useSessionStore((state) => state.user);
-  const rememberRequestKey = useSessionStore((state) => state.rememberRequestKey);
+  const rememberRequestKey = useSessionStore(
+    (state) => state.rememberRequestKey,
+  );
   const consumeRequestKey = useSessionStore((state) => state.consumeRequestKey);
   const clearRequestKey = useSessionStore((state) => state.clearRequestKey);
   const assetsQuery = useSupportedAssetsQuery();
   const balancesQuery = useBalancesQuery();
   const depositMutation = useCreateDepositIntentMutation();
   const withdrawalMutation = useCreateWithdrawalIntentMutation();
+  const startMfaChallengeMutation = useStartMfaChallengeMutation();
+  const verifyMfaChallengeMutation = useVerifyMfaChallengeMutation();
   const assets = assetsQuery.data?.assets ?? [];
   const balances = balancesQuery.data?.balances ?? [];
   const [showQr, setShowQr] = useState(false);
@@ -67,23 +76,35 @@ export function WalletScreen({ initialFocus }: WalletScreenProps = {}) {
   const [withdrawAmount, setWithdrawAmount] = useState("");
   const [withdrawAddress, setWithdrawAddress] = useState("");
   const [activeAction, setActiveAction] = useState<WalletPrimaryAction>(
-    initialFocus ?? "deposit"
+    initialFocus ?? "deposit",
   );
   const [latestDeposit, setLatestDeposit] =
     useState<CreateDepositIntentResult | null>(null);
   const [latestWithdrawal, setLatestWithdrawal] =
     useState<CreateWithdrawalIntentResult | null>(null);
+  const [withdrawalChallengeId, setWithdrawalChallengeId] = useState<
+    string | null
+  >(null);
+  const [withdrawalChallengeMethod, setWithdrawalChallengeMethod] = useState<
+    "totp" | "email_otp"
+  >("totp");
+  const [withdrawalChallengeCode, setWithdrawalChallengeCode] = useState("");
+  const [withdrawalPreviewCode, setWithdrawalPreviewCode] = useState<
+    string | null
+  >(null);
   const assetOptions = assets.map((asset) => ({
     label: asset.symbol,
-    value: asset.symbol
+    value: asset.symbol,
   }));
   const activeDepositAsset = depositAsset || assets[0]?.symbol || "";
   const activeWithdrawAsset = withdrawAsset || assets[0]?.symbol || "";
   const selectedBalance =
-    balances.find((balance) => balance.asset.symbol === activeWithdrawAsset) ?? null;
+    balances.find((balance) => balance.asset.symbol === activeWithdrawAsset) ??
+    null;
   const fundedAssetCount = balances.filter(
     (balance) =>
-      Number(balance.availableBalance) > 0 || Number(balance.pendingBalance) > 0
+      Number(balance.availableBalance) > 0 ||
+      Number(balance.pendingBalance) > 0,
   ).length;
 
   useEffect(() => {
@@ -113,6 +134,11 @@ export function WalletScreen({ initialFocus }: WalletScreenProps = {}) {
         return t("wallet.depositDescription");
     }
   }, [activeAction, t]);
+
+  const moneyMovementBlocked = user?.mfa?.moneyMovementBlocked ?? true;
+  const stepUpFresh =
+    Boolean(user?.mfa?.stepUpFreshUntil) &&
+    Date.parse(user?.mfa?.stepUpFreshUntil ?? "") > Date.now();
 
   function getIdempotencyKey(signature: string, prefix: string) {
     const existing = consumeRequestKey(signature);
@@ -148,14 +174,14 @@ export function WalletScreen({ initialFocus }: WalletScreenProps = {}) {
 
     const signature = JSON.stringify({
       assetSymbol: activeDepositAsset,
-      amount: depositAmount.trim()
+      amount: depositAmount.trim(),
     });
 
     try {
       const result = await depositMutation.mutateAsync({
         idempotencyKey: getIdempotencyKey(signature, "deposit_req"),
         assetSymbol: activeDepositAsset,
-        amount: depositAmount.trim()
+        amount: depositAmount.trim(),
       });
       clearRequestKey(signature);
       setLatestDeposit(result);
@@ -164,17 +190,29 @@ export function WalletScreen({ initialFocus }: WalletScreenProps = {}) {
         t("wallet.deposit"),
         result.intent.status === "review_required"
           ? t("wallet.depositReviewRecorded")
-          : t("wallet.depositRecorded")
+          : t("wallet.depositRecorded"),
       );
     } catch (requestError) {
       Alert.alert(
         t("wallet.deposit"),
-        requestError instanceof Error ? requestError.message : String(requestError)
+        requestError instanceof Error
+          ? requestError.message
+          : String(requestError),
       );
     }
   }
 
   async function handleWithdrawal() {
+    if (moneyMovementBlocked) {
+      Alert.alert(t("wallet.withdraw"), t("wallet.mfaSetupRequired"));
+      return;
+    }
+
+    if (!stepUpFresh) {
+      Alert.alert(t("wallet.withdraw"), t("wallet.mfaStepUpRequired"));
+      return;
+    }
+
     if (!activeWithdrawAsset) {
       Alert.alert(t("wallet.withdraw"), t("wallet.selectAsset"));
       return;
@@ -187,7 +225,8 @@ export function WalletScreen({ initialFocus }: WalletScreenProps = {}) {
 
     if (
       user?.ethereumAddress &&
-      withdrawAddress.trim().toLowerCase() === user.ethereumAddress.toLowerCase()
+      withdrawAddress.trim().toLowerCase() ===
+        user.ethereumAddress.toLowerCase()
     ) {
       Alert.alert(t("wallet.withdraw"), t("wallet.selfAddressInvalid"));
       return;
@@ -202,7 +241,7 @@ export function WalletScreen({ initialFocus }: WalletScreenProps = {}) {
       selectedBalance &&
       compareDecimalStrings(
         withdrawAmount.trim(),
-        selectedBalance.availableBalance
+        selectedBalance.availableBalance,
       ) === 1
     ) {
       Alert.alert(t("wallet.withdraw"), t("wallet.insufficientBalance"));
@@ -212,7 +251,7 @@ export function WalletScreen({ initialFocus }: WalletScreenProps = {}) {
     const signature = JSON.stringify({
       assetSymbol: activeWithdrawAsset,
       amount: withdrawAmount.trim(),
-      destinationAddress: withdrawAddress.trim().toLowerCase()
+      destinationAddress: withdrawAddress.trim().toLowerCase(),
     });
 
     try {
@@ -220,7 +259,7 @@ export function WalletScreen({ initialFocus }: WalletScreenProps = {}) {
         idempotencyKey: getIdempotencyKey(signature, "withdraw_req"),
         assetSymbol: activeWithdrawAsset,
         amount: withdrawAmount.trim(),
-        destinationAddress: withdrawAddress.trim()
+        destinationAddress: withdrawAddress.trim(),
       });
       clearRequestKey(signature);
       setLatestWithdrawal(result);
@@ -230,7 +269,55 @@ export function WalletScreen({ initialFocus }: WalletScreenProps = {}) {
     } catch (requestError) {
       Alert.alert(
         t("wallet.withdraw"),
-        requestError instanceof Error ? requestError.message : String(requestError)
+        requestError instanceof Error
+          ? requestError.message
+          : String(requestError),
+      );
+    }
+  }
+
+  async function startWithdrawalStepUp(method: "totp" | "email_otp") {
+    try {
+      const result = await startMfaChallengeMutation.mutateAsync({
+        method,
+        purpose: "withdrawal_step_up",
+      });
+      setWithdrawalChallengeMethod(method);
+      setWithdrawalChallengeId(result.challengeId);
+      setWithdrawalChallengeCode("");
+      setWithdrawalPreviewCode(result.previewCode);
+    } catch (requestError) {
+      Alert.alert(
+        t("wallet.withdraw"),
+        requestError instanceof Error
+          ? requestError.message
+          : String(requestError),
+      );
+    }
+  }
+
+  async function verifyWithdrawalStepUp() {
+    if (!withdrawalChallengeId) {
+      return;
+    }
+
+    try {
+      await verifyMfaChallengeMutation.mutateAsync({
+        challengeId: withdrawalChallengeId,
+        method: withdrawalChallengeMethod,
+        purpose: "withdrawal_step_up",
+        code: withdrawalChallengeCode.trim(),
+      });
+      setWithdrawalChallengeId(null);
+      setWithdrawalChallengeCode("");
+      setWithdrawalPreviewCode(null);
+      Alert.alert(t("wallet.withdraw"), t("wallet.mfaStepUpReady"));
+    } catch (requestError) {
+      Alert.alert(
+        t("wallet.withdraw"),
+        requestError instanceof Error
+          ? requestError.message
+          : String(requestError),
       );
     }
   }
@@ -259,7 +346,10 @@ export function WalletScreen({ initialFocus }: WalletScreenProps = {}) {
           <View className="absolute -right-10 -top-6 h-32 w-32 rounded-full bg-white/10" />
           <View className="gap-4">
             <View className="gap-2">
-              <AppText className="text-sm uppercase tracking-[1.3px] text-sea" weight="semibold">
+              <AppText
+                className="text-sm uppercase tracking-[1.3px] text-sea"
+                weight="semibold"
+              >
                 {t("wallet.primaryActions")}
               </AppText>
               <AppText className="text-3xl text-white" weight="bold">
@@ -287,7 +377,7 @@ export function WalletScreen({ initialFocus }: WalletScreenProps = {}) {
                     user?.ethereumAddress,
                     t("wallet.noWallet"),
                     8,
-                    6
+                    6,
                   )}
                 </AppText>
               </View>
@@ -396,7 +486,10 @@ export function WalletScreen({ initialFocus }: WalletScreenProps = {}) {
                   <View className="gap-3 rounded-2xl border border-border bg-white px-4 py-4">
                     <View className="flex-row items-center justify-between gap-3">
                       <View className="flex-1 gap-1">
-                        <AppText className="text-base text-ink" weight="semibold">
+                        <AppText
+                          className="text-base text-ink"
+                          weight="semibold"
+                        >
                           {t("wallet.latestDepositRequest")}
                         </AppText>
                         <AppText className="text-sm text-slate">
@@ -406,12 +499,14 @@ export function WalletScreen({ initialFocus }: WalletScreenProps = {}) {
                       <StatusChip
                         label={formatIntentStatusLabel(
                           latestDeposit.intent.status,
-                          locale
+                          locale,
                         )}
                         tone={getIntentStatusTone(latestDeposit.intent.status)}
                       />
                     </View>
-                    <TimelineList events={buildIntentTimeline(latestDeposit.intent)} />
+                    <TimelineList
+                      events={buildIntentTimeline(latestDeposit.intent)}
+                    />
                     {latestDeposit.intent.status === "review_required" ? (
                       <InlineNotice
                         message={t("wallet.depositReviewStatusNote")}
@@ -424,6 +519,61 @@ export function WalletScreen({ initialFocus }: WalletScreenProps = {}) {
             </>
           ) : (
             <>
+              {moneyMovementBlocked ? (
+                <InlineNotice
+                  message={t("wallet.mfaSetupRequired")}
+                  tone="warning"
+                />
+              ) : !stepUpFresh ? (
+                <View className="gap-3">
+                  <InlineNotice
+                    message={t("wallet.mfaStepUpRequired")}
+                    tone="warning"
+                  />
+                  <View className="flex-row gap-3">
+                    <AppButton
+                      fullWidth={false}
+                      label={t("wallet.mfaUseAuthenticator")}
+                      onPress={() => {
+                        void startWithdrawalStepUp("totp");
+                      }}
+                      variant="secondary"
+                    />
+                    {user?.mfa?.emailOtpEnrolled ? (
+                      <AppButton
+                        fullWidth={false}
+                        label={t("wallet.mfaUseEmail")}
+                        onPress={() => {
+                          void startWithdrawalStepUp("email_otp");
+                        }}
+                        variant="secondary"
+                      />
+                    ) : null}
+                  </View>
+                  {withdrawalChallengeId ? (
+                    <View className="gap-3 rounded-2xl border border-border bg-white px-4 py-4">
+                      {withdrawalPreviewCode ? (
+                        <LtrValue
+                          value={`${t("wallet.mfaPreviewCode")}: ${withdrawalPreviewCode}`}
+                        />
+                      ) : null}
+                      <FieldInput
+                        keyboardType="number-pad"
+                        label={t("wallet.mfaCodeLabel")}
+                        onChangeText={setWithdrawalChallengeCode}
+                        value={withdrawalChallengeCode}
+                      />
+                      <AppButton
+                        disabled={verifyMfaChallengeMutation.isPending}
+                        label={t("wallet.mfaVerifyStepUp")}
+                        onPress={() => {
+                          void verifyWithdrawalStepUp();
+                        }}
+                      />
+                    </View>
+                  ) : null}
+                </View>
+              ) : null}
               <InlineNotice
                 message={
                   activeAction === "send"
@@ -441,10 +591,10 @@ export function WalletScreen({ initialFocus }: WalletScreenProps = {}) {
                 {selectedBalance
                   ? `${formatTokenAmount(
                       selectedBalance.availableBalance,
-                      locale
+                      locale,
                     )} available / ${formatTokenAmount(
                       selectedBalance.pendingBalance,
-                      locale
+                      locale,
                     )} pending`
                   : t("common.notAvailable")}
               </AppText>
@@ -461,7 +611,11 @@ export function WalletScreen({ initialFocus }: WalletScreenProps = {}) {
                 value={withdrawAmount}
               />
               <AppButton
-                disabled={withdrawalMutation.isPending}
+                disabled={
+                  withdrawalMutation.isPending ||
+                  moneyMovementBlocked ||
+                  !stepUpFresh
+                }
                 label={
                   activeAction === "send"
                     ? t("wallet.createSendRequest")
@@ -471,12 +625,24 @@ export function WalletScreen({ initialFocus }: WalletScreenProps = {}) {
                   void handleWithdrawal();
                 }}
               />
+              {moneyMovementBlocked ? (
+                <AppButton
+                  label={t("wallet.openSecuritySetup")}
+                  onPress={() => {
+                    navigation.navigate("Profile");
+                  }}
+                  variant="secondary"
+                />
+              ) : null}
               {latestWithdrawal ? (
                 <AnimatedSection delayOrder={1}>
                   <View className="gap-3 rounded-2xl border border-border bg-white px-4 py-4">
                     <View className="flex-row items-center justify-between gap-3">
                       <View className="flex-1 gap-1">
-                        <AppText className="text-base text-ink" weight="semibold">
+                        <AppText
+                          className="text-base text-ink"
+                          weight="semibold"
+                        >
                           {activeAction === "send"
                             ? t("wallet.latestSendRequest")
                             : t("wallet.latestWithdrawalRequest")}
@@ -488,9 +654,11 @@ export function WalletScreen({ initialFocus }: WalletScreenProps = {}) {
                       <StatusChip
                         label={formatIntentStatusLabel(
                           latestWithdrawal.intent.status,
-                          locale
+                          locale,
                         )}
-                        tone={getIntentStatusTone(latestWithdrawal.intent.status)}
+                        tone={getIntentStatusTone(
+                          latestWithdrawal.intent.status,
+                        )}
                       />
                     </View>
                     <TimelineList
@@ -521,7 +689,12 @@ export function WalletScreen({ initialFocus }: WalletScreenProps = {}) {
             {t("wallet.walletReference")}
           </AppText>
           <AppText className="text-2xl text-ink" weight="bold">
-            {formatShortAddress(user?.ethereumAddress, t("wallet.noWallet"), 10, 6)}
+            {formatShortAddress(
+              user?.ethereumAddress,
+              t("wallet.noWallet"),
+              10,
+              6,
+            )}
           </AppText>
           <View className="flex-row gap-3">
             <AppButton
@@ -557,7 +730,9 @@ export function WalletScreen({ initialFocus }: WalletScreenProps = {}) {
             </AppText>
           </View>
           {balances.length === 0 ? (
-            <AppText className="text-sm text-slate">{t("common.noData")}</AppText>
+            <AppText className="text-sm text-slate">
+              {t("common.noData")}
+            </AppText>
           ) : (
             <View className="gap-3">
               {balances.map((balance, index) => (
@@ -572,10 +747,12 @@ export function WalletScreen({ initialFocus }: WalletScreenProps = {}) {
                       </AppText>
                     </View>
                     <AppText className="mt-2 text-sm text-slate">
-                      {formatTokenAmount(balance.availableBalance, locale)} available
+                      {formatTokenAmount(balance.availableBalance, locale)}{" "}
+                      available
                     </AppText>
                     <AppText className="text-sm text-slate">
-                      {formatTokenAmount(balance.pendingBalance, locale)} pending
+                      {formatTokenAmount(balance.pendingBalance, locale)}{" "}
+                      pending
                     </AppText>
                   </View>
                 </AnimatedSection>

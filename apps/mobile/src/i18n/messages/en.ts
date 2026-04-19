@@ -16,12 +16,12 @@ export const mobileMessages = {
     somethingWentWrong: "Something went wrong",
     crashRecovery:
       "The mobile session hit an unexpected runtime error. Reset the app shell and try again.",
-    requiredField: "Complete every required field before continuing."
+    requiredField: "Complete every required field before continuing.",
   },
   locale: {
     label: "Language",
     english: "English",
-    arabic: "العربية"
+    arabic: "العربية",
   },
   navigation: {
     dashboard: "Dashboard",
@@ -29,7 +29,7 @@ export const mobileMessages = {
     yield: "Yield",
     transactions: "Transactions",
     profile: "Profile",
-    loans: "Managed loans"
+    loans: "Managed loans",
   },
   auth: {
     signInTitle: "Sign in to your managed account",
@@ -52,7 +52,7 @@ export const mobileMessages = {
     demoFill: "Use shared demo credentials",
     sessionExpired: "Your session expired. Please sign in again.",
     emailInvalid: "Enter a valid email address.",
-    passwordTooShort: "Password must be at least 8 characters."
+    passwordTooShort: "Password must be at least 8 characters.",
   },
   dashboard: {
     title: "Managed money overview",
@@ -74,7 +74,8 @@ export const mobileMessages = {
       "History, lending, and account review stay available without competing with the main money actions.",
     viewHistoryDescription: "Inspect references, statuses, and chain evidence.",
     loansDescription: "Open managed lending, quotes, and agreement state.",
-    profileDescription: "Review security posture, wallet identity, and account controls.",
+    profileDescription:
+      "Review security posture, wallet identity, and account controls.",
     fundedAssets: "Funded assets",
     pendingReview: "Pending review",
     availableAssets: "Tracked assets",
@@ -86,8 +87,9 @@ export const mobileMessages = {
       "The latest operational snapshot is older than expected. Review pending money movement or refresh if the delay continues.",
     latestSnapshotFresh:
       "Balances and transaction state are current within the expected operating window.",
-    noRecentActivity: "No transaction history has been recorded for this account yet.",
-    managedWallet: "Managed wallet"
+    noRecentActivity:
+      "No transaction history has been recorded for this account yet.",
+    managedWallet: "Managed wallet",
   },
   wallet: {
     title: "Deposit and withdraw",
@@ -141,13 +143,24 @@ export const mobileMessages = {
     depositReviewStatusNote:
       "This deposit is paused for operator review before custody execution or final settlement continues.",
     withdrawalRecorded: "Withdrawal request recorded.",
+    mfaSetupRequired:
+      "Finish authenticator and email MFA setup in Profile before using send or withdraw.",
+    mfaStepUpRequired:
+      "Complete a fresh MFA verification before creating a send or withdrawal request.",
+    mfaStepUpReady: "MFA verification completed for money movement.",
+    mfaUseAuthenticator: "Use authenticator",
+    mfaUseEmail: "Use email backup",
+    mfaCodeLabel: "Verification code",
+    mfaPreviewCode: "Preview code",
+    mfaVerifyStepUp: "Verify MFA challenge",
+    openSecuritySetup: "Open security setup",
     sendRoutingNote:
       "Send requests still move through the governed withdrawal rail. The amount is reserved immediately and released only after policy checks and execution.",
     reservationNote:
       "Withdrawal requests immediately move the requested amount from available to pending while review continues.",
     secondaryTools: "Behind the money rail",
     secondaryToolsDescription:
-      "Address copy, QR, and balance context stay below the live composer so the next action remains obvious."
+      "Address copy, QR, and balance context stay below the live composer so the next action remains obvious.",
   },
   transactions: {
     title: "Transaction history",
@@ -160,7 +173,7 @@ export const mobileMessages = {
     internalReference: "Internal reference",
     address: "Address",
     chainHash: "Chain hash",
-    empty: "No transactions match the current filters."
+    empty: "No transactions match the current filters.",
   },
   profile: {
     title: "Account and security",
@@ -177,6 +190,32 @@ export const mobileMessages = {
     passwordsMustMatch: "Passwords must match.",
     savePreferences: "Save preferences",
     preferencesSaved: "Notification preferences saved.",
+    mfaTitle: "Multi-factor security",
+    mfaSetupRequired:
+      "Complete authenticator and email backup enrollment now. Read-only access remains available, but send, withdraw, and password rotation stay blocked until setup is done.",
+    mfaStepUpRequired:
+      "MFA setup is complete. Verify again before changing your password or moving money.",
+    mfaStepUpFresh:
+      "Authenticator controls are enrolled and a fresh verification is active for sensitive actions.",
+    mfaAuthenticator: "Authenticator app",
+    mfaEmailBackup: "Email backup factor",
+    mfaStartAuthenticator: "Start authenticator setup",
+    mfaVerifyAuthenticator: "Verify authenticator",
+    mfaStartEmail: "Send backup email code",
+    mfaVerifyEmail: "Verify email backup",
+    mfaSecretLabel: "Manual secret",
+    mfaCodeLabel: "6-digit code",
+    mfaEmailSent:
+      "A verification code was generated for your backup email factor.",
+    mfaPreviewCode: "Preview code",
+    mfaPasswordStepUp:
+      "Before changing the password, complete a fresh MFA challenge from this screen.",
+    mfaUseAuthenticator: "Use authenticator",
+    mfaUseEmail: "Use email backup",
+    mfaVerifyStepUp: "Verify challenge",
+    mfaTotpReady: "Authenticator enrollment completed.",
+    mfaEmailReady: "Email backup enrollment completed.",
+    mfaStepUpReady: "Fresh MFA verification completed.",
     activatedAt: "Activated",
     restrictedAt: "Restricted",
     deposits: "Deposit emails",
@@ -184,7 +223,7 @@ export const mobileMessages = {
     loans: "Loan emails",
     productUpdates: "Product updates",
     preferencesUnavailable:
-      "Notification preferences are not available for this profile yet."
+      "Notification preferences are not available for this profile yet.",
   },
   yield: {
     title: "Yield and staking posture",
@@ -221,7 +260,7 @@ export const mobileMessages = {
     secondaryToolsDescription:
       "Emergency exits and lower-frequency pool details stay below the live staking composer.",
     positionUnavailable:
-      "Live position detail is limited for this pool right now, so balance reads may lag."
+      "Live position detail is limited for this pool right now, so balance reads may lag.",
   },
   loans: {
     title: "Managed lending",
@@ -250,7 +289,7 @@ export const mobileMessages = {
       "Acknowledge the fixed service fee disclosure before submitting.",
     acknowledgement:
       "I acknowledge that the disclosed service fee is fixed and non-interest bearing.",
-    noEligibility: "Lending is not available for this account yet."
+    noEligibility: "Lending is not available for this account yet.",
   },
   status: {
     requested: "Requested",
@@ -262,8 +301,8 @@ export const mobileMessages = {
     settled: "Settled",
     failed: "Failed",
     cancelled: "Cancelled",
-    manuallyResolved: "Manually resolved"
-  }
+    manuallyResolved: "Manually resolved",
+  },
 };
 
 export type MobileMessages = typeof mobileMessages;

@@ -9,6 +9,7 @@ export {
   loadPlatformAlertAutomationRuntimeConfig,
   loadDatabaseRuntimeConfig,
   loadDepositRiskPolicyRuntimeConfig,
+  loadCustomerMfaPolicyRuntimeConfig,
   loadGovernedCustodyRuntimeConfig,
   loadGovernedExecutionRuntimeConfig,
   loadInternalGovernedExecutorRuntimeConfig,
@@ -38,6 +39,7 @@ export {
   type OptionalBlockchainContractWriteRuntimeConfig,
   type BlockchainWalletRuntimeConfig,
   type DatabaseRuntimeConfig,
+  type CustomerMfaPolicyRuntimeConfig,
   type DepositRiskAutoApproveThresholdRuntimeConfig,
   type DepositRiskPolicyRuntimeConfig,
   type GovernedCustodyRuntimeConfig,
@@ -72,5 +74,5 @@ export {
   type SharedLoginBootstrapRuntimeConfig,
   type ContractDeploymentRuntimeConfig,
   type WorkerExecutionMode,
-  type WorkerRuntimeConfig
+  type WorkerRuntimeConfig,
 } from "./src/node-runtime-config";

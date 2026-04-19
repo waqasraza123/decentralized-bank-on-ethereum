@@ -1,10 +1,11 @@
 import axios from "axios";
 import { useState } from "react";
+import type { CustomerMfaStatus } from "@stealth-trails-bank/types";
 import { loadWebRuntimeConfig } from "@stealth-trails-bank/config/web";
 import { useUserStore } from "@/stores/userStore";
 
 const webRuntimeConfig = loadWebRuntimeConfig(
-  import.meta.env as Record<string, string | boolean | undefined>
+  import.meta.env as Record<string, string | boolean | undefined>,
 );
 
 type ApiResponse<T> = {
@@ -45,6 +46,7 @@ type LoginResponseUser = {
   ethereumAddress: string;
   firstName: string;
   lastName: string;
+  mfa: CustomerMfaStatus;
 };
 
 type LoginResponseData = {
@@ -73,27 +75,29 @@ function normalizeSignUpInput(
   firstArg: SignUpCredentials | string,
   lastName?: string,
   email?: string,
-  password?: string
+  password?: string,
 ): SignUpCredentials {
   if (typeof firstArg !== "string") {
     return firstArg;
   }
 
   if (!lastName || !email || !password) {
-    throw new Error("Sign up requires first name, last name, email, and password.");
+    throw new Error(
+      "Sign up requires first name, last name, email, and password.",
+    );
   }
 
   return {
     firstName: firstArg,
     lastName,
     email,
-    password
+    password,
   };
 }
 
 function normalizeLoginInput(
   firstArg: LoginCredentials | string,
-  password?: string
+  password?: string,
 ): LoginCredentials {
   if (typeof firstArg !== "string") {
     return firstArg;
@@ -105,7 +109,7 @@ function normalizeLoginInput(
 
   return {
     email: firstArg,
-    password
+    password,
   };
 }
 
@@ -116,7 +120,8 @@ function mapLoginUser(user: LoginResponseUser) {
     lastName: user.lastName,
     email: user.email,
     supabaseUserId: user.supabaseUserId,
-    ethereumAddress: user.ethereumAddress
+    ethereumAddress: user.ethereumAddress,
+    mfa: user.mfa,
   };
 }
 
@@ -130,7 +135,7 @@ export default function useAuth() {
     firstArg: SignUpCredentials | string,
     lastName?: string,
     email?: string,
-    password?: string
+    password?: string,
   ) {
     const payload = normalizeSignUpInput(firstArg, lastName, email, password);
 
@@ -140,7 +145,7 @@ export default function useAuth() {
     try {
       const response = await axios.post<ApiResponse<SignUpResponseData>>(
         `${webRuntimeConfig.serverUrl}/auth/signup`,
-        payload
+        payload,
       );
 
       const user = response.data.data?.user;
@@ -153,9 +158,7 @@ export default function useAuth() {
     } catch (requestError) {
       const message = readErrorMessage(requestError);
       setError(message);
-      throw requestError instanceof Error
-        ? requestError
-        : new Error(message);
+      throw requestError instanceof Error ? requestError : new Error(message);
     } finally {
       setLoading(false);
     }
@@ -170,7 +173,7 @@ export default function useAuth() {
     try {
       const response = await axios.post<ApiResponse<LoginResponseData>>(
         `${webRuntimeConfig.serverUrl}/auth/login`,
-        payload
+        payload,
       );
 
       const token = response.data.data?.token;
@@ -185,14 +188,12 @@ export default function useAuth() {
 
       return {
         token,
-        user
+        user,
       };
     } catch (requestError) {
       const message = readErrorMessage(requestError);
       setError(message);
-      throw requestError instanceof Error
-        ? requestError
-        : new Error(message);
+      throw requestError instanceof Error ? requestError : new Error(message);
     } finally {
       setLoading(false);
     }
@@ -202,6 +203,6 @@ export default function useAuth() {
     signup,
     login,
     loading,
-    error
+    error,
   };
 }

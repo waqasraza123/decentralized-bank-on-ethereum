@@ -34,6 +34,7 @@ const SignIn = () => {
   const [showSharedAccess, setShowSharedAccess] = useState(false);
   const navigate = useNavigate();
   const token = useUserStore((state) => state.token);
+  const user = useUserStore((state) => state.user);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -46,12 +47,12 @@ const SignIn = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      await login(formData);
+      const result = await login(formData);
       toast({
         title: t("auth.signIn.successTitle"),
         description: t("auth.signIn.successDescription"),
       });
-      navigate("/");
+      navigate(result.user.mfa.requiresSetup ? "/profile" : "/");
     } catch {
       toast({
         title: t("auth.signIn.errorTitle"),
@@ -62,9 +63,9 @@ const SignIn = () => {
 
   useEffect(() => {
     if (token) {
-      navigate("/");
+      navigate(user?.mfa.requiresSetup ? "/profile" : "/");
     }
-  }, [token, navigate]);
+  }, [token, user?.mfa.requiresSetup, navigate]);
 
   return (
     <AuthShell
@@ -205,10 +206,16 @@ const SignIn = () => {
                 {t("auth.signIn.demoPanelTitle")}
               </p>
               <p className="mt-2 text-auth-form-muted">
-                {t("auth.signIn.emailLabel")}: <span className="font-semibold text-auth-form-foreground">admin@gmail.com</span>
+                {t("auth.signIn.emailLabel")}:{" "}
+                <span className="font-semibold text-auth-form-foreground">
+                  admin@gmail.com
+                </span>
               </p>
               <p className="text-auth-form-muted">
-                {t("auth.signIn.passwordLabel")}: <span className="font-semibold text-auth-form-foreground">P@ssw0rd</span>
+                {t("auth.signIn.passwordLabel")}:{" "}
+                <span className="font-semibold text-auth-form-foreground">
+                  P@ssw0rd
+                </span>
               </p>
               <Button
                 type="button"

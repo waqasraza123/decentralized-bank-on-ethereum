@@ -20,48 +20,48 @@ describe("UserService.getUserById", () => {
   }) {
     const prismaService = {
       user: {
-        findFirst: jest.fn().mockResolvedValue(options.legacyUser)
+        findFirst: jest.fn().mockResolvedValue(options.legacyUser),
       },
       customer: {
         findUnique: jest.fn(),
-        update: jest.fn()
-      }
+        update: jest.fn(),
+      },
     };
 
     const authService = {
       getCustomerAccountProjectionBySupabaseUserId: jest.fn(),
-      getCustomerWalletProjectionBySupabaseUserId: jest.fn()
+      getCustomerWalletProjectionBySupabaseUserId: jest.fn(),
     };
 
     if (options.customerProjectionError) {
       authService.getCustomerAccountProjectionBySupabaseUserId.mockRejectedValue(
-        options.customerProjectionError
+        options.customerProjectionError,
       );
     } else {
       authService.getCustomerAccountProjectionBySupabaseUserId.mockResolvedValue(
-        options.customerProjectionResult
+        options.customerProjectionResult,
       );
     }
 
     if (options.walletProjectionError) {
       authService.getCustomerWalletProjectionBySupabaseUserId.mockRejectedValue(
-        options.walletProjectionError
+        options.walletProjectionError,
       );
     } else {
       authService.getCustomerWalletProjectionBySupabaseUserId.mockResolvedValue(
-        options.walletProjectionResult
+        options.walletProjectionResult,
       );
     }
 
     const service = new UserService(
       authService as never,
-      prismaService as never
+      prismaService as never,
     );
 
     return {
       service,
       authService,
-      prismaService
+      prismaService,
     };
   }
 
@@ -71,7 +71,7 @@ describe("UserService.getUserById", () => {
     lastName: "User",
     email: "legacy@example.com",
     supabaseUserId: "supabase_1",
-    ethereumAddress: "0xlegacy"
+    ethereumAddress: "0xlegacy",
   };
 
   const customerProjection = {
@@ -82,12 +82,17 @@ describe("UserService.getUserById", () => {
       firstName: "Legacy",
       lastName: "User",
       passwordHash: "hashed",
+      mfaRequired: true,
+      mfaTotpEnrolled: true,
+      mfaEmailOtpEnrolled: true,
+      mfaLastVerifiedAt: null,
+      mfaLockedUntil: null,
       depositEmailNotificationsEnabled: true,
       withdrawalEmailNotificationsEnabled: true,
       loanEmailNotificationsEnabled: true,
       productUpdateEmailNotificationsEnabled: false,
       createdAt: new Date("2026-03-29T00:00:00.000Z"),
-      updatedAt: new Date("2026-03-29T00:10:00.000Z")
+      updatedAt: new Date("2026-03-29T00:10:00.000Z"),
     },
     customerAccount: {
       id: "account_1",
@@ -97,8 +102,8 @@ describe("UserService.getUserById", () => {
       frozenAt: null,
       closedAt: null,
       createdAt: new Date("2026-03-29T00:00:00.000Z"),
-      updatedAt: new Date("2026-03-29T00:10:00.000Z")
-    }
+      updatedAt: new Date("2026-03-29T00:10:00.000Z"),
+    },
   };
 
   const walletProjection = {
@@ -111,15 +116,15 @@ describe("UserService.getUserById", () => {
       custodyType: "platform_managed",
       status: "active",
       createdAt: new Date("2026-03-29T00:00:00.000Z"),
-      updatedAt: new Date("2026-03-29T00:10:00.000Z")
-    }
+      updatedAt: new Date("2026-03-29T00:10:00.000Z"),
+    },
   };
 
   it("uses wallet projection address before legacy ethereumAddress", async () => {
     const { service } = createService({
       legacyUser,
       customerProjectionResult: customerProjection,
-      walletProjectionResult: walletProjection
+      walletProjectionResult: walletProjection,
     });
 
     const result = await service.getUserById("supabase_1");
@@ -132,7 +137,7 @@ describe("UserService.getUserById", () => {
       depositEmails: true,
       withdrawalEmails: true,
       loanEmails: true,
-      productUpdateEmails: false
+      productUpdateEmails: false,
     });
   });
 
@@ -141,8 +146,8 @@ describe("UserService.getUserById", () => {
       legacyUser,
       customerProjectionResult: customerProjection,
       walletProjectionError: new NotFoundException(
-        "Customer wallet projection not found."
-      )
+        "Customer wallet projection not found.",
+      ),
     });
 
     const result = await service.getUserById("supabase_1");
@@ -156,8 +161,8 @@ describe("UserService.getUserById", () => {
     const { service } = createService({
       legacyUser,
       customerProjectionError: new NotFoundException(
-        "Customer account not found."
-      )
+        "Customer account not found.",
+      ),
     });
 
     const result = await service.getUserById("supabase_1");
@@ -176,7 +181,16 @@ describe("UserService.getUserById", () => {
       frozenAt: null,
       closedAt: null,
       passwordRotationAvailable: false,
-      notificationPreferences: null
+      notificationPreferences: null,
+      mfa: {
+        required: true,
+        totpEnrolled: false,
+        emailOtpEnrolled: false,
+        requiresSetup: true,
+        moneyMovementBlocked: true,
+        stepUpFreshUntil: null,
+        lockedUntil: null,
+      },
     });
   });
 
@@ -184,12 +198,12 @@ describe("UserService.getUserById", () => {
     const { service } = createService({
       legacyUser: null,
       customerProjectionError: new NotFoundException(
-        "Customer account not found."
-      )
+        "Customer account not found.",
+      ),
     });
 
     await expect(service.getUserById("missing_user")).rejects.toBeInstanceOf(
-      NotFoundException
+      NotFoundException,
     );
   });
 
@@ -197,24 +211,24 @@ describe("UserService.getUserById", () => {
     const { service, prismaService } = createService({
       legacyUser,
       customerProjectionResult: customerProjection,
-      walletProjectionResult: walletProjection
+      walletProjectionResult: walletProjection,
     });
 
     prismaService.customer.findUnique.mockResolvedValue({
-      id: "customer_1"
+      id: "customer_1",
     });
     prismaService.customer.update.mockResolvedValue({
       depositEmailNotificationsEnabled: false,
       withdrawalEmailNotificationsEnabled: true,
       loanEmailNotificationsEnabled: false,
-      productUpdateEmailNotificationsEnabled: true
+      productUpdateEmailNotificationsEnabled: true,
     });
 
     const result = await service.updateNotificationPreferences("supabase_1", {
       depositEmails: false,
       withdrawalEmails: true,
       loanEmails: false,
-      productUpdateEmails: true
+      productUpdateEmails: true,
     });
 
     expect(prismaService.customer.update).toHaveBeenCalledWith({
@@ -223,20 +237,20 @@ describe("UserService.getUserById", () => {
         depositEmailNotificationsEnabled: false,
         withdrawalEmailNotificationsEnabled: true,
         loanEmailNotificationsEnabled: false,
-        productUpdateEmailNotificationsEnabled: true
+        productUpdateEmailNotificationsEnabled: true,
       },
       select: {
         depositEmailNotificationsEnabled: true,
         withdrawalEmailNotificationsEnabled: true,
         loanEmailNotificationsEnabled: true,
-        productUpdateEmailNotificationsEnabled: true
-      }
+        productUpdateEmailNotificationsEnabled: true,
+      },
     });
     expect(result).toEqual({
       depositEmails: false,
       withdrawalEmails: true,
       loanEmails: false,
-      productUpdateEmails: true
+      productUpdateEmails: true,
     });
   });
 
@@ -244,7 +258,7 @@ describe("UserService.getUserById", () => {
     const { service, prismaService } = createService({
       legacyUser,
       customerProjectionResult: customerProjection,
-      walletProjectionResult: walletProjection
+      walletProjectionResult: walletProjection,
     });
 
     prismaService.customer.findUnique.mockResolvedValue(null);
@@ -254,8 +268,8 @@ describe("UserService.getUserById", () => {
         depositEmails: true,
         withdrawalEmails: true,
         loanEmails: true,
-        productUpdateEmails: false
-      })
+        productUpdateEmails: false,
+      }),
     ).rejects.toBeInstanceOf(NotFoundException);
   });
 });

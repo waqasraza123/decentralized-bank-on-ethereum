@@ -1,16 +1,14 @@
-import {
-  Injectable,
-  NotFoundException
-} from "@nestjs/common";
+import { Injectable, NotFoundException } from "@nestjs/common";
+import { loadCustomerMfaPolicyRuntimeConfig } from "@stealth-trails-bank/config/api";
 import type {
   AccountLifecycleStatusValue,
   CustomerNotificationPreferences,
-  UserProfileProjection
+  UserProfileProjection,
 } from "@stealth-trails-bank/types";
 import {
   AuthService,
   type CustomerAccountProjection,
-  type CustomerWalletProjection
+  type CustomerWalletProjection,
 } from "../auth/auth.service";
 import { PrismaService } from "../prisma/prisma.service";
 
@@ -25,17 +23,22 @@ type LegacyUserProfile = {
 
 @Injectable()
 export class UserService {
+  private readonly stepUpFreshnessMs: number;
+
   constructor(
     private readonly authService: AuthService,
-    private readonly prismaService: PrismaService
-  ) {}
+    private readonly prismaService: PrismaService,
+  ) {
+    this.stepUpFreshnessMs =
+      loadCustomerMfaPolicyRuntimeConfig().stepUpFreshnessSeconds * 1000;
+  }
 
   private formatOptionalDate(value: Date | null): string | null {
     return value ? value.toISOString() : null;
   }
 
   private mapLegacyUserProfile(
-    legacyUser: LegacyUserProfile
+    legacyUser: LegacyUserProfile,
   ): UserProfileProjection {
     return {
       id: legacyUser.id,
@@ -51,36 +54,47 @@ export class UserService {
       frozenAt: null,
       closedAt: null,
       passwordRotationAvailable: false,
-      notificationPreferences: null
+      notificationPreferences: null,
+      mfa: {
+        required: true,
+        totpEnrolled: false,
+        emailOtpEnrolled: false,
+        requiresSetup: true,
+        moneyMovementBlocked: true,
+        stepUpFreshUntil: null,
+        lockedUntil: null,
+      },
     };
   }
 
   private mapNotificationPreferences(
-    projection: CustomerAccountProjection
+    projection: CustomerAccountProjection,
   ): CustomerNotificationPreferences {
     return {
       depositEmails: projection.customer.depositEmailNotificationsEnabled,
       withdrawalEmails: projection.customer.withdrawalEmailNotificationsEnabled,
       loanEmails: projection.customer.loanEmailNotificationsEnabled,
       productUpdateEmails:
-        projection.customer.productUpdateEmailNotificationsEnabled
+        projection.customer.productUpdateEmailNotificationsEnabled,
     };
   }
 
   private resolveProfileEthereumAddress(
     walletProjection: CustomerWalletProjection | null,
-    legacyUser: LegacyUserProfile | null
+    legacyUser: LegacyUserProfile | null,
   ): string {
-    return walletProjection?.wallet.address ?? legacyUser?.ethereumAddress ?? "";
+    return (
+      walletProjection?.wallet.address ?? legacyUser?.ethereumAddress ?? ""
+    );
   }
 
   private mapCustomerProjectionWithWalletOverlay(
     projection: CustomerAccountProjection,
     walletProjection: CustomerWalletProjection | null,
-    legacyUser: LegacyUserProfile | null
+    legacyUser: LegacyUserProfile | null,
   ): UserProfileProjection {
-    const accountStatus =
-      projection.customerAccount.status as AccountLifecycleStatusValue;
+    const accountStatus = projection.customerAccount
+      .status as AccountLifecycleStatusValue;
 
     return {
       id: legacyUser?.id ?? null,
@@ -91,36 +105,56 @@ export class UserService {
       lastName: projection.customer.lastName ?? "",
       ethereumAddress: this.resolveProfileEthereumAddress(
         walletProjection,
-        legacyUser
+        legacyUser,
       ),
       accountStatus,
       activatedAt: this.formatOptionalDate(
-        projection.customerAccount.activatedAt
+        projection.customerAccount.activatedAt,
       ),
       restrictedAt: this.formatOptionalDate(
-        projection.customerAccount.restrictedAt
+        projection.customerAccount.restrictedAt,
       ),
       frozenAt: this.formatOptionalDate(projection.customerAccount.frozenAt),
       closedAt: this.formatOptionalDate(projection.customerAccount.closedAt),
       passwordRotationAvailable: Boolean(projection.customer.passwordHash),
-      notificationPreferences: this.mapNotificationPreferences(projection)
+      notificationPreferences: this.mapNotificationPreferences(projection),
+      mfa: {
+        required: projection.customer.mfaRequired,
+        totpEnrolled: projection.customer.mfaTotpEnrolled,
+        emailOtpEnrolled: projection.customer.mfaEmailOtpEnrolled,
+        requiresSetup:
+          projection.customer.mfaRequired &&
+          (!projection.customer.mfaTotpEnrolled ||
+            !projection.customer.mfaEmailOtpEnrolled),
+        moneyMovementBlocked:
+          projection.customer.mfaRequired &&
+          (!projection.customer.mfaTotpEnrolled ||
+            !projection.customer.mfaEmailOtpEnrolled),
+        stepUpFreshUntil: projection.customer.mfaLastVerifiedAt
+          ? new Date(
+              projection.customer.mfaLastVerifiedAt.getTime() +
+                this.stepUpFreshnessMs,
+            ).toISOString()
+          : null,
+        lockedUntil: projection.customer.mfaLockedUntil?.toISOString() ?? null,
+      },
     };
   }
 
   private async getLegacyUserProfileBySupabaseUserId(
-    supabaseUserId: string
+    supabaseUserId: string,
   ): Promise<LegacyUserProfile | null> {
     return this.prismaService.user.findFirst({
-      where: { supabaseUserId }
+      where: { supabaseUserId },
     });
   }
 
   private async getCustomerWalletProjectionOrNull(
-    supabaseUserId: string
+    supabaseUserId: string,
   ): Promise<CustomerWalletProjection | null> {
     try {
       return await this.authService.getCustomerWalletProjectionBySupabaseUserId(
-        supabaseUserId
+        supabaseUserId,
       );
     } catch (error) {
       if (error instanceof NotFoundException) {
@@ -138,7 +172,7 @@ export class UserService {
     try {
       const customerProjection =
         await this.authService.getCustomerAccountProjectionBySupabaseUserId(
-          supabaseUserId
+          supabaseUserId,
         );
       const walletProjection =
         await this.getCustomerWalletProjectionOrNull(supabaseUserId);
@@ -146,7 +180,7 @@ export class UserService {
       return this.mapCustomerProjectionWithWalletOverlay(
         customerProjection,
         walletProjection,
-        legacyUser
+        legacyUser,
       );
     } catch (error) {
       if (!(error instanceof NotFoundException)) {
@@ -163,13 +197,13 @@ export class UserService {
 
   async updateNotificationPreferences(
     supabaseUserId: string,
-    input: CustomerNotificationPreferences
+    input: CustomerNotificationPreferences,
   ): Promise<CustomerNotificationPreferences> {
     const customer = await this.prismaService.customer.findUnique({
       where: { supabaseUserId },
       select: {
-        id: true
-      }
+        id: true,
+      },
     });
 
     if (!customer) {
@@ -182,14 +216,14 @@ export class UserService {
         depositEmailNotificationsEnabled: input.depositEmails,
         withdrawalEmailNotificationsEnabled: input.withdrawalEmails,
         loanEmailNotificationsEnabled: input.loanEmails,
-        productUpdateEmailNotificationsEnabled: input.productUpdateEmails
+        productUpdateEmailNotificationsEnabled: input.productUpdateEmails,
       },
       select: {
         depositEmailNotificationsEnabled: true,
         withdrawalEmailNotificationsEnabled: true,
         loanEmailNotificationsEnabled: true,
-        productUpdateEmailNotificationsEnabled: true
-      }
+        productUpdateEmailNotificationsEnabled: true,
+      },
     });
 
     return {
@@ -197,7 +231,7 @@ export class UserService {
       withdrawalEmails: updatedCustomer.withdrawalEmailNotificationsEnabled,
       loanEmails: updatedCustomer.loanEmailNotificationsEnabled,
       productUpdateEmails:
-        updatedCustomer.productUpdateEmailNotificationsEnabled
+        updatedCustomer.productUpdateEmailNotificationsEnabled,
     };
   }
 }

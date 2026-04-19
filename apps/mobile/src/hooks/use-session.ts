@@ -4,7 +4,7 @@ import type {
   ApiEnvelope,
   LoginResponseData,
   SessionUser,
-  SignUpResponseData
+  SignUpResponseData,
 } from "../lib/api/types";
 import { useSessionStore } from "../stores/session-store";
 
@@ -27,7 +27,8 @@ function mapLoginUser(user: LoginResponseData["user"]): SessionUser {
     firstName: user.firstName,
     lastName: user.lastName,
     email: user.email,
-    ethereumAddress: user.ethereumAddress
+    ethereumAddress: user.ethereumAddress,
+    mfa: user.mfa,
   };
 }
 
@@ -43,7 +44,7 @@ export function useAuthActions() {
     try {
       const response = await apiClient.post<ApiEnvelope<LoginResponseData>>(
         "/auth/login",
-        input
+        input,
       );
       const token = response.data.data?.token;
       const user = response.data.data?.user;
@@ -54,7 +55,7 @@ export function useAuthActions() {
 
       await signInStore({
         token,
-        user: mapLoginUser(user)
+        user: mapLoginUser(user),
       });
 
       return response.data.data;
@@ -74,7 +75,7 @@ export function useAuthActions() {
     try {
       const response = await apiClient.post<ApiEnvelope<SignUpResponseData>>(
         "/auth/signup",
-        input
+        input,
       );
 
       if (response.data.status !== "success" || !response.data.data?.user) {
@@ -95,6 +96,6 @@ export function useAuthActions() {
     signIn,
     signUp,
     loading,
-    error
+    error,
   };
 }

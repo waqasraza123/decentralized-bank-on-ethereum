@@ -2,13 +2,13 @@ import {
   Cairo_500Medium,
   Cairo_600SemiBold,
   Cairo_700Bold,
-  useFonts as useCairoFonts
+  useFonts as useCairoFonts,
 } from "@expo-google-fonts/cairo";
 import {
   PlusJakartaSans_500Medium,
   PlusJakartaSans_600SemiBold,
   PlusJakartaSans_700Bold,
-  useFonts as usePlusJakartaFonts
+  useFonts as usePlusJakartaFonts,
 } from "@expo-google-fonts/plus-jakarta-sans";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
@@ -23,7 +23,7 @@ import { useSessionStore } from "../stores/session-store";
 import type {
   AuthStackParamList,
   MainTabParamList,
-  RootStackParamList
+  RootStackParamList,
 } from "./types";
 import { DashboardScreen } from "../screens/DashboardScreen";
 import { WalletScreen } from "../screens/WalletScreen";
@@ -59,7 +59,7 @@ function LoadingGate({ message }: { message: string }) {
 
 function ProfileBootstrapBlock({
   onRetry,
-  message
+  message,
 }: {
   onRetry: () => void;
   message: string;
@@ -69,7 +69,11 @@ function ProfileBootstrapBlock({
   return (
     <View className="flex-1 items-center justify-center gap-4 bg-parchment px-8">
       <AppText className="text-center text-base text-ink">{message}</AppText>
-      <AppButton label={t("common.retry")} onPress={onRetry} fullWidth={false} />
+      <AppButton
+        label={t("common.retry")}
+        onPress={onRetry}
+        fullWidth={false}
+      />
     </View>
   );
 }
@@ -85,9 +89,12 @@ function SignedOutNavigator() {
 
 function SignedInTabs() {
   const t = useT();
+  const user = useSessionStore((state) => state.user);
+  const initialRouteName = user?.mfa?.requiresSetup ? "Profile" : "Dashboard";
 
   return (
     <MainTabs.Navigator
+      initialRouteName={initialRouteName}
       screenOptions={({ route }) => ({
         headerShown: false,
         tabBarHideOnKeyboard: true,
@@ -109,15 +116,15 @@ function SignedInTabs() {
           shadowRadius: 18,
           shadowOffset: {
             width: 0,
-            height: 10
+            height: 10,
           },
-          elevation: 8
+          elevation: 8,
         },
         tabBarLabelStyle: {
-          fontSize: 11
+          fontSize: 11,
         },
         tabBarItemStyle: {
-          paddingVertical: 2
+          paddingVertical: 2,
         },
         tabBarActiveTintColor: "#14212b",
         tabBarInactiveTintColor: "#72808d",
@@ -140,7 +147,7 @@ function SignedInTabs() {
               size={size}
             />
           );
-        }
+        },
       })}
     >
       <MainTabs.Screen
@@ -148,10 +155,16 @@ function SignedInTabs() {
         component={DashboardScreen}
         options={{ tabBarLabel: t("navigation.dashboard") }}
       />
-      <MainTabs.Screen name="Wallet" options={{ tabBarLabel: t("navigation.wallet") }}>
+      <MainTabs.Screen
+        name="Wallet"
+        options={{ tabBarLabel: t("navigation.wallet") }}
+      >
         {({ route }) => <WalletScreen initialFocus={route.params?.focus} />}
       </MainTabs.Screen>
-      <MainTabs.Screen name="Yield" options={{ tabBarLabel: t("navigation.yield") }}>
+      <MainTabs.Screen
+        name="Yield"
+        options={{ tabBarLabel: t("navigation.yield") }}
+      >
         {({ route }) => <YieldScreen initialFocus={route.params?.focus} />}
       </MainTabs.Screen>
       <MainTabs.Screen
@@ -197,12 +210,12 @@ export function AppNavigator() {
   const [plusReady] = usePlusJakartaFonts({
     PlusJakartaSans_500Medium,
     PlusJakartaSans_600SemiBold,
-    PlusJakartaSans_700Bold
+    PlusJakartaSans_700Bold,
   });
   const [cairoReady] = useCairoFonts({
     Cairo_500Medium,
     Cairo_600SemiBold,
-    Cairo_700Bold
+    Cairo_700Bold,
   });
   const profileQuery = useProfileQuery();
 

@@ -1,10 +1,18 @@
 jest.mock("@stealth-trails-bank/config/api", () => ({
   loadProductChainRuntimeConfig: () => ({
-    productChainId: 8453
+    productChainId: 8453,
+  }),
+  loadCustomerMfaPolicyRuntimeConfig: () => ({
+    emailOtpExpirySeconds: 600,
+    totpEnrollmentExpirySeconds: 900,
+    stepUpFreshnessSeconds: 600,
+    maxFailedAttempts: 3,
+    lockoutSeconds: 900,
+    challengeStartCooldownSeconds: 60,
   }),
   loadJwtRuntimeConfig: () => ({
     jwtSecret: "test-secret",
-    jwtExpirySeconds: 86400
+    jwtExpirySeconds: 86400,
   }),
   loadSharedLoginBootstrapRuntimeConfig: () => ({
     enabled: true,
@@ -12,21 +20,21 @@ jest.mock("@stealth-trails-bank/config/api", () => ({
     password: "P@ssw0rd",
     firstName: "Shared",
     lastName: "Admin",
-    supabaseUserId: "shared-login-admin"
-  })
+    supabaseUserId: "shared-login-admin",
+  }),
 }));
 
 jest.mock("./auth.util", () => ({
   generateEthereumAddress: () => ({
-    address: "0xgenerated"
-  })
+    address: "0xgenerated",
+  }),
 }));
 
 import * as bcrypt from "bcryptjs";
 import {
   BadRequestException,
   NotFoundException,
-  UnauthorizedException
+  UnauthorizedException,
 } from "@nestjs/common";
 import { AuthService } from "./auth.service";
 
@@ -38,40 +46,45 @@ describe("AuthService", () => {
       customer: {
         findUnique: jest.fn(),
         upsert: jest.fn(),
-        update: jest.fn()
+        update: jest.fn(),
       },
       customerAccount: {
-        upsert: jest.fn()
+        upsert: jest.fn(),
       },
       user: {
         findUnique: jest.fn(),
-        upsert: jest.fn()
+        upsert: jest.fn(),
       },
       wallet: {
         findUnique: jest.fn(),
         update: jest.fn(),
-        create: jest.fn()
+        create: jest.fn(),
       },
       auditEvent: {
-        create: jest.fn()
-      }
+        create: jest.fn(),
+      },
     };
 
     const prismaService = {
       user: {
         findUnique: jest.fn(),
         create: jest.fn(),
-        findFirst: jest.fn()
+        findFirst: jest.fn(),
       },
       customer: {
-        findUnique: jest.fn()
+        findUnique: jest.fn(),
+        update: jest.fn(),
+      },
+      auditEvent: {
+        create: jest.fn(),
       },
       customerAccount: {
-        findFirst: jest.fn()
+        findFirst: jest.fn(),
       },
-      $transaction: jest.fn(async (callback: (tx: typeof transaction) => unknown) =>
-        callback(transaction)
-      )
+      $transaction: jest.fn(
+        async (callback: (tx: typeof transaction) => unknown) =>
+          callback(transaction),
+      ),
     };
 
     const service = new AuthService(prismaService as never);
@@ -79,7 +92,7 @@ describe("AuthService", () => {
     return {
       service,
       prismaService,
-      transaction
+      transaction,
     };
   }
 
@@ -99,9 +112,9 @@ describe("AuthService", () => {
           custodyType: "platform_managed",
           status: "active",
           createdAt,
-          updatedAt
-        }
-      ]
+          updatedAt,
+        },
+      ],
     });
 
     const result =
@@ -110,20 +123,20 @@ describe("AuthService", () => {
     expect(prismaService.customerAccount.findFirst).toHaveBeenCalledWith({
       where: {
         customer: {
-          supabaseUserId: "supabase_1"
-        }
+          supabaseUserId: "supabase_1",
+        },
       },
       include: {
         wallets: {
           where: {
-            chainId: 8453
+            chainId: 8453,
           },
           orderBy: {
-            createdAt: "asc"
+            createdAt: "asc",
           },
-          take: 1
-        }
-      }
+          take: 1,
+        },
+      },
     });
 
     expect(result).toEqual({
@@ -136,8 +149,8 @@ describe("AuthService", () => {
         custodyType: "platform_managed",
         status: "active",
         createdAt,
-        updatedAt
-      }
+        updatedAt,
+      },
     });
   });
 
@@ -147,7 +160,7 @@ describe("AuthService", () => {
     prismaService.customerAccount.findFirst.mockResolvedValue(null);
 
     await expect(
-      service.getCustomerWalletProjectionBySupabaseUserId("missing_user")
+      service.getCustomerWalletProjectionBySupabaseUserId("missing_user"),
     ).rejects.toBeInstanceOf(NotFoundException);
   });
 
@@ -155,11 +168,11 @@ describe("AuthService", () => {
     const { service, prismaService } = createService();
 
     prismaService.customerAccount.findFirst.mockResolvedValue({
-      wallets: []
+      wallets: [],
     });
 
     await expect(
-      service.getCustomerWalletProjectionBySupabaseUserId("supabase_1")
+      service.getCustomerWalletProjectionBySupabaseUserId("supabase_1"),
     ).rejects.toBeInstanceOf(NotFoundException);
   });
 
@@ -169,10 +182,10 @@ describe("AuthService", () => {
     prismaService.user.findUnique.mockResolvedValue(null);
     prismaService.user.create.mockResolvedValue(undefined);
     transaction.customer.upsert.mockResolvedValue({
-      id: "customer_1"
+      id: "customer_1",
     });
     transaction.customerAccount.upsert.mockResolvedValue({
-      id: "account_1"
+      id: "account_1",
     });
     transaction.wallet.findUnique.mockResolvedValue(null);
     transaction.wallet.create.mockResolvedValue(undefined);
@@ -181,7 +194,7 @@ describe("AuthService", () => {
       "Ada",
       "Lovelace",
       "ada@example.com",
-      "correct horse battery staple"
+      "correct horse battery staple",
     );
 
     expect(result.status).toBe("success");
@@ -190,7 +203,7 @@ describe("AuthService", () => {
       email: "ada@example.com",
       firstName: "Ada",
       lastName: "Lovelace",
-      ethereumAddress: "0xgenerated"
+      ethereumAddress: "0xgenerated",
     });
     expect(result.data?.user).not.toHaveProperty("privateKey");
   });
@@ -203,7 +216,12 @@ describe("AuthService", () => {
       id: "customer_1",
       supabaseUserId: "supabase_1",
       email: "ada@example.com",
-      passwordHash
+      passwordHash,
+      mfaRequired: true,
+      mfaTotpEnrolled: false,
+      mfaEmailOtpEnrolled: false,
+      mfaLastVerifiedAt: null,
+      mfaLockedUntil: null,
     });
     prismaService.user.findFirst.mockResolvedValue({
       id: 42,
@@ -211,7 +229,7 @@ describe("AuthService", () => {
       lastName: "Lovelace",
       email: "ada@example.com",
       supabaseUserId: "supabase_1",
-      ethereumAddress: "0xgenerated"
+      ethereumAddress: "0xgenerated",
     });
 
     const result = await service.login("ada@example.com", "s3cret-pass");
@@ -224,7 +242,16 @@ describe("AuthService", () => {
       email: "ada@example.com",
       ethereumAddress: "0xgenerated",
       firstName: "Ada",
-      lastName: "Lovelace"
+      lastName: "Lovelace",
+      mfa: {
+        required: true,
+        totpEnrolled: false,
+        emailOtpEnrolled: false,
+        requiresSetup: true,
+        moneyMovementBlocked: true,
+        stepUpFreshUntil: null,
+        lockedUntil: null,
+      },
     });
     expect(result.data?.user).not.toHaveProperty("privateKey");
   });
@@ -234,14 +261,14 @@ describe("AuthService", () => {
 
     transaction.customer.findUnique.mockResolvedValue(null);
     transaction.customer.upsert.mockResolvedValue({
-      id: "customer_shared"
+      id: "customer_shared",
     });
     transaction.customerAccount.upsert.mockResolvedValue({
-      id: "account_shared"
+      id: "account_shared",
     });
     transaction.user.findUnique.mockResolvedValue(null);
     transaction.user.upsert.mockResolvedValue({
-      id: 7
+      id: 7,
     });
     transaction.wallet.findUnique.mockResolvedValue(null);
     transaction.wallet.create.mockResolvedValue(undefined);
@@ -255,15 +282,15 @@ describe("AuthService", () => {
         email: "admin@gmail.com",
         firstName: "Shared",
         lastName: "Admin",
-        passwordHash: expect.any(String)
+        passwordHash: expect.any(String),
       },
       create: {
         supabaseUserId: "shared-login-admin",
         email: "admin@gmail.com",
         firstName: "Shared",
         lastName: "Admin",
-        passwordHash: expect.any(String)
-      }
+        passwordHash: expect.any(String),
+      },
     });
     expect(transaction.user.upsert).toHaveBeenCalledWith({
       where: { email: "admin@gmail.com" },
@@ -272,15 +299,15 @@ describe("AuthService", () => {
         lastName: "Admin",
         email: "admin@gmail.com",
         supabaseUserId: "shared-login-admin",
-        ethereumAddress: "0xgenerated"
+        ethereumAddress: "0xgenerated",
       },
       create: {
         firstName: "Shared",
         lastName: "Admin",
         email: "admin@gmail.com",
         supabaseUserId: "shared-login-admin",
-        ethereumAddress: "0xgenerated"
-      }
+        ethereumAddress: "0xgenerated",
+      },
     });
     expect(result).toEqual({
       customerId: "customer_shared",
@@ -290,7 +317,7 @@ describe("AuthService", () => {
       ethereumAddress: "0xgenerated",
       createdLegacyUser: true,
       createdCustomer: true,
-      createdCustomerAccount: true
+      createdCustomerAccount: true,
     });
   });
 
@@ -301,7 +328,12 @@ describe("AuthService", () => {
     prismaService.customer.findUnique.mockResolvedValue({
       id: "customer_1",
       supabaseUserId: "supabase_1",
-      passwordHash
+      passwordHash,
+      mfaRequired: true,
+      mfaTotpEnrolled: true,
+      mfaEmailOtpEnrolled: true,
+      mfaLastVerifiedAt: new Date(),
+      mfaLockedUntil: null,
     });
     transaction.customer.update.mockResolvedValue(undefined);
     transaction.auditEvent.create.mockResolvedValue(undefined);
@@ -309,14 +341,14 @@ describe("AuthService", () => {
     const result = await service.updatePassword(
       "supabase_1",
       "current-pass",
-      "new-strong-pass"
+      "new-strong-pass",
     );
 
     expect(transaction.customer.update).toHaveBeenCalledWith({
       where: { id: "customer_1" },
       data: {
-        passwordHash: expect.any(String)
-      }
+        passwordHash: expect.any(String),
+      },
     });
     expect(transaction.auditEvent.create).toHaveBeenCalledWith({
       data: {
@@ -327,16 +359,16 @@ describe("AuthService", () => {
         targetType: "Customer",
         targetId: "customer_1",
         metadata: {
-          passwordRotationAvailable: true
-        }
-      }
+          passwordRotationAvailable: true,
+        },
+      },
     });
     expect(result).toEqual({
       status: "success",
       message: "Password updated successfully.",
       data: {
-        passwordRotationAvailable: true
-      }
+        passwordRotationAvailable: true,
+      },
     });
   });
 
@@ -347,11 +379,16 @@ describe("AuthService", () => {
     prismaService.customer.findUnique.mockResolvedValue({
       id: "customer_1",
       supabaseUserId: "supabase_1",
-      passwordHash
+      passwordHash,
+      mfaRequired: true,
+      mfaTotpEnrolled: true,
+      mfaEmailOtpEnrolled: true,
+      mfaLastVerifiedAt: new Date(),
+      mfaLockedUntil: null,
     });
 
     await expect(
-      service.updatePassword("supabase_1", "wrong-pass", "new-strong-pass")
+      service.updatePassword("supabase_1", "wrong-pass", "new-strong-pass"),
     ).rejects.toBeInstanceOf(UnauthorizedException);
   });
 
@@ -359,7 +396,7 @@ describe("AuthService", () => {
     const { service } = createService();
 
     await expect(
-      service.updatePassword("supabase_1", "same-pass", "same-pass")
+      service.updatePassword("supabase_1", "same-pass", "same-pass"),
     ).rejects.toBeInstanceOf(BadRequestException);
   });
 
@@ -369,11 +406,83 @@ describe("AuthService", () => {
     prismaService.customer.findUnique.mockResolvedValue({
       id: "customer_1",
       supabaseUserId: "supabase_1",
-      passwordHash: null
+      mfaRequired: true,
+      mfaTotpEnrolled: false,
+      mfaEmailOtpEnrolled: false,
+      mfaLastVerifiedAt: null,
+      mfaLockedUntil: null,
+      passwordHash: null,
     });
 
     await expect(
-      service.updatePassword("supabase_1", "current-pass", "new-strong-pass")
+      service.updatePassword("supabase_1", "current-pass", "new-strong-pass"),
     ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it("blocks MFA challenge starts during cooldown", async () => {
+    const { service, prismaService } = createService();
+
+    prismaService.customer.findUnique.mockResolvedValue({
+      id: "customer_1",
+      supabaseUserId: "supabase_1",
+      email: "ada@example.com",
+      mfaRequired: true,
+      mfaTotpEnrolled: true,
+      mfaEmailOtpEnrolled: true,
+      mfaTotpSecret: "ABCDEFGHIJKLMNOP",
+      mfaPendingTotpSecret: null,
+      mfaPendingTotpIssuedAt: null,
+      mfaActiveChallenge: null,
+      mfaLastVerifiedAt: null,
+      mfaFailedAttemptCount: 0,
+      mfaLockedUntil: null,
+      mfaLastChallengeStartedAt: new Date(),
+    });
+
+    await expect(
+      service.startMfaChallenge("supabase_1", "withdrawal_step_up", "totp"),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it("locks MFA after repeated invalid email verification codes", async () => {
+    const { service, prismaService } = createService();
+
+    prismaService.customer.findUnique.mockResolvedValue({
+      id: "customer_1",
+      supabaseUserId: "supabase_1",
+      email: "ada@example.com",
+      mfaRequired: true,
+      mfaTotpEnrolled: true,
+      mfaEmailOtpEnrolled: false,
+      mfaTotpSecret: "ABCDEFGHIJKLMNOP",
+      mfaPendingTotpSecret: null,
+      mfaPendingTotpIssuedAt: null,
+      mfaActiveChallenge: {
+        id: "challenge_1",
+        purpose: "email_enrollment",
+        method: "email_otp",
+        codeHash:
+          "4e07408562bedb8b60ce05c1decfe3ad16b72230967de01f640b7e4729b49fce",
+        expiresAt: new Date(Date.now() + 60_000).toISOString(),
+        sentAt: new Date().toISOString(),
+      },
+      mfaLastVerifiedAt: null,
+      mfaFailedAttemptCount: 2,
+      mfaLockedUntil: null,
+      mfaLastChallengeStartedAt: null,
+    });
+    prismaService.customer.update.mockResolvedValue(undefined);
+
+    await expect(
+      service.verifyEmailEnrollment("supabase_1", "challenge_1", "000000"),
+    ).rejects.toThrow(/locked until/i);
+
+    expect(prismaService.customer.update).toHaveBeenCalledWith({
+      where: { id: "customer_1" },
+      data: {
+        mfaFailedAttemptCount: 0,
+        mfaLockedUntil: expect.any(Date),
+      },
+    });
   });
 });

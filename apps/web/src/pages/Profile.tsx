@@ -16,18 +16,30 @@ import {
   Shield,
   ShieldAlert,
   UserRound,
-  Wallet
+  Wallet,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useLocale } from "@/i18n/use-locale";
 import { useT } from "@/i18n/use-t";
-import { useRotatePassword, useUpdateNotificationPreferences } from "@/hooks/user/useProfileSettings";
+import {
+  useRotatePassword,
+  useUpdateNotificationPreferences,
+} from "@/hooks/user/useProfileSettings";
+import {
+  useCustomerMfaStatus,
+  useStartCustomerMfaChallenge,
+  useStartEmailEnrollment,
+  useStartTotpEnrollment,
+  useVerifyCustomerMfaChallenge,
+  useVerifyEmailEnrollment,
+  useVerifyTotpEnrollment,
+} from "@/hooks/auth/useCustomerMfa";
 import { useGetUser } from "@/hooks/user/useGetUser";
 import {
   formatAccountStatusLabel,
   getAccountLifecycleEntries,
   getAccountStatusBadgeTone,
-  getAccountStatusSummary
+  getAccountStatusSummary,
 } from "@/lib/customer-account";
 import { formatDateLabel } from "@/lib/customer-finance";
 import { useUserStore } from "@/stores/userStore";
@@ -35,12 +47,12 @@ import { useUserStore } from "@/stores/userStore";
 const emptyPasswordForm = {
   currentPassword: "",
   newPassword: "",
-  confirmPassword: ""
+  confirmPassword: "",
 };
 
 function sameNotificationPreferences(
   left: CustomerNotificationPreferences | null,
-  right: CustomerNotificationPreferences | null
+  right: CustomerNotificationPreferences | null,
 ): boolean {
   if (!left || !right) {
     return left === right;
@@ -62,16 +74,44 @@ const Profile = () => {
   const clearUser = useUserStore((state) => state.clearUser);
   const profileQuery = useGetUser(userFromStore?.supabaseUserId);
   const rotatePasswordMutation = useRotatePassword();
-  const updateNotificationPreferencesMutation = useUpdateNotificationPreferences();
+  const updateNotificationPreferencesMutation =
+    useUpdateNotificationPreferences();
+  useCustomerMfaStatus();
+  const startTotpEnrollment = useStartTotpEnrollment();
+  const verifyTotpEnrollment = useVerifyTotpEnrollment();
+  const startEmailEnrollment = useStartEmailEnrollment();
+  const verifyEmailEnrollment = useVerifyEmailEnrollment();
+  const startMfaChallenge = useStartCustomerMfaChallenge();
+  const verifyMfaChallenge = useVerifyCustomerMfaChallenge();
   const profile = profileQuery.data;
+  const mfa = profile?.mfa ?? userFromStore?.mfa;
 
   const [passwordForm, setPasswordForm] = useState(emptyPasswordForm);
   const [passwordNotice, setPasswordNotice] = useState<string | null>(null);
   const [passwordError, setPasswordError] = useState<string | null>(null);
   const [notificationDraft, setNotificationDraft] =
     useState<CustomerNotificationPreferences | null>(null);
-  const [notificationNotice, setNotificationNotice] = useState<string | null>(null);
-  const [notificationError, setNotificationError] = useState<string | null>(null);
+  const [notificationNotice, setNotificationNotice] = useState<string | null>(
+    null,
+  );
+  const [notificationError, setNotificationError] = useState<string | null>(
+    null,
+  );
+  const [totpSecret, setTotpSecret] = useState<string | null>(null);
+  const [totpCode, setTotpCode] = useState("");
+  const [emailChallengeId, setEmailChallengeId] = useState<string | null>(null);
+  const [emailCode, setEmailCode] = useState("");
+  const [emailPreviewCode, setEmailPreviewCode] = useState<string | null>(null);
+  const [passwordChallengeId, setPasswordChallengeId] = useState<string | null>(
+    null,
+  );
+  const [passwordChallengeMethod, setPasswordChallengeMethod] = useState<
+    "totp" | "email_otp"
+  >("totp");
+  const [passwordChallengeCode, setPasswordChallengeCode] = useState("");
+  const [passwordPreviewCode, setPasswordPreviewCode] = useState<string | null>(
+    null,
+  );
 
   useEffect(() => {
     setNotificationDraft(profile?.notificationPreferences ?? null);
@@ -100,17 +140,25 @@ const Profile = () => {
     ? getAccountLifecycleEntries(profile, locale)
     : [];
   const passwordRotationAvailable = profile?.passwordRotationAvailable ?? false;
+  const stepUpFresh =
+    Boolean(mfa?.stepUpFreshUntil) &&
+    Date.parse(mfa?.stepUpFreshUntil ?? "") > Date.now();
   const notificationPreferencesAvailable =
     profile?.notificationPreferences !== null &&
     typeof profile?.notificationPreferences !== "undefined";
   const notificationPreferencesChanged = !sameNotificationPreferences(
     notificationDraft,
-    profile?.notificationPreferences ?? null
+    profile?.notificationPreferences ?? null,
   );
 
   async function handlePasswordSubmit() {
     setPasswordNotice(null);
     setPasswordError(null);
+
+    if (!stepUpFresh) {
+      setPasswordError("Verify MFA before updating the password.");
+      return;
+    }
 
     if (passwordForm.newPassword !== passwordForm.confirmPassword) {
       setPasswordError("Confirm password must match the new password.");
@@ -120,12 +168,14 @@ const Profile = () => {
     try {
       await rotatePasswordMutation.mutateAsync({
         currentPassword: passwordForm.currentPassword,
-        newPassword: passwordForm.newPassword
+        newPassword: passwordForm.newPassword,
       });
       setPasswordForm(emptyPasswordForm);
       setPasswordNotice("Password updated successfully.");
     } catch (error) {
-      setPasswordError(error instanceof Error ? error.message : "Password update failed.");
+      setPasswordError(
+        error instanceof Error ? error.message : "Password update failed.",
+      );
     }
   }
 
@@ -138,13 +188,123 @@ const Profile = () => {
     setNotificationError(null);
 
     try {
-      await updateNotificationPreferencesMutation.mutateAsync(notificationDraft);
+      await updateNotificationPreferencesMutation.mutateAsync(
+        notificationDraft,
+      );
       setNotificationNotice("Notification preferences saved.");
     } catch (error) {
       setNotificationError(
         error instanceof Error
           ? error.message
-          : "Notification preference update failed."
+          : "Notification preference update failed.",
+      );
+    }
+  }
+
+  async function handleStartTotp() {
+    try {
+      const result = await startTotpEnrollment.mutateAsync();
+      setTotpSecret(result.secret);
+      setTotpCode("");
+    } catch (error) {
+      setPasswordError(
+        error instanceof Error
+          ? error.message
+          : "Failed to start authenticator setup.",
+      );
+    }
+  }
+
+  async function handleVerifyTotp() {
+    try {
+      await verifyTotpEnrollment.mutateAsync({ code: totpCode });
+      setTotpSecret(null);
+      setTotpCode("");
+    } catch (error) {
+      setPasswordError(
+        error instanceof Error
+          ? error.message
+          : "Failed to verify authenticator setup.",
+      );
+    }
+  }
+
+  async function handleStartEmail() {
+    try {
+      const result = await startEmailEnrollment.mutateAsync();
+      setEmailChallengeId(result.challengeId);
+      setEmailPreviewCode(result.previewCode);
+      setEmailCode("");
+    } catch (error) {
+      setPasswordError(
+        error instanceof Error
+          ? error.message
+          : "Failed to start email MFA setup.",
+      );
+    }
+  }
+
+  async function handleVerifyEmail() {
+    if (!emailChallengeId) {
+      return;
+    }
+
+    try {
+      await verifyEmailEnrollment.mutateAsync({
+        challengeId: emailChallengeId,
+        code: emailCode,
+      });
+      setEmailChallengeId(null);
+      setEmailCode("");
+      setEmailPreviewCode(null);
+    } catch (error) {
+      setPasswordError(
+        error instanceof Error
+          ? error.message
+          : "Failed to verify email MFA setup.",
+      );
+    }
+  }
+
+  async function handleStartPasswordStepUp(method: "totp" | "email_otp") {
+    try {
+      const result = await startMfaChallenge.mutateAsync({
+        method,
+        purpose: "password_step_up",
+      });
+      setPasswordChallengeMethod(method);
+      setPasswordChallengeId(result.challengeId);
+      setPasswordPreviewCode(result.previewCode);
+      setPasswordChallengeCode("");
+    } catch (error) {
+      setPasswordError(
+        error instanceof Error
+          ? error.message
+          : "Failed to start MFA challenge.",
+      );
+    }
+  }
+
+  async function handleVerifyPasswordStepUp() {
+    if (!passwordChallengeId) {
+      return;
+    }
+
+    try {
+      await verifyMfaChallenge.mutateAsync({
+        challengeId: passwordChallengeId,
+        method: passwordChallengeMethod,
+        purpose: "password_step_up",
+        code: passwordChallengeCode,
+      });
+      setPasswordChallengeId(null);
+      setPasswordChallengeCode("");
+      setPasswordPreviewCode(null);
+    } catch (error) {
+      setPasswordError(
+        error instanceof Error
+          ? error.message
+          : "Failed to verify MFA challenge.",
       );
     }
   }
@@ -172,14 +332,20 @@ const Profile = () => {
                 </h1>
                 <Badge
                   variant="outline"
-                  className={profile ? getAccountStatusBadgeTone(profile.accountStatus) : undefined}
+                  className={
+                    profile
+                      ? getAccountStatusBadgeTone(profile.accountStatus)
+                      : undefined
+                  }
                 >
                   {formatAccountStatusLabel(profile?.accountStatus, locale)}
                 </Badge>
               </div>
               <p className="text-sm text-muted-foreground">{fullName}</p>
               <p className="text-sm text-muted-foreground">
-                {profile?.email ?? userFromStore?.email ?? t("profile.notLoadedEmail")}
+                {profile?.email ??
+                  userFromStore?.email ??
+                  t("profile.notLoadedEmail")}
               </p>
             </div>
           </div>
@@ -207,8 +373,8 @@ const Profile = () => {
               <AlertDescription>
                 This page now shows real account identity, lifecycle status,
                 wallet linkage, password rotation, and customer email
-                preferences where the managed customer projection supports
-                them. Legacy-only records remain visible but read-only.
+                preferences where the managed customer projection supports them.
+                Legacy-only records remain visible but read-only.
               </AlertDescription>
             </Alert>
 
@@ -221,7 +387,10 @@ const Profile = () => {
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-5">
-                  <div className="stb-trust-note text-sm text-muted-foreground" data-tone="neutral">
+                  <div
+                    className="stb-trust-note text-sm text-muted-foreground"
+                    data-tone="neutral"
+                  >
                     <p className="text-sm text-muted-foreground">
                       {getAccountStatusSummary(profile.accountStatus, locale)}
                     </p>
@@ -256,12 +425,17 @@ const Profile = () => {
                   {lifecycleEntries.length > 0 ? (
                     <div className="grid gap-3 sm:grid-cols-2">
                       {lifecycleEntries.map((entry) => (
-                        <div key={entry.label} className="stb-section-frame p-4">
+                        <div
+                          key={entry.label}
+                          className="stb-section-frame p-4"
+                        >
                           <p className="text-xs uppercase tracking-wide text-muted-foreground">
                             {entry.label}
                           </p>
                           <p className="mt-2 font-medium text-foreground">
-                            {entry.value ? formatDateLabel(entry.value, locale) : t("profile.notRecorded")}
+                            {entry.value
+                              ? formatDateLabel(entry.value, locale)
+                              : t("profile.notRecorded")}
                           </p>
                         </div>
                       ))}
@@ -283,7 +457,8 @@ const Profile = () => {
                       Product-chain address
                     </p>
                     <p className="mt-2 font-mono text-sm text-foreground break-all">
-                      {profile.ethereumAddress || "No managed wallet assigned yet."}
+                      {profile.ethereumAddress ||
+                        "No managed wallet assigned yet."}
                     </p>
                   </div>
                   <div className="grid gap-4">
@@ -292,8 +467,9 @@ const Profile = () => {
                         Platform-managed custody
                       </p>
                       <p className="mt-2 text-sm text-muted-foreground">
-                        Customer wallet access is managed by the product platform.
-                        Browser wallet linking is intentionally not exposed here.
+                        Customer wallet access is managed by the product
+                        platform. Browser wallet linking is intentionally not
+                        exposed here.
                       </p>
                     </div>
                     <div className="stb-section-frame p-4">
@@ -315,6 +491,213 @@ const Profile = () => {
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <Shield className="h-5 w-5 text-mint-600" />
+                  Multi-factor Security
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-5">
+                <Alert
+                  variant={
+                    mfa?.requiresSetup || !stepUpFresh ? "muted" : "success"
+                  }
+                >
+                  <Shield className="h-4 w-4" />
+                  <AlertTitle>
+                    {mfa?.requiresSetup
+                      ? "Finish MFA setup"
+                      : stepUpFresh
+                        ? "Fresh verification active"
+                        : "Fresh verification required"}
+                  </AlertTitle>
+                  <AlertDescription>
+                    {mfa?.requiresSetup
+                      ? "Complete authenticator and email backup enrollment now. Browsing remains available, but send, withdraw, and password rotation stay blocked until setup is complete."
+                      : stepUpFresh
+                        ? "Money-out and password actions are currently unlocked for this session."
+                        : "Before money-out or password changes, complete a fresh MFA verification."}
+                  </AlertDescription>
+                </Alert>
+
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="stb-section-frame p-4">
+                    <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                      Authenticator app
+                    </p>
+                    <p className="mt-2 font-medium text-foreground">
+                      {mfa?.totpEnrolled ? "Enabled" : "Not enrolled"}
+                    </p>
+                  </div>
+                  <div className="stb-section-frame p-4">
+                    <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                      Email backup factor
+                    </p>
+                    <p className="mt-2 font-medium text-foreground">
+                      {mfa?.emailOtpEnrolled ? "Enabled" : "Not enrolled"}
+                    </p>
+                  </div>
+                </div>
+
+                {!mfa?.totpEnrolled ? (
+                  <div className="space-y-3 rounded-[1.5rem] border border-border bg-white/80 p-5">
+                    <p className="text-sm font-medium text-foreground">
+                      Start authenticator setup
+                    </p>
+                    <Button
+                      onClick={handleStartTotp}
+                      disabled={startTotpEnrollment.isPending}
+                    >
+                      {startTotpEnrollment.isPending
+                        ? "Preparing authenticator..."
+                        : "Start authenticator enrollment"}
+                    </Button>
+                    {totpSecret ? (
+                      <>
+                        <div className="stb-section-frame p-4">
+                          <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                            Manual secret
+                          </p>
+                          <p className="mt-2 break-all font-mono text-sm text-foreground">
+                            {totpSecret}
+                          </p>
+                        </div>
+                        <div className="space-y-2">
+                          <label className="text-sm font-medium text-foreground">
+                            6-digit code
+                          </label>
+                          <Input
+                            value={totpCode}
+                            onChange={(event) =>
+                              setTotpCode(event.target.value)
+                            }
+                            placeholder="123456"
+                          />
+                        </div>
+                        <Button
+                          onClick={handleVerifyTotp}
+                          disabled={verifyTotpEnrollment.isPending}
+                        >
+                          {verifyTotpEnrollment.isPending
+                            ? "Verifying..."
+                            : "Verify authenticator"}
+                        </Button>
+                      </>
+                    ) : null}
+                  </div>
+                ) : null}
+
+                {mfa?.totpEnrolled && !mfa?.emailOtpEnrolled ? (
+                  <div className="space-y-3 rounded-[1.5rem] border border-border bg-white/80 p-5">
+                    <p className="text-sm font-medium text-foreground">
+                      Add email backup factor
+                    </p>
+                    <Button
+                      onClick={handleStartEmail}
+                      disabled={startEmailEnrollment.isPending}
+                    >
+                      {startEmailEnrollment.isPending
+                        ? "Sending code..."
+                        : "Send email verification code"}
+                    </Button>
+                    {emailChallengeId ? (
+                      <>
+                        {emailPreviewCode ? (
+                          <div className="stb-section-frame p-4 text-sm text-muted-foreground">
+                            Preview code:{" "}
+                            <span className="font-semibold text-foreground">
+                              {emailPreviewCode}
+                            </span>
+                          </div>
+                        ) : null}
+                        <div className="space-y-2">
+                          <label className="text-sm font-medium text-foreground">
+                            6-digit code
+                          </label>
+                          <Input
+                            value={emailCode}
+                            onChange={(event) =>
+                              setEmailCode(event.target.value)
+                            }
+                            placeholder="123456"
+                          />
+                        </div>
+                        <Button
+                          onClick={handleVerifyEmail}
+                          disabled={verifyEmailEnrollment.isPending}
+                        >
+                          {verifyEmailEnrollment.isPending
+                            ? "Verifying..."
+                            : "Verify email backup"}
+                        </Button>
+                      </>
+                    ) : null}
+                  </div>
+                ) : null}
+
+                {!mfa?.requiresSetup && !stepUpFresh ? (
+                  <div className="space-y-3 rounded-[1.5rem] border border-border bg-white/80 p-5">
+                    <p className="text-sm font-medium text-foreground">
+                      Refresh verification for password changes
+                    </p>
+                    <div className="flex flex-wrap gap-3">
+                      <Button
+                        variant="outline"
+                        onClick={() => {
+                          void handleStartPasswordStepUp("totp");
+                        }}
+                      >
+                        Use authenticator
+                      </Button>
+                      {mfa?.emailOtpEnrolled ? (
+                        <Button
+                          variant="outline"
+                          onClick={() => {
+                            void handleStartPasswordStepUp("email_otp");
+                          }}
+                        >
+                          Use email backup
+                        </Button>
+                      ) : null}
+                    </div>
+                    {passwordChallengeId ? (
+                      <>
+                        {passwordPreviewCode ? (
+                          <div className="stb-section-frame p-4 text-sm text-muted-foreground">
+                            Preview code:{" "}
+                            <span className="font-semibold text-foreground">
+                              {passwordPreviewCode}
+                            </span>
+                          </div>
+                        ) : null}
+                        <div className="space-y-2">
+                          <label className="text-sm font-medium text-foreground">
+                            6-digit code
+                          </label>
+                          <Input
+                            value={passwordChallengeCode}
+                            onChange={(event) =>
+                              setPasswordChallengeCode(event.target.value)
+                            }
+                            placeholder="123456"
+                          />
+                        </div>
+                        <Button
+                          onClick={handleVerifyPasswordStepUp}
+                          disabled={verifyMfaChallenge.isPending}
+                        >
+                          {verifyMfaChallenge.isPending
+                            ? "Verifying..."
+                            : "Verify MFA challenge"}
+                        </Button>
+                      </>
+                    ) : null}
+                  </div>
+                ) : null}
+              </CardContent>
+            </Card>
+
+            <Card className="glass-card">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Shield className="h-5 w-5 text-mint-600" />
                   Security Controls
                 </CardTitle>
               </CardHeader>
@@ -326,7 +709,8 @@ const Profile = () => {
                   </div>
                   <p className="mt-2 text-sm text-muted-foreground">
                     Access is governed by the backend account lifecycle state,
-                    currently marked as {formatAccountStatusLabel(profile.accountStatus, locale)}.
+                    currently marked as{" "}
+                    {formatAccountStatusLabel(profile.accountStatus, locale)}.
                   </p>
                 </div>
                 <div className="stb-section-frame p-4">
@@ -360,7 +744,10 @@ const Profile = () => {
                   <CardTitle>Password Management</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <div className="stb-trust-note text-sm text-muted-foreground" data-tone="neutral">
+                  <div
+                    className="stb-trust-note text-sm text-muted-foreground"
+                    data-tone="neutral"
+                  >
                     <p className="text-sm text-muted-foreground">
                       Security and account-risk notifications remain mandatory.
                       Updating the password changes only your authentication
@@ -386,8 +773,21 @@ const Profile = () => {
 
                   {passwordRotationAvailable ? (
                     <>
+                      {!stepUpFresh ? (
+                        <Alert variant="muted">
+                          <ShieldAlert className="h-4 w-4" />
+                          <AlertTitle>Fresh MFA required</AlertTitle>
+                          <AlertDescription>
+                            Verify MFA in the security section above before
+                            changing the password.
+                          </AlertDescription>
+                        </Alert>
+                      ) : null}
                       <div className="space-y-2">
-                        <label htmlFor="current-password" className="text-sm font-medium text-foreground">
+                        <label
+                          htmlFor="current-password"
+                          className="text-sm font-medium text-foreground"
+                        >
                           Current password
                         </label>
                         <Input
@@ -397,13 +797,16 @@ const Profile = () => {
                           onChange={(event) =>
                             setPasswordForm((current) => ({
                               ...current,
-                              currentPassword: event.target.value
+                              currentPassword: event.target.value,
                             }))
                           }
                         />
                       </div>
                       <div className="space-y-2">
-                        <label htmlFor="new-password" className="text-sm font-medium text-foreground">
+                        <label
+                          htmlFor="new-password"
+                          className="text-sm font-medium text-foreground"
+                        >
                           New password
                         </label>
                         <Input
@@ -413,13 +816,16 @@ const Profile = () => {
                           onChange={(event) =>
                             setPasswordForm((current) => ({
                               ...current,
-                              newPassword: event.target.value
+                              newPassword: event.target.value,
                             }))
                           }
                         />
                       </div>
                       <div className="space-y-2">
-                        <label htmlFor="confirm-password" className="text-sm font-medium text-foreground">
+                        <label
+                          htmlFor="confirm-password"
+                          className="text-sm font-medium text-foreground"
+                        >
                           Confirm new password
                         </label>
                         <Input
@@ -429,14 +835,16 @@ const Profile = () => {
                           onChange={(event) =>
                             setPasswordForm((current) => ({
                               ...current,
-                              confirmPassword: event.target.value
+                              confirmPassword: event.target.value,
                             }))
                           }
                         />
                       </div>
                       <Button
                         onClick={handlePasswordSubmit}
-                        disabled={rotatePasswordMutation.isPending}
+                        disabled={
+                          rotatePasswordMutation.isPending || !stepUpFresh
+                        }
                       >
                         {rotatePasswordMutation.isPending
                           ? "Updating password..."
@@ -463,7 +871,10 @@ const Profile = () => {
                   <CardTitle>Email Notification Preferences</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <div className="stb-trust-note text-sm text-muted-foreground" data-tone="neutral">
+                  <div
+                    className="stb-trust-note text-sm text-muted-foreground"
+                    data-tone="neutral"
+                  >
                     <p className="text-sm font-medium text-foreground">
                       Mandatory security notices
                     </p>
@@ -496,26 +907,26 @@ const Profile = () => {
                           key: "depositEmails" as const,
                           label: "Deposit emails",
                           description:
-                            "Receive email updates when deposit requests are created, approved, or settled."
+                            "Receive email updates when deposit requests are created, approved, or settled.",
                         },
                         {
                           key: "withdrawalEmails" as const,
                           label: "Withdrawal emails",
                           description:
-                            "Receive email updates for withdrawal review, execution, and settlement state changes."
+                            "Receive email updates for withdrawal review, execution, and settlement state changes.",
                         },
                         {
                           key: "loanEmails" as const,
                           label: "Loan emails",
                           description:
-                            "Receive servicing, repayment, grace-period, and managed lending status updates."
+                            "Receive servicing, repayment, grace-period, and managed lending status updates.",
                         },
                         {
                           key: "productUpdateEmails" as const,
                           label: "Product updates",
                           description:
-                            "Receive product notices about supported features and managed account changes."
-                        }
+                            "Receive product notices about supported features and managed account changes.",
+                        },
                       ].map((item) => (
                         <div
                           key={item.key}
@@ -537,9 +948,9 @@ const Profile = () => {
                                 current
                                   ? {
                                       ...current,
-                                      [item.key]: checked
+                                      [item.key]: checked,
                                     }
-                                  : current
+                                  : current,
                               )
                             }
                           />
@@ -563,9 +974,9 @@ const Profile = () => {
                         Notification preferences unavailable
                       </p>
                       <p className="mt-2 text-sm text-muted-foreground">
-                        This profile is currently read-only, so customer-editable
-                        notification preferences are not available from this
-                        portal yet.
+                        This profile is currently read-only, so
+                        customer-editable notification preferences are not
+                        available from this portal yet.
                       </p>
                     </div>
                   )}

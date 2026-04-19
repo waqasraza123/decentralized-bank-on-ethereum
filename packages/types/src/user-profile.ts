@@ -14,6 +14,16 @@ export type CustomerNotificationPreferences = {
   productUpdateEmails: boolean;
 };
 
+export type CustomerMfaStatus = {
+  required: boolean;
+  totpEnrolled: boolean;
+  emailOtpEnrolled: boolean;
+  requiresSetup: boolean;
+  moneyMovementBlocked: boolean;
+  stepUpFreshUntil: string | null;
+  lockedUntil: string | null;
+};
+
 export type UserProfileProjection = {
   id: number | null;
   customerId: string | null;
@@ -29,4 +39,5 @@ export type UserProfileProjection = {
   closedAt: string | null;
   passwordRotationAvailable: boolean;
   notificationPreferences: CustomerNotificationPreferences | null;
+  mfa: CustomerMfaStatus;
 };
