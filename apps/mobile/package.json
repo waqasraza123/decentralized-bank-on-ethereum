@@ -8,6 +8,8 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
+    "build": "expo export --platform web",
+    "vercel-build": "expo export --platform web",
     "test": "jest --runInBand",
     "typecheck": "tsc --noEmit",
     "export:web": "expo export --platform web",
