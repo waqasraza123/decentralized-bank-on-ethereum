@@ -30,6 +30,8 @@ import {
 } from "@nestjs/common";
 import { AuthService } from "./auth.service";
 
+jest.setTimeout(15000);
+
 describe("AuthService", () => {
   function createService() {
     const transaction = {

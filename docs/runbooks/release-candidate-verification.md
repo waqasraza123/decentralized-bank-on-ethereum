@@ -102,9 +102,7 @@ pnpm release:readiness:verify -- \
   --release-id api-2026.04.08.1 \
   --record-evidence \
   --base-url http://localhost:9101 \
-  --operator-id ops_1 \
-  --operator-role operations_admin \
-  --api-key local-dev-operator-key
+  --access-token "$OPERATOR_ACCESS_TOKEN"
 ```
 
 ## Recording manual review evidence
@@ -120,9 +118,7 @@ pnpm release:readiness:verify -- \
   --evidence-links docs/security/secret-handling-review.md,ticket/SEC-42 \
   --record-evidence \
   --base-url http://localhost:9101 \
-  --operator-id ops_1 \
-  --operator-role compliance_lead \
-  --api-key local-dev-operator-key
+  --access-token "$OPERATOR_ACCESS_TOKEN"
 ```
 
 Role review:
@@ -136,9 +132,7 @@ pnpm release:readiness:verify -- \
   --evidence-links docs/security/role-review.md,ticket/GOV-12 \
   --record-evidence \
   --base-url http://localhost:9101 \
-  --operator-id ops_1 \
-  --operator-role compliance_lead \
-  --api-key local-dev-operator-key
+  --access-token "$OPERATOR_ACCESS_TOKEN"
 ```
 
 ## Output

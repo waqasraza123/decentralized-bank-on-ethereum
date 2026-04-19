@@ -2,9 +2,6 @@ jest.mock("@stealth-trails-bank/config/api", () => ({
   loadDepositRiskPolicyRuntimeConfig: () => ({
     autoApproveThresholds: []
   }),
-  loadInternalOperatorRuntimeConfig: () => ({
-    internalOperatorApiKey: "test-operator-key"
-  }),
   loadProductChainRuntimeConfig: () => ({
     productChainId: 8453
   }),
@@ -29,7 +26,7 @@ jest.mock("@stealth-trails-bank/config/api", () => ({
 import type { INestApplication } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import request from "supertest";
-import { InternalOperatorApiKeyGuard } from "../auth/guards/internal-operator-api-key.guard";
+import { InternalOperatorBearerGuard } from "../auth/guards/internal-operator-bearer.guard";
 import { OperatorIdentityService } from "../auth/operator-identity.service";
 import { LedgerService } from "../ledger/ledger.service";
 import { PrismaService } from "../prisma/prisma.service";
@@ -88,39 +85,53 @@ function buildReviewIntentRecord(
 describe("TransactionIntentsInternalController integration", () => {
   let app: INestApplication;
   let currentIntent: ReturnType<typeof buildReviewIntentRecord>;
+  const adminOperatorHeaders = {
+    Authorization: "Bearer ops-admin-token"
+  };
+  const juniorOperatorHeaders = {
+    Authorization: "Bearer junior-operator-token"
+  };
   const operatorIdentityService = {
-    resolveFromBearerToken: jest.fn(async () => null),
-    resolveFromLegacyApiKey: jest.fn(
-      ({
+    resolveFromBearerToken: jest.fn(
+      async ({
         headers
       }: {
         headers: Record<string, string | string[] | undefined>;
       }) => {
-        const apiKey = headers["x-operator-api-key"];
-        const operatorId = headers["x-operator-id"];
-        const operatorRole = headers["x-operator-role"];
+        const authorization = headers.authorization;
 
-        if (
-          apiKey !== "test-operator-key" ||
-          typeof operatorId !== "string" ||
-          typeof operatorRole !== "string"
-        ) {
-          return null;
+        if (authorization === "Bearer ops-admin-token") {
+          return {
+            operatorDbId: null,
+            operatorId: "ops_1",
+            operatorRole: "operations_admin",
+            operatorRoles: ["operations_admin"],
+            operatorSupabaseUserId: null,
+            operatorEmail: null,
+            authSource: "supabase_jwt" as const,
+            environment: "development",
+            sessionCorrelationId: null
+          };
         }
 
-        return {
-          operatorDbId: null,
-          operatorId,
-          operatorRole,
-          operatorRoles: [operatorRole],
-          operatorSupabaseUserId: null,
-          operatorEmail: null,
-          authSource: "legacy_api_key" as const,
-          environment: "development",
-          sessionCorrelationId: null
-        };
+        if (authorization === "Bearer junior-operator-token") {
+          return {
+            operatorDbId: null,
+            operatorId: "ops_1",
+            operatorRole: "junior_operator",
+            operatorRoles: ["junior_operator"],
+            operatorSupabaseUserId: null,
+            operatorEmail: null,
+            authSource: "supabase_jwt" as const,
+            environment: "development",
+            sessionCorrelationId: null
+          };
+        }
+
+        return null;
       }
-    )
+    ),
+    resolveFromLegacyApiKey: jest.fn(async () => null)
   };
 
   const prismaTransaction = {
@@ -257,7 +268,7 @@ describe("TransactionIntentsInternalController integration", () => {
       controllers: [TransactionIntentsInternalController],
       providers: [
         TransactionIntentsService,
-        InternalOperatorApiKeyGuard,
+        InternalOperatorBearerGuard,
         {
           provide: PrismaService,
           useValue: prismaService
@@ -302,17 +313,13 @@ describe("TransactionIntentsInternalController integration", () => {
     );
 
     expect(response.status).toBe(401);
-    expect(response.body.message).toBe(
-      "Operator authentication requires a bearer token or an allowed legacy operator API key."
-    );
+    expect(response.body.message).toBe("Operator authentication requires a bearer token.");
   });
 
   it("lists pending deposit intents over the guarded internal operator API", async () => {
     const response = await request(app.getHttpServer())
       .get("/transaction-intents/internal/deposit-requests/pending?limit=10")
-      .set("x-operator-api-key", "test-operator-key")
-      .set("x-operator-id", "ops_1")
-      .set("x-operator-role", "operations_admin");
+      .set(adminOperatorHeaders);
 
     expect(response.status).toBe(200);
     expect(response.body.status).toBe("success");
@@ -325,9 +332,7 @@ describe("TransactionIntentsInternalController integration", () => {
   it("rejects deposit decisions from an unauthorized operator role", async () => {
     const response = await request(app.getHttpServer())
       .post("/transaction-intents/internal/deposit-requests/intent_1/decision")
-      .set("x-operator-api-key", "test-operator-key")
-      .set("x-operator-id", "ops_1")
-      .set("x-operator-role", "junior_operator")
+      .set(juniorOperatorHeaders)
       .send({
         decision: "approved"
       });
@@ -341,9 +346,7 @@ describe("TransactionIntentsInternalController integration", () => {
   it("approves a pending deposit intent and records operator audit metadata", async () => {
     const response = await request(app.getHttpServer())
       .post("/transaction-intents/internal/deposit-requests/intent_1/decision")
-      .set("x-operator-api-key", "test-operator-key")
-      .set("x-operator-id", "ops_1")
-      .set("x-operator-role", "operations_admin")
+      .set(adminOperatorHeaders)
       .send({
         decision: "approved",
         note: "Risk review complete."
@@ -374,9 +377,7 @@ describe("TransactionIntentsInternalController integration", () => {
 
     const firstResponse = await request(app.getHttpServer())
       .post("/transaction-intents/internal/deposit-requests/intent_1/queue")
-      .set("x-operator-api-key", "test-operator-key")
-      .set("x-operator-id", "ops_1")
-      .set("x-operator-role", "operations_admin")
+      .set(adminOperatorHeaders)
       .send({
         note: "Ready for worker pickup."
       });
@@ -391,9 +392,7 @@ describe("TransactionIntentsInternalController integration", () => {
 
     const secondResponse = await request(app.getHttpServer())
       .post("/transaction-intents/internal/deposit-requests/intent_1/queue")
-      .set("x-operator-api-key", "test-operator-key")
-      .set("x-operator-id", "ops_1")
-      .set("x-operator-role", "operations_admin")
+      .set(adminOperatorHeaders)
       .send({});
 
     expect(secondResponse.status).toBe(201);
@@ -416,9 +415,7 @@ describe("TransactionIntentsInternalController integration", () => {
 
     const response = await request(app.getHttpServer())
       .post("/transaction-intents/internal/deposit-requests/intent_1/broadcast")
-      .set("x-operator-api-key", "test-operator-key")
-      .set("x-operator-id", "ops_1")
-      .set("x-operator-role", "operations_admin")
+      .set(adminOperatorHeaders)
       .send({
         txHash: `0x${"1".repeat(64)}`,
         fromAddress: "0x0000000000000000000000000000000000000def",

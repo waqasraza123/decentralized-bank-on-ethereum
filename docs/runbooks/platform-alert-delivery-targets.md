@@ -126,9 +126,7 @@ The repo now includes an executable drill runner:
 pnpm release:readiness:probe -- \
   --probe platform_alert_delivery_slo \
   --base-url https://staging-api.example.com \
-  --operator-id ops_stage_1 \
-  --api-key "$INTERNAL_OPERATOR_API_KEY" \
-  --operator-role operations_admin \
+  --access-token "$OPERATOR_ACCESS_TOKEN" \
   --expected-target-name ops-critical \
   --expected-target-health-status critical \
   --environment production_like \
@@ -142,9 +140,7 @@ For critical re-escalation proof, use:
 pnpm release:readiness:probe -- \
   --probe critical_alert_reescalation \
   --base-url https://staging-api.example.com \
-  --operator-id ops_stage_1 \
-  --api-key "$INTERNAL_OPERATOR_API_KEY" \
-  --operator-role operations_admin \
+  --access-token "$OPERATOR_ACCESS_TOKEN" \
   --expected-alert-id alert_123 \
   --expected-min-re-escalations 1 \
   --environment production_like \

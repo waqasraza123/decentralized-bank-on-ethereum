@@ -114,9 +114,7 @@ Database restore:
 pnpm release:readiness:probe -- \
   --probe database_restore_drill \
   --base-url https://restore-api.example.com \
-  --operator-id ops_stage_1 \
-  --api-key "$INTERNAL_OPERATOR_API_KEY" \
-  --operator-role operations_admin \
+  --access-token "$OPERATOR_ACCESS_TOKEN" \
   --environment production_like \
   --release-id api-2026.04.08.1 \
   --backup-ref snapshot-2026-04-08T09:00Z \
@@ -129,9 +127,7 @@ API rollback:
 pnpm release:readiness:probe -- \
   --probe api_rollback_drill \
   --base-url https://staging-api.example.com \
-  --operator-id ops_stage_1 \
-  --api-key "$INTERNAL_OPERATOR_API_KEY" \
-  --operator-role operations_admin \
+  --access-token "$OPERATOR_ACCESS_TOKEN" \
   --environment production_like \
   --release-id api-2026.04.08.1 \
   --rollback-release-id api-2026.04.07.3 \
@@ -144,9 +140,7 @@ Worker rollback:
 pnpm release:readiness:probe -- \
   --probe worker_rollback_drill \
   --base-url https://staging-api.example.com \
-  --operator-id ops_stage_1 \
-  --api-key "$INTERNAL_OPERATOR_API_KEY" \
-  --operator-role operations_admin \
+  --access-token "$OPERATOR_ACCESS_TOKEN" \
   --expected-worker-id worker-staging-1 \
   --expected-min-healthy-workers 1 \
   --environment production_like \

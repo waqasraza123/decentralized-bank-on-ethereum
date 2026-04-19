@@ -14,10 +14,9 @@ It does not mutate money state.
 
 ## Authentication
 
-These endpoints require:
+These endpoints require an operator bearer token:
 
-- `x-operator-api-key`
-- `x-operator-id`
+- `Authorization: Bearer <operator-session-token>`
 
 ## Search transaction operations
 

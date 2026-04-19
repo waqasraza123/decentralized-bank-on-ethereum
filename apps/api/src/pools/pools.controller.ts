@@ -9,7 +9,7 @@ import {
     UseGuards
 } from "@nestjs/common";
 import { PoolStatus } from "@prisma/client";
-import { InternalOperatorApiKeyGuard } from "../auth/guards/internal-operator-api-key.guard";
+import { InternalOperatorBearerGuard } from "../auth/guards/internal-operator-bearer.guard";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { CustomJsonResponse } from "../types/CustomJsonResponse";
 import { PoolsService } from "./pools.service";
@@ -62,7 +62,7 @@ export class PoolsController {
         }
     }
 
-    @UseGuards(InternalOperatorApiKeyGuard)
+    @UseGuards(InternalOperatorBearerGuard)
     @Post('create')
     async createPool(@Body() body: { rewardRate: number }): Promise<CustomJsonResponse> {
         try {
@@ -83,7 +83,7 @@ export class PoolsController {
     }
 
     @Post(':poolId/update-status')
-    @UseGuards(InternalOperatorApiKeyGuard)
+    @UseGuards(InternalOperatorBearerGuard)
     async updatePoolStatus(
         @Param('poolId', ParseIntPipe) poolId: number,
         @Body() body: { status: PoolStatus }

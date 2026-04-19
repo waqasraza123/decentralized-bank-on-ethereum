@@ -10,7 +10,7 @@ import {
 } from "@nestjs/common";
 import * as Joi from "joi";
 import { JoiPipe } from "nestjs-joi";
-import { InternalOperatorApiKeyGuard } from "../auth/guards/internal-operator-api-key.guard";
+import { InternalOperatorBearerGuard } from "../auth/guards/internal-operator-bearer.guard";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { CustomJsonResponse } from "../types/CustomJsonResponse";
 import { StakingPoolGovernanceService } from "./staking-pool-governance.service";
@@ -51,7 +51,7 @@ export class StakingController {
     private readonly stakingPoolGovernanceService: StakingPoolGovernanceService
   ) {}
 
-  @UseGuards(InternalOperatorApiKeyGuard)
+  @UseGuards(InternalOperatorBearerGuard)
   @Post("create-pool")
   async createPool(
     @Req() request: InternalOperatorRequest,

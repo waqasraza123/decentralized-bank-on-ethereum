@@ -2,9 +2,6 @@ jest.mock("@stealth-trails-bank/config/api", () => ({
   loadDepositRiskPolicyRuntimeConfig: () => ({
     autoApproveThresholds: []
   }),
-  loadInternalOperatorRuntimeConfig: () => ({
-    internalOperatorApiKey: "test-operator-key"
-  }),
   loadInternalWorkerRuntimeConfig: () => ({
     internalWorkerApiKey: "test-worker-key"
   }),
@@ -34,7 +31,7 @@ import request from "supertest";
 import { utils as ethersUtils } from "ethers";
 import { AuthService } from "../auth/auth.service";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
-import { InternalOperatorApiKeyGuard } from "../auth/guards/internal-operator-api-key.guard";
+import { InternalOperatorBearerGuard } from "../auth/guards/internal-operator-bearer.guard";
 import { InternalWorkerApiKeyGuard } from "../auth/guards/internal-worker-api-key.guard";
 import { OperatorIdentityService } from "../auth/operator-identity.service";
 import { LedgerService } from "../ledger/ledger.service";
@@ -56,9 +53,7 @@ describe("Finance flows integration", () => {
   let harness: FinanceFlowIntegrationHarness;
 
   const operatorHeaders = {
-    "x-operator-api-key": "test-operator-key",
-    "x-operator-id": "ops_1",
-    "x-operator-role": "operations_admin"
+    Authorization: "Bearer ops-admin-token"
   };
   const workerHeaders = {
     "x-worker-api-key": "test-worker-key",
@@ -68,38 +63,30 @@ describe("Finance flows integration", () => {
     Authorization: "Bearer test-token"
   };
   const operatorIdentityService = {
-    resolveFromBearerToken: jest.fn(async () => null),
-    resolveFromLegacyApiKey: jest.fn(
-      ({
+    resolveFromBearerToken: jest.fn(
+      async ({
         headers
       }: {
         headers: Record<string, string | string[] | undefined>;
       }) => {
-        const apiKey = headers["x-operator-api-key"];
-        const operatorId = headers["x-operator-id"];
-        const operatorRole = headers["x-operator-role"];
-
-        if (
-          apiKey !== "test-operator-key" ||
-          typeof operatorId !== "string" ||
-          typeof operatorRole !== "string"
-        ) {
+        if (headers.authorization !== "Bearer ops-admin-token") {
           return null;
         }
 
         return {
           operatorDbId: null,
-          operatorId,
-          operatorRole,
-          operatorRoles: [operatorRole],
+          operatorId: "ops_1",
+          operatorRole: "operations_admin",
+          operatorRoles: ["operations_admin"],
           operatorSupabaseUserId: null,
           operatorEmail: null,
-          authSource: "legacy_api_key" as const,
+          authSource: "supabase_jwt" as const,
           environment: "development",
           sessionCorrelationId: null
         };
       }
-    )
+    ),
+    resolveFromLegacyApiKey: jest.fn(async () => null)
   };
 
   beforeEach(async () => {
@@ -118,7 +105,7 @@ describe("Finance flows integration", () => {
         TransactionIntentsService,
         WithdrawalIntentsService,
         JwtAuthGuard,
-        InternalOperatorApiKeyGuard,
+        InternalOperatorBearerGuard,
         InternalWorkerApiKeyGuard,
         {
           provide: AuthService,

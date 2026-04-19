@@ -1,13 +1,7 @@
-jest.mock("@stealth-trails-bank/config/api", () => ({
-  loadInternalOperatorRuntimeConfig: () => ({
-    internalOperatorApiKey: "test-operator-key"
-  })
-}));
-
 import { INestApplication, UnauthorizedException } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import request from "supertest";
-import { InternalOperatorApiKeyGuard } from "../auth/guards/internal-operator-api-key.guard";
+import { InternalOperatorBearerGuard } from "../auth/guards/internal-operator-bearer.guard";
 import { WithdrawalIntentsInternalController } from "./withdrawal-intents-internal.controller";
 import { WithdrawalIntentsService } from "./withdrawal-intents.service";
 
@@ -23,14 +17,14 @@ describe("WithdrawalIntentsInternalController", () => {
     const moduleRef = await Test.createTestingModule({
       controllers: [WithdrawalIntentsInternalController],
       providers: [
-        InternalOperatorApiKeyGuard,
+        InternalOperatorBearerGuard,
         {
           provide: WithdrawalIntentsService,
           useValue: withdrawalIntentsService
         }
       ]
     })
-      .overrideGuard(InternalOperatorApiKeyGuard)
+      .overrideGuard(InternalOperatorBearerGuard)
       .useValue({
         canActivate: (context: { switchToHttp(): { getRequest(): Record<string, unknown> } }) => {
           const request = context.switchToHttp().getRequest() as {
@@ -40,17 +34,16 @@ describe("WithdrawalIntentsInternalController", () => {
               operatorRole: string | null;
             };
           };
-          const apiKey = request.headers["x-operator-api-key"];
-          const operatorId = request.headers["x-operator-id"];
+          const authorization = request.headers.authorization;
 
-          if (apiKey !== "test-operator-key" || typeof operatorId !== "string") {
+          if (authorization !== "Bearer test-operator-token") {
             throw new UnauthorizedException(
-              "Operator authentication requires a bearer token or an allowed legacy operator API key."
+              "Operator authentication requires a bearer token."
             );
           }
 
           request.internalOperator = {
-            operatorId,
+            operatorId: "ops_1",
             operatorRole:
               typeof request.headers["x-operator-role"] === "string"
                 ? request.headers["x-operator-role"].toLowerCase()
@@ -91,8 +84,7 @@ describe("WithdrawalIntentsInternalController", () => {
   it("rejects malformed operator broadcast payloads", async () => {
     await request(app.getHttpServer())
       .post("/transaction-intents/internal/withdrawal-requests/intent_1/broadcast")
-      .set("x-operator-api-key", "test-operator-key")
-      .set("x-operator-id", "ops_1")
+      .set("Authorization", "Bearer test-operator-token")
       .send({
         txHash: "invalid",
         unexpected: true
@@ -107,8 +99,7 @@ describe("WithdrawalIntentsInternalController", () => {
   it("rejects malformed operator failure payloads", async () => {
     await request(app.getHttpServer())
       .post("/transaction-intents/internal/withdrawal-requests/intent_1/fail")
-      .set("x-operator-api-key", "test-operator-key")
-      .set("x-operator-id", "ops_1")
+      .set("Authorization", "Bearer test-operator-token")
       .send({
         failureCode: "x",
         failureReason: "no",
@@ -124,8 +115,7 @@ describe("WithdrawalIntentsInternalController", () => {
   it("rejects settlement notes that exceed the governed limit", async () => {
     await request(app.getHttpServer())
       .post("/transaction-intents/internal/withdrawal-requests/intent_1/settle")
-      .set("x-operator-api-key", "test-operator-key")
-      .set("x-operator-id", "ops_1")
+      .set("Authorization", "Bearer test-operator-token")
       .send({
         note: "x".repeat(501)
       })
@@ -149,8 +139,7 @@ describe("WithdrawalIntentsInternalController", () => {
 
     const response = await request(app.getHttpServer())
       .post("/transaction-intents/internal/withdrawal-requests/intent_1/broadcast")
-      .set("x-operator-api-key", "test-operator-key")
-      .set("x-operator-id", "ops_1")
+      .set("Authorization", "Bearer test-operator-token")
       .set("x-operator-role", "Senior_Operator")
       .send({
         txHash:

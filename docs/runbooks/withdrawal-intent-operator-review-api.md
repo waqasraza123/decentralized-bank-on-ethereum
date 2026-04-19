@@ -16,14 +16,13 @@ If an operator denies the request, the reservation is released back to `availabl
 
 ## Internal operator authentication
 
-The internal endpoints require these request headers:
+The internal endpoints require an operator bearer token:
 
-- `x-operator-api-key`
-- `x-operator-id`
+- `Authorization: Bearer <operator-session-token>`
 
-The API key must match `INTERNAL_OPERATOR_API_KEY`.
-
-The operator id is recorded in `AuditEvent.actorId`.
+The API resolves operator identity and roles from the bearer-authenticated
+session. `AuditEvent.actorId` is set from the authenticated operator identity,
+not from caller-supplied headers.
 
 ## List pending withdrawal requests
 
@@ -64,7 +63,7 @@ Expected behavior:
 - clears failure fields
 - writes an `AuditEvent` with:
   - `actorType = operator`
-  - `actorId = x-operator-id`
+  - `actorId = authenticated operator id`
   - `action = transaction_intent.withdrawal.approved`
 
 ## Deny a pending withdrawal request
@@ -94,7 +93,7 @@ Expected behavior:
   - back to `availableBalance`
 - writes an `AuditEvent` with:
   - `actorType = operator`
-  - `actorId = x-operator-id`
+  - `actorId = authenticated operator id`
   - `action = transaction_intent.withdrawal.denied`
 
 ## Success condition

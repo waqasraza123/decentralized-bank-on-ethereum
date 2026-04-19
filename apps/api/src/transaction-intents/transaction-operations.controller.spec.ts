@@ -1,7 +1,4 @@
 jest.mock("@stealth-trails-bank/config/api", () => ({
-  loadInternalOperatorRuntimeConfig: () => ({
-    internalOperatorApiKey: "test-operator-key"
-  }),
   loadProductChainRuntimeConfig: () => ({
     productChainId: 8453
   })
@@ -10,7 +7,7 @@ jest.mock("@stealth-trails-bank/config/api", () => ({
 import { INestApplication, UnauthorizedException } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import request from "supertest";
-import { InternalOperatorApiKeyGuard } from "../auth/guards/internal-operator-api-key.guard";
+import { InternalOperatorBearerGuard } from "../auth/guards/internal-operator-bearer.guard";
 import { TransactionOperationsController } from "./transaction-operations.controller";
 import { TransactionOperationsService } from "./transaction-operations.service";
 
@@ -25,14 +22,14 @@ describe("TransactionOperationsController", () => {
     const moduleRef = await Test.createTestingModule({
       controllers: [TransactionOperationsController],
       providers: [
-        InternalOperatorApiKeyGuard,
+        InternalOperatorBearerGuard,
         {
           provide: TransactionOperationsService,
           useValue: transactionOperationsService
         }
       ]
     })
-      .overrideGuard(InternalOperatorApiKeyGuard)
+      .overrideGuard(InternalOperatorBearerGuard)
       .useValue({
         canActivate: (context: { switchToHttp(): { getRequest(): Record<string, unknown> } }) => {
           const request = context.switchToHttp().getRequest() as {
@@ -42,17 +39,16 @@ describe("TransactionOperationsController", () => {
               operatorRole: string | null;
             };
           };
-          const apiKey = request.headers["x-operator-api-key"];
-          const operatorId = request.headers["x-operator-id"];
+          const authorization = request.headers.authorization;
 
-          if (apiKey !== "test-operator-key" || typeof operatorId !== "string") {
+          if (authorization !== "Bearer test-operator-token") {
             throw new UnauthorizedException(
-              "Operator authentication requires a bearer token or an allowed legacy operator API key."
+              "Operator authentication requires a bearer token."
             );
           }
 
           request.internalOperator = {
-            operatorId,
+            operatorId: "ops_1",
             operatorRole:
               typeof request.headers["x-operator-role"] === "string"
                 ? request.headers["x-operator-role"].toLowerCase()
@@ -79,8 +75,7 @@ describe("TransactionOperationsController", () => {
   it("rejects malformed transaction operation filters", async () => {
     await request(app.getHttpServer())
       .get("/transaction-intents/internal/operations/search")
-      .set("x-operator-api-key", "test-operator-key")
-      .set("x-operator-id", "ops_1")
+      .set("Authorization", "Bearer test-operator-token")
       .query({
         assetSymbol: "E",
         email: "invalid-email",
@@ -101,8 +96,7 @@ describe("TransactionOperationsController", () => {
 
     const response = await request(app.getHttpServer())
       .get("/transaction-intents/internal/operations/search")
-      .set("x-operator-api-key", "test-operator-key")
-      .set("x-operator-id", "ops_1")
+      .set("Authorization", "Bearer test-operator-token")
       .query({
         limit: "20",
         intentType: "withdrawal",
@@ -144,8 +138,7 @@ describe("TransactionOperationsController", () => {
   it("rejects malformed customer operations snapshot filters", async () => {
     await request(app.getHttpServer())
       .get("/transaction-intents/internal/operations/customer-snapshot")
-      .set("x-operator-api-key", "test-operator-key")
-      .set("x-operator-id", "ops_1")
+      .set("Authorization", "Bearer test-operator-token")
       .query({
         customerAccountId: "a".repeat(201)
       })
@@ -166,8 +159,7 @@ describe("TransactionOperationsController", () => {
 
     const response = await request(app.getHttpServer())
       .get("/transaction-intents/internal/operations/customer-snapshot")
-      .set("x-operator-api-key", "test-operator-key")
-      .set("x-operator-id", "ops_1")
+      .set("Authorization", "Bearer test-operator-token")
       .query({
         customerAccountId: "account_1",
         supabaseUserId: "supabase_1",

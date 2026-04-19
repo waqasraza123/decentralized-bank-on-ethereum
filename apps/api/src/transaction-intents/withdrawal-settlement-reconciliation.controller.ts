@@ -9,7 +9,7 @@ import {
   UseGuards,
   ValidationPipe
 } from "@nestjs/common";
-import { InternalOperatorApiKeyGuard } from "../auth/guards/internal-operator-api-key.guard";
+import { InternalOperatorBearerGuard } from "../auth/guards/internal-operator-bearer.guard";
 import { OpenReconciliationReviewCaseDto } from "../review-cases/dto/open-reconciliation-review-case.dto";
 import { CustomJsonResponse } from "../types/CustomJsonResponse";
 import { ListWithdrawalSettlementReconciliationDto } from "./dto/list-withdrawal-settlement-reconciliation.dto";
@@ -24,7 +24,7 @@ type InternalOperatorRequest = {
   };
 };
 
-@UseGuards(InternalOperatorApiKeyGuard)
+@UseGuards(InternalOperatorBearerGuard)
 @Controller("transaction-intents/internal/reconciliation")
 export class WithdrawalSettlementReconciliationController {
   constructor(

@@ -6,13 +6,13 @@ import {
   UseGuards,
   ValidationPipe
 } from "@nestjs/common";
-import { InternalOperatorApiKeyGuard } from "../auth/guards/internal-operator-api-key.guard";
+import { InternalOperatorBearerGuard } from "../auth/guards/internal-operator-bearer.guard";
 import { CustomJsonResponse } from "../types/CustomJsonResponse";
 import { GetCustomerOperationsSnapshotDto } from "./dto/get-customer-operations-snapshot.dto";
 import { SearchTransactionOperationsDto } from "./dto/search-transaction-operations.dto";
 import { TransactionOperationsService } from "./transaction-operations.service";
 
-@UseGuards(InternalOperatorApiKeyGuard)
+@UseGuards(InternalOperatorBearerGuard)
 @Controller("transaction-intents/internal/operations")
 export class TransactionOperationsController {
   constructor(

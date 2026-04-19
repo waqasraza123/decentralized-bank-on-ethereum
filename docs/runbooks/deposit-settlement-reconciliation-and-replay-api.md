@@ -15,10 +15,9 @@ It does not auto-repair manual-review-only cases.
 
 ## Authentication
 
-These endpoints require:
+These endpoints require an operator bearer token:
 
-- `x-operator-api-key`
-- `x-operator-id`
+- `Authorization: Bearer <operator-session-token>`
 
 ## List deposit settlement reconciliation
 

@@ -14,14 +14,13 @@ It does not yet broadcast blockchain transactions and it does not settle ledger 
 
 ## Internal operator authentication
 
-The internal endpoints require these request headers:
+The internal endpoints require an operator bearer token:
 
-- x-operator-api-key
-- x-operator-id
+- `Authorization: Bearer <operator-session-token>`
 
-The API key must match INTERNAL_OPERATOR_API_KEY.
-
-The operator id is recorded in AuditEvent.actorId.
+The API resolves operator identity and roles from the bearer-authenticated
+session. `AuditEvent.actorId` is set from the authenticated operator identity,
+not from caller-supplied headers.
 
 ## List pending deposit requests
 
@@ -67,7 +66,7 @@ Expected behavior:
 - clears failure fields
 - writes an AuditEvent with:
   - actorType = operator
-  - actorId = x-operator-id
+  - actorId = authenticated operator id
   - action = transaction_intent.deposit.approved
 
 ## Deny a pending deposit request
@@ -98,15 +97,14 @@ Expected behavior:
   - failureReason = denialReason
 - writes an AuditEvent with:
   - actorType = operator
-  - actorId = x-operator-id
+  - actorId = authenticated operator id
   - action = transaction_intent.deposit.denied
 
 ## Failure modes
 
 The request is rejected when:
 
-- the operator API key is missing or invalid
-- the operator id is missing
+- the operator bearer token is missing, invalid, or expired
 - the intent does not exist
 - the intent is not a deposit intent on the product chain
 - the intent is no longer pending operator decision
