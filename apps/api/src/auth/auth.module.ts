@@ -6,6 +6,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { SharedLoginBootstrapService } from './shared-login-bootstrap.service';
 import { OperatorIdentityService } from './operator-identity.service';
 import { InternalOperatorApiKeyGuard } from './guards/internal-operator-api-key.guard';
+import { InternalOperatorBearerGuard } from './guards/internal-operator-bearer.guard';
 
 @Global()
 @Module({
@@ -17,8 +18,15 @@ import { InternalOperatorApiKeyGuard } from './guards/internal-operator-api-key.
     JwtAuthGuard,
     SharedLoginBootstrapService,
     OperatorIdentityService,
-    InternalOperatorApiKeyGuard
+    InternalOperatorApiKeyGuard,
+    InternalOperatorBearerGuard
   ],
-  exports: [AuthService, JwtAuthGuard, OperatorIdentityService, InternalOperatorApiKeyGuard]
+  exports: [
+    AuthService,
+    JwtAuthGuard,
+    OperatorIdentityService,
+    InternalOperatorApiKeyGuard,
+    InternalOperatorBearerGuard
+  ]
 })
 export class AuthModule {}

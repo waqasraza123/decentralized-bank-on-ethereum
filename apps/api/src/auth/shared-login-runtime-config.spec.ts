@@ -8,6 +8,7 @@ describe("loadSharedLoginBootstrapRuntimeConfig", () => {
       ...originalEnv
     };
     delete process.env["NODE_ENV"];
+    delete process.env["OPERATOR_RUNTIME_ENVIRONMENT"];
     delete process.env["SHARED_LOGIN_ENABLED"];
     delete process.env["SHARED_LOGIN_EMAIL"];
     delete process.env["SHARED_LOGIN_PASSWORD"];
@@ -35,26 +36,40 @@ describe("loadSharedLoginBootstrapRuntimeConfig", () => {
     expect(() =>
       loadSharedLoginBootstrapRuntimeConfig(process.env)
     ).toThrow(
-      "SHARED_LOGIN_EMAIL must be explicitly overridden when shared login bootstrap is enabled in production."
+      "SHARED_LOGIN_ENABLED=true is allowed only when OPERATOR_RUNTIME_ENVIRONMENT=development and NODE_ENV is not production."
     );
   });
 
-  it("accepts explicit production shared-login bootstrap credentials", () => {
+  it("rejects explicit production shared-login bootstrap credentials", () => {
     process.env["NODE_ENV"] = "production";
     process.env["SHARED_LOGIN_ENABLED"] = "true";
     process.env["SHARED_LOGIN_EMAIL"] = "ops@example.com";
     process.env["SHARED_LOGIN_PASSWORD"] = "correct-horse-battery-staple";
     process.env["SHARED_LOGIN_SUPABASE_USER_ID"] = "ops-shared-login";
 
-    const result = loadSharedLoginBootstrapRuntimeConfig(process.env);
+    expect(() =>
+      loadSharedLoginBootstrapRuntimeConfig(process.env)
+    ).toThrow(
+      "SHARED_LOGIN_ENABLED=true is allowed only when OPERATOR_RUNTIME_ENVIRONMENT=development and NODE_ENV is not production."
+    );
+  });
 
-    expect(result).toEqual({
-      enabled: true,
-      email: "ops@example.com",
-      password: "correct-horse-battery-staple",
-      firstName: "Shared",
-      lastName: "Admin",
-      supabaseUserId: "ops-shared-login"
-    });
+  it("rejects shared login bootstrap in staging-like operator environments", () => {
+    process.env["OPERATOR_RUNTIME_ENVIRONMENT"] = "staging";
+    process.env["SHARED_LOGIN_ENABLED"] = "true";
+
+    expect(() =>
+      loadSharedLoginBootstrapRuntimeConfig(process.env)
+    ).toThrow(
+      "SHARED_LOGIN_ENABLED=true is allowed only when OPERATOR_RUNTIME_ENVIRONMENT=development and NODE_ENV is not production."
+    );
+
+    process.env["OPERATOR_RUNTIME_ENVIRONMENT"] = "production_like";
+
+    expect(() =>
+      loadSharedLoginBootstrapRuntimeConfig(process.env)
+    ).toThrow(
+      "SHARED_LOGIN_ENABLED=true is allowed only when OPERATOR_RUNTIME_ENVIRONMENT=development and NODE_ENV is not production."
+    );
   });
 });

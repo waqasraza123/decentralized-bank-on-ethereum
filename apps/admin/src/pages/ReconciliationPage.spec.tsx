@@ -43,7 +43,15 @@ function renderPage(initialEntry = "/reconciliation") {
 
   return render(
     <QueryClientProvider client={queryClient}>
-      <OperatorSessionProvider serverUrl="http://localhost:9001">
+      <OperatorSessionProvider
+        serverUrl="http://localhost:9001"
+        initialDraft={{
+          baseUrl: "http://localhost:9001",
+          accessToken: "test-access-token",
+          operatorId: "ops_1",
+          operatorRole: "operations_admin"
+        }}
+      >
         <MemoryRouter
           initialEntries={[initialEntry]}
           future={{
@@ -133,11 +141,6 @@ describe("ReconciliationPage", () => {
         baseUrl: "http://localhost:9001"
       })
     );
-    window.sessionStorage.setItem(
-      "stealth-trails-bank.admin.operator-session-token",
-      "test-access-token"
-    );
-
     vi.mocked(listLedgerReconciliationMismatches).mockResolvedValue({
       mismatches: [createWorkspace().mismatch],
       limit: 20,
@@ -300,7 +303,6 @@ describe("ReconciliationPage", () => {
 
   afterEach(() => {
     vi.clearAllMocks();
-    window.sessionStorage.clear();
   });
 
   it("uses the surfaced approval request id when replaying confirm", async () => {
@@ -348,7 +350,7 @@ describe("ReconciliationPage", () => {
         expect.objectContaining({
           accessToken: "test-access-token",
           baseUrl: "http://localhost:9001",
-          operatorId: ""
+          operatorId: "ops_1"
         }),
         "mismatch_1",
         "approval_confirm_1",
@@ -380,7 +382,7 @@ describe("ReconciliationPage", () => {
         expect.objectContaining({
           accessToken: "test-access-token",
           baseUrl: "http://localhost:9001",
-          operatorId: ""
+          operatorId: "ops_1"
         }),
         "mismatch_1",
         "settle",
@@ -408,7 +410,9 @@ describe("ReconciliationPage", () => {
     await waitFor(() => {
       expect(reviewLedgerReplayApproval).toHaveBeenCalledWith(
         expect.objectContaining({
-          operatorId: "ops_1"
+          accessToken: "test-access-token",
+          baseUrl: "http://localhost:9001",
+          operatorId: ""
         }),
         "approval_confirm_1",
         {

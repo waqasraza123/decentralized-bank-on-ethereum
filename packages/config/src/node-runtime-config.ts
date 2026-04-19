@@ -1795,11 +1795,13 @@ export function loadSharedLoginBootstrapRuntimeConfig(
       (environment === "production" ? "production" : "development")
   );
   const configuredEnabled = readOptionalRuntimeEnv(env, "SHARED_LOGIN_ENABLED");
+  const nonDevelopmentOperatorEnvironment =
+    operatorRuntimeEnvironment === "staging" ||
+    operatorRuntimeEnvironment === "production_like" ||
+    operatorRuntimeEnvironment === "production";
   const enabled = configuredEnabled
     ? parseBoolean(configuredEnabled, "SHARED_LOGIN_ENABLED")
-    : environment === "production" ||
-        operatorRuntimeEnvironment === "staging" ||
-        operatorRuntimeEnvironment === "production_like"
+    : environment === "production" || nonDevelopmentOperatorEnvironment
       ? false
       : DEFAULT_SHARED_LOGIN_ENABLED;
 
@@ -1818,6 +1820,12 @@ export function loadSharedLoginBootstrapRuntimeConfig(
     readOptionalRuntimeEnv(env, "SHARED_LOGIN_SUPABASE_USER_ID") ??
     DEFAULT_SHARED_LOGIN_SUPABASE_USER_ID;
 
+  if (enabled && (environment === "production" || nonDevelopmentOperatorEnvironment)) {
+    throw new Error(
+      "SHARED_LOGIN_ENABLED=true is allowed only when OPERATOR_RUNTIME_ENVIRONMENT=development and NODE_ENV is not production."
+    );
+  }
+
   if (!enabled) {
     return {
       enabled,
@@ -1827,24 +1835,6 @@ export function loadSharedLoginBootstrapRuntimeConfig(
       lastName,
       supabaseUserId
     };
-  }
-
-  if (
-    environment === "production" ||
-    operatorRuntimeEnvironment === "staging" ||
-    operatorRuntimeEnvironment === "production_like"
-  ) {
-    if (email === DEFAULT_SHARED_LOGIN_EMAIL) {
-      throw new Error(
-        "SHARED_LOGIN_EMAIL must be explicitly overridden when shared login bootstrap is enabled outside local development."
-      );
-    }
-
-    if (password === DEFAULT_SHARED_LOGIN_PASSWORD) {
-      throw new Error(
-        "SHARED_LOGIN_PASSWORD must be explicitly overridden when shared login bootstrap is enabled outside local development."
-      );
-    }
   }
 
   if (password.length < 8) {

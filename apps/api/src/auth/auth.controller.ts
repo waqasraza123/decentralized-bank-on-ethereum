@@ -11,7 +11,7 @@ import {
   ValidationPipe
 } from "@nestjs/common";
 import { JwtAuthGuard } from "./guards/jwt-auth.guard";
-import { InternalOperatorApiKeyGuard } from "./guards/internal-operator-api-key.guard";
+import { InternalOperatorBearerGuard } from "./guards/internal-operator-bearer.guard";
 import { CustomJsonResponse } from "../types/CustomJsonResponse";
 import { AuthService } from "./auth.service";
 import { LoginDto } from "./dto/login.dto";
@@ -122,7 +122,7 @@ export class AuthController {
     };
   }
 
-  @UseGuards(InternalOperatorApiKeyGuard)
+  @UseGuards(InternalOperatorBearerGuard)
   @Get("internal/operator/session")
   async getOperatorSession(
     @Request() request: AuthenticatedOperatorRequest
