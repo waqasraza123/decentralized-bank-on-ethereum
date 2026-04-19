@@ -34,6 +34,7 @@ import {
   verifyTotpCode,
 } from "./customer-mfa.util";
 import { generateEthereumAddress } from "./auth.util";
+import { CustomerMfaEmailDeliveryService } from "./customer-mfa-email-delivery.service";
 
 type LegacyUserRecord = {
   id: number;
@@ -52,6 +53,7 @@ export type CustomerAccountProjection = {
     firstName: string | null;
     lastName: string | null;
     passwordHash: string | null;
+    authTokenVersion: number;
     mfaRequired: boolean;
     mfaTotpEnrolled: boolean;
     mfaEmailOtpEnrolled: boolean;
@@ -142,8 +144,14 @@ type LoginResponseData = {
   user: PublicLoggedInUser;
 };
 
+type CustomerSessionRefreshData = {
+  token: string;
+  revokedOtherSessions: boolean;
+};
+
 type UpdatePasswordResponseData = {
   passwordRotationAvailable: boolean;
+  session: CustomerSessionRefreshData;
 };
 
 type MfaStatusResponseData = {
@@ -166,6 +174,7 @@ type StartEmailEnrollmentResponseData = {
 
 type VerifyMfaResponseData = {
   mfa: CustomerMfaStatus;
+  session?: CustomerSessionRefreshData;
 };
 
 type StartMfaChallengeResponseData = {
@@ -175,6 +184,10 @@ type StartMfaChallengeResponseData = {
   purpose: CustomerMfaChallengePurpose;
   expiresAt: string;
   previewCode: string | null;
+};
+
+type RevokeCustomerSessionsResponseData = {
+  session: CustomerSessionRefreshData;
 };
 
 type SharedLoginBootstrapResult = {
@@ -198,7 +211,10 @@ export class AuthService {
   private readonly lockoutDurationMs: number;
   private readonly challengeStartCooldownMs: number;
 
-  constructor(private readonly prismaService: PrismaService) {
+  constructor(
+    private readonly prismaService: PrismaService,
+    private readonly customerMfaEmailDeliveryService: CustomerMfaEmailDeliveryService,
+  ) {
     this.productChainId = loadProductChainRuntimeConfig().productChainId;
     const customerMfaPolicy = loadCustomerMfaPolicyRuntimeConfig();
     this.emailOtpExpiryMs = customerMfaPolicy.emailOtpExpirySeconds * 1000;
@@ -276,10 +292,6 @@ export class AuthService {
       expiresAt: challenge.expiresAt,
       sentAt: challenge.sentAt,
     } as PrismaJsonValue;
-  }
-
-  private isEmailOtpPreviewEnabled(): boolean {
-    return process.env.NODE_ENV !== "production";
   }
 
   private assertChallengeActive(
@@ -382,7 +394,14 @@ export class AuthService {
 
   private async recordFailedMfaAttempt(input: {
     customerId: string;
+    actorId: string;
     currentFailedAttemptCount: number;
+    method: CustomerMfaChallengeMethod | "totp_enrollment";
+    purpose:
+      | CustomerMfaChallengePurpose
+      | "email_enrollment"
+      | "totp_enrollment";
+    challengeId?: string | null;
   }): Promise<Date | null> {
     const nextFailedAttemptCount = input.currentFailedAttemptCount + 1;
     const shouldLock = nextFailedAttemptCount >= this.maxFailedAttempts;
@@ -397,6 +416,36 @@ export class AuthService {
         mfaLockedUntil: lockedUntil,
       },
     });
+
+    await this.appendAuditEvent({
+      customerId: input.customerId,
+      actorId: input.actorId,
+      action: "customer_account.mfa_verification_failed",
+      targetType: "Customer",
+      metadata: {
+        challengeId: input.challengeId ?? null,
+        method: input.method,
+        purpose: input.purpose,
+        failedAttemptCount: nextFailedAttemptCount,
+        lockoutApplied: shouldLock,
+        lockedUntil: lockedUntil?.toISOString() ?? null,
+      } as PrismaJsonValue,
+    });
+
+    if (lockedUntil) {
+      await this.appendAuditEvent({
+        customerId: input.customerId,
+        actorId: input.actorId,
+        action: "customer_account.mfa_lockout_triggered",
+        targetType: "Customer",
+        metadata: {
+          challengeId: input.challengeId ?? null,
+          method: input.method,
+          purpose: input.purpose,
+          lockedUntil: lockedUntil.toISOString(),
+        } as PrismaJsonValue,
+      });
+    }
 
     return lockedUntil;
   }
@@ -505,7 +554,10 @@ export class AuthService {
     if (!verifyTotpCode(customer.mfaPendingTotpSecret, code.trim())) {
       const lockedUntil = await this.recordFailedMfaAttempt({
         customerId: customer.id,
+        actorId: customer.supabaseUserId,
         currentFailedAttemptCount: customer.mfaFailedAttemptCount,
+        method: "totp_enrollment",
+        purpose: "totp_enrollment",
       });
       throw new BadRequestException(
         lockedUntil
@@ -523,8 +575,14 @@ export class AuthService {
         mfaPendingTotpIssuedAt: null,
         mfaFailedAttemptCount: 0,
         mfaLockedUntil: null,
+        authTokenVersion: {
+          increment: 1,
+        },
       },
       select: {
+        supabaseUserId: true,
+        email: true,
+        authTokenVersion: true,
         mfaRequired: true,
         mfaTotpEnrolled: true,
         mfaEmailOtpEnrolled: true,
@@ -540,6 +598,7 @@ export class AuthService {
       targetType: "Customer",
       metadata: {
         email: customer.email,
+        revokedOtherSessions: true,
       } as PrismaJsonValue,
     });
 
@@ -548,6 +607,7 @@ export class AuthService {
       message: "Authenticator enrolled successfully.",
       data: {
         mfa: this.buildCustomerMfaStatus(updatedCustomer),
+        session: this.buildSessionRefresh(updatedCustomer),
       },
     };
   }
@@ -559,13 +619,13 @@ export class AuthService {
       await this.getCustomerMfaRecordBySupabaseUserId(supabaseUserId);
     this.assertMfaNotLocked(customer);
     this.assertChallengeCooldown(customer);
-    const previewCode = generateEmailOtpCode();
+    const emailOtpCode = generateEmailOtpCode();
     const challengeId = randomUUID();
     const challenge: CustomerMfaChallengeRecord = {
       id: challengeId,
       purpose: "email_enrollment",
       method: "email_otp",
-      codeHash: createOtpHash(previewCode),
+      codeHash: createOtpHash(emailOtpCode),
       expiresAt: new Date(Date.now() + this.emailOtpExpiryMs).toISOString(),
       sentAt: new Date().toISOString(),
     };
@@ -578,6 +638,32 @@ export class AuthService {
       },
     });
 
+    let deliveryResult: Awaited<
+      ReturnType<CustomerMfaEmailDeliveryService["sendCode"]>
+    >;
+
+    try {
+      deliveryResult = await this.customerMfaEmailDeliveryService.sendCode({
+        customerId: customer.id,
+        actorId: customer.supabaseUserId,
+        email: customer.email,
+        challengeId,
+        purpose: "email_enrollment",
+        code: emailOtpCode,
+        expiresAt: challenge.expiresAt,
+      });
+    } catch (error) {
+      await this.prismaService.customer.update({
+        where: { id: customer.id },
+        data: {
+          mfaActiveChallenge: Prisma.DbNull,
+          mfaLastChallengeStartedAt: null,
+        },
+      });
+
+      throw error;
+    }
+
     await this.appendAuditEvent({
       customerId: customer.id,
       actorId: customer.supabaseUserId,
@@ -585,6 +671,8 @@ export class AuthService {
       targetType: "Customer",
       metadata: {
         challengeId,
+        deliveryBackendType: deliveryResult.backendType,
+        deliveryBackendReference: deliveryResult.backendReference,
       } as PrismaJsonValue,
     });
 
@@ -595,8 +683,8 @@ export class AuthService {
         mfa: this.buildCustomerMfaStatus(customer),
         challengeId,
         expiresAt: challenge.expiresAt,
-        deliveryChannel: "email",
-        previewCode: this.isEmailOtpPreviewEnabled() ? previewCode : null,
+        deliveryChannel: deliveryResult.deliveryChannel,
+        previewCode: deliveryResult.previewCode,
       },
     };
   }
@@ -622,7 +710,11 @@ export class AuthService {
     ) {
       const lockedUntil = await this.recordFailedMfaAttempt({
         customerId: customer.id,
+        actorId: customer.supabaseUserId,
         currentFailedAttemptCount: customer.mfaFailedAttemptCount,
+        method: "email_otp",
+        purpose: "email_enrollment",
+        challengeId,
       });
       throw new BadRequestException(
         lockedUntil
@@ -638,8 +730,14 @@ export class AuthService {
         mfaActiveChallenge: Prisma.DbNull,
         mfaFailedAttemptCount: 0,
         mfaLockedUntil: null,
+        authTokenVersion: {
+          increment: 1,
+        },
       },
       select: {
+        supabaseUserId: true,
+        email: true,
+        authTokenVersion: true,
         mfaRequired: true,
         mfaTotpEnrolled: true,
         mfaEmailOtpEnrolled: true,
@@ -655,6 +753,7 @@ export class AuthService {
       targetType: "Customer",
       metadata: {
         challengeId,
+        revokedOtherSessions: true,
       } as PrismaJsonValue,
     });
 
@@ -663,6 +762,7 @@ export class AuthService {
       message: "Backup email MFA enrolled successfully.",
       data: {
         mfa: this.buildCustomerMfaStatus(updatedCustomer),
+        session: this.buildSessionRefresh(updatedCustomer),
       },
     };
   }
@@ -690,15 +790,15 @@ export class AuthService {
       throw new ForbiddenException("Email backup MFA is not enrolled.");
     }
 
-    const previewCode = method === "email_otp" ? generateEmailOtpCode() : null;
+    const emailOtpCode = method === "email_otp" ? generateEmailOtpCode() : null;
     const challengeId = randomUUID();
     const challenge: CustomerMfaChallengeRecord = {
       id: challengeId,
       purpose,
       method,
-      codeHash: previewCode ? createOtpHash(previewCode) : null,
+      codeHash: emailOtpCode ? createOtpHash(emailOtpCode) : null,
       expiresAt: new Date(Date.now() + this.emailOtpExpiryMs).toISOString(),
-      sentAt: previewCode ? new Date().toISOString() : null,
+      sentAt: emailOtpCode ? new Date().toISOString() : null,
     };
 
     await this.prismaService.customer.update({
@@ -709,6 +809,34 @@ export class AuthService {
       },
     });
 
+    let deliveryResult: Awaited<
+      ReturnType<CustomerMfaEmailDeliveryService["sendCode"]>
+    > | null = null;
+
+    if (method === "email_otp" && emailOtpCode) {
+      try {
+        deliveryResult = await this.customerMfaEmailDeliveryService.sendCode({
+          customerId: customer.id,
+          actorId: customer.supabaseUserId,
+          email: customer.email,
+          challengeId,
+          purpose,
+          code: emailOtpCode,
+          expiresAt: challenge.expiresAt,
+        });
+      } catch (error) {
+        await this.prismaService.customer.update({
+          where: { id: customer.id },
+          data: {
+            mfaActiveChallenge: Prisma.DbNull,
+            mfaLastChallengeStartedAt: null,
+          },
+        });
+
+        throw error;
+      }
+    }
+
     await this.appendAuditEvent({
       customerId: customer.id,
       actorId: customer.supabaseUserId,
@@ -718,6 +846,8 @@ export class AuthService {
         challengeId,
         purpose,
         method,
+        deliveryBackendType: deliveryResult?.backendType ?? null,
+        deliveryBackendReference: deliveryResult?.backendReference ?? null,
       } as PrismaJsonValue,
     });
 
@@ -730,10 +860,7 @@ export class AuthService {
         method,
         purpose,
         expiresAt: challenge.expiresAt,
-        previewCode:
-          method === "email_otp" && this.isEmailOtpPreviewEnabled()
-            ? previewCode
-            : null,
+        previewCode: deliveryResult?.previewCode ?? null,
       },
     };
   }
@@ -762,7 +889,11 @@ export class AuthService {
       ) {
         const lockedUntil = await this.recordFailedMfaAttempt({
           customerId: customer.id,
+          actorId: customer.supabaseUserId,
           currentFailedAttemptCount: customer.mfaFailedAttemptCount,
+          method: "totp",
+          purpose,
+          challengeId,
         });
         throw new BadRequestException(
           lockedUntil
@@ -776,7 +907,11 @@ export class AuthService {
     ) {
       const lockedUntil = await this.recordFailedMfaAttempt({
         customerId: customer.id,
+        actorId: customer.supabaseUserId,
         currentFailedAttemptCount: customer.mfaFailedAttemptCount,
+        method: "email_otp",
+        purpose,
+        challengeId,
       });
       throw new BadRequestException(
         lockedUntil
@@ -839,9 +974,33 @@ export class AuthService {
     this.assertStepUpFresh(this.buildCustomerMfaStatus(customer));
   }
 
-  private signToken(sub: string, email: string): string {
+  private signToken(
+    sub: string,
+    email: string,
+    authTokenVersion: number,
+  ): string {
     const { jwtSecret, jwtExpirySeconds } = loadJwtRuntimeConfig();
-    return jwt.sign({ sub, email }, jwtSecret, { expiresIn: jwtExpirySeconds });
+    return jwt.sign({ sub, email, v: authTokenVersion }, jwtSecret, {
+      expiresIn: jwtExpirySeconds,
+    });
+  }
+
+  private buildSessionRefresh(
+    input: {
+      supabaseUserId: string;
+      email: string;
+      authTokenVersion: number;
+    },
+    revokedOtherSessions = true,
+  ): CustomerSessionRefreshData {
+    return {
+      token: this.signToken(
+        input.supabaseUserId,
+        input.email,
+        input.authTokenVersion,
+      ),
+      revokedOtherSessions,
+    };
   }
 
   private normalizeEmail(email: string): string {
@@ -1194,6 +1353,7 @@ export class AuthService {
         firstName: customer.firstName,
         lastName: customer.lastName,
         passwordHash: customer.passwordHash,
+        authTokenVersion: customer.authTokenVersion,
         mfaRequired: customer.mfaRequired,
         mfaTotpEnrolled: customer.mfaTotpEnrolled,
         mfaEmailOtpEnrolled: customer.mfaEmailOtpEnrolled,
@@ -1233,9 +1393,25 @@ export class AuthService {
 
       const sub = payload["sub"];
       const email = payload["email"];
+      const authTokenVersion = payload["v"];
 
-      if (typeof sub !== "string" || typeof email !== "string") {
+      if (
+        typeof sub !== "string" ||
+        typeof email !== "string" ||
+        !Number.isInteger(authTokenVersion)
+      ) {
         throw new UnauthorizedException("Invalid or expired token.");
+      }
+
+      const customer = await this.prismaService.customer.findUnique({
+        where: { supabaseUserId: sub },
+        select: {
+          authTokenVersion: true,
+        },
+      });
+
+      if (!customer || customer.authTokenVersion !== authTokenVersion) {
+        throw new UnauthorizedException("Session is no longer valid.");
       }
 
       return { id: sub, email };
@@ -1260,7 +1436,9 @@ export class AuthService {
       select: {
         id: true,
         supabaseUserId: true,
+        email: true,
         passwordHash: true,
+        authTokenVersion: true,
         mfaRequired: true,
         mfaTotpEnrolled: true,
         mfaEmailOtpEnrolled: true,
@@ -1288,34 +1466,96 @@ export class AuthService {
 
     const nextPasswordHash = await bcrypt.hash(newPassword, 12);
 
-    await this.prismaService.$transaction(async (transaction) => {
-      await transaction.customer.update({
-        where: { id: customer.id },
-        data: {
-          passwordHash: nextPasswordHash,
-        },
-      });
+    const rotatedSession = await this.prismaService.$transaction(
+      async (transaction) => {
+        const updatedCustomer = await transaction.customer.update({
+          where: { id: customer.id },
+          data: {
+            passwordHash: nextPasswordHash,
+            authTokenVersion: {
+              increment: 1,
+            },
+          },
+          select: {
+            supabaseUserId: true,
+            email: true,
+            authTokenVersion: true,
+          },
+        });
 
-      await transaction.auditEvent.create({
-        data: {
-          customerId: customer.id,
-          actorType: "customer",
-          actorId: customer.supabaseUserId,
-          action: "customer_account.password_rotated",
-          targetType: "Customer",
-          targetId: customer.id,
-          metadata: {
-            passwordRotationAvailable: true,
-          } as PrismaJsonValue,
-        },
-      });
-    });
+        await transaction.auditEvent.create({
+          data: {
+            customerId: customer.id,
+            actorType: "customer",
+            actorId: customer.supabaseUserId,
+            action: "customer_account.password_rotated",
+            targetType: "Customer",
+            targetId: customer.id,
+            metadata: {
+              passwordRotationAvailable: true,
+              revokedOtherSessions: true,
+            } as PrismaJsonValue,
+          },
+        });
+        return updatedCustomer;
+      },
+    );
 
     return {
       status: "success",
       message: "Password updated successfully.",
       data: {
         passwordRotationAvailable: true,
+        session: this.buildSessionRefresh(rotatedSession),
+      },
+    };
+  }
+
+  async revokeAllCustomerSessions(
+    supabaseUserId: string,
+  ): Promise<CustomJsonResponse<RevokeCustomerSessionsResponseData>> {
+    const customer = await this.prismaService.customer.findUnique({
+      where: { supabaseUserId },
+      select: {
+        id: true,
+        supabaseUserId: true,
+        email: true,
+      },
+    });
+
+    if (!customer) {
+      throw new NotFoundException("Customer session profile not found.");
+    }
+
+    const updatedCustomer = await this.prismaService.customer.update({
+      where: { id: customer.id },
+      data: {
+        authTokenVersion: {
+          increment: 1,
+        },
+      },
+      select: {
+        supabaseUserId: true,
+        email: true,
+        authTokenVersion: true,
+      },
+    });
+
+    await this.appendAuditEvent({
+      customerId: customer.id,
+      actorId: customer.supabaseUserId,
+      action: "customer_account.sessions_revoked",
+      targetType: "Customer",
+      metadata: {
+        revokedOtherSessions: true,
+      } as PrismaJsonValue,
+    });
+
+    return {
+      status: "success",
+      message: "Customer sessions revoked successfully.",
+      data: {
+        session: this.buildSessionRefresh(updatedCustomer),
       },
     };
   }
@@ -1378,6 +1618,7 @@ export class AuthService {
         supabaseUserId: true,
         email: true,
         passwordHash: true,
+        authTokenVersion: true,
         mfaRequired: true,
         mfaTotpEnrolled: true,
         mfaEmailOtpEnrolled: true,
@@ -1402,7 +1643,11 @@ export class AuthService {
       throw new InternalServerErrorException("User profile not found.");
     }
 
-    const token = this.signToken(customer.supabaseUserId, customer.email);
+    const token = this.signToken(
+      customer.supabaseUserId,
+      customer.email,
+      customer.authTokenVersion,
+    );
 
     return {
       status: "success",

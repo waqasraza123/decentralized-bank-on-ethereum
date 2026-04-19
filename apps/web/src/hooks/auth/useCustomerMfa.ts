@@ -38,13 +38,25 @@ type StartMfaChallengeResponse = {
 
 type VerifyMfaResponse = {
   mfa: CustomerMfaStatus;
+  session?: {
+    token: string;
+    revokedOtherSessions: boolean;
+  };
 };
 
 function useMfaSessionUpdater() {
   const user = useUserStore((state) => state.user);
   const setUser = useUserStore((state) => state.setUser);
+  const setToken = useUserStore((state) => state.setToken);
 
-  return async (mfa: CustomerMfaStatus) => {
+  return async (
+    mfa: CustomerMfaStatus,
+    session?: { token: string; revokedOtherSessions: boolean },
+  ) => {
+    if (session?.token) {
+      setToken(session.token);
+    }
+
     if (!user) {
       return;
     }
@@ -146,7 +158,7 @@ export function useVerifyTotpEnrollment() {
         "/auth/mfa/totp/enrollment/verify",
         input,
       );
-      await applyMfa(result.mfa);
+      await applyMfa(result.mfa, result.session);
       return result;
     },
   });
@@ -179,7 +191,7 @@ export function useVerifyEmailEnrollment() {
         "/auth/mfa/email/enrollment/verify",
         input,
       );
-      await applyMfa(result.mfa);
+      await applyMfa(result.mfa, result.session);
       return result;
     },
   });
@@ -221,7 +233,7 @@ export function useVerifyCustomerMfaChallenge() {
         "/auth/mfa/challenge/verify",
         input,
       );
-      await applyMfa(result.mfa);
+      await applyMfa(result.mfa, result.session);
       return result;
     },
   });

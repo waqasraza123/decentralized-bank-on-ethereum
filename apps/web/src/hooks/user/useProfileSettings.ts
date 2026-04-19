@@ -6,7 +6,7 @@ import { ApiResponse, readApiErrorMessage } from "@/lib/api";
 import { useUserStore } from "@/stores/userStore";
 
 const webRuntimeConfig = loadWebRuntimeConfig(
-  import.meta.env as Record<string, string | boolean | undefined>
+  import.meta.env as Record<string, string | boolean | undefined>,
 );
 
 type RotatePasswordInput = {
@@ -16,14 +16,26 @@ type RotatePasswordInput = {
 
 type RotatePasswordResult = {
   passwordRotationAvailable: boolean;
+  session: {
+    token: string;
+    revokedOtherSessions: boolean;
+  };
 };
 
 type UpdateNotificationPreferencesResult = {
   notificationPreferences: CustomerNotificationPreferences;
 };
 
+type RevokeCustomerSessionsResult = {
+  session: {
+    token: string;
+    revokedOtherSessions: boolean;
+  };
+};
+
 export function useRotatePassword() {
   const token = useUserStore((state) => state.token);
+  const setToken = useUserStore((state) => state.setToken);
 
   return useMutation({
     mutationFn: async (input: RotatePasswordInput) => {
@@ -37,20 +49,65 @@ export function useRotatePassword() {
           input,
           {
             headers: {
-              Authorization: `Bearer ${token}`
-            }
-          }
+              Authorization: `Bearer ${token}`,
+            },
+          },
         );
 
         if (response.data.status !== "success" || !response.data.data) {
-          throw new Error(response.data.message || "Failed to update password.");
+          throw new Error(
+            response.data.message || "Failed to update password.",
+          );
         }
 
+        setToken(response.data.data.session.token);
         return response.data.data;
       } catch (error) {
-        throw new Error(readApiErrorMessage(error, "Failed to update password."));
+        throw new Error(
+          readApiErrorMessage(error, "Failed to update password."),
+        );
       }
-    }
+    },
+  });
+}
+
+export function useRevokeAllSessions() {
+  const token = useUserStore((state) => state.token);
+  const setToken = useUserStore((state) => state.setToken);
+
+  return useMutation({
+    mutationFn: async () => {
+      if (!token) {
+        throw new Error("Auth token is required.");
+      }
+
+      try {
+        const response = await axios.post<
+          ApiResponse<RevokeCustomerSessionsResult>
+        >(
+          `${webRuntimeConfig.serverUrl}/auth/session/revoke-all`,
+          {},
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          },
+        );
+
+        if (response.data.status !== "success" || !response.data.data) {
+          throw new Error(
+            response.data.message || "Failed to revoke sessions.",
+          );
+        }
+
+        setToken(response.data.data.session.token);
+        return response.data.data;
+      } catch (error) {
+        throw new Error(
+          readApiErrorMessage(error, "Failed to revoke sessions."),
+        );
+      }
+    },
   });
 }
 
@@ -70,20 +127,22 @@ export function useUpdateNotificationPreferences() {
       }
 
       try {
-        const response =
-          await axios.patch<ApiResponse<UpdateNotificationPreferencesResult>>(
-            `${webRuntimeConfig.serverUrl}/user/${user.supabaseUserId}/notification-preferences`,
-            input,
-            {
-              headers: {
-                Authorization: `Bearer ${token}`
-              }
-            }
-          );
+        const response = await axios.patch<
+          ApiResponse<UpdateNotificationPreferencesResult>
+        >(
+          `${webRuntimeConfig.serverUrl}/user/${user.supabaseUserId}/notification-preferences`,
+          input,
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          },
+        );
 
         if (response.data.status !== "success" || !response.data.data) {
           throw new Error(
-            response.data.message || "Failed to update notification preferences."
+            response.data.message ||
+              "Failed to update notification preferences.",
           );
         }
 
@@ -92,15 +151,15 @@ export function useUpdateNotificationPreferences() {
         throw new Error(
           readApiErrorMessage(
             error,
-            "Failed to update notification preferences."
-          )
+            "Failed to update notification preferences.",
+          ),
         );
       }
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({
-        queryKey: ["user-profile", user?.supabaseUserId]
+        queryKey: ["user-profile", user?.supabaseUserId],
       });
-    }
+    },
   });
 }

@@ -23,6 +23,11 @@ export type SessionUser = {
   mfa?: CustomerMfaStatus;
 };
 
+export type SessionRefresh = {
+  token: string;
+  revokedOtherSessions: boolean;
+};
+
 export type MfaStatusResponseData = {
   mfa: CustomerMfaStatus;
 };
@@ -52,6 +57,7 @@ export type StartMfaChallengeResult = {
 
 export type VerifyMfaResult = {
   mfa: CustomerMfaStatus;
+  session?: SessionRefresh;
 };
 
 export type SupportedAsset = {
@@ -431,6 +437,11 @@ export type SignUpResponseData = {
 
 export type RotatePasswordResult = {
   passwordRotationAvailable: boolean;
+  session: SessionRefresh;
+};
+
+export type RevokeCustomerSessionsResult = {
+  session: SessionRefresh;
 };
 
 export type UpdateNotificationPreferencesResult = {

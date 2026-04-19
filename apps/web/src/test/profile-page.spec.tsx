@@ -1,7 +1,11 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { useRotatePassword, useUpdateNotificationPreferences } from "@/hooks/user/useProfileSettings";
+import {
+  useRevokeAllSessions,
+  useRotatePassword,
+  useUpdateNotificationPreferences,
+} from "@/hooks/user/useProfileSettings";
 import { useGetUser } from "@/hooks/user/useGetUser";
 import Profile from "@/pages/Profile";
 import { useUserStore } from "@/stores/userStore";
@@ -9,26 +13,39 @@ import { renderWithRouter } from "@/test/render-with-router";
 
 const mockUseGetUser = vi.mocked(useGetUser);
 const mockUseRotatePassword = vi.mocked(useRotatePassword);
+const mockUseRevokeAllSessions = vi.mocked(useRevokeAllSessions);
 const mockUseUpdateNotificationPreferences = vi.mocked(
-  useUpdateNotificationPreferences
+  useUpdateNotificationPreferences,
 );
 
 vi.mock("@/hooks/user/useGetUser", () => ({
-  useGetUser: vi.fn()
+  useGetUser: vi.fn(),
 }));
 
 vi.mock("@/hooks/user/useProfileSettings", () => ({
+  useRevokeAllSessions: vi.fn(),
   useRotatePassword: vi.fn(),
-  useUpdateNotificationPreferences: vi.fn()
+  useUpdateNotificationPreferences: vi.fn(),
 }));
 
 describe("profile page", () => {
   const rotatePassword = vi.fn();
+  const revokeAllSessions = vi.fn();
   const updateNotificationPreferences = vi.fn();
+  const freshMfa = {
+    required: true,
+    totpEnrolled: true,
+    emailOtpEnrolled: true,
+    requiresSetup: false,
+    moneyMovementBlocked: false,
+    stepUpFreshUntil: "2099-04-01T10:00:00.000Z",
+    lockedUntil: null,
+  } as const;
 
   beforeEach(() => {
     localStorage.clear();
     rotatePassword.mockReset();
+    revokeAllSessions.mockReset();
     updateNotificationPreferences.mockReset();
 
     useUserStore.setState({
@@ -39,8 +56,8 @@ describe("profile page", () => {
         lastName: "Rahman",
         email: "amina@example.com",
         supabaseUserId: "supabase_1",
-        ethereumAddress: "0x1111222233334444555566667777888899990000"
-      }
+        ethereumAddress: "0x1111222233334444555566667777888899990000",
+      },
     });
 
     mockUseGetUser.mockReturnValue({
@@ -62,22 +79,28 @@ describe("profile page", () => {
           depositEmails: true,
           withdrawalEmails: true,
           loanEmails: true,
-          productUpdateEmails: false
-        }
+          productUpdateEmails: false,
+        },
+        mfa: freshMfa,
       },
       isLoading: false,
       isError: false,
-      error: null
+      error: null,
     } as ReturnType<typeof useGetUser>);
 
     mockUseRotatePassword.mockReturnValue({
       mutateAsync: rotatePassword,
-      isPending: false
+      isPending: false,
     } as ReturnType<typeof useRotatePassword>);
+
+    mockUseRevokeAllSessions.mockReturnValue({
+      mutateAsync: revokeAllSessions,
+      isPending: false,
+    } as ReturnType<typeof useRevokeAllSessions>);
 
     mockUseUpdateNotificationPreferences.mockReturnValue({
       mutateAsync: updateNotificationPreferences,
-      isPending: false
+      isPending: false,
     } as ReturnType<typeof useUpdateNotificationPreferences>);
   });
 
@@ -89,22 +112,24 @@ describe("profile page", () => {
     renderWithRouter(<Profile />);
 
     expect(
-      screen.getByRole("heading", { name: /customer profile/i })
+      screen.getByRole("heading", { name: /customer profile/i }),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("heading", { name: /^Password Management$/i })
+      screen.getByRole("heading", { name: /^Password Management$/i }),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: /update password/i })
+      screen.getByRole("button", { name: /update password/i }),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: /save preferences/i })
+      screen.getByRole("button", { name: /save preferences/i }),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("switch", { name: /product updates/i })
+      screen.getByRole("switch", { name: /product updates/i }),
     ).toHaveAttribute("data-state", "unchecked");
     expect(
-      screen.getByText(/security and account-risk notifications remain mandatory/i)
+      screen.getByText(
+        /security and account-risk notifications remain mandatory/i,
+      ),
     ).toBeInTheDocument();
   });
 
@@ -114,42 +139,56 @@ describe("profile page", () => {
     renderWithRouter(<Profile />);
 
     await user.type(screen.getByLabelText(/current password/i), "current-pass");
-    await user.type(screen.getByLabelText(/^new password$/i), "new-strong-pass");
-    await user.type(screen.getByLabelText(/confirm new password/i), "different-pass");
+    await user.type(
+      screen.getByLabelText(/^new password$/i),
+      "new-strong-pass",
+    );
+    await user.type(
+      screen.getByLabelText(/confirm new password/i),
+      "different-pass",
+    );
     await user.click(screen.getByRole("button", { name: /update password/i }));
 
     expect(rotatePassword).not.toHaveBeenCalled();
     expect(
-      screen.getByText(/confirm password must match the new password/i)
+      screen.getByText(/confirm password must match the new password/i),
     ).toBeInTheDocument();
   });
 
   it("renders password mutation errors from the backend", async () => {
     const user = userEvent.setup();
-    rotatePassword.mockRejectedValue(new Error("Current password is incorrect."));
+    rotatePassword.mockRejectedValue(
+      new Error("Current password is incorrect."),
+    );
 
     renderWithRouter(<Profile />);
 
     await user.type(screen.getByLabelText(/current password/i), "wrong-pass");
-    await user.type(screen.getByLabelText(/^new password$/i), "new-strong-pass");
-    await user.type(screen.getByLabelText(/confirm new password/i), "new-strong-pass");
+    await user.type(
+      screen.getByLabelText(/^new password$/i),
+      "new-strong-pass",
+    );
+    await user.type(
+      screen.getByLabelText(/confirm new password/i),
+      "new-strong-pass",
+    );
     await user.click(screen.getByRole("button", { name: /update password/i }));
 
     expect(
-      await screen.findByText("Current password is incorrect.")
+      await screen.findByText("Current password is incorrect."),
     ).toBeInTheDocument();
   });
 
   it("preserves the notification preference draft when the save mutation fails", async () => {
     const user = userEvent.setup();
     updateNotificationPreferences.mockRejectedValue(
-      new Error("Notification preference update failed.")
+      new Error("Notification preference update failed."),
     );
 
     renderWithRouter(<Profile />);
 
     const productUpdatesSwitch = screen.getByRole("switch", {
-      name: /product updates/i
+      name: /product updates/i,
     });
 
     await user.click(productUpdatesSwitch);
@@ -159,11 +198,11 @@ describe("profile page", () => {
       depositEmails: true,
       withdrawalEmails: true,
       loanEmails: true,
-      productUpdateEmails: true
+      productUpdateEmails: true,
     });
     expect(productUpdatesSwitch).toHaveAttribute("data-state", "checked");
     expect(
-      await screen.findByText("Notification preference update failed.")
+      await screen.findByText("Notification preference update failed."),
     ).toBeInTheDocument();
   });
 
@@ -183,24 +222,32 @@ describe("profile page", () => {
         frozenAt: null,
         closedAt: null,
         passwordRotationAvailable: false,
-        notificationPreferences: null
+        notificationPreferences: null,
+        mfa: {
+          ...freshMfa,
+          requiresSetup: true,
+          moneyMovementBlocked: true,
+          stepUpFreshUntil: null,
+        },
       },
       isLoading: false,
       isError: false,
-      error: null
+      error: null,
     } as ReturnType<typeof useGetUser>);
 
     renderWithRouter(<Profile />);
 
-    expect(screen.getByText(/password rotation unavailable/i)).toBeInTheDocument();
     expect(
-      screen.getByText(/notification preferences unavailable/i)
+      screen.getByText(/password rotation unavailable/i),
     ).toBeInTheDocument();
     expect(
-      screen.queryByRole("button", { name: /update password/i })
+      screen.getByText(/notification preferences unavailable/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /update password/i }),
     ).not.toBeInTheDocument();
     expect(
-      screen.queryByRole("button", { name: /save preferences/i })
+      screen.queryByRole("button", { name: /save preferences/i }),
     ).not.toBeInTheDocument();
   });
 
@@ -209,12 +256,29 @@ describe("profile page", () => {
       data: null,
       isLoading: false,
       isError: true,
-      error: new Error("profile backend unavailable")
+      error: new Error("profile backend unavailable"),
     } as ReturnType<typeof useGetUser>);
 
     renderWithRouter(<Profile />);
 
     expect(screen.getByRole("alert")).toBeInTheDocument();
     expect(screen.getByText("profile backend unavailable")).toBeInTheDocument();
+  });
+
+  it("revokes other customer sessions from the profile security card", async () => {
+    const user = userEvent.setup();
+
+    renderWithRouter(<Profile />);
+
+    await user.click(
+      screen.getByRole("button", { name: /revoke all other sessions/i }),
+    );
+
+    expect(revokeAllSessions).toHaveBeenCalledTimes(1);
+    expect(
+      await screen.findByText(
+        /all other active customer sessions were signed out/i,
+      ),
+    ).toBeInTheDocument();
   });
 });

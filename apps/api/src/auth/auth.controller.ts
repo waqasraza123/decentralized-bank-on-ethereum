@@ -79,6 +79,14 @@ export class AuthController {
   }
 
   @UseGuards(JwtAuthGuard)
+  @Post("session/revoke-all")
+  async revokeAllCustomerSessions(
+    @Request() request: AuthenticatedRequest,
+  ): Promise<CustomJsonResponse> {
+    return this.authService.revokeAllCustomerSessions(request.user.id);
+  }
+
+  @UseGuards(JwtAuthGuard)
   @Get("mfa/status")
   async getMfaStatus(
     @Request() request: AuthenticatedRequest,

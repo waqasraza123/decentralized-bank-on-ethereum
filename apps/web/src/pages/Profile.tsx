@@ -22,6 +22,7 @@ import { useNavigate } from "react-router-dom";
 import { useLocale } from "@/i18n/use-locale";
 import { useT } from "@/i18n/use-t";
 import {
+  useRevokeAllSessions,
   useRotatePassword,
   useUpdateNotificationPreferences,
 } from "@/hooks/user/useProfileSettings";
@@ -74,6 +75,7 @@ const Profile = () => {
   const clearUser = useUserStore((state) => state.clearUser);
   const profileQuery = useGetUser(userFromStore?.supabaseUserId);
   const rotatePasswordMutation = useRotatePassword();
+  const revokeAllSessionsMutation = useRevokeAllSessions();
   const updateNotificationPreferencesMutation =
     useUpdateNotificationPreferences();
   useCustomerMfaStatus();
@@ -89,6 +91,8 @@ const Profile = () => {
   const [passwordForm, setPasswordForm] = useState(emptyPasswordForm);
   const [passwordNotice, setPasswordNotice] = useState<string | null>(null);
   const [passwordError, setPasswordError] = useState<string | null>(null);
+  const [sessionNotice, setSessionNotice] = useState<string | null>(null);
+  const [sessionError, setSessionError] = useState<string | null>(null);
   const [notificationDraft, setNotificationDraft] =
     useState<CustomerNotificationPreferences | null>(null);
   const [notificationNotice, setNotificationNotice] = useState<string | null>(
@@ -197,6 +201,20 @@ const Profile = () => {
         error instanceof Error
           ? error.message
           : "Notification preference update failed.",
+      );
+    }
+  }
+
+  async function handleRevokeAllSessions() {
+    setSessionNotice(null);
+    setSessionError(null);
+
+    try {
+      await revokeAllSessionsMutation.mutateAsync();
+      setSessionNotice("All other active customer sessions were signed out.");
+    } catch (error) {
+      setSessionError(
+        error instanceof Error ? error.message : "Session revocation failed.",
       );
     }
   }
@@ -863,6 +881,49 @@ const Profile = () => {
                       </p>
                     </div>
                   )}
+                </CardContent>
+              </Card>
+
+              <Card className="glass-card">
+                <CardHeader>
+                  <CardTitle>Session Security</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div
+                    className="stb-trust-note text-sm text-muted-foreground"
+                    data-tone="warning"
+                  >
+                    <p className="text-sm text-muted-foreground">
+                      Revoke every other active customer session and immediately
+                      replace this browser token with a fresh one.
+                    </p>
+                  </div>
+
+                  {sessionNotice ? (
+                    <Alert variant="success">
+                      <CheckCircle2 className="h-4 w-4" />
+                      <AlertTitle>Sessions revoked</AlertTitle>
+                      <AlertDescription>{sessionNotice}</AlertDescription>
+                    </Alert>
+                  ) : null}
+
+                  {sessionError ? (
+                    <Alert variant="destructive">
+                      <ShieldAlert className="h-4 w-4" />
+                      <AlertTitle>Session revocation failed</AlertTitle>
+                      <AlertDescription>{sessionError}</AlertDescription>
+                    </Alert>
+                  ) : null}
+
+                  <Button
+                    variant="outline"
+                    onClick={handleRevokeAllSessions}
+                    disabled={revokeAllSessionsMutation.isPending}
+                  >
+                    {revokeAllSessionsMutation.isPending
+                      ? "Revoking sessions..."
+                      : "Revoke all other sessions"}
+                  </Button>
                 </CardContent>
               </Card>
 

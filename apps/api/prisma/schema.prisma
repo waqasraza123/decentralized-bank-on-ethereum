@@ -27,6 +27,7 @@ model Customer {
   firstName          String?
   lastName           String?
   passwordHash       String?
+  authTokenVersion   Int                 @default(0)
   mfaRequired        Boolean             @default(true)
   mfaTotpEnrolled    Boolean             @default(false)
   mfaEmailOtpEnrolled Boolean            @default(false)

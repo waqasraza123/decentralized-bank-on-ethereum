@@ -12,10 +12,11 @@ describe("AuthController", () => {
     signUp: jest.fn(),
     login: jest.fn(),
     updatePassword: jest.fn(),
+    revokeAllCustomerSessions: jest.fn(),
     validateToken: jest.fn(),
     getCustomerAccountProjectionBySupabaseUserId: jest.fn(),
     getCustomerWalletProjectionBySupabaseUserId: jest.fn(),
-    getOperatorSession: jest.fn()
+    getOperatorSession: jest.fn(),
   };
 
   beforeAll(async () => {
@@ -24,7 +25,7 @@ describe("AuthController", () => {
       providers: [
         {
           provide: AuthService,
-          useValue: authService
+          useValue: authService,
         },
         {
           provide: InternalOperatorBearerGuard,
@@ -37,15 +38,15 @@ describe("AuthController", () => {
                 operatorRoles: ["operations_admin"],
                 authSource: "supabase_jwt",
                 environment: "development",
-                sessionCorrelationId: "session_1"
+                sessionCorrelationId: "session_1",
               };
 
               return true;
-            }
-          }
+            },
+          },
         },
-        JwtAuthGuard
-      ]
+        JwtAuthGuard,
+      ],
     });
 
     app = result.app;
@@ -59,7 +60,7 @@ describe("AuthController", () => {
     jest.clearAllMocks();
     authService.validateToken.mockResolvedValue({
       id: "supabase_1",
-      email: "amina@example.com"
+      email: "amina@example.com",
     });
   });
 
@@ -69,7 +70,7 @@ describe("AuthController", () => {
       .set("Authorization", "Bearer test-token")
       .send({
         currentPassword: "current-pass",
-        newPassword: "123"
+        newPassword: "123",
       })
       .expect(400);
 
@@ -81,8 +82,12 @@ describe("AuthController", () => {
       status: "success",
       message: "Password updated successfully.",
       data: {
-        passwordRotationAvailable: true
-      }
+        passwordRotationAvailable: true,
+        session: {
+          token: "rotated-token",
+          revokedOtherSessions: true,
+        },
+      },
     });
 
     const response = await request(app.getHttpServer())
@@ -90,21 +95,57 @@ describe("AuthController", () => {
       .set("Authorization", "Bearer test-token")
       .send({
         currentPassword: "current-pass",
-        newPassword: "new-strong-pass"
+        newPassword: "new-strong-pass",
       })
       .expect(200);
 
     expect(authService.updatePassword).toHaveBeenCalledWith(
       "supabase_1",
       "current-pass",
-      "new-strong-pass"
+      "new-strong-pass",
     );
     expect(response.body).toEqual({
       status: "success",
       message: "Password updated successfully.",
       data: {
-        passwordRotationAvailable: true
-      }
+        passwordRotationAvailable: true,
+        session: {
+          token: "rotated-token",
+          revokedOtherSessions: true,
+        },
+      },
+    });
+  });
+
+  it("passes the authenticated customer identity to revoke all sessions", async () => {
+    authService.revokeAllCustomerSessions.mockResolvedValue({
+      status: "success",
+      message: "Customer sessions revoked successfully.",
+      data: {
+        session: {
+          token: "fresh-token",
+          revokedOtherSessions: true,
+        },
+      },
+    });
+
+    const response = await request(app.getHttpServer())
+      .post("/auth/session/revoke-all")
+      .set("Authorization", "Bearer test-token")
+      .expect(201);
+
+    expect(authService.revokeAllCustomerSessions).toHaveBeenCalledWith(
+      "supabase_1",
+    );
+    expect(response.body).toEqual({
+      status: "success",
+      message: "Customer sessions revoked successfully.",
+      data: {
+        session: {
+          token: "fresh-token",
+          revokedOtherSessions: true,
+        },
+      },
     });
   });
 });

@@ -87,12 +87,20 @@ describe("AuthService", () => {
       ),
     };
 
-    const service = new AuthService(prismaService as never);
+    const customerMfaEmailDeliveryService = {
+      sendCode: jest.fn(),
+    };
+
+    const service = new AuthService(
+      prismaService as never,
+      customerMfaEmailDeliveryService as never,
+    );
 
     return {
       service,
       prismaService,
       transaction,
+      customerMfaEmailDeliveryService,
     };
   }
 
@@ -217,6 +225,7 @@ describe("AuthService", () => {
       supabaseUserId: "supabase_1",
       email: "ada@example.com",
       passwordHash,
+      authTokenVersion: 0,
       mfaRequired: true,
       mfaTotpEnrolled: false,
       mfaEmailOtpEnrolled: false,
@@ -328,14 +337,20 @@ describe("AuthService", () => {
     prismaService.customer.findUnique.mockResolvedValue({
       id: "customer_1",
       supabaseUserId: "supabase_1",
+      email: "ada@example.com",
       passwordHash,
+      authTokenVersion: 0,
       mfaRequired: true,
       mfaTotpEnrolled: true,
       mfaEmailOtpEnrolled: true,
       mfaLastVerifiedAt: new Date(),
       mfaLockedUntil: null,
     });
-    transaction.customer.update.mockResolvedValue(undefined);
+    transaction.customer.update.mockResolvedValue({
+      supabaseUserId: "supabase_1",
+      email: "ada@example.com",
+      authTokenVersion: 1,
+    });
     transaction.auditEvent.create.mockResolvedValue(undefined);
 
     const result = await service.updatePassword(
@@ -348,6 +363,14 @@ describe("AuthService", () => {
       where: { id: "customer_1" },
       data: {
         passwordHash: expect.any(String),
+        authTokenVersion: {
+          increment: 1,
+        },
+      },
+      select: {
+        supabaseUserId: true,
+        email: true,
+        authTokenVersion: true,
       },
     });
     expect(transaction.auditEvent.create).toHaveBeenCalledWith({
@@ -360,6 +383,7 @@ describe("AuthService", () => {
         targetId: "customer_1",
         metadata: {
           passwordRotationAvailable: true,
+          revokedOtherSessions: true,
         },
       },
     });
@@ -368,6 +392,10 @@ describe("AuthService", () => {
       message: "Password updated successfully.",
       data: {
         passwordRotationAvailable: true,
+        session: {
+          token: expect.any(String),
+          revokedOtherSessions: true,
+        },
       },
     });
   });
@@ -379,7 +407,9 @@ describe("AuthService", () => {
     prismaService.customer.findUnique.mockResolvedValue({
       id: "customer_1",
       supabaseUserId: "supabase_1",
+      email: "ada@example.com",
       passwordHash,
+      authTokenVersion: 0,
       mfaRequired: true,
       mfaTotpEnrolled: true,
       mfaEmailOtpEnrolled: true,
@@ -406,11 +436,13 @@ describe("AuthService", () => {
     prismaService.customer.findUnique.mockResolvedValue({
       id: "customer_1",
       supabaseUserId: "supabase_1",
+      email: "ada@example.com",
       mfaRequired: true,
       mfaTotpEnrolled: false,
       mfaEmailOtpEnrolled: false,
       mfaLastVerifiedAt: null,
       mfaLockedUntil: null,
+      authTokenVersion: 0,
       passwordHash: null,
     });
 
@@ -442,6 +474,53 @@ describe("AuthService", () => {
     await expect(
       service.startMfaChallenge("supabase_1", "withdrawal_step_up", "totp"),
     ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it("starts email enrollment through the delivery service", async () => {
+    const { service, prismaService, customerMfaEmailDeliveryService } =
+      createService();
+
+    prismaService.customer.findUnique.mockResolvedValue({
+      id: "customer_1",
+      supabaseUserId: "supabase_1",
+      email: "ada@example.com",
+      mfaRequired: true,
+      mfaTotpEnrolled: true,
+      mfaEmailOtpEnrolled: false,
+      mfaTotpSecret: "ABCDEFGHIJKLMNOP",
+      mfaPendingTotpSecret: null,
+      mfaPendingTotpIssuedAt: null,
+      mfaActiveChallenge: null,
+      mfaLastVerifiedAt: null,
+      mfaFailedAttemptCount: 0,
+      mfaLockedUntil: null,
+      mfaLastChallengeStartedAt: null,
+    });
+    prismaService.customer.update.mockResolvedValue(undefined);
+    prismaService.auditEvent.create.mockResolvedValue(undefined);
+    customerMfaEmailDeliveryService.sendCode.mockResolvedValue({
+      deliveryChannel: "email",
+      previewCode: "123456",
+      backendType: "preview",
+      backendReference: null,
+    });
+
+    const result = await service.startEmailEnrollment("supabase_1");
+
+    expect(customerMfaEmailDeliveryService.sendCode).toHaveBeenCalledWith(
+      expect.objectContaining({
+        customerId: "customer_1",
+        actorId: "supabase_1",
+        email: "ada@example.com",
+        purpose: "email_enrollment",
+      }),
+    );
+    expect(result.data).toEqual(
+      expect.objectContaining({
+        deliveryChannel: "email",
+        previewCode: "123456",
+      }),
+    );
   });
 
   it("locks MFA after repeated invalid email verification codes", async () => {
@@ -483,6 +562,49 @@ describe("AuthService", () => {
         mfaFailedAttemptCount: 0,
         mfaLockedUntil: expect.any(Date),
       },
+    });
+  });
+
+  it("revokes all customer sessions and returns a fresh token", async () => {
+    const { service, prismaService } = createService();
+
+    prismaService.customer.findUnique.mockResolvedValue({
+      id: "customer_1",
+      supabaseUserId: "supabase_1",
+      email: "ada@example.com",
+    });
+    prismaService.customer.update.mockResolvedValue({
+      supabaseUserId: "supabase_1",
+      email: "ada@example.com",
+      authTokenVersion: 3,
+    });
+    prismaService.auditEvent.create.mockResolvedValue(undefined);
+
+    const result = await service.revokeAllCustomerSessions("supabase_1");
+
+    expect(prismaService.customer.update).toHaveBeenCalledWith({
+      where: { id: "customer_1" },
+      data: {
+        authTokenVersion: {
+          increment: 1,
+        },
+      },
+      select: {
+        supabaseUserId: true,
+        email: true,
+        authTokenVersion: true,
+      },
+    });
+    expect(prismaService.auditEvent.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          action: "customer_account.sessions_revoked",
+        }),
+      }),
+    );
+    expect(result.data?.session).toEqual({
+      token: expect.any(String),
+      revokedOtherSessions: true,
     });
   });
 });

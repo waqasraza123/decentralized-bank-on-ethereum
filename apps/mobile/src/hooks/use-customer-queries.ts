@@ -21,6 +21,7 @@ import type {
   RotatePasswordResult,
   StartEmailEnrollmentResult,
   StartMfaChallengeResult,
+  RevokeCustomerSessionsResult,
   StartTotpEnrollmentResult,
   StakingMutationResult,
   UpdateNotificationPreferencesResult,
@@ -255,6 +256,8 @@ export function useEmergencyWithdrawMutation() {
 }
 
 export function useRotatePasswordMutation() {
+  const setToken = useSessionStore((state) => state.setToken);
+
   return useMutation({
     mutationFn: async (input: {
       currentPassword: string;
@@ -267,6 +270,10 @@ export function useRotatePasswordMutation() {
 
       if (response.data.status !== "success" || !response.data.data) {
         throw new Error(response.data.message || "Failed to update password.");
+      }
+
+      if (response.data.data.session?.token) {
+        await setToken(response.data.data.session.token);
       }
 
       return response.data.data;
@@ -287,6 +294,18 @@ function createMfaSessionUpdater(
       ...currentUser,
       mfa,
     });
+  };
+}
+
+function createSessionRefreshUpdater(
+  setToken: ((token: string) => Promise<void>) | undefined,
+) {
+  return async (token: string | undefined) => {
+    if (!setToken || !token) {
+      return;
+    }
+
+    await setToken(token);
   };
 }
 
@@ -340,8 +359,10 @@ export function useStartTotpEnrollmentMutation() {
 
 export function useVerifyTotpEnrollmentMutation() {
   const setUser = useSessionStore((state) => state.setUser);
+  const setToken = useSessionStore((state) => state.setToken);
   const user = useSessionStore((state) => state.user);
   const applyMfa = createMfaSessionUpdater(setUser, user);
+  const applySession = createSessionRefreshUpdater(setToken);
 
   return useMutation({
     mutationFn: async (input: { code: string }) => {
@@ -357,6 +378,7 @@ export function useVerifyTotpEnrollmentMutation() {
       }
 
       await applyMfa(response.data.data.mfa);
+      await applySession(response.data.data.session?.token);
       return response.data.data;
     },
   });
@@ -387,8 +409,10 @@ export function useStartEmailEnrollmentMutation() {
 
 export function useVerifyEmailEnrollmentMutation() {
   const setUser = useSessionStore((state) => state.setUser);
+  const setToken = useSessionStore((state) => state.setToken);
   const user = useSessionStore((state) => state.user);
   const applyMfa = createMfaSessionUpdater(setUser, user);
+  const applySession = createSessionRefreshUpdater(setToken);
 
   return useMutation({
     mutationFn: async (input: { challengeId: string; code: string }) => {
@@ -404,6 +428,7 @@ export function useVerifyEmailEnrollmentMutation() {
       }
 
       await applyMfa(response.data.data.mfa);
+      await applySession(response.data.data.session?.token);
       return response.data.data;
     },
   });
@@ -437,8 +462,10 @@ export function useStartMfaChallengeMutation() {
 
 export function useVerifyMfaChallengeMutation() {
   const setUser = useSessionStore((state) => state.setUser);
+  const setToken = useSessionStore((state) => state.setToken);
   const user = useSessionStore((state) => state.user);
   const applyMfa = createMfaSessionUpdater(setUser, user);
+  const applySession = createSessionRefreshUpdater(setToken);
 
   return useMutation({
     mutationFn: async (input: {
@@ -459,6 +486,26 @@ export function useVerifyMfaChallengeMutation() {
       }
 
       await applyMfa(response.data.data.mfa);
+      await applySession(response.data.data.session?.token);
+      return response.data.data;
+    },
+  });
+}
+
+export function useRevokeAllCustomerSessionsMutation() {
+  const setToken = useSessionStore((state) => state.setToken);
+
+  return useMutation({
+    mutationFn: async () => {
+      const response = await apiClient.post<
+        ApiEnvelope<RevokeCustomerSessionsResult>
+      >("/auth/session/revoke-all");
+
+      if (response.data.status !== "success" || !response.data.data) {
+        throw new Error(response.data.message || "Failed to revoke sessions.");
+      }
+
+      await setToken(response.data.data.session.token);
       return response.data.data;
     },
   });

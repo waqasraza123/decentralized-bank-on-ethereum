@@ -183,6 +183,12 @@ export const mobileMessagesAr: MobileMessages = {
     updatePassword: "تحديث كلمة المرور",
     passwordUpdated: "تم تحديث كلمة المرور بنجاح.",
     passwordsMustMatch: "يجب أن تتطابق كلمتا المرور.",
+    sessionSecurity: "أمان الجلسات",
+    sessionSecurityDescription:
+      "قم بإلغاء كل الجلسات الأخرى النشطة لهذا العميل مع إبقاء هذا الجهاز فقط مسجل الدخول برمز جديد.",
+    revokeAllSessions: "إلغاء كل الجلسات الأخرى",
+    sessionsRevoked: "تم تسجيل خروج كل الجلسات الأخرى.",
+    sessionsRevokeFailed: "تعذر إلغاء الجلسات الأخرى النشطة.",
     savePreferences: "حفظ التفضيلات",
     preferencesSaved: "تم حفظ تفضيلات الإشعارات.",
     mfaTitle: "أمان متعدد العوامل",

@@ -10,7 +10,7 @@ import {
   ReviewCaseType,
   WorkerRuntimeExecutionMode,
   WorkerRuntimeEnvironment,
-  WorkerRuntimeIterationStatus
+  WorkerRuntimeIterationStatus,
 } from "@prisma/client";
 import { ApiRequestMetricsService } from "../logging/api-request-metrics.service";
 import { PrismaService } from "../prisma/prisma.service";
@@ -20,7 +20,7 @@ import { OperationsMonitoringService } from "./operations-monitoring.service";
 
 jest.mock("@stealth-trails-bank/config/api", () => ({
   loadProductChainRuntimeConfig: () => ({
-    productChainId: 8453
+    productChainId: 8453,
   }),
   loadPlatformAlertDeliveryRuntimeConfig: () => ({
     requestTimeoutMs: 5000,
@@ -36,11 +36,16 @@ jest.mock("@stealth-trails-bank/config/api", () => ({
           "chain",
           "treasury",
           "reconciliation",
-          "operations"
+          "operations",
         ],
         minimumSeverity: "critical",
-        eventTypes: ["opened", "reopened", "re_escalated", "routed_to_review_case"],
-        failoverTargetNames: ["ops-failover"]
+        eventTypes: [
+          "opened",
+          "reopened",
+          "re_escalated",
+          "routed_to_review_case",
+        ],
+        failoverTargetNames: ["ops-failover"],
       },
       {
         name: "ops-failover",
@@ -53,13 +58,18 @@ jest.mock("@stealth-trails-bank/config/api", () => ({
           "chain",
           "treasury",
           "reconciliation",
-          "operations"
+          "operations",
         ],
         minimumSeverity: "critical",
-        eventTypes: ["opened", "reopened", "re_escalated", "routed_to_review_case"],
-        failoverTargetNames: []
-      }
-    ]
+        eventTypes: [
+          "opened",
+          "reopened",
+          "re_escalated",
+          "routed_to_review_case",
+        ],
+        failoverTargetNames: [],
+      },
+    ],
   }),
   loadPlatformAlertAutomationRuntimeConfig: () => ({
     policies: [
@@ -68,14 +78,14 @@ jest.mock("@stealth-trails-bank/config/api", () => ({
         categories: ["worker"],
         minimumSeverity: "critical",
         autoRouteToReviewCase: true,
-        routeNote: "Escalate worker outages immediately."
-      }
-    ]
+        routeNote: "Escalate worker outages immediately.",
+      },
+    ],
   }),
   loadPlatformAlertReEscalationRuntimeConfig: () => ({
     unacknowledgedCriticalAlertThresholdSeconds: 900,
     unownedCriticalAlertThresholdSeconds: 600,
-    repeatIntervalSeconds: 1800
+    repeatIntervalSeconds: 1800,
   }),
   loadPlatformAlertDeliveryHealthSloRuntimeConfig: () => ({
     lookbackHours: 24,
@@ -87,12 +97,12 @@ jest.mock("@stealth-trails-bank/config/api", () => ({
     warningAverageDeliveryLatencyMs: 15000,
     criticalAverageDeliveryLatencyMs: 60000,
     warningConsecutiveFailures: 2,
-    criticalConsecutiveFailures: 3
-  })
+    criticalConsecutiveFailures: 3,
+  }),
 }));
 
 function buildHeartbeatRecord(
-  overrides: Partial<Record<string, unknown>> = {}
+  overrides: Partial<Record<string, unknown>> = {},
 ) {
   return {
     id: "heartbeat_1",
@@ -111,20 +121,20 @@ function buildHeartbeatRecord(
     lastReconciliationScanCompletedAt: new Date("2026-04-06T09:55:01.000Z"),
     lastReconciliationScanStatus: LedgerReconciliationScanRunStatus.succeeded,
     runtimeMetadata: {
-      pollIntervalMs: 1000
+      pollIntervalMs: 1000,
     },
     latestIterationMetrics: {
       queuedDepositCount: 1,
-      manualWithdrawalBacklogCount: 0
+      manualWithdrawalBacklogCount: 0,
     },
     createdAt: new Date("2026-04-06T09:00:00.000Z"),
     updatedAt: new Date("2026-04-06T10:00:00.000Z"),
-    ...overrides
+    ...overrides,
   };
 }
 
 function buildPlatformAlertRecord(
-  overrides: Partial<Record<string, unknown>> = {}
+  overrides: Partial<Record<string, unknown>> = {},
 ) {
   return {
     id: "alert_1",
@@ -152,14 +162,14 @@ function buildPlatformAlertRecord(
     summary: "Worker worker_1 is degraded.",
     detail: "Iteration status is failed.",
     metadata: {
-      workerId: "worker_1"
+      workerId: "worker_1",
     },
     firstDetectedAt: new Date("2026-04-06T10:00:00.000Z"),
     lastDetectedAt: new Date("2026-04-06T10:00:00.000Z"),
     resolvedAt: null,
     createdAt: new Date("2026-04-06T10:00:00.000Z"),
     updatedAt: new Date("2026-04-06T10:00:00.000Z"),
-    ...overrides
+    ...overrides,
   };
 }
 
@@ -167,50 +177,51 @@ function createService() {
   const transactionClient = {
     platformAlert: {
       findUnique: jest.fn(),
-      update: jest.fn()
-    },
-    auditEvent: {
-      create: jest.fn()
-    }
-  };
-  const prismaService = {
-    $transaction: jest.fn(async (callback: (client: typeof transactionClient) => unknown) =>
-      callback(transactionClient)
-    ),
-    workerRuntimeHeartbeat: {
-      upsert: jest.fn(),
-      findMany: jest.fn()
-    },
-    transactionIntent: {
-      count: jest.fn(),
-      findFirst: jest.fn()
-    },
-    blockchainTransaction: {
-      count: jest.fn(),
-      findFirst: jest.fn()
-    },
-    ledgerReconciliationMismatch: {
-      count: jest.fn()
-    },
-    ledgerReconciliationScanRun: {
-      count: jest.fn(),
-      findFirst: jest.fn()
-    },
-    wallet: {
-      count: jest.fn()
-    },
-    reviewCase: {
-      count: jest.fn()
-    },
-    oversightIncident: {
-      count: jest.fn()
-    },
-    customerAccount: {
-      count: jest.fn()
+      update: jest.fn(),
     },
     auditEvent: {
       create: jest.fn(),
-      findMany: jest.fn().mockResolvedValue([])
+    },
+  };
+  const prismaService = {
+    $transaction: jest.fn(
+      async (callback: (client: typeof transactionClient) => unknown) =>
+        callback(transactionClient),
+    ),
+    workerRuntimeHeartbeat: {
+      upsert: jest.fn(),
+      findMany: jest.fn(),
+    },
+    transactionIntent: {
+      count: jest.fn(),
+      findFirst: jest.fn(),
+    },
+    blockchainTransaction: {
+      count: jest.fn(),
+      findFirst: jest.fn(),
+    },
+    ledgerReconciliationMismatch: {
+      count: jest.fn(),
+    },
+    ledgerReconciliationScanRun: {
+      count: jest.fn(),
+      findFirst: jest.fn(),
+    },
+    wallet: {
+      count: jest.fn(),
+    },
+    reviewCase: {
+      count: jest.fn(),
+    },
+    oversightIncident: {
+      count: jest.fn(),
+    },
+    customerAccount: {
+      count: jest.fn(),
+    },
+    auditEvent: {
+      create: jest.fn(),
+      findMany: jest.fn().mockResolvedValue([]),
     },
     platformAlert: {
       create: jest.fn(),
@@ -218,22 +229,22 @@ function createService() {
       findUnique: jest.fn(),
       findMany: jest.fn(),
       updateMany: jest.fn(),
-      count: jest.fn()
+      count: jest.fn(),
     },
     platformAlertDelivery: {
       create: jest.fn(),
       update: jest.fn(),
       findUnique: jest.fn(),
       findMany: jest.fn().mockResolvedValue([]),
-      updateMany: jest.fn()
-    }
+      updateMany: jest.fn(),
+    },
   } as unknown as PrismaService;
   const reviewCasesService = {
-    openOrReuseReviewCase: jest.fn()
+    openOrReuseReviewCase: jest.fn(),
   } as unknown as ReviewCasesService;
   const platformAlertDeliveryService = {
     enqueueAlertEvent: jest.fn().mockResolvedValue(0),
-    retryFailedDeliveriesForAlert: jest.fn().mockResolvedValue(0)
+    retryFailedDeliveriesForAlert: jest.fn().mockResolvedValue(0),
   } as unknown as PlatformAlertDeliveryService;
 
   return {
@@ -244,15 +255,15 @@ function createService() {
     service: new OperationsMonitoringService(
       prismaService,
       reviewCasesService,
-      platformAlertDeliveryService
-    )
+      platformAlertDeliveryService,
+    ),
   };
 }
 
 function mockHealthySnapshotQueries(prismaService: PrismaService) {
-  (prismaService.workerRuntimeHeartbeat.findMany as jest.Mock).mockResolvedValue([
-    buildHeartbeatRecord()
-  ]);
+  (
+    prismaService.workerRuntimeHeartbeat.findMany as jest.Mock
+  ).mockResolvedValue([buildHeartbeatRecord()]);
   (prismaService.transactionIntent.count as jest.Mock)
     .mockResolvedValueOnce(1)
     .mockResolvedValueOnce(0)
@@ -261,27 +272,27 @@ function mockHealthySnapshotQueries(prismaService: PrismaService) {
     .mockResolvedValueOnce(0)
     .mockResolvedValueOnce(0);
   (prismaService.transactionIntent.findFirst as jest.Mock).mockResolvedValue({
-    createdAt: new Date("2026-04-06T09:59:00.000Z")
+    createdAt: new Date("2026-04-06T09:59:00.000Z"),
   });
   (prismaService.blockchainTransaction.count as jest.Mock)
     .mockResolvedValueOnce(0)
     .mockResolvedValueOnce(0)
     .mockResolvedValueOnce(0);
-  (prismaService.blockchainTransaction.findFirst as jest.Mock).mockResolvedValue(
-    null
-  );
+  (
+    prismaService.blockchainTransaction.findFirst as jest.Mock
+  ).mockResolvedValue(null);
   (prismaService.ledgerReconciliationMismatch.count as jest.Mock)
     .mockResolvedValueOnce(0)
     .mockResolvedValueOnce(0);
-  (prismaService.ledgerReconciliationScanRun.count as jest.Mock).mockResolvedValue(
-    0
-  );
-  (prismaService.ledgerReconciliationScanRun.findFirst as jest.Mock).mockResolvedValue(
-    {
-      status: LedgerReconciliationScanRunStatus.succeeded,
-      startedAt: new Date("2026-04-06T09:55:00.000Z")
-    }
-  );
+  (
+    prismaService.ledgerReconciliationScanRun.count as jest.Mock
+  ).mockResolvedValue(0);
+  (
+    prismaService.ledgerReconciliationScanRun.findFirst as jest.Mock
+  ).mockResolvedValue({
+    status: LedgerReconciliationScanRunStatus.succeeded,
+    startedAt: new Date("2026-04-06T09:55:00.000Z"),
+  });
   (prismaService.wallet.count as jest.Mock)
     .mockResolvedValueOnce(1)
     .mockResolvedValueOnce(1);
@@ -300,12 +311,12 @@ describe("OperationsMonitoringService", () => {
     const { service, prismaService } = createService();
     const stored = buildHeartbeatRecord();
 
-    jest.spyOn(Date, "now").mockReturnValue(
-      new Date("2026-04-06T10:00:30.000Z").getTime()
-    );
-    (prismaService.workerRuntimeHeartbeat.upsert as jest.Mock).mockResolvedValue(
-      stored
-    );
+    jest
+      .spyOn(Date, "now")
+      .mockReturnValue(new Date("2026-04-06T10:00:30.000Z").getTime());
+    (
+      prismaService.workerRuntimeHeartbeat.upsert as jest.Mock
+    ).mockResolvedValue(stored);
 
     const result = await service.reportWorkerRuntimeHeartbeat("worker_1", {
       environment: "production",
@@ -316,21 +327,21 @@ describe("OperationsMonitoringService", () => {
       lastReconciliationScanRunId: "scan_run_1",
       lastReconciliationScanStatus: "succeeded",
       runtimeMetadata: {
-        pollIntervalMs: 1000
+        pollIntervalMs: 1000,
       },
       latestIterationMetrics: {
-        queuedDepositCount: 1
+        queuedDepositCount: 1,
       },
-      lastIterationDurationMs: 2000
+      lastIterationDurationMs: 2000,
     });
 
     expect(prismaService.workerRuntimeHeartbeat.upsert).toHaveBeenCalledWith(
       expect.objectContaining({
         update: expect.objectContaining({
           consecutiveFailureCount: 0,
-          lastIterationStatus: WorkerRuntimeIterationStatus.succeeded
-        })
-      })
+          lastIterationStatus: WorkerRuntimeIterationStatus.succeeded,
+        }),
+      }),
     );
     expect(result.heartbeat.healthStatus).toBe("healthy");
   });
@@ -338,18 +349,18 @@ describe("OperationsMonitoringService", () => {
   it("classifies workers as degraded when the latest reconciliation scan failed", async () => {
     const { service, prismaService } = createService();
     const degraded = buildHeartbeatRecord({
-      lastReconciliationScanStatus: LedgerReconciliationScanRunStatus.failed
+      lastReconciliationScanStatus: LedgerReconciliationScanRunStatus.failed,
     });
 
-    jest.spyOn(Date, "now").mockReturnValue(
-      new Date("2026-04-06T10:00:30.000Z").getTime()
-    );
-    (prismaService.workerRuntimeHeartbeat.findMany as jest.Mock).mockResolvedValue([
-      degraded
-    ]);
+    jest
+      .spyOn(Date, "now")
+      .mockReturnValue(new Date("2026-04-06T10:00:30.000Z").getTime());
+    (
+      prismaService.workerRuntimeHeartbeat.findMany as jest.Mock
+    ).mockResolvedValue([degraded]);
 
     const result = await service.listWorkerRuntimeHealth({
-      staleAfterSeconds: 120
+      staleAfterSeconds: 120,
     });
 
     expect(result.workers[0]?.healthStatus).toBe("degraded");
@@ -358,18 +369,18 @@ describe("OperationsMonitoringService", () => {
   it("classifies workers as stale when the last heartbeat is too old", async () => {
     const { service, prismaService } = createService();
     const stale = buildHeartbeatRecord({
-      lastHeartbeatAt: new Date("2026-04-06T09:55:00.000Z")
+      lastHeartbeatAt: new Date("2026-04-06T09:55:00.000Z"),
     });
 
-    jest.spyOn(Date, "now").mockReturnValue(
-      new Date("2026-04-06T10:00:30.000Z").getTime()
-    );
-    (prismaService.workerRuntimeHeartbeat.findMany as jest.Mock).mockResolvedValue([
-      stale
-    ]);
+    jest
+      .spyOn(Date, "now")
+      .mockReturnValue(new Date("2026-04-06T10:00:30.000Z").getTime());
+    (
+      prismaService.workerRuntimeHeartbeat.findMany as jest.Mock
+    ).mockResolvedValue([stale]);
 
     const result = await service.listWorkerRuntimeHealth({
-      staleAfterSeconds: 120
+      staleAfterSeconds: 120,
     });
 
     expect(result.workers[0]?.healthStatus).toBe("stale");
@@ -378,16 +389,18 @@ describe("OperationsMonitoringService", () => {
   it("builds operations status and persists open alerts for degraded worker and reconciliation failures", async () => {
     const { service, prismaService } = createService();
 
-    jest.spyOn(Date, "now").mockReturnValue(
-      new Date("2026-04-06T10:00:30.000Z").getTime()
-    );
+    jest
+      .spyOn(Date, "now")
+      .mockReturnValue(new Date("2026-04-06T10:00:30.000Z").getTime());
 
-    (prismaService.workerRuntimeHeartbeat.findMany as jest.Mock).mockResolvedValue([
+    (
+      prismaService.workerRuntimeHeartbeat.findMany as jest.Mock
+    ).mockResolvedValue([
       buildHeartbeatRecord({
         lastIterationStatus: WorkerRuntimeIterationStatus.failed,
         consecutiveFailureCount: 2,
-        lastErrorMessage: "RPC timeout"
-      })
+        lastErrorMessage: "RPC timeout",
+      }),
     ]);
     (prismaService.transactionIntent.count as jest.Mock)
       .mockResolvedValueOnce(12)
@@ -400,30 +413,30 @@ describe("OperationsMonitoringService", () => {
       .mockResolvedValueOnce(0)
       .mockResolvedValueOnce(3);
     (prismaService.transactionIntent.findFirst as jest.Mock).mockResolvedValue({
-      createdAt: new Date("2026-04-06T09:50:00.000Z")
+      createdAt: new Date("2026-04-06T09:50:00.000Z"),
     });
     (prismaService.blockchainTransaction.count as jest.Mock)
       .mockResolvedValueOnce(0)
       .mockResolvedValueOnce(2)
       .mockResolvedValueOnce(2);
-    (prismaService.blockchainTransaction.findFirst as jest.Mock).mockResolvedValue(
-      {
-        createdAt: new Date("2026-04-06T08:45:00.000Z")
-      }
-    );
+    (
+      prismaService.blockchainTransaction.findFirst as jest.Mock
+    ).mockResolvedValue({
+      createdAt: new Date("2026-04-06T08:45:00.000Z"),
+    });
     (prismaService.ledgerReconciliationMismatch.count as jest.Mock)
       .mockResolvedValueOnce(6)
       .mockResolvedValueOnce(2)
       .mockResolvedValueOnce(0);
-    (prismaService.ledgerReconciliationScanRun.count as jest.Mock).mockResolvedValue(
-      1
-    );
-    (prismaService.ledgerReconciliationScanRun.findFirst as jest.Mock).mockResolvedValue(
-      {
-        status: LedgerReconciliationScanRunStatus.failed,
-        startedAt: new Date("2026-04-06T09:59:00.000Z")
-      }
-    );
+    (
+      prismaService.ledgerReconciliationScanRun.count as jest.Mock
+    ).mockResolvedValue(1);
+    (
+      prismaService.ledgerReconciliationScanRun.findFirst as jest.Mock
+    ).mockResolvedValue({
+      status: LedgerReconciliationScanRunStatus.failed,
+      startedAt: new Date("2026-04-06T09:59:00.000Z"),
+    });
     (prismaService.wallet.count as jest.Mock)
       .mockResolvedValueOnce(0)
       .mockResolvedValueOnce(0);
@@ -431,7 +444,7 @@ describe("OperationsMonitoringService", () => {
     (prismaService.oversightIncident.count as jest.Mock).mockResolvedValue(6);
     (prismaService.customerAccount.count as jest.Mock).mockResolvedValue(5);
     (prismaService.platformAlert.create as jest.Mock).mockResolvedValue(
-      buildPlatformAlertRecord()
+      buildPlatformAlertRecord(),
     );
     (prismaService.platformAlert.findMany as jest.Mock)
       .mockResolvedValueOnce([])
@@ -444,8 +457,8 @@ describe("OperationsMonitoringService", () => {
           category: PlatformAlertCategory.reconciliation,
           severity: PlatformAlertSeverity.critical,
           code: "ledger_reconciliation_attention_required",
-          summary: "Ledger reconciliation requires operator attention."
-        })
+          summary: "Ledger reconciliation requires operator attention.",
+        }),
       ]);
     (prismaService.platformAlert.count as jest.Mock)
       .mockResolvedValueOnce(2)
@@ -454,18 +467,22 @@ describe("OperationsMonitoringService", () => {
 
     const result = await service.getOperationsStatus({
       recentAlertLimit: 8,
-      staleAfterSeconds: 180
+      staleAfterSeconds: 180,
     });
 
     expect(result.workerHealth.status).toBe("warning");
     expect(result.queueHealth.status).toBe("warning");
     expect(result.withdrawalExecutionHealth.status).toBe("critical");
     expect(result.withdrawalExecutionHealth.signedWithdrawalCount).toBe(1);
-    expect(result.withdrawalExecutionHealth.broadcastingWithdrawalCount).toBe(2);
-    expect(result.withdrawalExecutionHealth.pendingConfirmationWithdrawalCount).toBe(
-      3
+    expect(result.withdrawalExecutionHealth.broadcastingWithdrawalCount).toBe(
+      2,
     );
-    expect(result.withdrawalExecutionHealth.failedManagedWithdrawalCount).toBe(3);
+    expect(
+      result.withdrawalExecutionHealth.pendingConfirmationWithdrawalCount,
+    ).toBe(3);
+    expect(result.withdrawalExecutionHealth.failedManagedWithdrawalCount).toBe(
+      3,
+    );
     expect(result.chainHealth.status).toBe("warning");
     expect(result.reconciliationHealth.status).toBe("critical");
     expect(result.treasuryHealth.status).toBe("healthy");
@@ -477,16 +494,18 @@ describe("OperationsMonitoringService", () => {
   it("reports managed withdrawal execution slices separately from manual backlog", async () => {
     const { service, prismaService } = createService();
 
-    jest.spyOn(Date, "now").mockReturnValue(
-      new Date("2026-04-06T10:00:30.000Z").getTime()
-    );
+    jest
+      .spyOn(Date, "now")
+      .mockReturnValue(new Date("2026-04-06T10:00:30.000Z").getTime());
 
-    (prismaService.workerRuntimeHeartbeat.findMany as jest.Mock).mockResolvedValue([
+    (
+      prismaService.workerRuntimeHeartbeat.findMany as jest.Mock
+    ).mockResolvedValue([
       buildHeartbeatRecord({
         latestIterationMetrics: {
-          manualWithdrawalBacklogCount: 0
-        }
-      })
+          manualWithdrawalBacklogCount: 0,
+        },
+      }),
     ]);
     (prismaService.transactionIntent.count as jest.Mock)
       .mockResolvedValueOnce(0)
@@ -498,27 +517,29 @@ describe("OperationsMonitoringService", () => {
       .mockResolvedValueOnce(0)
       .mockResolvedValueOnce(0)
       .mockResolvedValueOnce(0);
-    (prismaService.transactionIntent.findFirst as jest.Mock).mockResolvedValue(null);
+    (prismaService.transactionIntent.findFirst as jest.Mock).mockResolvedValue(
+      null,
+    );
     (prismaService.blockchainTransaction.count as jest.Mock)
       .mockResolvedValueOnce(0)
       .mockResolvedValueOnce(0)
       .mockResolvedValueOnce(0);
-    (prismaService.blockchainTransaction.findFirst as jest.Mock).mockResolvedValue(
-      null
-    );
+    (
+      prismaService.blockchainTransaction.findFirst as jest.Mock
+    ).mockResolvedValue(null);
     (prismaService.ledgerReconciliationMismatch.count as jest.Mock)
       .mockResolvedValueOnce(0)
       .mockResolvedValueOnce(0)
       .mockResolvedValueOnce(0);
-    (prismaService.ledgerReconciliationScanRun.count as jest.Mock).mockResolvedValue(
-      0
-    );
-    (prismaService.ledgerReconciliationScanRun.findFirst as jest.Mock).mockResolvedValue(
-      {
-        status: LedgerReconciliationScanRunStatus.succeeded,
-        startedAt: new Date("2026-04-06T09:55:00.000Z")
-      }
-    );
+    (
+      prismaService.ledgerReconciliationScanRun.count as jest.Mock
+    ).mockResolvedValue(0);
+    (
+      prismaService.ledgerReconciliationScanRun.findFirst as jest.Mock
+    ).mockResolvedValue({
+      status: LedgerReconciliationScanRunStatus.succeeded,
+      startedAt: new Date("2026-04-06T09:55:00.000Z"),
+    });
     (prismaService.wallet.count as jest.Mock)
       .mockResolvedValueOnce(1)
       .mockResolvedValueOnce(1);
@@ -536,59 +557,67 @@ describe("OperationsMonitoringService", () => {
 
     const result = await service.getOperationsStatus({
       recentAlertLimit: 8,
-      staleAfterSeconds: 180
+      staleAfterSeconds: 180,
     });
 
     expect(result.queueHealth.manualWithdrawalBacklogCount).toBe(0);
-    expect(result.withdrawalExecutionHealth.queuedManagedWithdrawalCount).toBe(2);
+    expect(result.withdrawalExecutionHealth.queuedManagedWithdrawalCount).toBe(
+      2,
+    );
     expect(result.withdrawalExecutionHealth.signedWithdrawalCount).toBe(1);
-    expect(result.withdrawalExecutionHealth.broadcastingWithdrawalCount).toBe(3);
-    expect(result.withdrawalExecutionHealth.pendingConfirmationWithdrawalCount).toBe(
-      4
+    expect(result.withdrawalExecutionHealth.broadcastingWithdrawalCount).toBe(
+      3,
     );
-    expect(result.withdrawalExecutionHealth.failedManagedWithdrawalCount).toBe(4);
-    expect(result.withdrawalExecutionHealth.retryableWithdrawalFailureCount).toBe(0);
-    expect(result.withdrawalExecutionHealth.manualInterventionWithdrawalCount).toBe(
-      0
+    expect(
+      result.withdrawalExecutionHealth.pendingConfirmationWithdrawalCount,
+    ).toBe(4);
+    expect(result.withdrawalExecutionHealth.failedManagedWithdrawalCount).toBe(
+      4,
     );
+    expect(
+      result.withdrawalExecutionHealth.retryableWithdrawalFailureCount,
+    ).toBe(0);
+    expect(
+      result.withdrawalExecutionHealth.manualInterventionWithdrawalCount,
+    ).toBe(0);
   });
 
   it("lists platform alerts after refreshing durable alert state", async () => {
     const { service, prismaService } = createService();
 
-    jest.spyOn(Date, "now").mockReturnValue(
-      new Date("2026-04-06T10:00:30.000Z").getTime()
-    );
+    jest
+      .spyOn(Date, "now")
+      .mockReturnValue(new Date("2026-04-06T10:00:30.000Z").getTime());
 
     mockHealthySnapshotQueries(prismaService);
     (prismaService.platformAlert.findMany as jest.Mock)
       .mockResolvedValueOnce([])
       .mockResolvedValueOnce([
         {
-          dedupeKey: "worker:stale:worker_legacy"
-        }
+          dedupeKey: "worker:stale:worker_legacy",
+        },
       ])
       .mockResolvedValueOnce([
         buildPlatformAlertRecord({
           status: PlatformAlertStatus.resolved,
-          resolvedAt: new Date("2026-04-06T10:00:30.000Z")
-        })
+          resolvedAt: new Date("2026-04-06T10:00:30.000Z"),
+        }),
       ]);
     (prismaService.platformAlert.count as jest.Mock).mockResolvedValue(1);
 
     const result = await service.listPlatformAlerts({
       limit: 20,
-      status: "resolved"
+      status: "resolved",
     });
 
     expect(prismaService.platformAlert.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
           dedupeKey: {
-            in: ["worker:stale:worker_legacy"]
-          }
-        })
-      })
+            in: ["worker:stale:worker_legacy"],
+          },
+        }),
+      }),
     );
     expect(result.totalCount).toBe(1);
     expect(result.alerts[0]?.status).toBe("resolved");
@@ -598,21 +627,37 @@ describe("OperationsMonitoringService", () => {
     const { service, prismaService } = createService();
     const requestMetrics = new ApiRequestMetricsService();
 
-    jest.spyOn(Date, "now").mockReturnValue(
-      new Date("2026-04-06T10:00:30.000Z").getTime()
-    );
+    jest
+      .spyOn(Date, "now")
+      .mockReturnValue(new Date("2026-04-06T10:00:30.000Z").getTime());
     mockHealthySnapshotQueries(prismaService);
     (prismaService.platformAlert.create as jest.Mock).mockResolvedValue(
-      buildPlatformAlertRecord()
+      buildPlatformAlertRecord(),
     );
     (prismaService.platformAlert.updateMany as jest.Mock).mockResolvedValue({
-      count: 0
+      count: 0,
     });
     (prismaService.platformAlert.findMany as jest.Mock)
       .mockResolvedValueOnce([])
       .mockResolvedValueOnce([])
       .mockResolvedValueOnce([buildPlatformAlertRecord()])
       .mockResolvedValueOnce([]);
+    (prismaService.auditEvent.findMany as jest.Mock).mockResolvedValue([
+      {
+        action: "customer_account.mfa_email_delivery_succeeded",
+        metadata: {
+          deliveryBackendType: "webhook",
+          purpose: "withdrawal_step_up",
+        },
+      },
+      {
+        action: "customer_account.mfa_lockout_triggered",
+        metadata: {
+          method: "email_otp",
+          purpose: "password_step_up",
+        },
+      },
+    ]);
 
     requestMetrics.recordRequestStarted();
     requestMetrics.recordRequestCompleted({
@@ -620,14 +665,14 @@ describe("OperationsMonitoringService", () => {
       routePath: "/operations/internal/status",
       statusCode: 200,
       actorType: "operator",
-      durationMs: 120
+      durationMs: 120,
     });
 
     const result = await service.renderPrometheusMetrics(
       {
-        staleAfterSeconds: 180
+        staleAfterSeconds: 180,
       },
-      requestMetrics
+      requestMetrics,
     );
 
     expect(result).toContain("stb_api_http_requests_total");
@@ -635,15 +680,22 @@ describe("OperationsMonitoringService", () => {
     expect(result).toContain("stb_platform_alerts_open_total");
     expect(result).toContain("stb_platform_alert_reescalation_due_total");
     expect(result).toContain("stb_platform_alert_delivery_target_latency_ms");
+    expect(result).toContain("stb_customer_mfa_email_delivery_recent_total");
+    expect(result).toContain("stb_customer_mfa_lockouts_recent_total");
     expect(result).toContain("stb_worker_latest_iteration_metric");
-    expect(result).toContain("stb_operations_managed_withdrawal_execution_total");
+    expect(result).toContain(
+      "stb_operations_managed_withdrawal_execution_total",
+    );
     expect(result).toContain('category="worker"');
+    expect(result).toContain('backend_type="webhook"');
   });
 
   it("reports platform alert delivery target health from recent deliveries", async () => {
     const { service, prismaService } = createService();
 
-    (prismaService.platformAlertDelivery.findMany as jest.Mock).mockResolvedValue([
+    (
+      prismaService.platformAlertDelivery.findMany as jest.Mock
+    ).mockResolvedValue([
       {
         id: "delivery_failed_1",
         platformAlertId: "alert_1",
@@ -659,7 +711,7 @@ describe("OperationsMonitoringService", () => {
         lastAttemptedAt: new Date("2026-04-06T10:20:00.000Z"),
         deliveredAt: null,
         createdAt: new Date("2026-04-06T10:19:00.000Z"),
-        updatedAt: new Date("2026-04-06T10:20:00.000Z")
+        updatedAt: new Date("2026-04-06T10:20:00.000Z"),
       },
       {
         id: "delivery_failed_2",
@@ -676,7 +728,7 @@ describe("OperationsMonitoringService", () => {
         lastAttemptedAt: new Date("2026-04-06T10:15:00.000Z"),
         deliveredAt: null,
         createdAt: new Date("2026-04-06T10:14:00.000Z"),
-        updatedAt: new Date("2026-04-06T10:15:00.000Z")
+        updatedAt: new Date("2026-04-06T10:15:00.000Z"),
       },
       {
         id: "delivery_failed_3",
@@ -693,7 +745,7 @@ describe("OperationsMonitoringService", () => {
         lastAttemptedAt: new Date("2026-04-06T10:11:00.000Z"),
         deliveredAt: null,
         createdAt: new Date("2026-04-06T10:10:30.000Z"),
-        updatedAt: new Date("2026-04-06T10:11:00.000Z")
+        updatedAt: new Date("2026-04-06T10:11:00.000Z"),
       },
       {
         id: "delivery_success_1",
@@ -710,12 +762,12 @@ describe("OperationsMonitoringService", () => {
         lastAttemptedAt: new Date("2026-04-06T10:10:10.000Z"),
         deliveredAt: new Date("2026-04-06T10:10:10.000Z"),
         createdAt: new Date("2026-04-06T10:10:00.000Z"),
-        updatedAt: new Date("2026-04-06T10:10:10.000Z")
-      }
+        updatedAt: new Date("2026-04-06T10:10:10.000Z"),
+      },
     ]);
 
     const result = await service.listPlatformAlertDeliveryTargetHealth({
-      lookbackHours: 24
+      lookbackHours: 24,
     });
 
     expect(result.summary.totalTargetCount).toBe(2);
@@ -739,14 +791,16 @@ describe("OperationsMonitoringService", () => {
       code: "platform_alert_delivery_target_degraded",
       summary: "Platform alert delivery target ops-critical is degraded.",
       detail:
-        "Recent failure rate 100% exceeds the critical threshold 50% over 3 deliveries."
+        "Recent failure rate 100% exceeds the critical threshold 50% over 3 deliveries.",
     });
 
-    jest.spyOn(Date, "now").mockReturnValue(
-      new Date("2026-04-06T10:30:00.000Z").getTime()
-    );
+    jest
+      .spyOn(Date, "now")
+      .mockReturnValue(new Date("2026-04-06T10:30:00.000Z").getTime());
     mockHealthySnapshotQueries(prismaService);
-    (prismaService.platformAlertDelivery.findMany as jest.Mock).mockResolvedValue([
+    (
+      prismaService.platformAlertDelivery.findMany as jest.Mock
+    ).mockResolvedValue([
       {
         id: "delivery_failed_1",
         platformAlertId: "alert_operations_1",
@@ -762,7 +816,7 @@ describe("OperationsMonitoringService", () => {
         lastAttemptedAt: new Date("2026-04-06T10:25:00.000Z"),
         deliveredAt: null,
         createdAt: new Date("2026-04-06T10:24:00.000Z"),
-        updatedAt: new Date("2026-04-06T10:25:00.000Z")
+        updatedAt: new Date("2026-04-06T10:25:00.000Z"),
       },
       {
         id: "delivery_failed_2",
@@ -779,7 +833,7 @@ describe("OperationsMonitoringService", () => {
         lastAttemptedAt: new Date("2026-04-06T10:20:00.000Z"),
         deliveredAt: null,
         createdAt: new Date("2026-04-06T10:19:00.000Z"),
-        updatedAt: new Date("2026-04-06T10:20:00.000Z")
+        updatedAt: new Date("2026-04-06T10:20:00.000Z"),
       },
       {
         id: "delivery_failed_3",
@@ -796,11 +850,11 @@ describe("OperationsMonitoringService", () => {
         lastAttemptedAt: new Date("2026-04-06T10:15:00.000Z"),
         deliveredAt: null,
         createdAt: new Date("2026-04-06T10:14:00.000Z"),
-        updatedAt: new Date("2026-04-06T10:15:00.000Z")
-      }
+        updatedAt: new Date("2026-04-06T10:15:00.000Z"),
+      },
     ]);
     (prismaService.platformAlert.create as jest.Mock).mockResolvedValue(
-      degradedDeliveryAlert
+      degradedDeliveryAlert,
     );
     (prismaService.platformAlert.findMany as jest.Mock)
       .mockResolvedValue([degradedDeliveryAlert])
@@ -812,7 +866,7 @@ describe("OperationsMonitoringService", () => {
 
     const result = await service.getOperationsStatus({
       recentAlertLimit: 8,
-      staleAfterSeconds: 180
+      staleAfterSeconds: 180,
     });
 
     expect(prismaService.platformAlert.create).toHaveBeenCalledWith(
@@ -821,13 +875,13 @@ describe("OperationsMonitoringService", () => {
           dedupeKey: "operations:alert-delivery-target:ops-critical",
           category: PlatformAlertCategory.operations,
           severity: PlatformAlertSeverity.critical,
-          code: "platform_alert_delivery_target_degraded"
-        })
-      })
+          code: "platform_alert_delivery_target_degraded",
+        }),
+      }),
     );
     expect(result.recentAlerts[0]?.category).toBe("operations");
     expect(result.recentAlerts[0]?.code).toBe(
-      "platform_alert_delivery_target_degraded"
+      "platform_alert_delivery_target_degraded",
     );
   });
 
@@ -839,21 +893,23 @@ describe("OperationsMonitoringService", () => {
       category: PlatformAlertCategory.reconciliation,
       severity: PlatformAlertSeverity.critical,
       code: "ledger_reconciliation_attention_required",
-      summary: "Ledger reconciliation requires operator attention."
+      summary: "Ledger reconciliation requires operator attention.",
     });
     const duplicateCreateError = Object.assign(
       Object.create(Prisma.PrismaClientKnownRequestError.prototype),
       {
         code: "P2002",
-        message: "Unique constraint failed on the fields: (`dedupeKey`)"
-      }
+        message: "Unique constraint failed on the fields: (`dedupeKey`)",
+      },
     ) as Prisma.PrismaClientKnownRequestError;
 
-    jest.spyOn(Date, "now").mockReturnValue(
-      new Date("2026-04-06T10:30:00.000Z").getTime()
-    );
+    jest
+      .spyOn(Date, "now")
+      .mockReturnValue(new Date("2026-04-06T10:30:00.000Z").getTime());
     mockHealthySnapshotQueries(prismaService);
-    (prismaService.platformAlertDelivery.findMany as jest.Mock).mockResolvedValue([
+    (
+      prismaService.platformAlertDelivery.findMany as jest.Mock
+    ).mockResolvedValue([
       {
         id: "delivery_failed_1",
         platformAlertId: "alert_concurrent_1",
@@ -869,7 +925,7 @@ describe("OperationsMonitoringService", () => {
         lastAttemptedAt: new Date("2026-04-06T10:25:00.000Z"),
         deliveredAt: null,
         createdAt: new Date("2026-04-06T10:24:00.000Z"),
-        updatedAt: new Date("2026-04-06T10:25:00.000Z")
+        updatedAt: new Date("2026-04-06T10:25:00.000Z"),
       },
       {
         id: "delivery_failed_2",
@@ -886,7 +942,7 @@ describe("OperationsMonitoringService", () => {
         lastAttemptedAt: new Date("2026-04-06T10:20:00.000Z"),
         deliveredAt: null,
         createdAt: new Date("2026-04-06T10:19:00.000Z"),
-        updatedAt: new Date("2026-04-06T10:20:00.000Z")
+        updatedAt: new Date("2026-04-06T10:20:00.000Z"),
       },
       {
         id: "delivery_failed_3",
@@ -903,25 +959,27 @@ describe("OperationsMonitoringService", () => {
         lastAttemptedAt: new Date("2026-04-06T10:15:00.000Z"),
         deliveredAt: null,
         createdAt: new Date("2026-04-06T10:14:00.000Z"),
-        updatedAt: new Date("2026-04-06T10:15:00.000Z")
-      }
+        updatedAt: new Date("2026-04-06T10:15:00.000Z"),
+      },
     ]);
     (prismaService.platformAlert.create as jest.Mock).mockImplementation(
       async ({ data }: { data: { dedupeKey: string } }) => {
-        if (data.dedupeKey === "operations:alert-delivery-target:ops-critical") {
+        if (
+          data.dedupeKey === "operations:alert-delivery-target:ops-critical"
+        ) {
           throw duplicateCreateError;
         }
 
         return buildPlatformAlertRecord({
-          dedupeKey: data.dedupeKey
+          dedupeKey: data.dedupeKey,
         });
-      }
+      },
     );
     (prismaService.platformAlert.findUnique as jest.Mock).mockResolvedValue(
-      concurrentAlert
+      concurrentAlert,
     );
     (prismaService.platformAlert.update as jest.Mock).mockResolvedValue(
-      concurrentAlert
+      concurrentAlert,
     );
     (prismaService.platformAlert.findMany as jest.Mock)
       .mockResolvedValue([concurrentAlert])
@@ -933,13 +991,13 @@ describe("OperationsMonitoringService", () => {
 
     const result = await service.getOperationsStatus({
       recentAlertLimit: 8,
-      staleAfterSeconds: 180
+      staleAfterSeconds: 180,
     });
 
     expect(prismaService.platformAlert.findUnique).toHaveBeenCalledWith({
       where: {
-        dedupeKey: "operations:alert-delivery-target:ops-critical"
-      }
+        dedupeKey: "operations:alert-delivery-target:ops-critical",
+      },
     });
     expect(prismaService.platformAlert.update).toHaveBeenCalled();
     expect(result.generatedAt).toBeTruthy();
@@ -947,39 +1005,44 @@ describe("OperationsMonitoringService", () => {
   });
 
   it("re-escalates overdue critical alerts for the worker sweep", async () => {
-    const { service, prismaService, platformAlertDeliveryService } = createService();
+    const { service, prismaService, platformAlertDeliveryService } =
+      createService();
     const overdueAlert = buildPlatformAlertRecord({
       id: "alert_reescalate_1",
       dedupeKey: "worker:stale:worker_1",
       severity: PlatformAlertSeverity.critical,
       firstDetectedAt: new Date("2026-04-06T10:00:00.000Z"),
-      createdAt: new Date("2026-04-06T10:00:00.000Z")
+      createdAt: new Date("2026-04-06T10:00:00.000Z"),
     });
 
-    jest.spyOn(Date, "now").mockReturnValue(
-      new Date("2026-04-06T10:30:00.000Z").getTime()
-    );
+    jest
+      .spyOn(Date, "now")
+      .mockReturnValue(new Date("2026-04-06T10:30:00.000Z").getTime());
     (prismaService.platformAlert.findMany as jest.Mock).mockResolvedValue([
-      overdueAlert
+      overdueAlert,
     ]);
-    (prismaService.platformAlertDelivery.findMany as jest.Mock).mockResolvedValue([]);
+    (
+      prismaService.platformAlertDelivery.findMany as jest.Mock
+    ).mockResolvedValue([]);
     (prismaService.auditEvent.findMany as jest.Mock).mockResolvedValue([]);
-    (platformAlertDeliveryService.enqueueAlertEvent as jest.Mock).mockResolvedValue(1);
+    (
+      platformAlertDeliveryService.enqueueAlertEvent as jest.Mock
+    ).mockResolvedValue(1);
 
     const result = await service.reEscalateCriticalPlatformAlertsFromWorker(
       "worker_1",
       {
-        limit: 10
-      }
+        limit: 10,
+      },
     );
 
     expect(platformAlertDeliveryService.enqueueAlertEvent).toHaveBeenCalledWith(
       expect.objectContaining({
         eventType: "re_escalated",
         metadata: expect.objectContaining({
-          reasons: ["unacknowledged", "unowned"]
-        })
-      })
+          reasons: ["unacknowledged", "unowned"],
+        }),
+      }),
     );
     expect(prismaService.auditEvent.create).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -987,9 +1050,9 @@ describe("OperationsMonitoringService", () => {
           action: "platform_alert.re_escalated",
           actorType: "worker",
           actorId: "worker_1",
-          targetId: overdueAlert.id
-        })
-      })
+          targetId: overdueAlert.id,
+        }),
+      }),
     );
     expect(result.reEscalatedAlertCount).toBe(1);
     expect(result.reEscalatedAlerts[0]?.alertId).toBe(overdueAlert.id);
@@ -1002,34 +1065,38 @@ describe("OperationsMonitoringService", () => {
       ownerOperatorId: "ops_1",
       ownerAssignedAt: new Date("2026-04-06T10:05:00.000Z"),
       ownerAssignedByOperatorId: "ops_2",
-      ownershipNote: "Taking primary ownership."
+      ownershipNote: "Taking primary ownership.",
     });
 
-    (prismaService.platformAlert.findUnique as jest.Mock).mockResolvedValue(openAlert);
-    (prismaService.platformAlert.update as jest.Mock).mockResolvedValue(updatedAlert);
+    (prismaService.platformAlert.findUnique as jest.Mock).mockResolvedValue(
+      openAlert,
+    );
+    (prismaService.platformAlert.update as jest.Mock).mockResolvedValue(
+      updatedAlert,
+    );
 
     const result = await service.assignPlatformAlertOwner(
       openAlert.id,
       "ops_2",
       "ops_1",
-      "Taking primary ownership."
+      "Taking primary ownership.",
     );
 
     expect(prismaService.platformAlert.update).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
           ownerOperatorId: "ops_1",
-          ownerAssignedByOperatorId: "ops_2"
-        })
-      })
+          ownerAssignedByOperatorId: "ops_2",
+        }),
+      }),
     );
     expect(prismaService.auditEvent.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
           action: "platform_alert.owner_assigned",
-          targetId: openAlert.id
-        })
-      })
+          targetId: openAlert.id,
+        }),
+      }),
     );
     expect(result.alert.ownerOperatorId).toBe("ops_1");
     expect(result.stateReused).toBe(false);
@@ -1041,16 +1108,20 @@ describe("OperationsMonitoringService", () => {
     const updatedAlert = buildPlatformAlertRecord({
       acknowledgedAt: new Date("2026-04-06T10:06:00.000Z"),
       acknowledgedByOperatorId: "ops_1",
-      acknowledgementNote: "Investigating now."
+      acknowledgementNote: "Investigating now.",
     });
 
-    (prismaService.platformAlert.findUnique as jest.Mock).mockResolvedValue(openAlert);
-    (prismaService.platformAlert.update as jest.Mock).mockResolvedValue(updatedAlert);
+    (prismaService.platformAlert.findUnique as jest.Mock).mockResolvedValue(
+      openAlert,
+    );
+    (prismaService.platformAlert.update as jest.Mock).mockResolvedValue(
+      updatedAlert,
+    );
 
     const result = await service.acknowledgePlatformAlert(
       openAlert.id,
       "ops_1",
-      "Investigating now."
+      "Investigating now.",
     );
 
     expect(prismaService.platformAlert.update).toHaveBeenCalled();
@@ -1058,9 +1129,9 @@ describe("OperationsMonitoringService", () => {
       expect.objectContaining({
         data: expect.objectContaining({
           action: "platform_alert.acknowledged",
-          targetId: openAlert.id
-        })
-      })
+          targetId: openAlert.id,
+        }),
+      }),
     );
     expect(result.alert.isAcknowledged).toBe(true);
     expect(result.stateReused).toBe(false);
@@ -1073,12 +1144,12 @@ describe("OperationsMonitoringService", () => {
     const suppressedAlert = buildPlatformAlertRecord({
       suppressedUntil,
       suppressedByOperatorId: "ops_1",
-      suppressionNote: "Known maintenance window."
+      suppressionNote: "Known maintenance window.",
     });
     const unsuppressedAlert = buildPlatformAlertRecord({
       suppressedUntil: null,
       suppressedByOperatorId: null,
-      suppressionNote: "Suppression cleared after maintenance."
+      suppressionNote: "Suppression cleared after maintenance.",
     });
 
     jest
@@ -1095,29 +1166,29 @@ describe("OperationsMonitoringService", () => {
       openAlert.id,
       "ops_1",
       suppressedUntil,
-      "Known maintenance window."
+      "Known maintenance window.",
     );
     const clearedResult = await service.clearPlatformAlertSuppression(
       openAlert.id,
       "ops_1",
-      "Suppression cleared after maintenance."
+      "Suppression cleared after maintenance.",
     );
 
     expect(prismaService.auditEvent.create).toHaveBeenNthCalledWith(
       1,
       expect.objectContaining({
         data: expect.objectContaining({
-          action: "platform_alert.suppressed"
-        })
-      })
+          action: "platform_alert.suppressed",
+        }),
+      }),
     );
     expect(prismaService.auditEvent.create).toHaveBeenNthCalledWith(
       2,
       expect.objectContaining({
         data: expect.objectContaining({
-          action: "platform_alert.suppression_cleared"
-        })
-      })
+          action: "platform_alert.suppression_cleared",
+        }),
+      }),
     );
     expect(suppressedResult.alert.hasActiveSuppression).toBe(true);
     expect(clearedResult.alert.hasActiveSuppression).toBe(false);
@@ -1128,7 +1199,7 @@ describe("OperationsMonitoringService", () => {
       createService();
     const openAlert = buildPlatformAlertRecord({
       id: "alert_route_1",
-      severity: PlatformAlertSeverity.critical
+      severity: PlatformAlertSeverity.critical,
     });
     const routedAlert = buildPlatformAlertRecord({
       id: "alert_route_1",
@@ -1138,11 +1209,11 @@ describe("OperationsMonitoringService", () => {
       routingTargetId: "review_case_1",
       routedAt: new Date("2026-04-06T10:05:00.000Z"),
       routedByOperatorId: "ops_1",
-      routingNote: "Escalated from critical worker outage."
+      routingNote: "Escalated from critical worker outage.",
     });
 
     (transactionClient.platformAlert.findUnique as jest.Mock).mockResolvedValue(
-      openAlert
+      openAlert,
     );
     (reviewCasesService.openOrReuseReviewCase as jest.Mock).mockResolvedValue({
       reviewCase: {
@@ -1150,20 +1221,20 @@ describe("OperationsMonitoringService", () => {
         status: ReviewCaseStatus.open,
         type: ReviewCaseType.manual_intervention,
         reasonCode: "platform_alert:worker:degraded:worker_1",
-        assignedOperatorId: null
+        assignedOperatorId: null,
       },
-      reviewCaseReused: false
+      reviewCaseReused: false,
     });
     (transactionClient.platformAlert.update as jest.Mock).mockResolvedValue(
-      routedAlert
+      routedAlert,
     );
 
     const result = await service.routePlatformAlertToReviewCase(
       openAlert.id,
       "ops_1",
       {
-        note: "Escalated from critical worker outage."
-      }
+        note: "Escalated from critical worker outage.",
+      },
     );
 
     expect(reviewCasesService.openOrReuseReviewCase).toHaveBeenCalledWith(
@@ -1171,26 +1242,26 @@ describe("OperationsMonitoringService", () => {
       expect.objectContaining({
         type: ReviewCaseType.manual_intervention,
         reasonCode: "platform_alert:worker:degraded:worker_1",
-        actorId: "ops_1"
-      })
+        actorId: "ops_1",
+      }),
     );
     expect(transactionClient.platformAlert.update).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
           routingStatus: PlatformAlertRoutingStatus.routed,
           routingTargetType: PlatformAlertRoutingTargetType.review_case,
-          routingTargetId: "review_case_1"
-        })
-      })
+          routingTargetId: "review_case_1",
+        }),
+      }),
     );
     expect(transactionClient.auditEvent.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
           action: "platform_alert.routed_to_review_case",
           targetType: "PlatformAlert",
-          targetId: openAlert.id
-        })
-      })
+          targetId: openAlert.id,
+        }),
+      }),
     );
     expect(result.reviewCase.id).toBe("review_case_1");
     expect(result.alert.routingStatus).toBe("routed");
@@ -1202,7 +1273,7 @@ describe("OperationsMonitoringService", () => {
       createService();
     const createdAlert = buildPlatformAlertRecord({
       id: "alert_auto_1",
-      severity: PlatformAlertSeverity.critical
+      severity: PlatformAlertSeverity.critical,
     });
     const routedAlert = buildPlatformAlertRecord({
       id: "alert_auto_1",
@@ -1213,52 +1284,56 @@ describe("OperationsMonitoringService", () => {
       routedAt: new Date("2026-04-06T10:05:00.000Z"),
       routedByOperatorId: null,
       routingNote:
-        'Automatically routed by platform alert automation policy "critical-worker-auto-route". Escalate worker outages immediately.'
+        'Automatically routed by platform alert automation policy "critical-worker-auto-route". Escalate worker outages immediately.',
     });
 
-    jest.spyOn(Date, "now").mockReturnValue(
-      new Date("2026-04-06T10:00:30.000Z").getTime()
-    );
-    (prismaService.workerRuntimeHeartbeat.findMany as jest.Mock).mockResolvedValue([
+    jest
+      .spyOn(Date, "now")
+      .mockReturnValue(new Date("2026-04-06T10:00:30.000Z").getTime());
+    (
+      prismaService.workerRuntimeHeartbeat.findMany as jest.Mock
+    ).mockResolvedValue([
       buildHeartbeatRecord({
         lastIterationStatus: WorkerRuntimeIterationStatus.failed,
         consecutiveFailureCount: 3,
-        lastErrorMessage: "RPC timeout"
-      })
+        lastErrorMessage: "RPC timeout",
+      }),
     ]);
     (prismaService.transactionIntent.count as jest.Mock)
       .mockResolvedValueOnce(1)
       .mockResolvedValueOnce(0)
       .mockResolvedValueOnce(0);
     (prismaService.transactionIntent.findFirst as jest.Mock).mockResolvedValue({
-      createdAt: new Date("2026-04-06T09:59:00.000Z")
+      createdAt: new Date("2026-04-06T09:59:00.000Z"),
     });
     (prismaService.blockchainTransaction.count as jest.Mock)
       .mockResolvedValueOnce(0)
       .mockResolvedValueOnce(0)
       .mockResolvedValueOnce(0);
-    (prismaService.blockchainTransaction.findFirst as jest.Mock).mockResolvedValue(
-      null
-    );
+    (
+      prismaService.blockchainTransaction.findFirst as jest.Mock
+    ).mockResolvedValue(null);
     (prismaService.ledgerReconciliationMismatch.count as jest.Mock)
       .mockResolvedValueOnce(0)
       .mockResolvedValueOnce(0);
-    (prismaService.ledgerReconciliationScanRun.count as jest.Mock).mockResolvedValue(
-      0
-    );
-    (prismaService.ledgerReconciliationScanRun.findFirst as jest.Mock).mockResolvedValue(
-      {
-        status: LedgerReconciliationScanRunStatus.succeeded,
-        startedAt: new Date("2026-04-06T09:55:00.000Z")
-      }
-    );
+    (
+      prismaService.ledgerReconciliationScanRun.count as jest.Mock
+    ).mockResolvedValue(0);
+    (
+      prismaService.ledgerReconciliationScanRun.findFirst as jest.Mock
+    ).mockResolvedValue({
+      status: LedgerReconciliationScanRunStatus.succeeded,
+      startedAt: new Date("2026-04-06T09:55:00.000Z"),
+    });
     (prismaService.wallet.count as jest.Mock)
       .mockResolvedValueOnce(1)
       .mockResolvedValueOnce(1);
     (prismaService.reviewCase.count as jest.Mock).mockResolvedValue(1);
     (prismaService.oversightIncident.count as jest.Mock).mockResolvedValue(0);
     (prismaService.customerAccount.count as jest.Mock).mockResolvedValue(0);
-    (prismaService.platformAlert.create as jest.Mock).mockResolvedValue(createdAlert);
+    (prismaService.platformAlert.create as jest.Mock).mockResolvedValue(
+      createdAlert,
+    );
     (prismaService.platformAlert.findMany as jest.Mock)
       .mockResolvedValueOnce([])
       .mockResolvedValueOnce([])
@@ -1268,7 +1343,7 @@ describe("OperationsMonitoringService", () => {
       .mockResolvedValueOnce(1)
       .mockResolvedValueOnce(0);
     (transactionClient.platformAlert.findUnique as jest.Mock).mockResolvedValue(
-      createdAlert
+      createdAlert,
     );
     (reviewCasesService.openOrReuseReviewCase as jest.Mock).mockResolvedValue({
       reviewCase: {
@@ -1276,33 +1351,33 @@ describe("OperationsMonitoringService", () => {
         status: ReviewCaseStatus.open,
         type: ReviewCaseType.manual_intervention,
         reasonCode: "platform_alert:worker:degraded:worker_1",
-        assignedOperatorId: null
+        assignedOperatorId: null,
       },
-      reviewCaseReused: false
+      reviewCaseReused: false,
     });
     (transactionClient.platformAlert.update as jest.Mock).mockResolvedValue(
-      routedAlert
+      routedAlert,
     );
 
     const result = await service.getOperationsStatus({
       staleAfterSeconds: 180,
-      recentAlertLimit: 4
+      recentAlertLimit: 4,
     });
 
     expect(reviewCasesService.openOrReuseReviewCase).toHaveBeenCalledWith(
       transactionClient,
       expect.objectContaining({
         actorType: "system",
-        actorId: "platform-alert-automation"
-      })
+        actorId: "platform-alert-automation",
+      }),
     );
     expect(transactionClient.platformAlert.update).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
           routingStatus: PlatformAlertRoutingStatus.routed,
-          routedByOperatorId: null
-        })
-      })
+          routedByOperatorId: null,
+        }),
+      }),
     );
     expect(prismaService.auditEvent.create).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -1310,22 +1385,22 @@ describe("OperationsMonitoringService", () => {
           action: "platform_alert.automation_policy_applied",
           actorType: "system",
           actorId: "platform-alert-automation",
-          targetId: "alert_auto_1"
-        })
-      })
+          targetId: "alert_auto_1",
+        }),
+      }),
     );
     expect(result.recentAlerts[0]?.routingStatus).toBe("routed");
     expect(result.recentAlerts[0]?.routingNote).toContain(
-      "critical-worker-auto-route"
+      "critical-worker-auto-route",
     );
   });
 
   it("routes only unrouted critical alerts in batch", async () => {
     const { service, prismaService } = createService();
 
-    jest.spyOn(Date, "now").mockReturnValue(
-      new Date("2026-04-06T10:00:30.000Z").getTime()
-    );
+    jest
+      .spyOn(Date, "now")
+      .mockReturnValue(new Date("2026-04-06T10:00:30.000Z").getTime());
     mockHealthySnapshotQueries(prismaService);
     (prismaService.platformAlert.findMany as jest.Mock)
       .mockResolvedValueOnce([])
@@ -1333,7 +1408,7 @@ describe("OperationsMonitoringService", () => {
       .mockResolvedValueOnce([
         buildPlatformAlertRecord({
           id: "alert_batch_1",
-          severity: PlatformAlertSeverity.critical
+          severity: PlatformAlertSeverity.critical,
         }),
         buildPlatformAlertRecord({
           id: "alert_batch_2",
@@ -1341,8 +1416,8 @@ describe("OperationsMonitoringService", () => {
           category: PlatformAlertCategory.chain,
           severity: PlatformAlertSeverity.critical,
           code: "chain_broadcast_confirmation_lag",
-          summary: "Broadcast confirmations are lagging or failing."
-        })
+          summary: "Broadcast confirmations are lagging or failing.",
+        }),
       ]);
     (prismaService.platformAlert.count as jest.Mock).mockResolvedValue(1);
 
@@ -1385,34 +1460,34 @@ describe("OperationsMonitoringService", () => {
             lastStatus: null,
             lastTargetName: null,
             lastEscalatedFromTargetName: null,
-            lastErrorMessage: null
+            lastErrorMessage: null,
           },
           code: "worker_runtime_degraded",
           summary: "Worker worker_1 is degraded.",
           detail: "Iteration status is failed.",
           metadata: {
-            workerId: "worker_1"
+            workerId: "worker_1",
           },
           firstDetectedAt: "2026-04-06T10:00:00.000Z",
           lastDetectedAt: "2026-04-06T10:00:00.000Z",
           resolvedAt: null,
           createdAt: "2026-04-06T10:00:00.000Z",
-          updatedAt: "2026-04-06T10:05:00.000Z"
+          updatedAt: "2026-04-06T10:05:00.000Z",
         },
         reviewCase: {
           id: "review_case_1",
           status: ReviewCaseStatus.open,
           type: ReviewCaseType.manual_intervention,
           reasonCode: "platform_alert:worker:degraded:worker_1",
-          assignedOperatorId: null
+          assignedOperatorId: null,
         },
         reviewCaseReused: false,
-        routingStateReused: false
+        routingStateReused: false,
       });
 
     const result = await service.routeCriticalPlatformAlerts("ops_1", {
       limit: 2,
-      staleAfterSeconds: 180
+      staleAfterSeconds: 180,
     });
 
     expect(routeSpy).toHaveBeenCalledTimes(2);

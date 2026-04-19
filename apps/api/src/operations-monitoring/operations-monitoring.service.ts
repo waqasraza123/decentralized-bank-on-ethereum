@@ -2,7 +2,7 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
-  NotFoundException
+  NotFoundException,
 } from "@nestjs/common";
 import {
   loadPlatformAlertAutomationRuntimeConfig,
@@ -14,7 +14,7 @@ import {
   type PlatformAlertDeliveryRuntimeConfig,
   type PlatformAlertDeliveryHealthSloRuntimeConfig,
   type PlatformAlertDeliveryTargetRuntimeConfig,
-  type PlatformAlertReEscalationRuntimeConfig
+  type PlatformAlertReEscalationRuntimeConfig,
 } from "@stealth-trails-bank/config/api";
 import {
   AccountLifecycleStatus,
@@ -41,7 +41,7 @@ import {
   WalletStatus,
   WorkerRuntimeEnvironment,
   WorkerRuntimeExecutionMode,
-  WorkerRuntimeIterationStatus
+  WorkerRuntimeIterationStatus,
 } from "@prisma/client";
 import { ApiRequestMetricsService } from "../logging/api-request-metrics.service";
 import { PrismaService } from "../prisma/prisma.service";
@@ -210,7 +210,10 @@ type ReEscalateCriticalPlatformAlertsResult = {
   reEscalatedAlerts: ReEscalatedCriticalPlatformAlertProjection[];
 };
 
-type PlatformAlertDeliveryTargetHealthStatus = "healthy" | "warning" | "critical";
+type PlatformAlertDeliveryTargetHealthStatus =
+  | "healthy"
+  | "warning"
+  | "critical";
 
 type PlatformAlertDeliveryTargetHealthProjection = {
   targetName: string;
@@ -372,7 +375,7 @@ const WORKER_ITERATION_METRIC_KEYS = [
   "depositFailedCount",
   "withdrawalFailedCount",
   "manualWithdrawalBacklogCount",
-  "lastIterationDurationMs"
+  "lastIterationDurationMs",
 ] as const;
 
 function buildPastDate(hours: number): Date {
@@ -383,23 +386,20 @@ function buildPastDateSeconds(seconds: number): Date {
   return new Date(Date.now() - seconds * 1000);
 }
 
-function isJsonObject(
-  value: unknown
-): value is Prisma.JsonObject {
+function isJsonObject(value: unknown): value is Prisma.JsonObject {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
 function hasActivePlatformAlertSuppression(
   alert: Pick<PlatformAlertRecord, "suppressedUntil">,
-  nowMs = Date.now()
+  nowMs = Date.now(),
 ): boolean {
-  return alert.suppressedUntil !== null && alert.suppressedUntil.getTime() > nowMs;
+  return (
+    alert.suppressedUntil !== null && alert.suppressedUntil.getTime() > nowMs
+  );
 }
 
-function readJsonNumber(
-  value: Prisma.JsonValue | null,
-  key: string
-): number {
+function readJsonNumber(value: Prisma.JsonValue | null, key: string): number {
   if (!isJsonObject(value)) {
     return 0;
   }
@@ -410,21 +410,41 @@ function readJsonNumber(
     : 0;
 }
 
+function readJsonString(
+  value: Prisma.JsonValue | null,
+  key: string,
+): string | null {
+  if (!isJsonObject(value)) {
+    return null;
+  }
+
+  const rawValue = value[key];
+  return typeof rawValue === "string" && rawValue.trim().length > 0
+    ? rawValue.trim()
+    : null;
+}
+
 function escapePrometheusLabelValue(value: string): string {
-  return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\n/g, "\\n");
+  return value
+    .replace(/\\/g, "\\\\")
+    .replace(/"/g, '\\"')
+    .replace(/\n/g, "\\n");
 }
 
 function formatPrometheusLine(
   name: string,
   value: number,
-  labels?: Record<string, string>
+  labels?: Record<string, string>,
 ): string {
   if (!labels || Object.keys(labels).length === 0) {
     return `${name} ${Number.isFinite(value) ? value : 0}`;
   }
 
   const serializedLabels = Object.entries(labels)
-    .map(([label, labelValue]) => `${label}="${escapePrometheusLabelValue(labelValue)}"`)
+    .map(
+      ([label, labelValue]) =>
+        `${label}="${escapePrometheusLabelValue(labelValue)}"`,
+    )
     .join(",");
 
   return `${name}{${serializedLabels}} ${Number.isFinite(value) ? value : 0}`;
@@ -441,7 +461,7 @@ export class OperationsMonitoringService {
   constructor(
     private readonly prismaService: PrismaService,
     private readonly reviewCasesService: ReviewCasesService,
-    private readonly platformAlertDeliveryService: PlatformAlertDeliveryService
+    private readonly platformAlertDeliveryService: PlatformAlertDeliveryService,
   ) {
     this.productChainId = loadProductChainRuntimeConfig().productChainId;
     this.platformAlertAutomationPolicies =
@@ -456,7 +476,7 @@ export class OperationsMonitoringService {
 
   private resolveHealthStatus(
     record: WorkerRuntimeHeartbeatRecord,
-    staleAfterSeconds: number
+    staleAfterSeconds: number,
   ): "healthy" | "degraded" | "stale" {
     const staleThresholdMs = staleAfterSeconds * 1000;
     const heartbeatAgeMs = Date.now() - record.lastHeartbeatAt.getTime();
@@ -468,7 +488,8 @@ export class OperationsMonitoringService {
     if (
       record.lastIterationStatus === WorkerRuntimeIterationStatus.failed ||
       record.consecutiveFailureCount > 0 ||
-      record.lastReconciliationScanStatus === LedgerReconciliationScanRunStatus.failed
+      record.lastReconciliationScanStatus ===
+        LedgerReconciliationScanRunStatus.failed
     ) {
       return "degraded";
     }
@@ -478,7 +499,7 @@ export class OperationsMonitoringService {
 
   private mapWorkerRuntimeHealthProjection(
     record: WorkerRuntimeHeartbeatRecord,
-    staleAfterSeconds: number
+    staleAfterSeconds: number,
   ): WorkerRuntimeHealthProjection {
     return {
       workerId: record.workerId,
@@ -487,7 +508,8 @@ export class OperationsMonitoringService {
       executionMode: record.executionMode,
       lastIterationStatus: record.lastIterationStatus,
       lastHeartbeatAt: record.lastHeartbeatAt.toISOString(),
-      lastIterationStartedAt: record.lastIterationStartedAt?.toISOString() ?? null,
+      lastIterationStartedAt:
+        record.lastIterationStartedAt?.toISOString() ?? null,
       lastIterationCompletedAt:
         record.lastIterationCompletedAt?.toISOString() ?? null,
       consecutiveFailureCount: record.consecutiveFailureCount,
@@ -502,13 +524,13 @@ export class OperationsMonitoringService {
       runtimeMetadata: record.runtimeMetadata ?? null,
       latestIterationMetrics: record.latestIterationMetrics ?? null,
       createdAt: record.createdAt.toISOString(),
-      updatedAt: record.updatedAt.toISOString()
+      updatedAt: record.updatedAt.toISOString(),
     };
   }
 
   private mapPlatformAlertProjection(
     record: PlatformAlertRecord,
-    deliverySummary?: PlatformAlertProjection["deliverySummary"]
+    deliverySummary?: PlatformAlertProjection["deliverySummary"],
   ): PlatformAlertProjection {
     const hasActiveSuppression = hasActivePlatformAlertSuppression(record);
 
@@ -548,7 +570,7 @@ export class OperationsMonitoringService {
         lastStatus: null,
         lastTargetName: null,
         lastEscalatedFromTargetName: null,
-        lastErrorMessage: null
+        lastErrorMessage: null,
       },
       code: record.code,
       summary: record.summary,
@@ -558,7 +580,7 @@ export class OperationsMonitoringService {
       lastDetectedAt: record.lastDetectedAt.toISOString(),
       resolvedAt: record.resolvedAt?.toISOString() ?? null,
       createdAt: record.createdAt.toISOString(),
-      updatedAt: record.updatedAt.toISOString()
+      updatedAt: record.updatedAt.toISOString(),
     };
   }
 
@@ -575,38 +597,39 @@ export class OperationsMonitoringService {
       ownerOperatorId: alert.ownerOperatorId ?? null,
       acknowledgedAt: alert.acknowledgedAt?.toISOString() ?? null,
       suppressedUntil: alert.suppressedUntil?.toISOString() ?? null,
-      metadata: alert.metadata ?? null
+      metadata: alert.metadata ?? null,
     };
   }
 
   private buildPlatformAlertDeliverySummary(
-    deliveries: PlatformAlertDeliveryRecord[]
+    deliveries: PlatformAlertDeliveryRecord[],
   ): PlatformAlertProjection["deliverySummary"] {
     const latestDelivery =
       deliveries
         .slice()
-        .sort((left, right) => right.createdAt.getTime() - left.createdAt.getTime())[0] ??
-      null;
+        .sort(
+          (left, right) => right.createdAt.getTime() - left.createdAt.getTime(),
+        )[0] ?? null;
 
     return {
       totalCount: deliveries.length,
       pendingCount: deliveries.filter(
-        (delivery) => delivery.status === PlatformAlertDeliveryStatus.pending
+        (delivery) => delivery.status === PlatformAlertDeliveryStatus.pending,
       ).length,
       failedCount: deliveries.filter(
-        (delivery) => delivery.status === PlatformAlertDeliveryStatus.failed
+        (delivery) => delivery.status === PlatformAlertDeliveryStatus.failed,
       ).length,
       escalatedCount: deliveries.filter(
-        (delivery) => delivery.escalationLevel > 0
+        (delivery) => delivery.escalationLevel > 0,
       ).length,
       reEscalationCount: deliveries.filter(
         (delivery) =>
-          delivery.eventType === PlatformAlertDeliveryEventType.re_escalated
+          delivery.eventType === PlatformAlertDeliveryEventType.re_escalated,
       ).length,
       highestEscalationLevel: deliveries.reduce(
         (highestLevel, delivery) =>
           Math.max(highestLevel, delivery.escalationLevel),
-        0
+        0,
       ),
       lastAttemptedAt: latestDelivery?.lastAttemptedAt?.toISOString() ?? null,
       lastEventType: latestDelivery?.eventType ?? null,
@@ -617,18 +640,17 @@ export class OperationsMonitoringService {
         latestDelivery?.requestPayload &&
         isJsonObject(latestDelivery.requestPayload) &&
         isJsonObject(latestDelivery.requestPayload["delivery"]) &&
-        typeof latestDelivery.requestPayload["delivery"]["escalatedFromTargetName"] ===
-          "string"
-          ? latestDelivery.requestPayload["delivery"][
-              "escalatedFromTargetName"
-            ]
+        typeof latestDelivery.requestPayload["delivery"][
+          "escalatedFromTargetName"
+        ] === "string"
+          ? latestDelivery.requestPayload["delivery"]["escalatedFromTargetName"]
           : null,
-      lastErrorMessage: latestDelivery?.errorMessage ?? null
+      lastErrorMessage: latestDelivery?.errorMessage ?? null,
     };
   }
 
   private async buildPlatformAlertDeliverySummaryMap(
-    alertIds: string[]
+    alertIds: string[],
   ): Promise<Map<string, PlatformAlertProjection["deliverySummary"]>> {
     if (alertIds.length === 0) {
       return new Map();
@@ -637,14 +659,17 @@ export class OperationsMonitoringService {
     const deliveries = await this.prismaService.platformAlertDelivery.findMany({
       where: {
         platformAlertId: {
-          in: alertIds
-        }
+          in: alertIds,
+        },
       },
       orderBy: {
-        createdAt: "desc"
-      }
+        createdAt: "desc",
+      },
     });
-    const deliveriesByAlertId = new Map<string, PlatformAlertDeliveryRecord[]>();
+    const deliveriesByAlertId = new Map<
+      string,
+      PlatformAlertDeliveryRecord[]
+    >();
 
     for (const delivery of deliveries) {
       const current = deliveriesByAlertId.get(delivery.platformAlertId) ?? [];
@@ -656,28 +681,30 @@ export class OperationsMonitoringService {
       alertIds.map((alertId) => [
         alertId,
         this.buildPlatformAlertDeliverySummary(
-          deliveriesByAlertId.get(alertId) ?? []
-        )
-      ])
+          deliveriesByAlertId.get(alertId) ?? [],
+        ),
+      ]),
     );
   }
 
   private buildPlatformAlertReviewCaseReasonCode(
-    alert: Pick<PlatformAlertRecord, "dedupeKey">
+    alert: Pick<PlatformAlertRecord, "dedupeKey">,
   ): string {
     return `platform_alert:${alert.dedupeKey}`;
   }
 
   private buildPlatformAlertReviewCaseNotes(
     alert: Pick<PlatformAlertRecord, "code" | "summary" | "detail">,
-    routeNote: string | null
+    routeNote: string | null,
   ): string {
     return [
       `Platform alert ${alert.code}: ${alert.summary}`,
       alert.detail?.trim() ? `Detail: ${alert.detail.trim()}` : null,
-      routeNote
+      routeNote,
     ]
-      .filter((value): value is string => Boolean(value && value.trim().length > 0))
+      .filter((value): value is string =>
+        Boolean(value && value.trim().length > 0),
+      )
       .join("\n\n");
   }
 
@@ -693,12 +720,12 @@ export class OperationsMonitoringService {
       status: reviewCase.status,
       type: reviewCase.type,
       reasonCode: reviewCase.reasonCode ?? null,
-      assignedOperatorId: reviewCase.assignedOperatorId ?? null
+      assignedOperatorId: reviewCase.assignedOperatorId ?? null,
     };
   }
 
   private ensureOpenPlatformAlert(
-    alert: PlatformAlertRecord | null
+    alert: PlatformAlertRecord | null,
   ): PlatformAlertRecord {
     if (!alert) {
       throw new NotFoundException("Platform alert not found.");
@@ -714,12 +741,12 @@ export class OperationsMonitoringService {
   private emitPlatformAlertDeliveryEvent(
     alert: PlatformAlertRecord,
     eventType: PlatformAlertDeliveryEventType,
-    metadata?: Record<string, unknown>
+    metadata?: Record<string, unknown>,
   ): void {
     void this.platformAlertDeliveryService.enqueueAlertEvent({
       alert: this.buildPlatformAlertDeliveryPayload(alert),
       eventType,
-      metadata
+      metadata,
     });
   }
 
@@ -727,7 +754,7 @@ export class OperationsMonitoringService {
     alert: Pick<
       PlatformAlertRecord,
       "acknowledgedAt" | "ownerOperatorId" | "firstDetectedAt"
-    >
+    >,
   ): Array<{
     reason: CriticalPlatformAlertReEscalationReason;
     dueAt: Date;
@@ -742,9 +769,10 @@ export class OperationsMonitoringService {
         reason: "unacknowledged",
         dueAt: new Date(
           alert.firstDetectedAt.getTime() +
-            this.platformAlertReEscalationRuntimeConfig.unacknowledgedCriticalAlertThresholdSeconds *
-              1000
-        )
+            this.platformAlertReEscalationRuntimeConfig
+              .unacknowledgedCriticalAlertThresholdSeconds *
+              1000,
+        ),
       });
     }
 
@@ -753,9 +781,10 @@ export class OperationsMonitoringService {
         reason: "unowned",
         dueAt: new Date(
           alert.firstDetectedAt.getTime() +
-            this.platformAlertReEscalationRuntimeConfig.unownedCriticalAlertThresholdSeconds *
-              1000
-        )
+            this.platformAlertReEscalationRuntimeConfig
+              .unownedCriticalAlertThresholdSeconds *
+              1000,
+        ),
       });
     }
 
@@ -772,24 +801,29 @@ export class OperationsMonitoringService {
     reasons: CriticalPlatformAlertReEscalationReason[];
     dueAt: Date | null;
   } {
-    const reasonEntries = this.resolveCriticalAlertReEscalationReasons(args.alert);
+    const reasonEntries = this.resolveCriticalAlertReEscalationReasons(
+      args.alert,
+    );
 
     if (reasonEntries.length === 0) {
       return {
         reasons: [],
-        dueAt: null
+        dueAt: null,
       };
     }
 
     const earliestReasonDueAt = reasonEntries.reduce(
       (earliestDueAt, entry) =>
-        entry.dueAt.getTime() < earliestDueAt.getTime() ? entry.dueAt : earliestDueAt,
-      reasonEntries[0]!.dueAt
+        entry.dueAt.getTime() < earliestDueAt.getTime()
+          ? entry.dueAt
+          : earliestDueAt,
+      reasonEntries[0]!.dueAt,
     );
     const repeatGateTime =
       args.lastReEscalatedAt !== null
         ? args.lastReEscalatedAt.getTime() +
-          this.platformAlertReEscalationRuntimeConfig.repeatIntervalSeconds * 1000
+          this.platformAlertReEscalationRuntimeConfig.repeatIntervalSeconds *
+            1000
         : null;
 
     return {
@@ -797,9 +831,7 @@ export class OperationsMonitoringService {
       dueAt:
         repeatGateTime === null
           ? earliestReasonDueAt
-          : new Date(
-              Math.max(earliestReasonDueAt.getTime(), repeatGateTime)
-            )
+          : new Date(Math.max(earliestReasonDueAt.getTime(), repeatGateTime)),
     };
   }
 
@@ -814,35 +846,35 @@ export class OperationsMonitoringService {
           {
             OR: [
               {
-                acknowledgedAt: null
+                acknowledgedAt: null,
               },
               {
-                ownerOperatorId: null
-              }
-            ]
+                ownerOperatorId: null,
+              },
+            ],
           },
           {
             OR: [
               {
-                suppressedUntil: null
+                suppressedUntil: null,
               },
               {
                 suppressedUntil: {
-                  lte: new Date()
-                }
-              }
-            ]
-          }
-        ]
+                  lte: new Date(),
+                },
+              },
+            ],
+          },
+        ],
       },
       orderBy: [
         {
-          firstDetectedAt: "asc"
+          firstDetectedAt: "asc",
         },
         {
-          createdAt: "asc"
-        }
-      ]
+          createdAt: "asc",
+        },
+      ],
     });
 
     if (alerts.length === 0) {
@@ -855,36 +887,39 @@ export class OperationsMonitoringService {
         this.prismaService.platformAlertDelivery.findMany({
           where: {
             platformAlertId: {
-              in: alertIds
+              in: alertIds,
             },
             OR: [
               {
-                eventType: PlatformAlertDeliveryEventType.re_escalated
+                eventType: PlatformAlertDeliveryEventType.re_escalated,
               },
               {
-                status: PlatformAlertDeliveryStatus.pending
-              }
-            ]
+                status: PlatformAlertDeliveryStatus.pending,
+              },
+            ],
           },
           orderBy: {
-            createdAt: "desc"
-          }
+            createdAt: "desc",
+          },
         }),
         this.prismaService.auditEvent.findMany({
           where: {
             action: "platform_alert.re_escalated",
             targetType: "PlatformAlert",
             targetId: {
-              in: alertIds
-            }
+              in: alertIds,
+            },
           },
           orderBy: {
-            createdAt: "desc"
-          }
-        })
+            createdAt: "desc",
+          },
+        }),
       ]);
 
-    const deliveriesByAlertId = new Map<string, PlatformAlertDeliveryRecord[]>();
+    const deliveriesByAlertId = new Map<
+      string,
+      PlatformAlertDeliveryRecord[]
+    >();
 
     for (const delivery of pendingAndReEscalatedDeliveries) {
       const current = deliveriesByAlertId.get(delivery.platformAlertId) ?? [];
@@ -895,7 +930,10 @@ export class OperationsMonitoringService {
     const latestReEscalationAuditByAlertId = new Map<string, Date>();
 
     for (const event of reEscalationAuditEvents) {
-      if (!event.targetId || latestReEscalationAuditByAlertId.has(event.targetId)) {
+      if (
+        !event.targetId ||
+        latestReEscalationAuditByAlertId.has(event.targetId)
+      ) {
         continue;
       }
 
@@ -910,7 +948,7 @@ export class OperationsMonitoringService {
         const { reasons, dueAt } = this.resolveCriticalAlertReEscalationDueAt({
           alert,
           lastReEscalatedAt:
-            latestReEscalationAuditByAlertId.get(alert.id) ?? null
+            latestReEscalationAuditByAlertId.get(alert.id) ?? null,
         });
 
         if (!dueAt || dueAt.getTime() > nowMs) {
@@ -926,33 +964,37 @@ export class OperationsMonitoringService {
           hasPendingReEscalationDelivery: deliveries.some(
             (delivery) =>
               delivery.status === PlatformAlertDeliveryStatus.pending &&
-              delivery.eventType === PlatformAlertDeliveryEventType.re_escalated
-          )
+              delivery.eventType ===
+                PlatformAlertDeliveryEventType.re_escalated,
+          ),
         } satisfies DueCriticalPlatformAlertReEscalationCandidate;
       })
       .filter(
-        (candidate): candidate is DueCriticalPlatformAlertReEscalationCandidate =>
-          candidate !== null
+        (
+          candidate,
+        ): candidate is DueCriticalPlatformAlertReEscalationCandidate =>
+          candidate !== null,
       )
       .sort(
         (left, right) =>
           left.dueAt.getTime() - right.dueAt.getTime() ||
-          left.alert.firstDetectedAt.getTime() - right.alert.firstDetectedAt.getTime()
+          left.alert.firstDetectedAt.getTime() -
+            right.alert.firstDetectedAt.getTime(),
       );
   }
 
   private summarizePlatformAlertDeliveryTargetHealth(
     target: PlatformAlertDeliveryTargetRuntimeConfig,
-    deliveries: PlatformAlertDeliveryRecord[]
+    deliveries: PlatformAlertDeliveryRecord[],
   ): PlatformAlertDeliveryTargetHealthProjection {
     const recentSucceededDeliveries = deliveries.filter(
-      (delivery) => delivery.status === PlatformAlertDeliveryStatus.succeeded
+      (delivery) => delivery.status === PlatformAlertDeliveryStatus.succeeded,
     );
     const recentFailedDeliveries = deliveries.filter(
-      (delivery) => delivery.status === PlatformAlertDeliveryStatus.failed
+      (delivery) => delivery.status === PlatformAlertDeliveryStatus.failed,
     );
     const pendingDeliveryCount = deliveries.filter(
-      (delivery) => delivery.status === PlatformAlertDeliveryStatus.pending
+      (delivery) => delivery.status === PlatformAlertDeliveryStatus.pending,
     ).length;
     const lastAttemptedDelivery =
       deliveries.find((delivery) => delivery.lastAttemptedAt !== null) ?? null;
@@ -961,12 +1003,15 @@ export class OperationsMonitoringService {
     const lastFailedDelivery = recentFailedDeliveries[0] ?? null;
     const successfulLatencyValues = recentSucceededDeliveries
       .filter((delivery) => delivery.deliveredAt !== null)
-      .map((delivery) => delivery.deliveredAt!.getTime() - delivery.createdAt.getTime());
+      .map(
+        (delivery) =>
+          delivery.deliveredAt!.getTime() - delivery.createdAt.getTime(),
+      );
     const averageDeliveryLatencyMs =
       successfulLatencyValues.length > 0
         ? Math.round(
             successfulLatencyValues.reduce((total, value) => total + value, 0) /
-              successfulLatencyValues.length
+              successfulLatencyValues.length,
           )
         : null;
     const maxDeliveryLatencyMs =
@@ -975,10 +1020,12 @@ export class OperationsMonitoringService {
         : null;
     const recentFailureRatePercent =
       deliveries.length > 0
-        ? Math.round((recentFailedDeliveries.length / deliveries.length) * 1000) / 10
+        ? Math.round(
+            (recentFailedDeliveries.length / deliveries.length) * 1000,
+          ) / 10
         : null;
     const attemptedDeliveries = deliveries.filter(
-      (delivery) => delivery.lastAttemptedAt !== null
+      (delivery) => delivery.lastAttemptedAt !== null,
     );
     let consecutiveFailureCount = 0;
 
@@ -999,7 +1046,7 @@ export class OperationsMonitoringService {
     ) {
       healthStatus = "critical";
       sloBreaches.push(
-        `Pending delivery backlog ${pendingDeliveryCount} exceeds the critical threshold ${this.platformAlertDeliveryHealthSloRuntimeConfig.criticalPendingCount}.`
+        `Pending delivery backlog ${pendingDeliveryCount} exceeds the critical threshold ${this.platformAlertDeliveryHealthSloRuntimeConfig.criticalPendingCount}.`,
       );
     } else if (
       pendingDeliveryCount >=
@@ -1007,25 +1054,27 @@ export class OperationsMonitoringService {
     ) {
       healthStatus = "warning";
       sloBreaches.push(
-        `Pending delivery backlog ${pendingDeliveryCount} exceeds the warning threshold ${this.platformAlertDeliveryHealthSloRuntimeConfig.warningPendingCount}.`
+        `Pending delivery backlog ${pendingDeliveryCount} exceeds the warning threshold ${this.platformAlertDeliveryHealthSloRuntimeConfig.warningPendingCount}.`,
       );
     }
 
     if (
       consecutiveFailureCount >=
-      this.platformAlertDeliveryHealthSloRuntimeConfig.criticalConsecutiveFailures
+      this.platformAlertDeliveryHealthSloRuntimeConfig
+        .criticalConsecutiveFailures
     ) {
       healthStatus = "critical";
       sloBreaches.push(
-        `Consecutive failed deliveries ${consecutiveFailureCount} exceed the critical threshold ${this.platformAlertDeliveryHealthSloRuntimeConfig.criticalConsecutiveFailures}.`
+        `Consecutive failed deliveries ${consecutiveFailureCount} exceed the critical threshold ${this.platformAlertDeliveryHealthSloRuntimeConfig.criticalConsecutiveFailures}.`,
       );
     } else if (
       consecutiveFailureCount >=
-      this.platformAlertDeliveryHealthSloRuntimeConfig.warningConsecutiveFailures
+      this.platformAlertDeliveryHealthSloRuntimeConfig
+        .warningConsecutiveFailures
     ) {
       healthStatus = healthStatus === "critical" ? "critical" : "warning";
       sloBreaches.push(
-        `Consecutive failed deliveries ${consecutiveFailureCount} exceed the warning threshold ${this.platformAlertDeliveryHealthSloRuntimeConfig.warningConsecutiveFailures}.`
+        `Consecutive failed deliveries ${consecutiveFailureCount} exceed the warning threshold ${this.platformAlertDeliveryHealthSloRuntimeConfig.warningConsecutiveFailures}.`,
       );
     }
 
@@ -1036,19 +1085,21 @@ export class OperationsMonitoringService {
     ) {
       if (
         recentFailureRatePercent >=
-        this.platformAlertDeliveryHealthSloRuntimeConfig.criticalFailureRatePercent
+        this.platformAlertDeliveryHealthSloRuntimeConfig
+          .criticalFailureRatePercent
       ) {
         healthStatus = "critical";
         sloBreaches.push(
-          `Recent failure rate ${recentFailureRatePercent}% exceeds the critical threshold ${this.platformAlertDeliveryHealthSloRuntimeConfig.criticalFailureRatePercent}% over ${deliveries.length} deliveries.`
+          `Recent failure rate ${recentFailureRatePercent}% exceeds the critical threshold ${this.platformAlertDeliveryHealthSloRuntimeConfig.criticalFailureRatePercent}% over ${deliveries.length} deliveries.`,
         );
       } else if (
         recentFailureRatePercent >=
-        this.platformAlertDeliveryHealthSloRuntimeConfig.warningFailureRatePercent
+        this.platformAlertDeliveryHealthSloRuntimeConfig
+          .warningFailureRatePercent
       ) {
         healthStatus = healthStatus === "critical" ? "critical" : "warning";
         sloBreaches.push(
-          `Recent failure rate ${recentFailureRatePercent}% exceeds the warning threshold ${this.platformAlertDeliveryHealthSloRuntimeConfig.warningFailureRatePercent}% over ${deliveries.length} deliveries.`
+          `Recent failure rate ${recentFailureRatePercent}% exceeds the warning threshold ${this.platformAlertDeliveryHealthSloRuntimeConfig.warningFailureRatePercent}% over ${deliveries.length} deliveries.`,
         );
       }
     }
@@ -1065,7 +1116,7 @@ export class OperationsMonitoringService {
       ) {
         healthStatus = "critical";
         sloBreaches.push(
-          `Average delivery latency ${averageDeliveryLatencyMs}ms exceeds the critical threshold ${this.platformAlertDeliveryHealthSloRuntimeConfig.criticalAverageDeliveryLatencyMs}ms.`
+          `Average delivery latency ${averageDeliveryLatencyMs}ms exceeds the critical threshold ${this.platformAlertDeliveryHealthSloRuntimeConfig.criticalAverageDeliveryLatencyMs}ms.`,
         );
       } else if (
         averageDeliveryLatencyMs >=
@@ -1074,7 +1125,7 @@ export class OperationsMonitoringService {
       ) {
         healthStatus = healthStatus === "critical" ? "critical" : "warning";
         sloBreaches.push(
-          `Average delivery latency ${averageDeliveryLatencyMs}ms exceeds the warning threshold ${this.platformAlertDeliveryHealthSloRuntimeConfig.warningAverageDeliveryLatencyMs}ms.`
+          `Average delivery latency ${averageDeliveryLatencyMs}ms exceeds the warning threshold ${this.platformAlertDeliveryHealthSloRuntimeConfig.warningAverageDeliveryLatencyMs}ms.`,
         );
       }
     }
@@ -1095,22 +1146,24 @@ export class OperationsMonitoringService {
       highestObservedEscalationLevel: deliveries.reduce(
         (highestLevel, delivery) =>
           Math.max(highestLevel, delivery.escalationLevel),
-        0
+        0,
       ),
-      lastAttemptedAt: lastAttemptedDelivery?.lastAttemptedAt?.toISOString() ?? null,
-      lastDeliveredAt: lastDeliveredDelivery?.deliveredAt?.toISOString() ?? null,
+      lastAttemptedAt:
+        lastAttemptedDelivery?.lastAttemptedAt?.toISOString() ?? null,
+      lastDeliveredAt:
+        lastDeliveredDelivery?.deliveredAt?.toISOString() ?? null,
       lastFailureAt: lastFailedDelivery?.lastAttemptedAt?.toISOString() ?? null,
       lastErrorMessage: lastFailedDelivery?.errorMessage ?? null,
       recentFailureRatePercent,
       consecutiveFailureCount,
       averageDeliveryLatencyMs,
       maxDeliveryLatencyMs,
-      sloBreaches
+      sloBreaches,
     };
   }
 
   private async listPlatformAlertDeliveryTargetHealthInternal(
-    lookbackHours: number
+    lookbackHours: number,
   ): Promise<PlatformAlertDeliveryTargetHealthListResult> {
     const lookbackSince = buildPastDate(lookbackHours);
     const targets = [...this.platformAlertDeliveryRuntimeConfig.targets];
@@ -1123,38 +1176,42 @@ export class OperationsMonitoringService {
           totalTargetCount: 0,
           healthyTargetCount: 0,
           warningTargetCount: 0,
-          criticalTargetCount: 0
+          criticalTargetCount: 0,
         },
-        targets: []
+        targets: [],
       };
     }
 
-    const recentDeliveries = await this.prismaService.platformAlertDelivery.findMany({
-      where: {
-        targetName: {
-          in: targets.map((target) => target.name)
+    const recentDeliveries =
+      await this.prismaService.platformAlertDelivery.findMany({
+        where: {
+          targetName: {
+            in: targets.map((target) => target.name),
+          },
+          OR: [
+            {
+              createdAt: {
+                gte: lookbackSince,
+              },
+            },
+            {
+              status: PlatformAlertDeliveryStatus.pending,
+            },
+          ],
         },
-        OR: [
+        orderBy: [
           {
-            createdAt: {
-              gte: lookbackSince
-            }
+            lastAttemptedAt: "desc",
           },
           {
-            status: PlatformAlertDeliveryStatus.pending
-          }
-        ]
-      },
-      orderBy: [
-        {
-          lastAttemptedAt: "desc"
-        },
-        {
-          createdAt: "desc"
-        }
-      ]
-    });
-    const deliveriesByTargetName = new Map<string, PlatformAlertDeliveryRecord[]>();
+            createdAt: "desc",
+          },
+        ],
+      });
+    const deliveriesByTargetName = new Map<
+      string,
+      PlatformAlertDeliveryRecord[]
+    >();
 
     for (const delivery of recentDeliveries) {
       const current = deliveriesByTargetName.get(delivery.targetName) ?? [];
@@ -1166,8 +1223,8 @@ export class OperationsMonitoringService {
       .map((target) =>
         this.summarizePlatformAlertDeliveryTargetHealth(
           target,
-          deliveriesByTargetName.get(target.name) ?? []
-        )
+          deliveriesByTargetName.get(target.name) ?? [],
+        ),
       )
       .sort((left, right) => left.targetName.localeCompare(right.targetName));
 
@@ -1177,16 +1234,16 @@ export class OperationsMonitoringService {
       summary: {
         totalTargetCount: projectedTargets.length,
         healthyTargetCount: projectedTargets.filter(
-          (target) => target.healthStatus === "healthy"
+          (target) => target.healthStatus === "healthy",
         ).length,
         warningTargetCount: projectedTargets.filter(
-          (target) => target.healthStatus === "warning"
+          (target) => target.healthStatus === "warning",
         ).length,
         criticalTargetCount: projectedTargets.filter(
-          (target) => target.healthStatus === "critical"
-        ).length
+          (target) => target.healthStatus === "critical",
+        ).length,
       },
-      targets: projectedTargets
+      targets: projectedTargets,
     };
   }
 
@@ -1195,7 +1252,7 @@ export class OperationsMonitoringService {
   }
 
   private resolveMatchingAutomationPolicy(
-    alert: Pick<PlatformAlertRecord, "category" | "severity">
+    alert: Pick<PlatformAlertRecord, "category" | "severity">,
   ): PlatformAlertAutomationPolicyRuntimeConfig | null {
     return (
       this.platformAlertAutomationPolicies.find(
@@ -1203,7 +1260,7 @@ export class OperationsMonitoringService {
           policy.autoRouteToReviewCase &&
           policy.categories.includes(alert.category) &&
           this.severityRank(alert.severity) >=
-            this.severityRank(policy.minimumSeverity)
+            this.severityRank(policy.minimumSeverity),
       ) ?? null
     );
   }
@@ -1211,7 +1268,7 @@ export class OperationsMonitoringService {
   private async maybeAutoRoutePlatformAlert(
     alert: PlatformAlertRecord,
     trigger: "created" | "reopened" | "eligible_update",
-    previousSeverity?: PlatformAlertSeverity
+    previousSeverity?: PlatformAlertSeverity,
   ): Promise<void> {
     if (
       alert.status !== PlatformAlertStatus.open ||
@@ -1228,17 +1285,23 @@ export class OperationsMonitoringService {
 
     const routeNote = [
       `Automatically routed by platform alert automation policy "${policy.name}".`,
-      policy.routeNote
+      policy.routeNote,
     ]
-      .filter((value): value is string => Boolean(value && value.trim().length > 0))
+      .filter((value): value is string =>
+        Boolean(value && value.trim().length > 0),
+      )
       .join(" ");
 
-    await this.routePlatformAlertToReviewCaseInternal(alert.id, {
-      actorType: "system",
-      actorId: "platform-alert-automation"
-    }, {
-      note: routeNote
-    });
+    await this.routePlatformAlertToReviewCaseInternal(
+      alert.id,
+      {
+        actorType: "system",
+        actorId: "platform-alert-automation",
+      },
+      {
+        note: routeNote,
+      },
+    );
 
     await this.prismaService.auditEvent.create({
       data: {
@@ -1253,24 +1316,24 @@ export class OperationsMonitoringService {
           trigger,
           previousSeverity: previousSeverity ?? null,
           currentSeverity: alert.severity,
-          routeNote
-        } as PrismaJsonValue
-      }
+          routeNote,
+        } as PrismaJsonValue,
+      },
     });
   }
 
   private summarizeWorkerHealth(
     workers: WorkerRuntimeHealthProjection[],
-    staleAfterSeconds: number
+    staleAfterSeconds: number,
   ): OperationsStatusResult["workerHealth"] {
     const healthyWorkers = workers.filter(
-      (worker) => worker.healthStatus === "healthy"
+      (worker) => worker.healthStatus === "healthy",
     ).length;
     const degradedWorkers = workers.filter(
-      (worker) => worker.healthStatus === "degraded"
+      (worker) => worker.healthStatus === "degraded",
     ).length;
     const staleWorkers = workers.filter(
-      (worker) => worker.healthStatus === "stale"
+      (worker) => worker.healthStatus === "stale",
     ).length;
 
     let status: OperationsSectionStatus = "healthy";
@@ -1287,7 +1350,7 @@ export class OperationsMonitoringService {
       totalWorkers: workers.length,
       healthyWorkers,
       degradedWorkers,
-      staleWorkers
+      staleWorkers,
     };
   }
 
@@ -1313,10 +1376,9 @@ export class OperationsMonitoringService {
         detail:
           "The platform has no active worker runtime heartbeat coverage, so queue execution and reconciliation scheduling may be stopped.",
         metadata: {
-          runbookPath:
-            "docs/runbooks/operations-monitoring-and-alerts-api.md",
-          staleAfterSeconds: snapshot.workerHealth.staleAfterSeconds
-        }
+          runbookPath: "docs/runbooks/operations-monitoring-and-alerts-api.md",
+          staleAfterSeconds: snapshot.workerHealth.staleAfterSeconds,
+        },
       });
     }
 
@@ -1334,8 +1396,8 @@ export class OperationsMonitoringService {
               "docs/runbooks/operations-monitoring-and-alerts-api.md",
             workerId: worker.workerId,
             lastHeartbeatAt: worker.lastHeartbeatAt,
-            staleAfterSeconds: snapshot.workerHealth.staleAfterSeconds
-          }
+            staleAfterSeconds: snapshot.workerHealth.staleAfterSeconds,
+          },
         });
       }
 
@@ -1363,8 +1425,8 @@ export class OperationsMonitoringService {
             lastIterationStatus: worker.lastIterationStatus,
             lastErrorCode: worker.lastErrorCode,
             consecutiveFailureCount: worker.consecutiveFailureCount,
-            lastReconciliationScanStatus: worker.lastReconciliationScanStatus
-          }
+            lastReconciliationScanStatus: worker.lastReconciliationScanStatus,
+          },
         });
       }
     }
@@ -1384,16 +1446,16 @@ export class OperationsMonitoringService {
         summary: "Ledger reconciliation requires operator attention.",
         detail: `Open critical mismatches: ${snapshot.reconciliationHealth.criticalMismatchCount}. Failed scans in the recent window: ${snapshot.reconciliationHealth.recentFailedScanCount}.`,
         metadata: {
-          runbookPath:
-            "docs/runbooks/operations-monitoring-and-alerts-api.md",
+          runbookPath: "docs/runbooks/operations-monitoring-and-alerts-api.md",
           openMismatchCount: snapshot.reconciliationHealth.openMismatchCount,
           criticalMismatchCount:
             snapshot.reconciliationHealth.criticalMismatchCount,
           recentFailedScanCount:
             snapshot.reconciliationHealth.recentFailedScanCount,
           latestScanStatus: snapshot.reconciliationHealth.latestScanStatus,
-          latestScanStartedAt: snapshot.reconciliationHealth.latestScanStartedAt
-        }
+          latestScanStartedAt:
+            snapshot.reconciliationHealth.latestScanStartedAt,
+        },
       });
     }
 
@@ -1417,16 +1479,15 @@ export class OperationsMonitoringService {
         summary: "Execution queue backlog is above the healthy envelope.",
         detail: `Queued deposits: ${snapshot.queueHealth.queuedDepositCount}. Queued withdrawals: ${snapshot.queueHealth.queuedWithdrawalCount}. Manual withdrawal backlog: ${snapshot.queueHealth.manualWithdrawalBacklogCount}.`,
         metadata: {
-          runbookPath:
-            "docs/runbooks/operations-monitoring-and-alerts-api.md",
+          runbookPath: "docs/runbooks/operations-monitoring-and-alerts-api.md",
           queuedDepositCount: snapshot.queueHealth.queuedDepositCount,
           queuedWithdrawalCount: snapshot.queueHealth.queuedWithdrawalCount,
           agedQueuedCount: snapshot.queueHealth.agedQueuedCount,
           manualWithdrawalBacklogCount:
             snapshot.queueHealth.manualWithdrawalBacklogCount,
           oldestQueuedIntentCreatedAt:
-            snapshot.queueHealth.oldestQueuedIntentCreatedAt
-        }
+            snapshot.queueHealth.oldestQueuedIntentCreatedAt,
+        },
       });
     }
 
@@ -1447,16 +1508,15 @@ export class OperationsMonitoringService {
         summary: "Broadcast confirmations are lagging or failing.",
         detail: `Lagging broadcasts: ${snapshot.chainHealth.laggingBroadcastCount}. Recent failed blockchain transactions: ${snapshot.chainHealth.recentFailedTransactionCount}.`,
         metadata: {
-          runbookPath:
-            "docs/runbooks/operations-monitoring-and-alerts-api.md",
+          runbookPath: "docs/runbooks/operations-monitoring-and-alerts-api.md",
           laggingBroadcastCount: snapshot.chainHealth.laggingBroadcastCount,
           criticalLaggingBroadcastCount:
             snapshot.chainHealth.criticalLaggingBroadcastCount,
           recentFailedTransactionCount:
             snapshot.chainHealth.recentFailedTransactionCount,
           oldestLaggingBroadcastCreatedAt:
-            snapshot.chainHealth.oldestLaggingBroadcastCreatedAt
-        }
+            snapshot.chainHealth.oldestLaggingBroadcastCreatedAt,
+        },
       });
     }
 
@@ -1466,18 +1526,18 @@ export class OperationsMonitoringService {
         category: PlatformAlertCategory.treasury,
         severity: PlatformAlertSeverity.critical,
         code: "managed_wallet_boundary_missing",
-        summary: "Managed execution is missing treasury or operational wallet coverage.",
+        summary:
+          "Managed execution is missing treasury or operational wallet coverage.",
         detail: `Managed workers: ${snapshot.treasuryHealth.managedWorkerCount}. Active treasury wallets: ${snapshot.treasuryHealth.activeTreasuryWalletCount}. Active operational wallets: ${snapshot.treasuryHealth.activeOperationalWalletCount}.`,
         metadata: {
-          runbookPath:
-            "docs/runbooks/operations-monitoring-and-alerts-api.md",
+          runbookPath: "docs/runbooks/operations-monitoring-and-alerts-api.md",
           managedWorkerCount: snapshot.treasuryHealth.managedWorkerCount,
           activeTreasuryWalletCount:
             snapshot.treasuryHealth.activeTreasuryWalletCount,
           activeOperationalWalletCount:
             snapshot.treasuryHealth.activeOperationalWalletCount,
-          chainId: this.productChainId
-        }
+          chainId: this.productChainId,
+        },
       });
     }
 
@@ -1516,8 +1576,8 @@ export class OperationsMonitoringService {
           lastDeliveredAt: target.lastDeliveredAt,
           lastFailureAt: target.lastFailureAt,
           lastErrorMessage: target.lastErrorMessage,
-          sloBreaches: target.sloBreaches
-        } as PrismaJsonValue
+          sloBreaches: target.sloBreaches,
+        } as PrismaJsonValue,
       });
     }
 
@@ -1526,20 +1586,20 @@ export class OperationsMonitoringService {
 
   private async syncPlatformAlerts(
     alertCandidates: PlatformAlertCandidate[],
-    generatedAt: Date
+    generatedAt: Date,
   ): Promise<void> {
     const activeDedupeKeys = new Set(
-      alertCandidates.map((candidate) => candidate.dedupeKey)
+      alertCandidates.map((candidate) => candidate.dedupeKey),
     );
     const existingAlerts = await this.prismaService.platformAlert.findMany({
       where: {
         dedupeKey: {
-          in: alertCandidates.map((candidate) => candidate.dedupeKey)
-        }
-      }
+          in: alertCandidates.map((candidate) => candidate.dedupeKey),
+        },
+      },
     });
     const existingAlertsByDedupeKey = new Map(
-      existingAlerts.map((alert) => [alert.dedupeKey, alert])
+      existingAlerts.map((alert) => [alert.dedupeKey, alert]),
     );
 
     for (const candidate of alertCandidates) {
@@ -1576,13 +1636,13 @@ export class OperationsMonitoringService {
               metadata: candidate.metadata ?? Prisma.JsonNull,
               firstDetectedAt: generatedAt,
               lastDetectedAt: generatedAt,
-              resolvedAt: null
-            }
+              resolvedAt: null,
+            },
           });
           existingAlertsByDedupeKey.set(candidate.dedupeKey, createdAlert);
           void this.platformAlertDeliveryService.enqueueAlertEvent({
             alert: this.buildPlatformAlertDeliveryPayload(createdAlert),
-            eventType: PlatformAlertDeliveryEventType.opened
+            eventType: PlatformAlertDeliveryEventType.opened,
           });
           await this.maybeAutoRoutePlatformAlert(createdAlert, "created");
           continue;
@@ -1598,8 +1658,8 @@ export class OperationsMonitoringService {
 
           existingAlert = await this.prismaService.platformAlert.findUnique({
             where: {
-              dedupeKey: candidate.dedupeKey
-            }
+              dedupeKey: candidate.dedupeKey,
+            },
           });
 
           if (!existingAlert) {
@@ -1618,7 +1678,7 @@ export class OperationsMonitoringService {
 
       const updatedAlert = await this.prismaService.platformAlert.update({
         where: {
-          id: existingAlert.id
+          id: existingAlert.id,
         },
         data: {
           category: candidate.category,
@@ -1648,19 +1708,19 @@ export class OperationsMonitoringService {
           acknowledgementNote: reopened ? null : undefined,
           suppressedUntil: reopened ? null : undefined,
           suppressedByOperatorId: reopened ? null : undefined,
-          suppressionNote: reopened ? null : undefined
-        }
+          suppressionNote: reopened ? null : undefined,
+        },
       });
 
       if (reopened) {
         void this.platformAlertDeliveryService.enqueueAlertEvent({
           alert: this.buildPlatformAlertDeliveryPayload(updatedAlert),
-          eventType: PlatformAlertDeliveryEventType.reopened
+          eventType: PlatformAlertDeliveryEventType.reopened,
         });
         await this.maybeAutoRoutePlatformAlert(
           updatedAlert,
           "reopened",
-          previousSeverity
+          previousSeverity,
         );
         continue;
       }
@@ -1673,18 +1733,18 @@ export class OperationsMonitoringService {
         await this.maybeAutoRoutePlatformAlert(
           updatedAlert,
           "eligible_update",
-          previousSeverity
+          previousSeverity,
         );
       }
     }
 
     const existingOpenAlerts = await this.prismaService.platformAlert.findMany({
       where: {
-        status: PlatformAlertStatus.open
+        status: PlatformAlertStatus.open,
       },
       select: {
-        dedupeKey: true
-      }
+        dedupeKey: true,
+      },
     });
 
     const resolvedAlertKeys = existingOpenAlerts
@@ -1695,28 +1755,34 @@ export class OperationsMonitoringService {
       await this.prismaService.platformAlert.updateMany({
         where: {
           dedupeKey: {
-            in: resolvedAlertKeys
+            in: resolvedAlertKeys,
           },
-          status: PlatformAlertStatus.open
+          status: PlatformAlertStatus.open,
         },
         data: {
           status: PlatformAlertStatus.resolved,
           resolvedAt: generatedAt,
-          lastDetectedAt: generatedAt
-        }
+          lastDetectedAt: generatedAt,
+        },
       });
     }
   }
 
   private async buildOperationsSnapshot(
-    staleAfterSeconds: number
+    staleAfterSeconds: number,
   ): Promise<OperationsSnapshot> {
     const failedScanSince = buildPastDate(FAILED_SCAN_LOOKBACK_HOURS);
-    const failedBlockchainSince = buildPastDate(FAILED_BLOCKCHAIN_LOOKBACK_HOURS);
+    const failedBlockchainSince = buildPastDate(
+      FAILED_BLOCKCHAIN_LOOKBACK_HOURS,
+    );
     const queueWarningBefore = buildPastDateSeconds(QUEUE_WARNING_AGE_SECONDS);
-    const queueCriticalBefore = buildPastDateSeconds(QUEUE_CRITICAL_AGE_SECONDS);
+    const queueCriticalBefore = buildPastDateSeconds(
+      QUEUE_CRITICAL_AGE_SECONDS,
+    );
     const chainWarningBefore = buildPastDateSeconds(CHAIN_WARNING_AGE_SECONDS);
-    const chainCriticalBefore = buildPastDateSeconds(CHAIN_CRITICAL_AGE_SECONDS);
+    const chainCriticalBefore = buildPastDateSeconds(
+      CHAIN_CRITICAL_AGE_SECONDS,
+    );
 
     const [
       workerRecords,
@@ -1744,24 +1810,24 @@ export class OperationsMonitoringService {
       openReviewCaseCount,
       openOversightIncidentCount,
       activeRestrictedAccountCount,
-      deliveryTargetHealth
+      deliveryTargetHealth,
     ] = await Promise.all([
       this.prismaService.workerRuntimeHeartbeat.findMany({
         orderBy: {
-          lastHeartbeatAt: "desc"
-        }
+          lastHeartbeatAt: "desc",
+        },
       }),
       this.prismaService.transactionIntent.count({
         where: {
           status: TransactionIntentStatus.queued,
-          intentType: TransactionIntentType.deposit
-        }
+          intentType: TransactionIntentType.deposit,
+        },
       }),
       this.prismaService.transactionIntent.count({
         where: {
           status: TransactionIntentStatus.queued,
-          intentType: TransactionIntentType.withdrawal
-        }
+          intentType: TransactionIntentType.withdrawal,
+        },
       }),
       this.prismaService.transactionIntent.count({
         where: {
@@ -1774,12 +1840,12 @@ export class OperationsMonitoringService {
               status: {
                 in: [
                   BlockchainTransactionStatus.created,
-                  BlockchainTransactionStatus.signed
-                ]
-              }
-            }
-          }
-        }
+                  BlockchainTransactionStatus.signed,
+                ],
+              },
+            },
+          },
+        },
       }),
       this.prismaService.transactionIntent.count({
         where: {
@@ -1788,40 +1854,41 @@ export class OperationsMonitoringService {
           policyDecision: PolicyDecision.approved,
           blockchainTransactions: {
             some: {
-              status: BlockchainTransactionStatus.signed
-            }
-          }
-        }
+              status: BlockchainTransactionStatus.signed,
+            },
+          },
+        },
       }),
       this.prismaService.transactionIntent.count({
         where: {
           intentType: TransactionIntentType.withdrawal,
           status: TransactionIntentStatus.broadcast,
-          policyDecision: PolicyDecision.approved
-        }
+          policyDecision: PolicyDecision.approved,
+        },
       }),
       this.prismaService.transactionIntent.count({
         where: {
           intentType: TransactionIntentType.withdrawal,
           status: TransactionIntentStatus.failed,
-          policyDecision: PolicyDecision.approved
-        }
+          policyDecision: PolicyDecision.approved,
+        },
       }),
       this.prismaService.transactionIntent.count({
         where: {
           intentType: TransactionIntentType.withdrawal,
           status: TransactionIntentStatus.queued,
           policyDecision: PolicyDecision.approved,
-          executionFailureCategory: WithdrawalExecutionFailureCategory.retryable
-        }
+          executionFailureCategory:
+            WithdrawalExecutionFailureCategory.retryable,
+        },
       }),
       this.prismaService.transactionIntent.count({
         where: {
           intentType: TransactionIntentType.withdrawal,
           policyDecision: PolicyDecision.approved,
           executionFailureCategory:
-            WithdrawalExecutionFailureCategory.manual_intervention_required
-        }
+            WithdrawalExecutionFailureCategory.manual_intervention_required,
+        },
       }),
       this.prismaService.ledgerReconciliationMismatch.count({
         where: {
@@ -1829,62 +1896,62 @@ export class OperationsMonitoringService {
           scope: "customer_balance",
           transactionIntent: {
             is: {
-              intentType: TransactionIntentType.withdrawal
-            }
-          }
-        }
+              intentType: TransactionIntentType.withdrawal,
+            },
+          },
+        },
       }),
       this.prismaService.transactionIntent.count({
         where: {
           status: TransactionIntentStatus.queued,
           createdAt: {
-            lte: queueWarningBefore
-          }
-        }
+            lte: queueWarningBefore,
+          },
+        },
       }),
       this.prismaService.transactionIntent.findFirst({
         where: {
-          status: TransactionIntentStatus.queued
+          status: TransactionIntentStatus.queued,
         },
         orderBy: {
-          createdAt: "asc"
+          createdAt: "asc",
         },
         select: {
-          createdAt: true
-        }
+          createdAt: true,
+        },
       }),
       this.prismaService.blockchainTransaction.count({
         where: {
           status: BlockchainTransactionStatus.broadcast,
           confirmedAt: null,
           createdAt: {
-            lte: chainCriticalBefore
-          }
-        }
+            lte: chainCriticalBefore,
+          },
+        },
       }),
       this.prismaService.blockchainTransaction.count({
         where: {
           status: BlockchainTransactionStatus.broadcast,
           confirmedAt: null,
           createdAt: {
-            lte: chainWarningBefore
-          }
-        }
+            lte: chainWarningBefore,
+          },
+        },
       }),
       this.prismaService.blockchainTransaction.findFirst({
         where: {
           status: BlockchainTransactionStatus.broadcast,
           confirmedAt: null,
           createdAt: {
-            lte: chainWarningBefore
-          }
+            lte: chainWarningBefore,
+          },
         },
         orderBy: {
-          createdAt: "asc"
+          createdAt: "asc",
         },
         select: {
-          createdAt: true
-        }
+          createdAt: true,
+        },
       }),
       this.prismaService.blockchainTransaction.count({
         where: {
@@ -1892,92 +1959,100 @@ export class OperationsMonitoringService {
             in: [
               BlockchainTransactionStatus.failed,
               BlockchainTransactionStatus.dropped,
-              BlockchainTransactionStatus.replaced
-            ]
+              BlockchainTransactionStatus.replaced,
+            ],
           },
           updatedAt: {
-            gte: failedBlockchainSince
-          }
-        }
-      }),
-      this.prismaService.ledgerReconciliationMismatch.count({
-        where: {
-          status: LedgerReconciliationMismatchStatus.open
-        }
+            gte: failedBlockchainSince,
+          },
+        },
       }),
       this.prismaService.ledgerReconciliationMismatch.count({
         where: {
           status: LedgerReconciliationMismatchStatus.open,
-          severity: LedgerReconciliationMismatchSeverity.critical
-        }
+        },
+      }),
+      this.prismaService.ledgerReconciliationMismatch.count({
+        where: {
+          status: LedgerReconciliationMismatchStatus.open,
+          severity: LedgerReconciliationMismatchSeverity.critical,
+        },
       }),
       this.prismaService.ledgerReconciliationScanRun.count({
         where: {
           status: LedgerReconciliationScanRunStatus.failed,
           startedAt: {
-            gte: failedScanSince
-          }
-        }
+            gte: failedScanSince,
+          },
+        },
       }),
       this.prismaService.ledgerReconciliationScanRun.findFirst({
         orderBy: {
-          startedAt: "desc"
+          startedAt: "desc",
         },
         select: {
           status: true,
-          startedAt: true
-        }
+          startedAt: true,
+        },
       }),
       this.prismaService.wallet.count({
         where: {
           chainId: this.productChainId,
           kind: WalletKind.treasury,
-          status: WalletStatus.active
-        }
+          status: WalletStatus.active,
+        },
       }),
       this.prismaService.wallet.count({
         where: {
           chainId: this.productChainId,
           kind: WalletKind.operational,
-          status: WalletStatus.active
-        }
+          status: WalletStatus.active,
+        },
       }),
       this.prismaService.reviewCase.count({
         where: {
           status: {
-            in: [ReviewCaseStatus.open, ReviewCaseStatus.in_progress]
-          }
-        }
+            in: [ReviewCaseStatus.open, ReviewCaseStatus.in_progress],
+          },
+        },
       }),
       this.prismaService.oversightIncident.count({
         where: {
           status: {
-            in: [OversightIncidentStatus.open, OversightIncidentStatus.in_progress]
-          }
-        }
+            in: [
+              OversightIncidentStatus.open,
+              OversightIncidentStatus.in_progress,
+            ],
+          },
+        },
       }),
       this.prismaService.customerAccount.count({
         where: {
-          status: AccountLifecycleStatus.restricted
-        }
+          status: AccountLifecycleStatus.restricted,
+        },
       }),
       this.listPlatformAlertDeliveryTargetHealthInternal(
-        this.platformAlertDeliveryHealthSloRuntimeConfig.lookbackHours
-      )
+        this.platformAlertDeliveryHealthSloRuntimeConfig.lookbackHours,
+      ),
     ]);
 
     const workers = workerRecords.map((record) =>
-      this.mapWorkerRuntimeHealthProjection(record, staleAfterSeconds)
+      this.mapWorkerRuntimeHealthProjection(record, staleAfterSeconds),
     );
     const workerHealth = this.summarizeWorkerHealth(workers, staleAfterSeconds);
 
     const totalQueuedCount = queuedDepositCount + queuedWithdrawalCount;
     const manualWithdrawalBacklogCount = workers.reduce(
       (total, worker) =>
-        total + readJsonNumber(worker.latestIterationMetrics, "manualWithdrawalBacklogCount"),
-      0
+        total +
+        readJsonNumber(
+          worker.latestIterationMetrics,
+          "manualWithdrawalBacklogCount",
+        ),
+      0,
     );
-    const oldestQueuedIntentCreatedAt = oldestQueuedIntent?.createdAt.toISOString() ?? null;
+    const oldestQueuedIntentCreatedAt =
+      oldestQueuedIntent?.createdAt.toISOString() ?? null;
     let queueStatus: OperationsSectionStatus = "healthy";
 
     if (
@@ -2003,7 +2078,7 @@ export class OperationsMonitoringService {
       totalQueuedCount,
       agedQueuedCount,
       manualWithdrawalBacklogCount,
-      oldestQueuedIntentCreatedAt
+      oldestQueuedIntentCreatedAt,
     };
 
     let withdrawalExecutionStatus: OperationsSectionStatus = "healthy";
@@ -2039,7 +2114,7 @@ export class OperationsMonitoringService {
         retryableWithdrawalFailureCount,
         manualInterventionWithdrawalCount:
           manualInterventionWithdrawalCount + manualWithdrawalBacklogCount,
-        unresolvedReserveMismatchCount
+        unresolvedReserveMismatchCount,
       };
 
     let chainStatus: OperationsSectionStatus = "healthy";
@@ -2062,13 +2137,13 @@ export class OperationsMonitoringService {
       criticalLaggingBroadcastCount,
       recentFailedTransactionCount,
       oldestLaggingBroadcastCreatedAt:
-        oldestLaggingBroadcast?.createdAt.toISOString() ?? null
+        oldestLaggingBroadcast?.createdAt.toISOString() ?? null,
     };
 
     const managedWorkerCount = workers.filter(
       (worker) =>
         worker.executionMode === WorkerRuntimeExecutionMode.managed &&
-        worker.healthStatus !== "stale"
+        worker.healthStatus !== "stale",
     ).length;
     const missingManagedWalletCoverage =
       managedWorkerCount > 0 &&
@@ -2081,7 +2156,7 @@ export class OperationsMonitoringService {
       managedWorkerCount,
       activeTreasuryWalletCount,
       activeOperationalWalletCount,
-      missingManagedWalletCoverage
+      missingManagedWalletCoverage,
     };
 
     let reconciliationStatus: OperationsSectionStatus = "healthy";
@@ -2092,14 +2167,15 @@ export class OperationsMonitoringService {
       reconciliationStatus = "warning";
     }
 
-    const reconciliationHealth: OperationsStatusResult["reconciliationHealth"] = {
-      status: reconciliationStatus,
-      openMismatchCount,
-      criticalMismatchCount,
-      recentFailedScanCount,
-      latestScanStatus: latestScanRun?.status ?? null,
-      latestScanStartedAt: latestScanRun?.startedAt.toISOString() ?? null
-    };
+    const reconciliationHealth: OperationsStatusResult["reconciliationHealth"] =
+      {
+        status: reconciliationStatus,
+        openMismatchCount,
+        criticalMismatchCount,
+        recentFailedScanCount,
+        latestScanStatus: latestScanRun?.status ?? null,
+        latestScanStartedAt: latestScanRun?.startedAt.toISOString() ?? null,
+      };
 
     let incidentSafetyStatus: OperationsSectionStatus = "healthy";
 
@@ -2115,7 +2191,7 @@ export class OperationsMonitoringService {
       status: incidentSafetyStatus,
       openReviewCaseCount,
       openOversightIncidentCount,
-      activeRestrictedAccountCount
+      activeRestrictedAccountCount,
     };
 
     return {
@@ -2138,18 +2214,18 @@ export class OperationsMonitoringService {
         chainHealth,
         treasuryHealth,
         reconciliationHealth,
-        deliveryTargetHealth
-      })
+        deliveryTargetHealth,
+      }),
     };
   }
 
   async reportWorkerRuntimeHeartbeat(
     workerId: string,
-    dto: ReportWorkerRuntimeHeartbeatDto
+    dto: ReportWorkerRuntimeHeartbeatDto,
   ): Promise<WorkerRuntimeHeartbeatMutationResult> {
     const heartbeat = await this.prismaService.workerRuntimeHeartbeat.upsert({
       where: {
-        workerId
+        workerId,
       },
       create: {
         workerId,
@@ -2175,17 +2251,18 @@ export class OperationsMonitoringService {
           ? new Date(dto.lastReconciliationScanCompletedAt)
           : null,
         lastReconciliationScanStatus:
-          (dto.lastReconciliationScanStatus as LedgerReconciliationScanRunStatus | undefined) ??
-          null,
+          (dto.lastReconciliationScanStatus as
+            | LedgerReconciliationScanRunStatus
+            | undefined) ?? null,
         runtimeMetadata: dto.runtimeMetadata
           ? (dto.runtimeMetadata as PrismaJsonValue)
           : Prisma.JsonNull,
         latestIterationMetrics: dto.latestIterationMetrics
           ? ({
               ...dto.latestIterationMetrics,
-              lastIterationDurationMs: dto.lastIterationDurationMs ?? null
+              lastIterationDurationMs: dto.lastIterationDurationMs ?? null,
             } as PrismaJsonValue)
-          : Prisma.JsonNull
+          : Prisma.JsonNull,
       },
       update: {
         environment: dto.environment,
@@ -2211,30 +2288,31 @@ export class OperationsMonitoringService {
           ? new Date(dto.lastReconciliationScanCompletedAt)
           : null,
         lastReconciliationScanStatus:
-          (dto.lastReconciliationScanStatus as LedgerReconciliationScanRunStatus | undefined) ??
-          null,
+          (dto.lastReconciliationScanStatus as
+            | LedgerReconciliationScanRunStatus
+            | undefined) ?? null,
         runtimeMetadata: dto.runtimeMetadata
           ? (dto.runtimeMetadata as PrismaJsonValue)
           : Prisma.JsonNull,
         latestIterationMetrics: dto.latestIterationMetrics
           ? ({
               ...dto.latestIterationMetrics,
-              lastIterationDurationMs: dto.lastIterationDurationMs ?? null
+              lastIterationDurationMs: dto.lastIterationDurationMs ?? null,
             } as PrismaJsonValue)
-          : Prisma.JsonNull
-      }
+          : Prisma.JsonNull,
+      },
     });
 
     return {
       heartbeat: this.mapWorkerRuntimeHealthProjection(
         heartbeat,
-        DEFAULT_STALE_AFTER_SECONDS
-      )
+        DEFAULT_STALE_AFTER_SECONDS,
+      ),
     };
   }
 
   async listWorkerRuntimeHealth(
-    query: ListWorkerRuntimeHealthDto
+    query: ListWorkerRuntimeHealthDto,
   ): Promise<WorkerRuntimeHealthListResult> {
     const limit = query.limit ?? 20;
     const staleAfterSeconds =
@@ -2248,74 +2326,78 @@ export class OperationsMonitoringService {
     const records = await this.prismaService.workerRuntimeHeartbeat.findMany({
       where,
       orderBy: {
-        lastHeartbeatAt: "desc"
+        lastHeartbeatAt: "desc",
       },
-      ...(query.healthStatus ? {} : { take: limit })
+      ...(query.healthStatus ? {} : { take: limit }),
     });
 
     const projectedWorkers = records
       .map((record) =>
-        this.mapWorkerRuntimeHealthProjection(record, staleAfterSeconds)
+        this.mapWorkerRuntimeHealthProjection(record, staleAfterSeconds),
       )
       .filter((record) =>
-        query.healthStatus ? record.healthStatus === query.healthStatus : true
+        query.healthStatus ? record.healthStatus === query.healthStatus : true,
       );
 
     return {
       workers: projectedWorkers.slice(0, limit),
       limit,
       staleAfterSeconds,
-      totalCount: projectedWorkers.length
+      totalCount: projectedWorkers.length,
     };
   }
 
   async getOperationsStatus(
-    query: GetOperationsStatusDto
+    query: GetOperationsStatusDto,
   ): Promise<OperationsStatusResult> {
     const staleAfterSeconds =
       query.staleAfterSeconds ?? DEFAULT_STALE_AFTER_SECONDS;
-    const recentAlertLimit = query.recentAlertLimit ?? DEFAULT_RECENT_ALERT_LIMIT;
+    const recentAlertLimit =
+      query.recentAlertLimit ?? DEFAULT_RECENT_ALERT_LIMIT;
     const snapshot = await this.buildOperationsSnapshot(staleAfterSeconds);
 
-    await this.syncPlatformAlerts(snapshot.alertCandidates, snapshot.generatedAt);
+    await this.syncPlatformAlerts(
+      snapshot.alertCandidates,
+      snapshot.generatedAt,
+    );
 
     const [recentAlerts, openCount, criticalCount, warningCount] =
       await Promise.all([
         this.prismaService.platformAlert.findMany({
           where: {
-            status: PlatformAlertStatus.open
+            status: PlatformAlertStatus.open,
           },
           orderBy: [
             {
-              severity: "desc"
+              severity: "desc",
             },
             {
-              lastDetectedAt: "desc"
-            }
+              lastDetectedAt: "desc",
+            },
           ],
-          take: recentAlertLimit
-        }),
-        this.prismaService.platformAlert.count({
-          where: {
-            status: PlatformAlertStatus.open
-          }
+          take: recentAlertLimit,
         }),
         this.prismaService.platformAlert.count({
           where: {
             status: PlatformAlertStatus.open,
-            severity: PlatformAlertSeverity.critical
-          }
+          },
         }),
         this.prismaService.platformAlert.count({
           where: {
             status: PlatformAlertStatus.open,
-            severity: PlatformAlertSeverity.warning
-          }
-        })
+            severity: PlatformAlertSeverity.critical,
+          },
+        }),
+        this.prismaService.platformAlert.count({
+          where: {
+            status: PlatformAlertStatus.open,
+            severity: PlatformAlertSeverity.warning,
+          },
+        }),
       ]);
 
     const deliverySummaryMap = await this.buildPlatformAlertDeliverySummaryMap(
-      recentAlerts.map((alert) => alert.id)
+      recentAlerts.map((alert) => alert.id),
     );
 
     return {
@@ -2323,7 +2405,7 @@ export class OperationsMonitoringService {
       alertSummary: {
         openCount,
         criticalCount,
-        warningCount
+        warningCount,
       },
       workerHealth: snapshot.workerHealth,
       queueHealth: snapshot.queueHealth,
@@ -2335,21 +2417,24 @@ export class OperationsMonitoringService {
       recentAlerts: recentAlerts.map((alert) =>
         this.mapPlatformAlertProjection(
           alert,
-          deliverySummaryMap.get(alert.id)
-        )
-      )
+          deliverySummaryMap.get(alert.id),
+        ),
+      ),
     };
   }
 
   async listPlatformAlerts(
-    query: ListPlatformAlertsDto
+    query: ListPlatformAlertsDto,
   ): Promise<PlatformAlertListResult> {
     const limit = query.limit ?? 20;
     const staleAfterSeconds =
       query.staleAfterSeconds ?? DEFAULT_STALE_AFTER_SECONDS;
     const snapshot = await this.buildOperationsSnapshot(staleAfterSeconds);
 
-    await this.syncPlatformAlerts(snapshot.alertCandidates, snapshot.generatedAt);
+    await this.syncPlatformAlerts(
+      snapshot.alertCandidates,
+      snapshot.generatedAt,
+    );
 
     const where: Prisma.PlatformAlertWhereInput = {};
 
@@ -2381,18 +2466,18 @@ export class OperationsMonitoringService {
     if (query.suppressed) {
       if (query.suppressed === "true") {
         where.suppressedUntil = {
-          gt: new Date()
+          gt: new Date(),
         };
       } else {
         where.OR = [
           {
-            suppressedUntil: null
+            suppressedUntil: null,
           },
           {
             suppressedUntil: {
-              lte: new Date()
-            }
-          }
+              lte: new Date(),
+            },
+          },
         ];
       }
     }
@@ -2401,40 +2486,40 @@ export class OperationsMonitoringService {
       where,
       orderBy: [
         {
-          status: "asc"
+          status: "asc",
         },
         {
-          severity: "desc"
+          severity: "desc",
         },
         {
-          lastDetectedAt: "desc"
-        }
+          lastDetectedAt: "desc",
+        },
       ],
-      take: limit
+      take: limit,
     });
 
     const totalCount = await this.prismaService.platformAlert.count({
-      where
+      where,
     });
 
     const deliverySummaryMap = await this.buildPlatformAlertDeliverySummaryMap(
-      alerts.map((alert) => alert.id)
+      alerts.map((alert) => alert.id),
     );
 
     return {
       alerts: alerts.map((alert) =>
         this.mapPlatformAlertProjection(
           alert,
-          deliverySummaryMap.get(alert.id)
-        )
+          deliverySummaryMap.get(alert.id),
+        ),
       ),
       limit,
-      totalCount
+      totalCount,
     };
   }
 
   async listPlatformAlertDeliveryTargetHealth(
-    query: ListPlatformAlertDeliveryTargetHealthDto
+    query: ListPlatformAlertDeliveryTargetHealthDto,
   ): Promise<PlatformAlertDeliveryTargetHealthListResult> {
     const lookbackHours =
       query.lookbackHours ??
@@ -2448,7 +2533,7 @@ export class OperationsMonitoringService {
       actorType: "operator" | "worker" | "system";
       actorId: string;
     },
-    limit: number
+    limit: number,
   ): Promise<ReEscalateCriticalPlatformAlertsResult> {
     const dueCandidates =
       await this.listDueCriticalPlatformAlertReEscalationCandidates();
@@ -2470,12 +2555,14 @@ export class OperationsMonitoringService {
             reasons: candidate.reasons,
             dueAt: candidate.dueAt.toISOString(),
             firstDetectedAt: candidate.alert.firstDetectedAt.toISOString(),
-            lastReEscalatedAt: candidate.lastReEscalatedAt?.toISOString() ?? null,
+            lastReEscalatedAt:
+              candidate.lastReEscalatedAt?.toISOString() ?? null,
             routingStatus: candidate.alert.routingStatus,
             routingTargetId: candidate.alert.routingTargetId ?? null,
             ownerOperatorId: candidate.alert.ownerOperatorId ?? null,
-            acknowledgedAt: candidate.alert.acknowledgedAt?.toISOString() ?? null
-          }
+            acknowledgedAt:
+              candidate.alert.acknowledgedAt?.toISOString() ?? null,
+          },
         });
 
       await this.prismaService.auditEvent.create({
@@ -2490,10 +2577,11 @@ export class OperationsMonitoringService {
             reasons: candidate.reasons,
             dueAt: candidate.dueAt.toISOString(),
             firstDetectedAt: candidate.alert.firstDetectedAt.toISOString(),
-            lastReEscalatedAt: candidate.lastReEscalatedAt?.toISOString() ?? null,
-            queuedDeliveryCount
-          } as PrismaJsonValue
-        }
+            lastReEscalatedAt:
+              candidate.lastReEscalatedAt?.toISOString() ?? null,
+            queuedDeliveryCount,
+          } as PrismaJsonValue,
+        },
       });
 
       reEscalatedAlerts.push({
@@ -2502,7 +2590,7 @@ export class OperationsMonitoringService {
         reasons: candidate.reasons,
         dueAt: candidate.dueAt.toISOString(),
         lastReEscalatedAt: candidate.lastReEscalatedAt?.toISOString() ?? null,
-        queuedDeliveryCount
+        queuedDeliveryCount,
       });
     }
 
@@ -2511,37 +2599,39 @@ export class OperationsMonitoringService {
       reEscalatedAlertCount: reEscalatedAlerts.length,
       skippedPendingDeliveryCount,
       remainingDueAlertCount: Math.max(
-        dueCandidates.length - reEscalatedAlerts.length - skippedPendingDeliveryCount,
-        0
+        dueCandidates.length -
+          reEscalatedAlerts.length -
+          skippedPendingDeliveryCount,
+        0,
       ),
       limit,
-      reEscalatedAlerts
+      reEscalatedAlerts,
     };
   }
 
   async reEscalateCriticalPlatformAlerts(
     operatorId: string,
-    dto: ReEscalateCriticalPlatformAlertsDto
+    dto: ReEscalateCriticalPlatformAlertsDto,
   ): Promise<ReEscalateCriticalPlatformAlertsResult> {
     return this.reEscalateCriticalPlatformAlertsInternal(
       {
         actorType: "operator",
-        actorId: operatorId
+        actorId: operatorId,
       },
-      dto.limit ?? DEFAULT_CRITICAL_PLATFORM_ALERT_REESCALATION_LIMIT
+      dto.limit ?? DEFAULT_CRITICAL_PLATFORM_ALERT_REESCALATION_LIMIT,
     );
   }
 
   async reEscalateCriticalPlatformAlertsFromWorker(
     workerId: string,
-    dto: ReEscalateCriticalPlatformAlertsDto
+    dto: ReEscalateCriticalPlatformAlertsDto,
   ): Promise<ReEscalateCriticalPlatformAlertsResult> {
     return this.reEscalateCriticalPlatformAlertsInternal(
       {
         actorType: "worker",
-        actorId: workerId
+        actorId: workerId,
       },
-      dto.limit ?? DEFAULT_CRITICAL_PLATFORM_ALERT_REESCALATION_LIMIT
+      dto.limit ?? DEFAULT_CRITICAL_PLATFORM_ALERT_REESCALATION_LIMIT,
     );
   }
 
@@ -2549,7 +2639,7 @@ export class OperationsMonitoringService {
     alertId: string,
     operatorId: string,
     ownerOperatorId: string,
-    note?: string
+    note?: string,
   ): Promise<PlatformAlertGovernanceMutationResult> {
     const trimmedOwnerOperatorId = ownerOperatorId.trim();
     const ownershipNote = note?.trim() ? note.trim() : null;
@@ -2561,9 +2651,9 @@ export class OperationsMonitoringService {
     const alert = this.ensureOpenPlatformAlert(
       await this.prismaService.platformAlert.findUnique({
         where: {
-          id: alertId
-        }
-      })
+          id: alertId,
+        },
+      }),
     );
     const stateReused =
       alert.ownerOperatorId === trimmedOwnerOperatorId &&
@@ -2572,20 +2662,20 @@ export class OperationsMonitoringService {
     if (stateReused) {
       return {
         alert: this.mapPlatformAlertProjection(alert),
-        stateReused: true
+        stateReused: true,
       };
     }
 
     const updatedAlert = await this.prismaService.platformAlert.update({
       where: {
-        id: alert.id
+        id: alert.id,
       },
       data: {
         ownerOperatorId: trimmedOwnerOperatorId,
         ownerAssignedAt: new Date(),
         ownerAssignedByOperatorId: operatorId,
-        ownershipNote
-      }
+        ownershipNote,
+      },
     });
 
     await this.prismaService.auditEvent.create({
@@ -2599,9 +2689,9 @@ export class OperationsMonitoringService {
         metadata: {
           previousOwnerOperatorId: alert.ownerOperatorId ?? null,
           ownerOperatorId: trimmedOwnerOperatorId,
-          ownershipNote
-        } as PrismaJsonValue
-      }
+          ownershipNote,
+        } as PrismaJsonValue,
+      },
     });
 
     this.emitPlatformAlertDeliveryEvent(
@@ -2609,46 +2699,46 @@ export class OperationsMonitoringService {
       PlatformAlertDeliveryEventType.owner_assigned,
       {
         ownerOperatorId: trimmedOwnerOperatorId,
-        ownershipNote
-      }
+        ownershipNote,
+      },
     );
 
     return {
       alert: this.mapPlatformAlertProjection(updatedAlert),
-      stateReused: false
+      stateReused: false,
     };
   }
 
   async acknowledgePlatformAlert(
     alertId: string,
     operatorId: string,
-    note?: string
+    note?: string,
   ): Promise<PlatformAlertGovernanceMutationResult> {
     const acknowledgementNote = note?.trim() ? note.trim() : null;
     const alert = this.ensureOpenPlatformAlert(
       await this.prismaService.platformAlert.findUnique({
         where: {
-          id: alertId
-        }
-      })
+          id: alertId,
+        },
+      }),
     );
 
     if (alert.acknowledgedAt) {
       return {
         alert: this.mapPlatformAlertProjection(alert),
-        stateReused: true
+        stateReused: true,
       };
     }
 
     const updatedAlert = await this.prismaService.platformAlert.update({
       where: {
-        id: alert.id
+        id: alert.id,
       },
       data: {
         acknowledgedAt: new Date(),
         acknowledgedByOperatorId: operatorId,
-        acknowledgementNote
-      }
+        acknowledgementNote,
+      },
     });
 
     await this.prismaService.auditEvent.create({
@@ -2660,22 +2750,22 @@ export class OperationsMonitoringService {
         targetType: "PlatformAlert",
         targetId: alert.id,
         metadata: {
-          acknowledgementNote
-        } as PrismaJsonValue
-      }
+          acknowledgementNote,
+        } as PrismaJsonValue,
+      },
     });
 
     this.emitPlatformAlertDeliveryEvent(
       updatedAlert,
       PlatformAlertDeliveryEventType.acknowledged,
       {
-        acknowledgementNote
-      }
+        acknowledgementNote,
+      },
     );
 
     return {
       alert: this.mapPlatformAlertProjection(updatedAlert),
-      stateReused: false
+      stateReused: false,
     };
   }
 
@@ -2683,21 +2773,19 @@ export class OperationsMonitoringService {
     alertId: string,
     operatorId: string,
     suppressedUntil: Date,
-    note?: string
+    note?: string,
   ): Promise<PlatformAlertGovernanceMutationResult> {
     if (suppressedUntil.getTime() <= Date.now()) {
-      throw new BadRequestException(
-        "Suppressed-until must be in the future."
-      );
+      throw new BadRequestException("Suppressed-until must be in the future.");
     }
 
     const suppressionNote = note?.trim() ? note.trim() : null;
     const alert = this.ensureOpenPlatformAlert(
       await this.prismaService.platformAlert.findUnique({
         where: {
-          id: alertId
-        }
-      })
+          id: alertId,
+        },
+      }),
     );
     const stateReused =
       alert.suppressedUntil?.toISOString() === suppressedUntil.toISOString() &&
@@ -2706,19 +2794,19 @@ export class OperationsMonitoringService {
     if (stateReused) {
       return {
         alert: this.mapPlatformAlertProjection(alert),
-        stateReused: true
+        stateReused: true,
       };
     }
 
     const updatedAlert = await this.prismaService.platformAlert.update({
       where: {
-        id: alert.id
+        id: alert.id,
       },
       data: {
         suppressedUntil,
         suppressedByOperatorId: operatorId,
-        suppressionNote
-      }
+        suppressionNote,
+      },
     });
 
     await this.prismaService.auditEvent.create({
@@ -2732,9 +2820,9 @@ export class OperationsMonitoringService {
         metadata: {
           previousSuppressedUntil: alert.suppressedUntil?.toISOString() ?? null,
           suppressedUntil: suppressedUntil.toISOString(),
-          suppressionNote
-        } as PrismaJsonValue
-      }
+          suppressionNote,
+        } as PrismaJsonValue,
+      },
     });
 
     this.emitPlatformAlertDeliveryEvent(
@@ -2742,46 +2830,49 @@ export class OperationsMonitoringService {
       PlatformAlertDeliveryEventType.suppressed,
       {
         suppressedUntil: suppressedUntil.toISOString(),
-        suppressionNote
-      }
+        suppressionNote,
+      },
     );
 
     return {
       alert: this.mapPlatformAlertProjection(updatedAlert),
-      stateReused: false
+      stateReused: false,
     };
   }
 
   async clearPlatformAlertSuppression(
     alertId: string,
     operatorId: string,
-    note?: string
+    note?: string,
   ): Promise<PlatformAlertGovernanceMutationResult> {
     const suppressionNote = note?.trim() ? note.trim() : null;
     const alert = this.ensureOpenPlatformAlert(
       await this.prismaService.platformAlert.findUnique({
         where: {
-          id: alertId
-        }
-      })
+          id: alertId,
+        },
+      }),
     );
 
-    if (!alert.suppressedUntil || alert.suppressedUntil.getTime() <= Date.now()) {
+    if (
+      !alert.suppressedUntil ||
+      alert.suppressedUntil.getTime() <= Date.now()
+    ) {
       return {
         alert: this.mapPlatformAlertProjection(alert),
-        stateReused: true
+        stateReused: true,
       };
     }
 
     const updatedAlert = await this.prismaService.platformAlert.update({
       where: {
-        id: alert.id
+        id: alert.id,
       },
       data: {
         suppressedUntil: null,
         suppressedByOperatorId: null,
-        suppressionNote
-      }
+        suppressionNote,
+      },
     });
 
     await this.prismaService.auditEvent.create({
@@ -2794,9 +2885,9 @@ export class OperationsMonitoringService {
         targetId: alert.id,
         metadata: {
           previousSuppressedUntil: alert.suppressedUntil.toISOString(),
-          suppressionNote
-        } as PrismaJsonValue
-      }
+          suppressionNote,
+        } as PrismaJsonValue,
+      },
     });
 
     this.emitPlatformAlertDeliveryEvent(
@@ -2804,25 +2895,25 @@ export class OperationsMonitoringService {
       PlatformAlertDeliveryEventType.suppression_cleared,
       {
         previousSuppressedUntil: alert.suppressedUntil.toISOString(),
-        suppressionNote
-      }
+        suppressionNote,
+      },
     );
 
     return {
       alert: this.mapPlatformAlertProjection(updatedAlert),
-      stateReused: false
+      stateReused: false,
     };
   }
 
   async retryFailedPlatformAlertDeliveries(
     alertId: string,
     operatorId: string,
-    note?: string
+    note?: string,
   ): Promise<{ retriedDeliveryCount: number }> {
     const alert = await this.prismaService.platformAlert.findUnique({
       where: {
-        id: alertId
-      }
+        id: alertId,
+      },
     });
 
     if (!alert) {
@@ -2830,7 +2921,9 @@ export class OperationsMonitoringService {
     }
 
     const retriedDeliveryCount =
-      await this.platformAlertDeliveryService.retryFailedDeliveriesForAlert(alertId);
+      await this.platformAlertDeliveryService.retryFailedDeliveriesForAlert(
+        alertId,
+      );
 
     if (retriedDeliveryCount > 0) {
       await this.prismaService.auditEvent.create({
@@ -2843,112 +2936,117 @@ export class OperationsMonitoringService {
           targetId: alert.id,
           metadata: {
             retriedDeliveryCount,
-            note: note?.trim() ? note.trim() : null
-          } as PrismaJsonValue
-        }
+            note: note?.trim() ? note.trim() : null,
+          } as PrismaJsonValue,
+        },
       });
     }
 
     return {
-      retriedDeliveryCount
+      retriedDeliveryCount,
     };
   }
 
   private async routePlatformAlertToReviewCaseInternal(
     alertId: string,
     actor: RoutePlatformAlertActor,
-    dto: RoutePlatformAlertToReviewCaseDto
+    dto: RoutePlatformAlertToReviewCaseDto,
   ): Promise<RoutePlatformAlertResult> {
     const routeNote = dto.note?.trim() ? dto.note.trim() : null;
-    const result = await this.prismaService.$transaction(async (transaction) => {
-      const alert = this.ensureOpenPlatformAlert(
-        await transaction.platformAlert.findUnique({
+    const result = await this.prismaService.$transaction(
+      async (transaction) => {
+        const alert = this.ensureOpenPlatformAlert(
+          await transaction.platformAlert.findUnique({
+            where: {
+              id: alertId,
+            },
+          }),
+        );
+
+        const reviewCaseResult =
+          await this.reviewCasesService.openOrReuseReviewCase(transaction, {
+            customerId: null,
+            customerAccountId: null,
+            transactionIntentId: null,
+            type: ReviewCaseType.manual_intervention,
+            reasonCode: this.buildPlatformAlertReviewCaseReasonCode(alert),
+            notes: this.buildPlatformAlertReviewCaseNotes(alert, routeNote),
+            actorType: actor.actorType,
+            actorId: actor.actorId,
+            auditAction: "review_case.platform_alert.opened",
+            auditMetadata: {
+              platformAlertId: alert.id,
+              platformAlertDedupeKey: alert.dedupeKey,
+              platformAlertCategory: alert.category,
+              platformAlertSeverity: alert.severity,
+              platformAlertCode: alert.code,
+              platformAlertSummary: alert.summary,
+              routeNote,
+            },
+          });
+
+        const routingStateReused =
+          alert.routingStatus === PlatformAlertRoutingStatus.routed &&
+          alert.routingTargetType ===
+            PlatformAlertRoutingTargetType.review_case &&
+          alert.routingTargetId === reviewCaseResult.reviewCase.id;
+        const routedAt = routingStateReused
+          ? (alert.routedAt ?? new Date())
+          : new Date();
+        const routedByOperatorId =
+          actor.actorType === "operator"
+            ? routingStateReused
+              ? (alert.routedByOperatorId ?? actor.actorId)
+              : actor.actorId
+            : null;
+        const updatedAlert = await transaction.platformAlert.update({
           where: {
-            id: alertId
-          }
-        })
-      );
+            id: alert.id,
+          },
+          data: {
+            routingStatus: PlatformAlertRoutingStatus.routed,
+            routingTargetType: PlatformAlertRoutingTargetType.review_case,
+            routingTargetId: reviewCaseResult.reviewCase.id,
+            routedAt,
+            routedByOperatorId,
+            routingNote: routeNote,
+          },
+        });
 
-      const reviewCaseResult = await this.reviewCasesService.openOrReuseReviewCase(
-        transaction,
-        {
-          customerId: null,
-          customerAccountId: null,
-          transactionIntentId: null,
-          type: ReviewCaseType.manual_intervention,
-          reasonCode: this.buildPlatformAlertReviewCaseReasonCode(alert),
-          notes: this.buildPlatformAlertReviewCaseNotes(alert, routeNote),
-          actorType: actor.actorType,
-          actorId: actor.actorId,
-          auditAction: "review_case.platform_alert.opened",
-          auditMetadata: {
-            platformAlertId: alert.id,
-            platformAlertDedupeKey: alert.dedupeKey,
-            platformAlertCategory: alert.category,
-            platformAlertSeverity: alert.severity,
-            platformAlertCode: alert.code,
-            platformAlertSummary: alert.summary,
-            routeNote
-          }
-        }
-      );
+        await transaction.auditEvent.create({
+          data: {
+            customerId: null,
+            actorType: actor.actorType,
+            actorId: actor.actorId,
+            action: "platform_alert.routed_to_review_case",
+            targetType: "PlatformAlert",
+            targetId: alert.id,
+            metadata: {
+              platformAlertDedupeKey: alert.dedupeKey,
+              platformAlertCategory: alert.category,
+              platformAlertSeverity: alert.severity,
+              platformAlertCode: alert.code,
+              reviewCaseId: reviewCaseResult.reviewCase.id,
+              reviewCaseReasonCode: reviewCaseResult.reviewCase.reasonCode,
+              reviewCaseStatus: reviewCaseResult.reviewCase.status,
+              reviewCaseReused: reviewCaseResult.reviewCaseReused,
+              routingStateReused,
+              routeNote,
+              initiatedBy: actor.actorType,
+            } as PrismaJsonValue,
+          },
+        });
 
-      const routingStateReused =
-        alert.routingStatus === PlatformAlertRoutingStatus.routed &&
-        alert.routingTargetType === PlatformAlertRoutingTargetType.review_case &&
-        alert.routingTargetId === reviewCaseResult.reviewCase.id;
-      const routedAt = routingStateReused ? alert.routedAt ?? new Date() : new Date();
-      const routedByOperatorId =
-        actor.actorType === "operator"
-          ? routingStateReused
-            ? alert.routedByOperatorId ?? actor.actorId
-            : actor.actorId
-          : null;
-      const updatedAlert = await transaction.platformAlert.update({
-        where: {
-          id: alert.id
-        },
-        data: {
-          routingStatus: PlatformAlertRoutingStatus.routed,
-          routingTargetType: PlatformAlertRoutingTargetType.review_case,
-          routingTargetId: reviewCaseResult.reviewCase.id,
-          routedAt,
-          routedByOperatorId,
-          routingNote: routeNote
-        }
-      });
-
-      await transaction.auditEvent.create({
-        data: {
-          customerId: null,
-          actorType: actor.actorType,
-          actorId: actor.actorId,
-          action: "platform_alert.routed_to_review_case",
-          targetType: "PlatformAlert",
-          targetId: alert.id,
-          metadata: {
-            platformAlertDedupeKey: alert.dedupeKey,
-            platformAlertCategory: alert.category,
-            platformAlertSeverity: alert.severity,
-            platformAlertCode: alert.code,
-            reviewCaseId: reviewCaseResult.reviewCase.id,
-            reviewCaseReasonCode: reviewCaseResult.reviewCase.reasonCode,
-            reviewCaseStatus: reviewCaseResult.reviewCase.status,
-            reviewCaseReused: reviewCaseResult.reviewCaseReused,
-            routingStateReused,
-            routeNote,
-            initiatedBy: actor.actorType
-          } as PrismaJsonValue
-        }
-      });
-
-      return {
-        alert: this.mapPlatformAlertProjection(updatedAlert),
-        reviewCase: this.mapRoutedReviewCaseProjection(reviewCaseResult.reviewCase),
-        reviewCaseReused: reviewCaseResult.reviewCaseReused,
-        routingStateReused
-      };
-    });
+        return {
+          alert: this.mapPlatformAlertProjection(updatedAlert),
+          reviewCase: this.mapRoutedReviewCaseProjection(
+            reviewCaseResult.reviewCase,
+          ),
+          reviewCaseReused: reviewCaseResult.reviewCaseReused,
+          routingStateReused,
+        };
+      },
+    );
 
     this.emitPlatformAlertDeliveryEvent(
       {
@@ -2960,7 +3058,9 @@ export class OperationsMonitoringService {
         routingStatus: result.alert.routingStatus as PlatformAlertRoutingStatus,
         routingTargetType: result.alert.routingTargetType,
         routingTargetId: result.alert.routingTargetId,
-        routedAt: result.alert.routedAt ? new Date(result.alert.routedAt) : null,
+        routedAt: result.alert.routedAt
+          ? new Date(result.alert.routedAt)
+          : null,
         routedByOperatorId: result.alert.routedByOperatorId,
         routingNote: result.alert.routingNote,
         ownerOperatorId: result.alert.ownerOperatorId,
@@ -2985,16 +3085,18 @@ export class OperationsMonitoringService {
         metadata: result.alert.metadata,
         firstDetectedAt: new Date(result.alert.firstDetectedAt),
         lastDetectedAt: new Date(result.alert.lastDetectedAt),
-        resolvedAt: result.alert.resolvedAt ? new Date(result.alert.resolvedAt) : null,
+        resolvedAt: result.alert.resolvedAt
+          ? new Date(result.alert.resolvedAt)
+          : null,
         createdAt: new Date(result.alert.createdAt),
-        updatedAt: new Date(result.alert.updatedAt)
+        updatedAt: new Date(result.alert.updatedAt),
       },
       PlatformAlertDeliveryEventType.routed_to_review_case,
       {
         reviewCaseId: result.reviewCase.id,
         routingStateReused: result.routingStateReused,
-        initiatedBy: actor.actorType
-      }
+        initiatedBy: actor.actorType,
+      },
     );
 
     return result;
@@ -3003,44 +3105,47 @@ export class OperationsMonitoringService {
   async routePlatformAlertToReviewCase(
     alertId: string,
     operatorId: string,
-    dto: RoutePlatformAlertToReviewCaseDto
+    dto: RoutePlatformAlertToReviewCaseDto,
   ): Promise<RoutePlatformAlertResult> {
     return this.routePlatformAlertToReviewCaseInternal(
       alertId,
       {
         actorType: "operator",
-        actorId: operatorId
+        actorId: operatorId,
       },
-      dto
+      dto,
     );
   }
 
   async routeCriticalPlatformAlerts(
     operatorId: string,
-    dto: RouteCriticalPlatformAlertsDto
+    dto: RouteCriticalPlatformAlertsDto,
   ): Promise<RouteCriticalPlatformAlertsResult> {
     const limit = dto.limit ?? 10;
     const staleAfterSeconds =
       dto.staleAfterSeconds ?? DEFAULT_STALE_AFTER_SECONDS;
     const snapshot = await this.buildOperationsSnapshot(staleAfterSeconds);
 
-    await this.syncPlatformAlerts(snapshot.alertCandidates, snapshot.generatedAt);
+    await this.syncPlatformAlerts(
+      snapshot.alertCandidates,
+      snapshot.generatedAt,
+    );
 
     const alerts = await this.prismaService.platformAlert.findMany({
       where: {
         status: PlatformAlertStatus.open,
         severity: PlatformAlertSeverity.critical,
-        routingStatus: PlatformAlertRoutingStatus.unrouted
+        routingStatus: PlatformAlertRoutingStatus.unrouted,
       },
       orderBy: [
         {
-          lastDetectedAt: "desc"
+          lastDetectedAt: "desc",
         },
         {
-          createdAt: "asc"
-        }
+          createdAt: "asc",
+        },
       ],
-      take: limit
+      take: limit,
     });
 
     const routedAlerts: RoutePlatformAlertResult[] = [];
@@ -3048,8 +3153,8 @@ export class OperationsMonitoringService {
     for (const alert of alerts) {
       routedAlerts.push(
         await this.routePlatformAlertToReviewCase(alert.id, operatorId, {
-          note: dto.note
-        })
+          note: dto.note,
+        }),
       );
     }
 
@@ -3058,32 +3163,35 @@ export class OperationsMonitoringService {
         where: {
           status: PlatformAlertStatus.open,
           severity: PlatformAlertSeverity.critical,
-          routingStatus: PlatformAlertRoutingStatus.unrouted
-        }
+          routingStatus: PlatformAlertRoutingStatus.unrouted,
+        },
       });
 
     return {
       routedAlerts,
       limit,
       remainingUnroutedCriticalAlertCount,
-      staleAfterSeconds
+      staleAfterSeconds,
     };
   }
 
   async renderPrometheusMetrics(
     query: GetOperationsMetricsDto,
-    apiRequestMetricsService: ApiRequestMetricsService
+    apiRequestMetricsService: ApiRequestMetricsService,
   ): Promise<string> {
     const staleAfterSeconds =
       query.staleAfterSeconds ?? DEFAULT_STALE_AFTER_SECONDS;
     const snapshot = await this.buildOperationsSnapshot(staleAfterSeconds);
 
-    await this.syncPlatformAlerts(snapshot.alertCandidates, snapshot.generatedAt);
+    await this.syncPlatformAlerts(
+      snapshot.alertCandidates,
+      snapshot.generatedAt,
+    );
 
     const openAlerts = await this.prismaService.platformAlert.findMany({
       where: {
-        status: PlatformAlertStatus.open
-      }
+        status: PlatformAlertStatus.open,
+      },
     });
 
     const alertCounts = new Map<string, number>();
@@ -3095,10 +3203,57 @@ export class OperationsMonitoringService {
 
     const [targetHealth, dueReEscalationCandidates] = await Promise.all([
       this.listPlatformAlertDeliveryTargetHealth({
-        lookbackHours: this.platformAlertDeliveryHealthSloRuntimeConfig.lookbackHours
+        lookbackHours:
+          this.platformAlertDeliveryHealthSloRuntimeConfig.lookbackHours,
       }),
-      this.listDueCriticalPlatformAlertReEscalationCandidates()
+      this.listDueCriticalPlatformAlertReEscalationCandidates(),
     ]);
+    const customerMfaEvents = await this.prismaService.auditEvent.findMany({
+      where: {
+        action: {
+          in: [
+            "customer_account.mfa_email_delivery_succeeded",
+            "customer_account.mfa_email_delivery_failed",
+            "customer_account.mfa_lockout_triggered",
+          ],
+        },
+        createdAt: {
+          gte: new Date(Date.now() - 24 * 60 * 60 * 1000),
+        },
+      },
+      select: {
+        action: true,
+        metadata: true,
+      },
+    });
+    const customerMfaEmailDeliveryCounts = new Map<string, number>();
+    const customerMfaLockoutCounts = new Map<string, number>();
+
+    for (const event of customerMfaEvents) {
+      if (event.action === "customer_account.mfa_lockout_triggered") {
+        const method = readJsonString(event.metadata, "method") ?? "unknown";
+        const purpose = readJsonString(event.metadata, "purpose") ?? "unknown";
+        const key = `${method}|${purpose}`;
+        customerMfaLockoutCounts.set(
+          key,
+          (customerMfaLockoutCounts.get(key) ?? 0) + 1,
+        );
+        continue;
+      }
+
+      const status =
+        event.action === "customer_account.mfa_email_delivery_succeeded"
+          ? "succeeded"
+          : "failed";
+      const backendType =
+        readJsonString(event.metadata, "deliveryBackendType") ?? "unknown";
+      const purpose = readJsonString(event.metadata, "purpose") ?? "unknown";
+      const key = `${status}|${backendType}|${purpose}`;
+      customerMfaEmailDeliveryCounts.set(
+        key,
+        (customerMfaEmailDeliveryCounts.get(key) ?? 0) + 1,
+      );
+    }
 
     const lines: string[] = [
       apiRequestMetricsService.renderPrometheusMetrics().trimEnd(),
@@ -3107,139 +3262,139 @@ export class OperationsMonitoringService {
       formatPrometheusLine(
         "stb_operations_workers_total",
         snapshot.workerHealth.healthyWorkers,
-        { health_status: "healthy" }
+        { health_status: "healthy" },
       ),
       formatPrometheusLine(
         "stb_operations_workers_total",
         snapshot.workerHealth.degradedWorkers,
-        { health_status: "degraded" }
+        { health_status: "degraded" },
       ),
       formatPrometheusLine(
         "stb_operations_workers_total",
         snapshot.workerHealth.staleWorkers,
-        { health_status: "stale" }
+        { health_status: "stale" },
       ),
       "# HELP stb_operations_queue_intents_total Current queued intent backlog by intent type.",
       "# TYPE stb_operations_queue_intents_total gauge",
       formatPrometheusLine(
         "stb_operations_queue_intents_total",
         snapshot.queueHealth.queuedDepositCount,
-        { intent_type: "deposit" }
+        { intent_type: "deposit" },
       ),
       formatPrometheusLine(
         "stb_operations_queue_intents_total",
         snapshot.queueHealth.queuedWithdrawalCount,
-        { intent_type: "withdrawal" }
+        { intent_type: "withdrawal" },
       ),
       "# HELP stb_operations_queue_aged_total Current queued intents older than the warning threshold.",
       "# TYPE stb_operations_queue_aged_total gauge",
       formatPrometheusLine(
         "stb_operations_queue_aged_total",
-        snapshot.queueHealth.agedQueuedCount
+        snapshot.queueHealth.agedQueuedCount,
       ),
       "# HELP stb_operations_manual_withdrawal_backlog_total Current manual withdrawal backlog for managed execution.",
       "# TYPE stb_operations_manual_withdrawal_backlog_total gauge",
       formatPrometheusLine(
         "stb_operations_manual_withdrawal_backlog_total",
-        snapshot.queueHealth.manualWithdrawalBacklogCount
+        snapshot.queueHealth.manualWithdrawalBacklogCount,
       ),
       "# HELP stb_operations_managed_withdrawal_execution_total Current managed withdrawal execution counts by state.",
       "# TYPE stb_operations_managed_withdrawal_execution_total gauge",
       formatPrometheusLine(
         "stb_operations_managed_withdrawal_execution_total",
         snapshot.withdrawalExecutionHealth.queuedManagedWithdrawalCount,
-        { state: "queued" }
+        { state: "queued" },
       ),
       formatPrometheusLine(
         "stb_operations_managed_withdrawal_execution_total",
         snapshot.withdrawalExecutionHealth.broadcastingWithdrawalCount,
-        { state: "broadcasting" }
+        { state: "broadcasting" },
       ),
       formatPrometheusLine(
         "stb_operations_managed_withdrawal_execution_total",
         snapshot.withdrawalExecutionHealth.pendingConfirmationWithdrawalCount,
-        { state: "pending_confirmation" }
+        { state: "pending_confirmation" },
       ),
       formatPrometheusLine(
         "stb_operations_managed_withdrawal_execution_total",
         snapshot.withdrawalExecutionHealth.failedManagedWithdrawalCount,
-        { state: "failed" }
+        { state: "failed" },
       ),
       formatPrometheusLine(
         "stb_operations_managed_withdrawal_execution_total",
         snapshot.withdrawalExecutionHealth.manualInterventionWithdrawalCount,
-        { state: "manual_intervention" }
+        { state: "manual_intervention" },
       ),
       "# HELP stb_operations_chain_lagging_broadcasts_total Current lagging blockchain broadcasts by severity window.",
       "# TYPE stb_operations_chain_lagging_broadcasts_total gauge",
       formatPrometheusLine(
         "stb_operations_chain_lagging_broadcasts_total",
         snapshot.chainHealth.laggingBroadcastCount,
-        { severity_window: "warning" }
+        { severity_window: "warning" },
       ),
       formatPrometheusLine(
         "stb_operations_chain_lagging_broadcasts_total",
         snapshot.chainHealth.criticalLaggingBroadcastCount,
-        { severity_window: "critical" }
+        { severity_window: "critical" },
       ),
       "# HELP stb_operations_chain_failed_transactions_recent_total Recent failed blockchain transactions inside the monitoring window.",
       "# TYPE stb_operations_chain_failed_transactions_recent_total gauge",
       formatPrometheusLine(
         "stb_operations_chain_failed_transactions_recent_total",
-        snapshot.chainHealth.recentFailedTransactionCount
+        snapshot.chainHealth.recentFailedTransactionCount,
       ),
       "# HELP stb_operations_treasury_wallets_total Active treasury wallet counts by kind.",
       "# TYPE stb_operations_treasury_wallets_total gauge",
       formatPrometheusLine(
         "stb_operations_treasury_wallets_total",
         snapshot.treasuryHealth.activeTreasuryWalletCount,
-        { kind: "treasury" }
+        { kind: "treasury" },
       ),
       formatPrometheusLine(
         "stb_operations_treasury_wallets_total",
         snapshot.treasuryHealth.activeOperationalWalletCount,
-        { kind: "operational" }
+        { kind: "operational" },
       ),
       "# HELP stb_operations_managed_wallet_coverage_missing Whether managed execution is missing treasury or operational wallet coverage.",
       "# TYPE stb_operations_managed_wallet_coverage_missing gauge",
       formatPrometheusLine(
         "stb_operations_managed_wallet_coverage_missing",
-        snapshot.treasuryHealth.missingManagedWalletCoverage ? 1 : 0
+        snapshot.treasuryHealth.missingManagedWalletCoverage ? 1 : 0,
       ),
       "# HELP stb_operations_reconciliation_mismatches_total Current open reconciliation mismatches by severity view.",
       "# TYPE stb_operations_reconciliation_mismatches_total gauge",
       formatPrometheusLine(
         "stb_operations_reconciliation_mismatches_total",
         snapshot.reconciliationHealth.openMismatchCount,
-        { severity_view: "all" }
+        { severity_view: "all" },
       ),
       formatPrometheusLine(
         "stb_operations_reconciliation_mismatches_total",
         snapshot.reconciliationHealth.criticalMismatchCount,
-        { severity_view: "critical" }
+        { severity_view: "critical" },
       ),
       "# HELP stb_operations_reconciliation_failed_scans_recent_total Recent failed reconciliation scans inside the monitoring window.",
       "# TYPE stb_operations_reconciliation_failed_scans_recent_total gauge",
       formatPrometheusLine(
         "stb_operations_reconciliation_failed_scans_recent_total",
-        snapshot.reconciliationHealth.recentFailedScanCount
+        snapshot.reconciliationHealth.recentFailedScanCount,
       ),
       "# HELP stb_operations_incident_open_total Current incident and review pressure.",
       "# TYPE stb_operations_incident_open_total gauge",
       formatPrometheusLine(
         "stb_operations_incident_open_total",
         snapshot.incidentSafety.openReviewCaseCount,
-        { incident_type: "review_case" }
+        { incident_type: "review_case" },
       ),
       formatPrometheusLine(
         "stb_operations_incident_open_total",
         snapshot.incidentSafety.openOversightIncidentCount,
-        { incident_type: "oversight_incident" }
+        { incident_type: "oversight_incident" },
       ),
       formatPrometheusLine(
         "stb_operations_incident_open_total",
         snapshot.incidentSafety.activeRestrictedAccountCount,
-        { incident_type: "restricted_account" }
+        { incident_type: "restricted_account" },
       ),
       "# HELP stb_platform_alerts_open_total Current open platform alerts by category and severity.",
       "# TYPE stb_platform_alerts_open_total gauge",
@@ -3247,8 +3402,12 @@ export class OperationsMonitoringService {
       "# TYPE stb_platform_alert_reescalation_due_total gauge",
       formatPrometheusLine(
         "stb_platform_alert_reescalation_due_total",
-        dueReEscalationCandidates.length
-      )
+        dueReEscalationCandidates.length,
+      ),
+      "# HELP stb_customer_mfa_email_delivery_recent_total Recent customer MFA email delivery audit events by status, backend, and purpose.",
+      "# TYPE stb_customer_mfa_email_delivery_recent_total gauge",
+      "# HELP stb_customer_mfa_lockouts_recent_total Recent customer MFA lockout audit events by method and purpose.",
+      "# TYPE stb_customer_mfa_lockouts_recent_total gauge",
     ];
 
     for (const [key, count] of alertCounts.entries()) {
@@ -3256,8 +3415,33 @@ export class OperationsMonitoringService {
       lines.push(
         formatPrometheusLine("stb_platform_alerts_open_total", count, {
           category,
-          severity
-        })
+          severity,
+        }),
+      );
+    }
+
+    for (const [key, count] of customerMfaEmailDeliveryCounts.entries()) {
+      const [status, backendType, purpose] = key.split("|");
+      lines.push(
+        formatPrometheusLine(
+          "stb_customer_mfa_email_delivery_recent_total",
+          count,
+          {
+            status,
+            backend_type: backendType,
+            purpose,
+          },
+        ),
+      );
+    }
+
+    for (const [key, count] of customerMfaLockoutCounts.entries()) {
+      const [method, purpose] = key.split("|");
+      lines.push(
+        formatPrometheusLine("stb_customer_mfa_lockouts_recent_total", count, {
+          method,
+          purpose,
+        }),
       );
     }
 
@@ -3265,13 +3449,13 @@ export class OperationsMonitoringService {
       "# HELP stb_worker_runtime_heartbeat_age_seconds Current heartbeat age per worker.",
       "# TYPE stb_worker_runtime_heartbeat_age_seconds gauge",
       "# HELP stb_worker_latest_iteration_metric Latest worker iteration metric value per worker.",
-      "# TYPE stb_worker_latest_iteration_metric gauge"
+      "# TYPE stb_worker_latest_iteration_metric gauge",
     );
 
     for (const worker of snapshot.workers) {
       const heartbeatAgeSeconds = Math.max(
         0,
-        (Date.now() - new Date(worker.lastHeartbeatAt).getTime()) / 1000
+        (Date.now() - new Date(worker.lastHeartbeatAt).getTime()) / 1000,
       );
 
       lines.push(
@@ -3282,9 +3466,9 @@ export class OperationsMonitoringService {
             worker_id: worker.workerId,
             environment: worker.environment,
             execution_mode: worker.executionMode,
-            health_status: worker.healthStatus
-          }
-        )
+            health_status: worker.healthStatus,
+          },
+        ),
       );
 
       for (const metricKey of WORKER_ITERATION_METRIC_KEYS) {
@@ -3295,9 +3479,9 @@ export class OperationsMonitoringService {
             {
               worker_id: worker.workerId,
               execution_mode: worker.executionMode,
-              metric: metricKey
-            }
-          )
+              metric: metricKey,
+            },
+          ),
         );
       }
     }
@@ -3314,7 +3498,7 @@ export class OperationsMonitoringService {
       "# HELP stb_platform_alert_delivery_target_consecutive_failures_total Current consecutive failed delivery count by target.",
       "# TYPE stb_platform_alert_delivery_target_consecutive_failures_total gauge",
       "# HELP stb_platform_alert_delivery_target_latency_ms Recent successful delivery latency by target and aggregation.",
-      "# TYPE stb_platform_alert_delivery_target_latency_ms gauge"
+      "# TYPE stb_platform_alert_delivery_target_latency_ms gauge",
     );
 
     for (const target of targetHealth.targets) {
@@ -3325,8 +3509,8 @@ export class OperationsMonitoringService {
           {
             target_name: target.targetName,
             delivery_mode: target.deliveryMode,
-            status: "succeeded"
-          }
+            status: "succeeded",
+          },
         ),
         formatPrometheusLine(
           "stb_platform_alert_delivery_target_recent_total",
@@ -3334,8 +3518,8 @@ export class OperationsMonitoringService {
           {
             target_name: target.targetName,
             delivery_mode: target.deliveryMode,
-            status: "failed"
-          }
+            status: "failed",
+          },
         ),
         formatPrometheusLine(
           "stb_platform_alert_delivery_target_recent_total",
@@ -3343,8 +3527,8 @@ export class OperationsMonitoringService {
           {
             target_name: target.targetName,
             delivery_mode: target.deliveryMode,
-            status: "pending"
-          }
+            status: "pending",
+          },
         ),
         formatPrometheusLine(
           "stb_platform_alert_delivery_target_pending_total",
@@ -3352,8 +3536,8 @@ export class OperationsMonitoringService {
           {
             target_name: target.targetName,
             delivery_mode: target.deliveryMode,
-            health_status: target.healthStatus
-          }
+            health_status: target.healthStatus,
+          },
         ),
         formatPrometheusLine(
           "stb_platform_alert_delivery_target_health_total",
@@ -3361,24 +3545,24 @@ export class OperationsMonitoringService {
           {
             target_name: target.targetName,
             delivery_mode: target.deliveryMode,
-            health_status: target.healthStatus
-          }
+            health_status: target.healthStatus,
+          },
         ),
         formatPrometheusLine(
           "stb_platform_alert_delivery_target_failure_rate_percent",
           target.recentFailureRatePercent ?? 0,
           {
             target_name: target.targetName,
-            delivery_mode: target.deliveryMode
-          }
+            delivery_mode: target.deliveryMode,
+          },
         ),
         formatPrometheusLine(
           "stb_platform_alert_delivery_target_consecutive_failures_total",
           target.consecutiveFailureCount,
           {
             target_name: target.targetName,
-            delivery_mode: target.deliveryMode
-          }
+            delivery_mode: target.deliveryMode,
+          },
         ),
         formatPrometheusLine(
           "stb_platform_alert_delivery_target_latency_ms",
@@ -3386,8 +3570,8 @@ export class OperationsMonitoringService {
           {
             target_name: target.targetName,
             delivery_mode: target.deliveryMode,
-            aggregation: "avg"
-          }
+            aggregation: "avg",
+          },
         ),
         formatPrometheusLine(
           "stb_platform_alert_delivery_target_latency_ms",
@@ -3395,9 +3579,9 @@ export class OperationsMonitoringService {
           {
             target_name: target.targetName,
             delivery_mode: target.deliveryMode,
-            aggregation: "max"
-          }
-        )
+            aggregation: "max",
+          },
+        ),
       );
     }
 

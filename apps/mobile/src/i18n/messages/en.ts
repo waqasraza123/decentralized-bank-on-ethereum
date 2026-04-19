@@ -188,6 +188,12 @@ export const mobileMessages = {
     updatePassword: "Update password",
     passwordUpdated: "Password updated successfully.",
     passwordsMustMatch: "Passwords must match.",
+    sessionSecurity: "Session security",
+    sessionSecurityDescription:
+      "Revoke every other active customer session and keep only this device signed in with a fresh token.",
+    revokeAllSessions: "Revoke all other sessions",
+    sessionsRevoked: "All other sessions were signed out.",
+    sessionsRevokeFailed: "Failed to revoke other active sessions.",
     savePreferences: "Save preferences",
     preferencesSaved: "Notification preferences saved.",
     mfaTitle: "Multi-factor security",

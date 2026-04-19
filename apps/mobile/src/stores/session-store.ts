@@ -77,6 +77,7 @@ type SessionState = {
   hydrate: () => Promise<void>;
   signIn: (input: { token: string; user: SessionUser }) => Promise<void>;
   signOut: () => Promise<void>;
+  setToken: (token: string) => Promise<void>;
   setUser: (user: SessionUser) => Promise<void>;
   rememberRequestKey: (signature: string, key: string) => void;
   consumeRequestKey: (signature: string) => string | null;
@@ -102,7 +103,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   hydrate: async () => {
     const [token, userValue] = await Promise.all([
       readPersistedValue(tokenStorageKey),
-      readPersistedValue(userStorageKey)
+      readPersistedValue(userStorageKey),
     ]);
 
     let user: SessionUser | null = null;
@@ -118,7 +119,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     set({
       token: token ?? null,
       user,
-      hydrated: true
+      hydrated: true,
     });
   },
   signIn: async ({ token, user }) => {
@@ -130,8 +131,19 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     set({
       token: null,
       user: null,
-      pendingRequestKeys: {}
+      pendingRequestKeys: {},
     });
+  },
+  setToken: async (token) => {
+    const user = get().user;
+
+    if (user) {
+      await persistSession(token, user);
+    } else {
+      await writePersistedValue(tokenStorageKey, token);
+    }
+
+    set({ token });
   },
   setUser: async (user) => {
     const token = get().token;
@@ -146,8 +158,8 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     set((state) => ({
       pendingRequestKeys: {
         ...state.pendingRequestKeys,
-        [signature]: key
-      }
+        [signature]: key,
+      },
     }));
   },
   consumeRequestKey: (signature) => get().pendingRequestKeys[signature] ?? null,
@@ -162,8 +174,8 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     set({
       token: null,
       user: null,
-      pendingRequestKeys: {}
+      pendingRequestKeys: {},
     });
     void clearPersistedSession();
-  }
+  },
 }));

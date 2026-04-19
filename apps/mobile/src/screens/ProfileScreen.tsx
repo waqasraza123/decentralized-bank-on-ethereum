@@ -14,6 +14,7 @@ import {
   useMfaStatusQuery,
   useProfileQuery,
   useRotatePasswordMutation,
+  useRevokeAllCustomerSessionsMutation,
   useStartEmailEnrollmentMutation,
   useStartMfaChallengeMutation,
   useStartTotpEnrollmentMutation,
@@ -43,6 +44,7 @@ export function ProfileScreen() {
   const signOut = useSessionStore((state) => state.signOut);
   const sessionUser = useSessionStore((state) => state.user);
   const rotatePasswordMutation = useRotatePasswordMutation();
+  const revokeSessionsMutation = useRevokeAllCustomerSessionsMutation();
   const updatePreferencesMutation = useUpdateNotificationPreferencesMutation();
   const startTotpEnrollmentMutation = useStartTotpEnrollmentMutation();
   const verifyTotpEnrollmentMutation = useVerifyTotpEnrollmentMutation();
@@ -126,6 +128,20 @@ export function ProfileScreen() {
         requestError instanceof Error
           ? requestError.message
           : String(requestError),
+      );
+    }
+  }
+
+  async function handleRevokeSessions() {
+    try {
+      await revokeSessionsMutation.mutateAsync();
+      Alert.alert(t("profile.sessionSecurity"), t("profile.sessionsRevoked"));
+    } catch (error) {
+      Alert.alert(
+        t("profile.sessionSecurity"),
+        error instanceof Error
+          ? error.message
+          : t("profile.sessionsRevokeFailed"),
       );
     }
   }
@@ -611,6 +627,24 @@ export function ProfileScreen() {
                 tone="warning"
               />
             )}
+          </SectionCard>
+
+          <SectionCard className="gap-4">
+            <AppText className="text-xl text-ink" weight="bold">
+              {t("profile.sessionSecurity")}
+            </AppText>
+            <InlineNotice
+              message={t("profile.sessionSecurityDescription")}
+              tone="warning"
+            />
+            <AppButton
+              disabled={revokeSessionsMutation.isPending}
+              label={t("profile.revokeAllSessions")}
+              onPress={() => {
+                void handleRevokeSessions();
+              }}
+              variant="secondary"
+            />
           </SectionCard>
 
           <AppButton
