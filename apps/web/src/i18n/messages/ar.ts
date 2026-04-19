@@ -3,7 +3,11 @@ import type { WebMessages } from "./en";
 export const webMessagesAr: WebMessages = {
   app: {
     loadingTitle: "جاري تحميل مساحة العمل",
-    loadingDescription: "يتم تجهيز العرض التالي."
+    loadingDescription: "يتم تجهيز العرض التالي.",
+    runtimeErrorTitle: "يتطلب الأمر استعادة مساحة العمل",
+    runtimeErrorDescription:
+      "واجهت مساحة العميل عطلاً غير متوقع أثناء التشغيل. أعد تحميل المساحة لإعادة إنشاء جلسة نظيفة.",
+    reloadAction: "إعادة تحميل المساحة"
   },
   locale: {
     switcherLabel: "اللغة",

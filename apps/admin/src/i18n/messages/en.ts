@@ -41,7 +41,11 @@ export const adminMessages = {
     notAvailable: "Not available",
     unknown: "Unknown",
     open: "Open",
-    unnamedSubject: "Unnamed subject"
+    unnamedSubject: "Unnamed subject",
+    runtimeErrorTitle: "Operator console recovery required",
+    runtimeErrorDescription:
+      "The operator console hit an unexpected runtime fault. Reload the console to restore a clean command surface.",
+    reload: "Reload console"
   }
 } as const;
 

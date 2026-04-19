@@ -5,6 +5,9 @@ import {
 
 export type MobileRuntimeConfig = {
   readonly apiBaseUrl: string;
+  readonly telemetryEndpoint: string | null;
+  readonly telemetryEnvironment: string;
+  readonly telemetryRelease: string | null;
 };
 
 function readLocalWebDevApiBaseUrl(): string | undefined {
@@ -37,6 +40,13 @@ export function loadMobileRuntimeConfig(
   }
 
   return {
-    apiBaseUrl
+    apiBaseUrl,
+    telemetryEndpoint:
+      readOptionalRuntimeEnv(env, "EXPO_PUBLIC_TELEMETRY_ENDPOINT") ?? null,
+    telemetryEnvironment:
+      readOptionalRuntimeEnv(env, "EXPO_PUBLIC_TELEMETRY_ENVIRONMENT") ??
+      "development",
+    telemetryRelease:
+      readOptionalRuntimeEnv(env, "EXPO_PUBLIC_TELEMETRY_RELEASE") ?? null
   };
 }

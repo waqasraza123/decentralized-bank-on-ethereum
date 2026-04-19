@@ -14,13 +14,17 @@ import "@stealth-trails-bank/ui-foundation/styles.css";
 import { createRoot } from "react-dom/client";
 import App from "./App.tsx";
 import "./index.css";
+import { webTelemetry } from "./lib/observability";
 import { initializeUserStore } from "./stores/userStore";
 
 async function bootstrap() {
   try {
     await initializeUserStore();
   } catch (error) {
-    console.error("Failed to initialize persisted user state.", error);
+    webTelemetry.captureException(error, {
+      kind: "bootstrap_error",
+      message: "Failed to initialize persisted user state."
+    });
   }
 
   createRoot(document.getElementById("root")!).render(<App />);

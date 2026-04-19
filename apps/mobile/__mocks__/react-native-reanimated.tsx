@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import React from "react";
 import { Image, ScrollView, Text, View } from "react-native";
 
-function createAnimatedComponent(Component: typeof View) {
+function createAnimatedComponent(Component: React.ComponentType<any>) {
   return React.forwardRef(function MockAnimatedComponent(
     {
       children,
@@ -11,7 +11,7 @@ function createAnimatedComponent(Component: typeof View) {
       children?: ReactNode;
       [key: string]: unknown;
     },
-    ref
+    ref: any
   ) {
     return (
       <Component {...props} ref={ref}>

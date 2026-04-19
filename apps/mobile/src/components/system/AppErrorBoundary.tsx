@@ -1,5 +1,6 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
 import { Pressable, Text, View } from "react-native";
+import { reportMobileRuntimeError } from "../../lib/observability";
 
 type AppErrorBoundaryProps = {
   title: string;
@@ -27,7 +28,9 @@ export class AppErrorBoundary extends Component<
   }
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    console.error("App runtime boundary triggered.", error, errorInfo);
+    reportMobileRuntimeError(error, {
+      componentStack: errorInfo.componentStack
+    });
   }
 
   private reset = () => {

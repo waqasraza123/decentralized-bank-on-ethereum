@@ -1,7 +1,11 @@
 export const webMessages = {
   app: {
     loadingTitle: "Loading workspace",
-    loadingDescription: "Preparing the next view."
+    loadingDescription: "Preparing the next view.",
+    runtimeErrorTitle: "Workspace recovery required",
+    runtimeErrorDescription:
+      "The customer workspace hit an unexpected runtime fault. Reload the workspace to re-establish a clean session shell.",
+    reloadAction: "Reload workspace"
   },
   locale: {
     switcherLabel: "Language",

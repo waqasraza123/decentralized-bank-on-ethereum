@@ -1,5 +1,6 @@
 import axios, { AxiosHeaders } from "axios";
 import { loadMobileRuntimeConfig } from "@stealth-trails-bank/config/mobile";
+import { reportMobileApiError } from "../observability";
 import { useSessionStore } from "../../stores/session-store";
 
 const runtimeConfig = loadMobileRuntimeConfig({
@@ -26,6 +27,8 @@ apiClient.interceptors.response.use(
   (response) => response,
   (error) => {
     const status = error.response?.status;
+
+    reportMobileApiError(error);
 
     if (status === 401 || status === 403) {
       useSessionStore.getState().dropSession();

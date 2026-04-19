@@ -320,3 +320,4 @@ export function buildIntentTimeline(input: {
 }
 
 export * from "./motion";
+export * from "./client-observability";

@@ -43,6 +43,10 @@ export const adminMessagesAr: AdminMessages = {
     notAvailable: "غير متاح",
     unknown: "غير معروف",
     open: "مفتوح",
-    unnamedSubject: "عنصر غير مسمى"
+    unnamedSubject: "عنصر غير مسمى",
+    runtimeErrorTitle: "يتطلب الأمر استعادة وحدة المشغل",
+    runtimeErrorDescription:
+      "واجهت وحدة المشغل عطلاً غير متوقع أثناء التشغيل. أعد تحميل الوحدة لاستعادة سطح أوامر نظيف.",
+    reload: "إعادة تحميل الوحدة"
   }
 };

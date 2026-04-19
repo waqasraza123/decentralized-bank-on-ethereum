@@ -3,7 +3,7 @@ import {
   getSystemHealthLabel,
   inferSystemHealthStatus
 } from "@stealth-trails-bank/ui-foundation";
-import { QueryClient, QueryClientProvider, useQuery } from "@tanstack/react-query";
+import { QueryClientProvider, useQuery } from "@tanstack/react-query";
 import { useEffect } from "react";
 import {
   BrowserRouter,
@@ -15,9 +15,14 @@ import {
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { ConsoleShell } from "@/components/console/ConsoleShell";
 import { SessionCard } from "@/components/console/SessionCard";
+import { AdminErrorBoundary } from "@/components/system/AdminErrorBoundary";
 import { AdminI18nProvider } from "@/i18n/provider";
 import { useLocale } from "@/i18n/use-locale";
 import { useT } from "@/i18n/use-t";
+import {
+  createAdminQueryClient,
+  installAdminObservability
+} from "@/lib/observability";
 import {
   getOperatorSession,
   getOperationsStatus,
@@ -42,14 +47,7 @@ import { buildSystemHealthTone } from "@/pages/shared";
 
 const runtimeConfig = loadWebRuntimeConfig(import.meta.env);
 
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      retry: false,
-      refetchOnWindowFocus: false
-    }
-  }
-});
+const queryClient = createAdminQueryClient();
 
 const navItems = [
   { label: "Operations Overview", path: "/operations" },
@@ -70,20 +68,31 @@ const navItems = [
 function App() {
   return (
     <AdminI18nProvider>
-      <QueryClientProvider client={queryClient}>
+      <AdminErrorBoundary>
+        <QueryClientProvider client={queryClient}>
           <OperatorSessionProvider serverUrl={runtimeConfig.serverUrl}>
-          <BrowserRouter
-            future={{
-              v7_startTransition: true,
-              v7_relativeSplatPath: true
-            }}
-          >
-            <AdminConsole />
-          </BrowserRouter>
-        </OperatorSessionProvider>
-      </QueryClientProvider>
+            <BrowserRouter
+              future={{
+                v7_startTransition: true,
+                v7_relativeSplatPath: true
+              }}
+            >
+              <AdminObservabilityBridge />
+              <AdminConsole />
+            </BrowserRouter>
+          </OperatorSessionProvider>
+        </QueryClientProvider>
+      </AdminErrorBoundary>
     </AdminI18nProvider>
   );
+}
+
+function AdminObservabilityBridge() {
+  useEffect(() => {
+    installAdminObservability();
+  }, []);
+
+  return null;
 }
 
 function AdminConsole() {

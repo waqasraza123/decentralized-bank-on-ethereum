@@ -1,4 +1,5 @@
 import axios, { type AxiosRequestConfig } from "axios";
+import { reportAdminApiError } from "./observability";
 import type {
   AccountHoldList,
   AccountReleaseReviewMutationResult,
@@ -82,7 +83,17 @@ async function requestData<T>(
   session: OperatorSession,
   config: AxiosRequestConfig
 ): Promise<T> {
-  const response = await createClient(session).request<ApiResponseEnvelope<T>>(config);
+  let response;
+
+  try {
+    response = await createClient(session).request<ApiResponseEnvelope<T>>(config);
+  } catch (error) {
+    reportAdminApiError(error, {
+      baseUrl: normalizeBaseUrl(session.baseUrl),
+      operatorId: session.operatorId
+    });
+    throw error;
+  }
 
   if (response.data.data === undefined) {
     throw new Error(response.data.message || "API response did not include data.");
