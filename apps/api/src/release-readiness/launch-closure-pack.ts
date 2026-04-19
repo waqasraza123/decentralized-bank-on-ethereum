@@ -867,6 +867,142 @@ ${externalChecks}
 `;
 }
 
+function renderScopedChecklistIntro(
+  manifest?: LaunchClosureManifest,
+  status?: LaunchClosureDynamicStatusInput
+): string[] {
+  if (!manifest && !status) {
+    return [
+      "## Scope",
+      "",
+      "- Release identifier: not scoped",
+      "- Environment: not scoped",
+      "- Use `pnpm release:launch-closure -- checklist --manifest <path>` to print a manifest-scoped checklist."
+    ];
+  }
+
+  return [
+    "## Scope",
+    "",
+    `- Release identifier: \`${status?.releaseIdentifier ?? manifest?.releaseIdentifier ?? "unknown"}\``,
+    `- Environment: \`${status?.environment ?? manifest?.environment ?? "unknown"}\``,
+    ...(status?.overallStatus
+      ? [`- Current operational status: \`${status.overallStatus}\``]
+      : []),
+    ...(typeof status?.maximumEvidenceAgeHours === "number"
+      ? [
+          `- Governed approval freshness window: \`${status.maximumEvidenceAgeHours}\` hours`
+        ]
+      : [])
+  ];
+}
+
+function renderExternalCheckLines(
+  status?: LaunchClosureDynamicStatusInput
+): string[] {
+  if (status?.externalChecks && status.externalChecks.length > 0) {
+    return status.externalChecks.map((check) => {
+      const latestEvidenceSuffix =
+        check.latestEvidenceObservedAt && check.latestEvidenceEnvironment
+          ? ` Latest evidence: ${check.latestEvidenceObservedAt} in ${check.latestEvidenceEnvironment}.`
+          : "";
+
+      return `- \`${check.evidenceType}\`: ${check.status}. Accepted environments: ${check.acceptedEnvironments.join(", ")}.${latestEvidenceSuffix}`;
+    });
+  }
+
+  return externalOnlyReleaseReadinessChecks.map(
+    (check) =>
+      `- \`${check.evidenceType}\`: accepted only in ${check.acceptedEnvironments.join(", ")}`
+  );
+}
+
+export function renderPhase12CompletionChecklist(args?: {
+  manifest?: LaunchClosureManifest;
+  statusSnapshot?: LaunchClosureDynamicStatusInput;
+}): string {
+  const manifest = args?.manifest;
+  const status = args?.statusSnapshot;
+  const scopedIntro = renderScopedChecklistIntro(manifest, status);
+
+  return [
+    "# Phase 12 Completion Checklist",
+    "",
+    "This checklist is the strict execution path from the current repo state to a governed launch-ready release.",
+    "It separates repo-owned work from staging-like operational proof so the team can stop treating those as the same class of task.",
+    "",
+    "## Current placement",
+    "",
+    "- Active roadmap frontier: `Phase 11/12 boundary hardening`.",
+    "- Repo-owned proof already exists for `contract_invariant_suite`, `backend_integration_suite`, and `end_to_end_finance_flows`.",
+    "- Final launch readiness is still blocked until the external-only checks and governed approval are complete.",
+    "",
+    ...scopedIntro,
+    "",
+    "## Part A — Repo-Owned And Locally Verifiable",
+    "",
+    "1. Re-run the repo-owned automated proof bundle for the candidate.",
+    "   Command: `pnpm release:readiness:verify -- --proof all-auto`",
+    "2. Re-run the customer and operator shell verification that is outside the release-readiness evidence types but still matters for product confidence.",
+    "   Commands: `pnpm test:e2e` and `pnpm mobile:verify`",
+    "3. Validate the launch manifest before touching staging-like execution.",
+    "   Command: `pnpm release:launch-closure -- validate --manifest <path>`",
+    "4. Scaffold the launch pack so the operator payloads, evidence templates, and approval request body are frozen for this release candidate.",
+    "   Command: `pnpm release:launch-closure -- scaffold --manifest <path> --output-dir <path> --force`",
+    "5. Review the governed checklist sections that the approval gate will require.",
+    ...releaseReadinessChecklistSections.map(
+      (section) => `   - ${section.label}`
+    ),
+    "",
+    "Exit rule for Part A:",
+    "- The repo-owned verifier passes.",
+    "- The launch manifest validates cleanly.",
+    "- The scaffolded pack exists for the exact release identifier and environment being launched.",
+    "",
+    "## Part B — Accepted Staging-Like Operational Proof",
+    "",
+    "Run these in order. Local dry-runs do not count as accepted launch proof.",
+    "1. `platform_alert_delivery_slo`",
+    "2. `critical_alert_reescalation`",
+    "3. `database_restore_drill`",
+    "4. `api_rollback_drill`",
+    "5. `worker_rollback_drill`",
+    "6. `secret_handling_review`",
+    "7. `role_review`",
+    "",
+    "Current external-only check posture:",
+    ...renderExternalCheckLines(status),
+    "",
+    "Exit rule for Part B:",
+    "- Every external-only evidence type has a latest `passed` record.",
+    "- Every accepted record is from `staging`, `production_like`, or `production`.",
+    "- Backup and rollback metadata match the exact release being approved.",
+    "",
+    "## Part C — Governed Launch Approval",
+    "",
+    "1. Populate `approval-request.template.json` truthfully.",
+    "2. Submit the governed launch approval request.",
+    "3. Have a different operator approve or reject it under dual control.",
+    "",
+    "Approval remains blocked when any of the following are true:",
+    "- required evidence is missing",
+    "- required evidence is failed or stale",
+    "- rollback identifiers do not match the request",
+    "- checklist attestations are incomplete",
+    "- open blockers remain",
+    "",
+    "## Adjacent Follow-On Hardening",
+    "",
+    "These are important for a broadly production-grade product, but they are not currently enforced by the Phase 12 gate:",
+    "- repo-owned deployment manifests for API and worker rollout or rollback automation",
+    "- mobile distribution config such as `eas.json` and store-release workflow ownership",
+    "- mobile crash and error telemetry beyond the current placeholder hook",
+    "- deferred mobile push notification support",
+    "",
+    "Use this checklist as the shortest path to launch readiness, not as a claim that every longer-term product hardening item is already closed."
+  ].join("\n");
+}
+
 function renderExecutionPlan(manifest: LaunchClosureManifest): string {
   const artifacts = buildLaunchClosureArtifacts(manifest);
 
@@ -1216,30 +1352,31 @@ export function validateLaunchClosureManifest(
     errors
   );
 
-  readString(
-    manifest.governedCustody?.governanceSafeAddress,
-    "governedCustody.governanceSafeAddress",
-    errors
-  );
-  readString(
-    manifest.governedCustody?.treasurySafeAddress,
-    "governedCustody.treasurySafeAddress",
-    errors
-  );
-  readString(
-    manifest.governedCustody?.emergencySafeAddress,
-    "governedCustody.emergencySafeAddress",
-    errors
-  );
-
-  if (
-    manifest.governedCustody &&
-    (!Array.isArray(manifest.governedCustody.signerInventory) ||
-      manifest.governedCustody.signerInventory.length < 4)
-  ) {
-    errors.push(
-      "Manifest field governedCustody.signerInventory must include at least four governed signers."
+  if (manifest.governedCustody) {
+    readString(
+      manifest.governedCustody.governanceSafeAddress,
+      "governedCustody.governanceSafeAddress",
+      errors
     );
+    readString(
+      manifest.governedCustody.treasurySafeAddress,
+      "governedCustody.treasurySafeAddress",
+      errors
+    );
+    readString(
+      manifest.governedCustody.emergencySafeAddress,
+      "governedCustody.emergencySafeAddress",
+      errors
+    );
+
+    if (
+      !Array.isArray(manifest.governedCustody.signerInventory) ||
+      manifest.governedCustody.signerInventory.length < 4
+    ) {
+      errors.push(
+        "Manifest field governedCustody.signerInventory must include at least four governed signers."
+      );
+    }
   }
 
   if (manifest.contracts && manifest.contracts.length < 2) {
@@ -1352,6 +1489,13 @@ export function previewLaunchClosurePack(
       {
         relativePath: "local-vs-accepted-status.md",
         content: renderLocalVsAcceptedStatus()
+      },
+      {
+        relativePath: "phase-12-completion-checklist.md",
+        content: renderPhase12CompletionChecklist({
+          manifest,
+          statusSnapshot
+        })
       },
       {
         relativePath: "execution-plan.md",

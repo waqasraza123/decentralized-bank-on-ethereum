@@ -7,6 +7,7 @@ import os from "node:os";
 import path from "node:path";
 import {
   previewLaunchClosurePack,
+  renderPhase12CompletionChecklist,
   renderLaunchClosureValidationSummary,
   scaffoldLaunchClosurePack,
   validateLaunchClosureManifest,
@@ -147,6 +148,9 @@ describe("launch-closure-pack", () => {
       expect(result.files).toContain(
         path.join(outputDir, "current-status-summary.md")
       );
+      expect(result.files).toContain(
+        path.join(outputDir, "phase-12-completion-checklist.md")
+      );
 
       const executionPlan = readFileSync(
         path.join(outputDir, "execution-plan.md"),
@@ -159,6 +163,10 @@ describe("launch-closure-pack", () => {
       const validationSummary = renderLaunchClosureValidationSummary(manifest);
       const currentStatus = readFileSync(
         path.join(outputDir, "current-status-summary.md"),
+        "utf8"
+      );
+      const completionChecklist = readFileSync(
+        path.join(outputDir, "phase-12-completion-checklist.md"),
         "utf8"
       );
       const operatorActions = readFileSync(
@@ -182,6 +190,10 @@ describe("launch-closure-pack", () => {
       );
       expect(currentStatus).toContain("Current Launch-Closure Status Snapshot");
       expect(currentStatus).toContain("critical_alert_reescalation");
+      expect(completionChecklist).toContain("Phase 12 Completion Checklist");
+      expect(completionChecklist).toContain(
+        "Part B — Accepted Staging-Like Operational Proof"
+      );
       expect(operatorActions).toContain("Operator Actions");
       expect(operatorActions).toContain("payloads/critical_alert_reescalation.json");
       expect(criticalAlertPayload).toContain('"evidenceType": "critical_alert_reescalation"');
@@ -219,6 +231,10 @@ describe("launch-closure-pack", () => {
           content: expect.stringContaining("pnpm release:readiness:probe --")
         }),
         expect.objectContaining({
+          relativePath: "phase-12-completion-checklist.md",
+          content: expect.stringContaining("Part A — Repo-Owned And Locally Verifiable")
+        }),
+        expect.objectContaining({
           relativePath: "operator-actions.md",
           content: expect.stringContaining("payloads/platform_alert_delivery_slo.json")
         }),
@@ -236,5 +252,18 @@ describe("launch-closure-pack", () => {
         })
       ])
     );
+  });
+
+  it("renders a scoped phase 12 completion checklist", () => {
+    const checklist = renderPhase12CompletionChecklist({
+      manifest: buildManifest(),
+      statusSnapshot: buildStatusSnapshot()
+    });
+
+    expect(checklist).toContain("# Phase 12 Completion Checklist");
+    expect(checklist).toContain("Release identifier: `launch-2026.04.10.1`");
+    expect(checklist).toContain("Part C — Governed Launch Approval");
+    expect(checklist).toContain("critical_alert_reescalation");
+    expect(checklist).toContain("Adjacent Follow-On Hardening");
   });
 });

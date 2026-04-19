@@ -2,6 +2,18 @@
 
 Use this checklist with the Phase 12 operator program in [`docs/runbooks/phase-12-launch-closure.md`](/Users/mc/development/blockchain/ethereum/stealth-trails-bank/docs/runbooks/phase-12-launch-closure.md).
 
+If you want the repo to print the ordered checklist directly, use:
+
+```bash
+pnpm release:launch-closure -- checklist
+```
+
+To scope the checklist to a real candidate manifest:
+
+```bash
+pnpm release:launch-closure -- checklist --manifest ./launch-manifest.json
+```
+
 Before any staging-like execution starts:
 
 - complete the manifest in [`docs/templates/release-launch-closure/environment-manifest.template.json`](/Users/mc/development/blockchain/ethereum/stealth-trails-bank/docs/templates/release-launch-closure/environment-manifest.template.json)

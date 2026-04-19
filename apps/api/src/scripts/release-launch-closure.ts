@@ -2,6 +2,7 @@ import path from "node:path";
 import process from "node:process";
 import {
   loadLaunchClosureManifest,
+  renderPhase12CompletionChecklist,
   renderLaunchClosureStatusSummary,
   renderLaunchClosureValidationSummary,
   scaffoldLaunchClosurePack,
@@ -21,6 +22,7 @@ function printUsage(): void {
   pnpm --filter @stealth-trails-bank/api release-launch-closure -- <command> [options]
 
 Commands:
+  checklist [--manifest <path>]
   status
   validate --manifest <path>
   scaffold --manifest <path> [--output-dir <path>] [--force]
@@ -126,6 +128,17 @@ function main(): void {
 
   if (command === "status") {
     console.log(renderLaunchClosureStatusSummary());
+    return;
+  }
+
+  if (command === "checklist") {
+    const manifest =
+      typeof parsedArgs.manifest === "string" ? loadManifest(parsedArgs) : undefined;
+    console.log(
+      renderPhase12CompletionChecklist({
+        manifest
+      })
+    );
     return;
   }
 

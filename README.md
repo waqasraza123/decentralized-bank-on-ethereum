@@ -218,6 +218,7 @@ Use the runbooks when operating or verifying implemented flows:
 - deposit intent request, operator review, and execution runbooks
 - manual review and audit summary runbooks
 - release readiness evidence, release-candidate verification, launch approval, and rollback drill runbooks
+- `docs/release/phase-12-completion-checklist.md` for the ordered launch path, or `pnpm release:launch-closure -- checklist`
 
 ## Engineering standards for this repo
 
