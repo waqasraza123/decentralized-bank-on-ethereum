@@ -9,7 +9,7 @@
     "dist"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.json && tsc -p tsconfig.vercel.json",
     "clean": "rm -rf dist",
     "start": "node dist/index.js",
     "dev": "tsx src/index.ts",
