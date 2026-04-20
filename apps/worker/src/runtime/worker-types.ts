@@ -179,6 +179,9 @@ export type WorkerLogger = {
 export type WorkerIterationMetrics = {
   queuedDepositCount: number;
   queuedWithdrawalCount: number;
+  retirementVaultCooldownCompletedCount: number;
+  retirementVaultReleasedCount: number;
+  retirementVaultReleaseFailureCount: number;
   claimableGovernedExecutionRequestCount: number;
   claimedGovernedExecutionRequestCount: number;
   dispatchedGovernedExecutionRequestCount: number;
@@ -212,6 +215,14 @@ export type WorkerIterationMetrics = {
   defaultEscalatedLoanCount: number;
   liquidationCandidateCount: number;
   reEscalatedCriticalAlertCount: number;
+};
+
+export type SweepRetirementVaultReleaseRequestsResult = {
+  limit: number;
+  readyForReleaseCount: number;
+  releasedCount: number;
+  failedCount: number;
+  processedReleaseRequestIds: string[];
 };
 
 export type CriticalAlertReEscalationSweepResult = {

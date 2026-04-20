@@ -21,6 +21,7 @@ import type {
   RecordBroadcastPayload,
   RecordSignedWithdrawalPayload,
   RecordSignedWithdrawalResult,
+  SweepRetirementVaultReleaseRequestsResult,
   SettleIntentPayload,
   StartManagedWithdrawalExecutionPayload,
   StartManagedWithdrawalExecutionResult,
@@ -229,6 +230,20 @@ export function createInternalWorkerApiClient(runtime: WorkerRuntime) {
           "/transaction-intents/internal/worker/withdrawal-requests/queued",
           {
             params: { limit }
+          }
+        ),
+        baseUrl
+      );
+    },
+
+    async sweepRetirementVaultReleaseRequests(
+      limit: number
+    ): Promise<SweepRetirementVaultReleaseRequestsResult> {
+      return readResponseData(
+        httpClient.post<ApiEnvelope<SweepRetirementVaultReleaseRequestsResult>>(
+          "/retirement-vault/internal/worker/release-requests/sweep",
+          {
+            limit,
           }
         ),
         baseUrl

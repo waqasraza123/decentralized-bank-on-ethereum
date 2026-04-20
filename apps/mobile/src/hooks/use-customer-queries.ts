@@ -11,6 +11,7 @@ import type {
   CreateDepositIntentResult,
   CreateMyRetirementVaultResult,
   CreateWithdrawalIntentResult,
+  CancelMyRetirementVaultReleaseResult,
   FundMyRetirementVaultResult,
   CustomerLoansDashboard,
   CustomerStakingSnapshot,
@@ -24,6 +25,7 @@ import type {
   LoanQuotePreview,
   MfaStatusResponseData,
   ProfileProjection,
+  RequestMyRetirementVaultReleaseResult,
   RotatePasswordResult,
   StartEmailEnrollmentResult,
   StartEmailRecoveryResult,
@@ -278,6 +280,60 @@ export function useFundRetirementVaultMutation() {
       await queryClient.invalidateQueries({ queryKey: ["retirement-vaults"] });
       await queryClient.invalidateQueries({ queryKey: ["transactions"] });
       await queryClient.invalidateQueries({ queryKey: ["balances"] });
+    },
+  });
+}
+
+export function useRequestRetirementVaultReleaseMutation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (input: {
+      assetSymbol: string;
+      amount: string;
+      reasonCode?: string;
+      reasonNote?: string;
+      evidenceNote?: string;
+    }) => {
+      const response = await apiClient.post<
+        ApiEnvelope<RequestMyRetirementVaultReleaseResult>
+      >("/retirement-vault/me/release-requests", input);
+
+      if (response.data.status !== "success" || !response.data.data) {
+        throw new Error(
+          response.data.message ||
+            "Failed to request retirement vault unlock."
+        );
+      }
+
+      return response.data.data;
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["retirement-vaults"] });
+    },
+  });
+}
+
+export function useCancelRetirementVaultReleaseMutation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (releaseRequestId: string) => {
+      const response = await apiClient.post<
+        ApiEnvelope<CancelMyRetirementVaultReleaseResult>
+      >(`/retirement-vault/me/release-requests/${releaseRequestId}/cancel`, {});
+
+      if (response.data.status !== "success" || !response.data.data) {
+        throw new Error(
+          response.data.message ||
+            "Failed to cancel retirement vault unlock request."
+        );
+      }
+
+      return response.data.data;
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["retirement-vaults"] });
     },
   });
 }

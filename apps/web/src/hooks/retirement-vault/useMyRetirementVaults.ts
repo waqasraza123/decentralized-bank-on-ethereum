@@ -26,6 +26,84 @@ export type RetirementVaultProjection = {
   lastFundedAt: string | null;
   createdAt: string;
   updatedAt: string;
+  releaseRequests: RetirementVaultReleaseRequestProjection[];
+  events: RetirementVaultEventProjection[];
+};
+
+export type RetirementVaultReviewCaseSummary = {
+  id: string;
+  type: string;
+  status: string;
+  reasonCode: string | null;
+  assignedOperatorId: string | null;
+  updatedAt: string;
+};
+
+export type RetirementVaultReleaseIntentSummary = {
+  id: string;
+  intentType: "vault_redemption" | "vault_subscription" | string;
+  status: string;
+  policyDecision: string;
+  requestedAmount: string;
+  settledAmount: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type RetirementVaultReleaseRequestProjection = {
+  id: string;
+  retirementVaultId: string;
+  requestKind: "scheduled_unlock" | "early_unlock";
+  requestedAmount: string;
+  status:
+    | "requested"
+    | "review_required"
+    | "approved"
+    | "cooldown_active"
+    | "ready_for_release"
+    | "executing"
+    | "rejected"
+    | "released"
+    | "cancelled"
+    | "failed";
+  reasonCode: string | null;
+  reasonNote: string | null;
+  evidence: unknown;
+  requestedByActorType: string;
+  requestedByActorId: string | null;
+  reviewRequiredAt: string | null;
+  reviewDecidedAt: string | null;
+  cooldownEndsAt: string | null;
+  requestedAt: string;
+  cooldownStartedAt: string | null;
+  readyForReleaseAt: string | null;
+  approvedAt: string | null;
+  approvedByOperatorId: string | null;
+  approvedByOperatorRole: string | null;
+  rejectedAt: string | null;
+  rejectedByOperatorId: string | null;
+  rejectedByOperatorRole: string | null;
+  cancelledAt: string | null;
+  cancelledByActorType: string | null;
+  cancelledByActorId: string | null;
+  executionStartedAt: string | null;
+  executedByWorkerId: string | null;
+  executionFailureCode: string | null;
+  executionFailureReason: string | null;
+  releasedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  reviewCase: RetirementVaultReviewCaseSummary | null;
+  transactionIntent: RetirementVaultReleaseIntentSummary | null;
+};
+
+export type RetirementVaultEventProjection = {
+  id: string;
+  eventType: string;
+  actorType: string;
+  actorId: string | null;
+  metadata: unknown;
+  createdAt: string;
 };
 
 export type ListMyRetirementVaultsResult = {

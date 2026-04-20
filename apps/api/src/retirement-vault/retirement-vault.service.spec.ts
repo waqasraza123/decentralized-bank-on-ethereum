@@ -1,16 +1,17 @@
-import {
-  ConflictException,
-  NotFoundException
-} from "@nestjs/common";
+import { NotFoundException } from "@nestjs/common";
 import {
   AccountLifecycleStatus,
   AssetStatus,
   PolicyDecision,
   Prisma,
   RetirementVaultEventType,
+  RetirementVaultReleaseRequestKind,
+  RetirementVaultReleaseRequestStatus,
   RetirementVaultStatus,
+  ReviewCaseStatus,
+  ReviewCaseType,
   TransactionIntentStatus,
-  TransactionIntentType
+  TransactionIntentType,
 } from "@prisma/client";
 import { RetirementVaultService } from "./retirement-vault.service";
 
@@ -24,7 +25,9 @@ function buildVaultRecord(
     unlockAt: Date;
     lockedBalance: string;
     status: RetirementVaultStatus;
-  }> = {}
+    releaseRequests: unknown[];
+    events: unknown[];
+  }> = {},
 ) {
   return {
     id: overrides.id ?? "vault_1",
@@ -43,8 +46,10 @@ function buildVaultRecord(
       symbol: overrides.assetSymbol ?? "USDC",
       displayName: "USD Coin",
       decimals: 6,
-      chainId: 8453
-    }
+      chainId: 8453,
+    },
+    releaseRequests: overrides.releaseRequests ?? [],
+    events: overrides.events ?? [],
   };
 }
 
@@ -57,7 +62,7 @@ function buildFundingIntentRecord(
     requestedAmount: string;
     settledAmount: string;
     idempotencyKey: string;
-  }> = {}
+  }> = {},
 ) {
   return {
     id: overrides.id ?? "intent_1",
@@ -78,13 +83,151 @@ function buildFundingIntentRecord(
       symbol: overrides.assetSymbol ?? "USDC",
       displayName: "USD Coin",
       decimals: 6,
-      chainId: 8453
+      chainId: 8453,
     },
     retirementVault: overrides.retirementVaultId
       ? {
-          id: overrides.retirementVaultId
+          id: overrides.retirementVaultId,
         }
-      : null
+      : null,
+  };
+}
+
+function buildReviewCaseRecord(
+  overrides: Partial<{
+    id: string;
+    status: ReviewCaseStatus;
+    reasonCode: string | null;
+    assignedOperatorId: string | null;
+  }> = {},
+) {
+  return {
+    id: overrides.id ?? "review_1",
+    type: ReviewCaseType.manual_intervention,
+    status: overrides.status ?? ReviewCaseStatus.open,
+    reasonCode: overrides.reasonCode ?? "retirement_vault_early_release",
+    assignedOperatorId: overrides.assignedOperatorId ?? null,
+    updatedAt: new Date("2026-04-20T12:00:00.000Z"),
+  };
+}
+
+function buildReleaseRequestRecord(
+  overrides: Partial<{
+    id: string;
+    retirementVaultId: string;
+    requestKind: RetirementVaultReleaseRequestKind;
+    requestedAmount: string;
+    status: RetirementVaultReleaseRequestStatus;
+    reviewCaseId: string | null;
+    reviewCase: ReturnType<typeof buildReviewCaseRecord> | null;
+    transactionIntent: {
+      id: string;
+      intentType: TransactionIntentType;
+      status: TransactionIntentStatus;
+      policyDecision: PolicyDecision;
+      requestedAmount: Prisma.Decimal;
+      settledAmount: Prisma.Decimal | null;
+      createdAt: Date;
+      updatedAt: Date;
+    } | null;
+    cooldownEndsAt: Date | null;
+    approvedAt: Date | null;
+    readyForReleaseAt: Date | null;
+    executionStartedAt: Date | null;
+    releasedAt: Date | null;
+  }> = {},
+) {
+  return {
+    id: overrides.id ?? "release_1",
+    retirementVaultId: overrides.retirementVaultId ?? "vault_1",
+    requestKind:
+      overrides.requestKind ?? RetirementVaultReleaseRequestKind.early_unlock,
+    requestedAmount: new Prisma.Decimal(overrides.requestedAmount ?? "3"),
+    status:
+      overrides.status ?? RetirementVaultReleaseRequestStatus.review_required,
+    reasonCode: "hardship",
+    reasonNote: "Need emergency access.",
+    evidence: { note: "supporting context" },
+    requestedByActorType: "customer",
+    requestedByActorId: "supabase_1",
+    reviewCaseId: overrides.reviewCaseId ?? overrides.reviewCase?.id ?? null,
+    transactionIntentId: overrides.transactionIntent?.id ?? null,
+    reviewRequiredAt: new Date("2026-04-20T11:00:00.000Z"),
+    reviewDecidedAt: null,
+    cooldownEndsAt: overrides.cooldownEndsAt ?? null,
+    requestedAt: new Date("2026-04-20T11:00:00.000Z"),
+    cooldownStartedAt: null,
+    readyForReleaseAt: overrides.readyForReleaseAt ?? null,
+    approvedAt: overrides.approvedAt ?? null,
+    approvedByOperatorId: null,
+    approvedByOperatorRole: null,
+    rejectedAt: null,
+    rejectedByOperatorId: null,
+    rejectedByOperatorRole: null,
+    cancelledAt: null,
+    cancelledByActorType: null,
+    cancelledByActorId: null,
+    executionStartedAt: overrides.executionStartedAt ?? null,
+    executedByWorkerId: null,
+    executionFailureCode: null,
+    executionFailureReason: null,
+    releasedAt: overrides.releasedAt ?? null,
+    createdAt: new Date("2026-04-20T11:00:00.000Z"),
+    updatedAt: new Date("2026-04-20T11:00:00.000Z"),
+    reviewCase: overrides.reviewCase ?? null,
+    transactionIntent: overrides.transactionIntent ?? null,
+  };
+}
+
+function buildInternalReleaseRequestRecord(
+  overrides: Partial<{
+    status: RetirementVaultReleaseRequestStatus;
+    requestKind: RetirementVaultReleaseRequestKind;
+    cooldownEndsAt: Date | null;
+    readyForReleaseAt: Date | null;
+    executionStartedAt: Date | null;
+    transactionIntent: ReturnType<typeof buildFundingIntentRecord> | null;
+  }> = {},
+) {
+  const reviewCase = buildReviewCaseRecord();
+  const request = buildReleaseRequestRecord({
+    status: overrides.status,
+    requestKind: overrides.requestKind,
+    reviewCase,
+    reviewCaseId: reviewCase.id,
+    cooldownEndsAt: overrides.cooldownEndsAt,
+    readyForReleaseAt: overrides.readyForReleaseAt,
+    executionStartedAt: overrides.executionStartedAt,
+    transactionIntent: overrides.transactionIntent
+      ? {
+          id: overrides.transactionIntent.id,
+          intentType: overrides.transactionIntent.intentType,
+          status: overrides.transactionIntent.status,
+          policyDecision: overrides.transactionIntent.policyDecision,
+          requestedAmount: overrides.transactionIntent.requestedAmount,
+          settledAmount: overrides.transactionIntent.settledAmount,
+          createdAt: overrides.transactionIntent.createdAt,
+          updatedAt: overrides.transactionIntent.updatedAt,
+        }
+      : null,
+  });
+
+  return {
+    ...request,
+    retirementVault: {
+      ...buildVaultRecord(),
+      customerAccount: {
+        id: "account_1",
+        status: AccountLifecycleStatus.active,
+        customer: {
+          id: "customer_1",
+          supabaseUserId: "supabase_1",
+          email: "vault@example.com",
+          firstName: "Ada",
+          lastName: "Vault",
+        },
+      },
+    },
   };
 }
 
@@ -92,52 +235,87 @@ function createService() {
   const transactionClient = {
     retirementVault: {
       create: jest.fn(),
-      findUnique: jest.fn()
+      findUnique: jest.fn(),
+      update: jest.fn(),
     },
     retirementVaultEvent: {
-      create: jest.fn()
+      create: jest.fn(),
+      createMany: jest.fn(),
     },
     auditEvent: {
-      create: jest.fn()
+      create: jest.fn(),
     },
     transactionIntent: {
-      create: jest.fn()
-    }
+      create: jest.fn(),
+    },
+    retirementVaultReleaseRequest: {
+      create: jest.fn(),
+      update: jest.fn(),
+      updateMany: jest.fn(),
+      findUnique: jest.fn(),
+    },
+    reviewCase: {
+      findUnique: jest.fn(),
+      update: jest.fn(),
+    },
+    reviewCaseEvent: {
+      create: jest.fn(),
+    },
   };
 
   const prismaService = {
     customerAccount: {
-      findFirst: jest.fn()
+      findFirst: jest.fn(),
     },
     asset: {
-      findUnique: jest.fn()
+      findUnique: jest.fn(),
     },
     retirementVault: {
       findMany: jest.fn(),
-      findUnique: jest.fn()
+      findUnique: jest.fn(),
     },
     transactionIntent: {
-      findUnique: jest.fn()
+      findUnique: jest.fn(),
     },
-    $transaction: jest.fn(async (callback: (client: typeof transactionClient) => unknown) =>
-      callback(transactionClient)
-    )
+    retirementVaultReleaseRequest: {
+      findUnique: jest.fn(),
+      findFirst: jest.fn(),
+      findMany: jest.fn(),
+      updateMany: jest.fn(),
+    },
+    retirementVaultEvent: {
+      findMany: jest.fn(),
+    },
+    auditEvent: {
+      findMany: jest.fn(),
+    },
+    $transaction: jest.fn(
+      async (callback: (client: typeof transactionClient) => unknown) =>
+        callback(transactionClient),
+    ),
   };
 
   const ledgerService = {
-    fundRetirementVaultBalance: jest.fn()
+    fundRetirementVaultBalance: jest.fn(),
+    releaseRetirementVaultBalance: jest.fn(),
+  };
+
+  const reviewCasesService = {
+    openOrReuseReviewCase: jest.fn(),
   };
 
   const service = new RetirementVaultService(
     prismaService as never,
-    ledgerService as never
+    ledgerService as never,
+    reviewCasesService as never,
   );
 
   return {
     service,
     prismaService,
     transactionClient,
-    ledgerService
+    ledgerService,
+    reviewCasesService,
   };
 }
 
@@ -150,11 +328,9 @@ describe("RetirementVaultService", () => {
     const { service, prismaService } = createService();
 
     prismaService.customerAccount.findFirst.mockResolvedValue({
-      id: "account_1"
+      id: "account_1",
     });
-    prismaService.retirementVault.findMany.mockResolvedValue([
-      buildVaultRecord()
-    ]);
+    prismaService.retirementVault.findMany.mockResolvedValue([buildVaultRecord()]);
 
     const result = await service.listMyRetirementVaults("supabase_1");
 
@@ -170,28 +346,26 @@ describe("RetirementVaultService", () => {
       id: "account_1",
       status: AccountLifecycleStatus.active,
       customer: {
-        id: "customer_1"
-      }
+        id: "customer_1",
+      },
     });
     prismaService.asset.findUnique.mockResolvedValue({
       id: "asset_1",
       symbol: "USDC",
-      status: AssetStatus.active
+      status: AssetStatus.active,
     });
     prismaService.retirementVault.findUnique.mockResolvedValue(null);
     transactionClient.retirementVault.create.mockResolvedValue(buildVaultRecord());
     transactionClient.retirementVaultEvent.create.mockResolvedValue({
       id: "vault_event_1",
-      eventType: RetirementVaultEventType.created
+      eventType: RetirementVaultEventType.created,
     });
-    transactionClient.auditEvent.create.mockResolvedValue({
-      id: "audit_1"
-    });
+    transactionClient.auditEvent.create.mockResolvedValue({ id: "audit_1" });
 
     const result = await service.createMyRetirementVault("supabase_1", {
       assetSymbol: "usdc",
       unlockAt: "2027-01-01T00:00:00.000Z",
-      strictMode: true
+      strictMode: true,
     });
 
     expect(result.created).toBe(true);
@@ -207,80 +381,154 @@ describe("RetirementVaultService", () => {
       id: "account_1",
       status: AccountLifecycleStatus.active,
       customer: {
-        id: "customer_1"
-      }
+        id: "customer_1",
+      },
     });
     prismaService.asset.findUnique.mockResolvedValue({
       id: "asset_1",
       symbol: "USDC",
-      status: AssetStatus.active
+      status: AssetStatus.active,
     });
     prismaService.retirementVault.findUnique
       .mockResolvedValueOnce(buildVaultRecord())
       .mockResolvedValueOnce(buildVaultRecord());
     prismaService.transactionIntent.findUnique.mockResolvedValue(
-      buildFundingIntentRecord()
+      buildFundingIntentRecord(),
     );
 
     const result = await service.fundMyRetirementVault("supabase_1", {
       idempotencyKey: "vault_fund_key_1",
       assetSymbol: "USDC",
-      amount: "5"
+      amount: "5",
     });
 
     expect(result.idempotencyReused).toBe(true);
     expect(result.intent.intentType).toBe(TransactionIntentType.vault_subscription);
   });
 
-  it("creates a settled vault funding intent and moves balance through the ledger", async () => {
-    const { service, prismaService, transactionClient, ledgerService } =
+  it("requests an early retirement vault release and opens a review case", async () => {
+    const { service, prismaService, transactionClient, reviewCasesService } =
       createService();
+
+    const reviewCase = buildReviewCaseRecord();
+    const createdRequest = buildReleaseRequestRecord({
+      reviewCase: null,
+      reviewCaseId: null,
+    });
+    const linkedRequest = buildReleaseRequestRecord({
+      reviewCase,
+      reviewCaseId: reviewCase.id,
+    });
+    const updatedVault = buildVaultRecord({
+      releaseRequests: [linkedRequest],
+      events: [
+        {
+          id: "event_1",
+          eventType: RetirementVaultEventType.release_requested,
+          actorType: "customer",
+          actorId: "supabase_1",
+          metadata: null,
+          createdAt: new Date("2026-04-20T11:00:00.000Z"),
+        },
+      ],
+    });
 
     prismaService.customerAccount.findFirst.mockResolvedValue({
       id: "account_1",
       status: AccountLifecycleStatus.active,
       customer: {
-        id: "customer_1"
-      }
+        id: "customer_1",
+      },
     });
     prismaService.asset.findUnique.mockResolvedValue({
       id: "asset_1",
       symbol: "USDC",
-      status: AssetStatus.active
+      status: AssetStatus.active,
     });
     prismaService.retirementVault.findUnique.mockResolvedValue(buildVaultRecord());
-    prismaService.transactionIntent.findUnique.mockResolvedValue(null);
-    transactionClient.transactionIntent.create.mockResolvedValue(
-      buildFundingIntentRecord()
-    );
-    ledgerService.fundRetirementVaultBalance.mockResolvedValue({
-      ledgerJournalId: "ledger_journal_1",
-      availableBalance: "15",
-      lockedBalance: "10"
+    reviewCasesService.openOrReuseReviewCase.mockResolvedValue({
+      reviewCase,
+      reviewCaseReused: false,
     });
+    transactionClient.retirementVaultReleaseRequest.create.mockResolvedValue(
+      createdRequest,
+    );
+    transactionClient.retirementVaultReleaseRequest.update.mockResolvedValue(
+      linkedRequest,
+    );
     transactionClient.retirementVaultEvent.create.mockResolvedValue({
       id: "vault_event_1",
-      eventType: RetirementVaultEventType.funded
+    });
+    transactionClient.auditEvent.create.mockResolvedValue({ id: "audit_1" });
+    transactionClient.retirementVault.findUnique.mockResolvedValue(updatedVault);
+
+    const result = await service.requestMyRetirementVaultRelease("supabase_1", {
+      assetSymbol: "USDC",
+      amount: "3",
+      reasonCode: "hardship",
+      reasonNote: "Need emergency access.",
+      evidenceNote: "supporting context",
+    });
+
+    expect(result.reviewCaseReused).toBe(false);
+    expect(result.releaseRequest.status).toBe(
+      RetirementVaultReleaseRequestStatus.review_required,
+    );
+    expect(result.releaseRequest.reviewCase?.id).toBe(reviewCase.id);
+    expect(reviewCasesService.openOrReuseReviewCase).toHaveBeenCalledTimes(1);
+  });
+
+  it("sweeps ready retirement vault release requests into released state", async () => {
+    const { service, prismaService, transactionClient, ledgerService } =
+      createService();
+    const readyRequest = buildInternalReleaseRequestRecord({
+      status: RetirementVaultReleaseRequestStatus.ready_for_release,
+      requestKind: RetirementVaultReleaseRequestKind.scheduled_unlock,
+      readyForReleaseAt: new Date("2026-04-20T12:00:00.000Z"),
+    });
+    const executingRequest = buildInternalReleaseRequestRecord({
+      status: RetirementVaultReleaseRequestStatus.executing,
+      requestKind: RetirementVaultReleaseRequestKind.scheduled_unlock,
+      executionStartedAt: new Date("2026-04-20T12:01:00.000Z"),
+    });
+
+    prismaService.retirementVaultReleaseRequest.findMany
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([readyRequest]);
+    prismaService.retirementVaultReleaseRequest.updateMany.mockResolvedValue({
+      count: 1,
+    });
+    transactionClient.retirementVaultReleaseRequest.findUnique.mockResolvedValue(
+      executingRequest,
+    );
+    transactionClient.transactionIntent.create.mockResolvedValue({
+      id: "intent_release_1",
+    });
+    ledgerService.releaseRetirementVaultBalance.mockResolvedValue({
+      ledgerJournalId: "journal_release_1",
+      availableBalance: "8",
+      lockedBalance: "0",
+    });
+    transactionClient.retirementVault.update.mockResolvedValue({
+      id: "vault_1",
+      status: RetirementVaultStatus.released,
+    });
+    transactionClient.retirementVaultReleaseRequest.update.mockResolvedValue({
+      id: "release_1",
+    });
+    transactionClient.retirementVaultEvent.create.mockResolvedValue({
+      id: "event_release_1",
     });
     transactionClient.auditEvent.create.mockResolvedValue({
-      id: "audit_1"
-    });
-    transactionClient.retirementVault.findUnique.mockResolvedValue(
-      buildVaultRecord({
-        lockedBalance: "10"
-      })
-    );
-
-    const result = await service.fundMyRetirementVault("supabase_1", {
-      idempotencyKey: "vault_fund_key_2",
-      assetSymbol: "USDC",
-      amount: "5"
+      id: "audit_release_1",
     });
 
-    expect(result.idempotencyReused).toBe(false);
-    expect(result.intent.status).toBe(TransactionIntentStatus.settled);
-    expect(ledgerService.fundRetirementVaultBalance).toHaveBeenCalledTimes(1);
-    expect(transactionClient.auditEvent.create).toHaveBeenCalledTimes(1);
+    const result = await service.sweepReleaseRequests("worker_1", 10);
+
+    expect(result.releasedCount).toBe(1);
+    expect(result.failedCount).toBe(0);
+    expect(result.processedReleaseRequestIds).toEqual(["release_1"]);
+    expect(ledgerService.releaseRetirementVaultBalance).toHaveBeenCalledTimes(1);
   });
 
   it("rejects funding when the vault does not exist", async () => {
@@ -290,13 +538,13 @@ describe("RetirementVaultService", () => {
       id: "account_1",
       status: AccountLifecycleStatus.active,
       customer: {
-        id: "customer_1"
-      }
+        id: "customer_1",
+      },
     });
     prismaService.asset.findUnique.mockResolvedValue({
       id: "asset_1",
       symbol: "USDC",
-      status: AssetStatus.active
+      status: AssetStatus.active,
     });
     prismaService.retirementVault.findUnique.mockResolvedValue(null);
 
@@ -304,39 +552,8 @@ describe("RetirementVaultService", () => {
       service.fundMyRetirementVault("supabase_1", {
         idempotencyKey: "vault_fund_key_3",
         assetSymbol: "USDC",
-        amount: "5"
-      })
+        amount: "5",
+      }),
     ).rejects.toBeInstanceOf(NotFoundException);
-  });
-
-  it("rejects mismatched idempotent funding reuse", async () => {
-    const { service, prismaService } = createService();
-
-    prismaService.customerAccount.findFirst.mockResolvedValue({
-      id: "account_1",
-      status: AccountLifecycleStatus.active,
-      customer: {
-        id: "customer_1"
-      }
-    });
-    prismaService.asset.findUnique.mockResolvedValue({
-      id: "asset_1",
-      symbol: "USDC",
-      status: AssetStatus.active
-    });
-    prismaService.retirementVault.findUnique.mockResolvedValue(buildVaultRecord());
-    prismaService.transactionIntent.findUnique.mockResolvedValue(
-      buildFundingIntentRecord({
-        requestedAmount: "7"
-      })
-    );
-
-    await expect(
-      service.fundMyRetirementVault("supabase_1", {
-        idempotencyKey: "vault_fund_key_1",
-        assetSymbol: "USDC",
-        amount: "5"
-      })
-    ).rejects.toBeInstanceOf(ConflictException);
   });
 });

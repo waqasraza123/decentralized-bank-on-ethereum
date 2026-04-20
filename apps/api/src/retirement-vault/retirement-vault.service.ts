@@ -2,7 +2,7 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
-  NotFoundException
+  NotFoundException,
 } from "@nestjs/common";
 import { loadProductChainRuntimeConfig } from "@stealth-trails-bank/config/api";
 import {
@@ -11,41 +11,134 @@ import {
   PolicyDecision,
   Prisma,
   RetirementVaultEventType,
+  RetirementVaultReleaseRequestKind,
+  RetirementVaultReleaseRequestStatus,
   RetirementVaultStatus,
+  ReviewCaseEventType,
+  ReviewCaseStatus,
+  ReviewCaseType,
   TransactionIntentStatus,
-  TransactionIntentType
+  TransactionIntentType,
 } from "@prisma/client";
+import {
+  assertOperatorRoleAuthorized,
+  normalizeOperatorRole,
+} from "../auth/internal-operator-role-policy";
 import { LedgerService } from "../ledger/ledger.service";
 import { PrismaService } from "../prisma/prisma.service";
+import { ReviewCasesService } from "../review-cases/review-cases.service";
 import { CreateRetirementVaultDto } from "./dto/create-retirement-vault.dto";
 import { FundRetirementVaultDto } from "./dto/fund-retirement-vault.dto";
+import { ListInternalRetirementVaultReleaseRequestsDto } from "./dto/list-internal-retirement-vault-release-requests.dto";
+import { RequestRetirementVaultReleaseDto } from "./dto/request-retirement-vault-release.dto";
 
-const retirementVaultAssetInclude = {
+const OPERATOR_RELEASE_APPROVER_ROLES = ["risk_manager", "operations_admin"] as const;
+const ACTIVE_RELEASE_REQUEST_STATUSES: RetirementVaultReleaseRequestStatus[] = [
+  RetirementVaultReleaseRequestStatus.requested,
+  RetirementVaultReleaseRequestStatus.review_required,
+  RetirementVaultReleaseRequestStatus.approved,
+  RetirementVaultReleaseRequestStatus.cooldown_active,
+  RetirementVaultReleaseRequestStatus.ready_for_release,
+  RetirementVaultReleaseRequestStatus.executing,
+];
+
+const retirementVaultAssetSelect = {
+  id: true,
+  symbol: true,
+  displayName: true,
+  decimals: true,
+  chainId: true,
+} satisfies Prisma.AssetSelect;
+
+const releaseRequestIntentSelect = {
+  id: true,
+  intentType: true,
+  status: true,
+  policyDecision: true,
+  requestedAmount: true,
+  settledAmount: true,
+  createdAt: true,
+  updatedAt: true,
+} satisfies Prisma.TransactionIntentSelect;
+
+const releaseRequestReviewCaseSelect = {
+  id: true,
+  type: true,
+  status: true,
+  reasonCode: true,
+  assignedOperatorId: true,
+  updatedAt: true,
+} satisfies Prisma.ReviewCaseSelect;
+
+const retirementVaultEventOrder = {
+  createdAt: "desc",
+} satisfies Prisma.RetirementVaultEventOrderByWithRelationInput;
+
+const retirementVaultReleaseRequestInclude = {
+  reviewCase: {
+    select: releaseRequestReviewCaseSelect,
+  },
+  transactionIntent: {
+    select: releaseRequestIntentSelect,
+  },
+} satisfies Prisma.RetirementVaultReleaseRequestInclude;
+
+const retirementVaultInclude = {
   asset: {
-    select: {
-      id: true,
-      symbol: true,
-      displayName: true,
-      decimals: true,
-      chainId: true
-    }
-  }
+    select: retirementVaultAssetSelect,
+  },
+  releaseRequests: {
+    orderBy: {
+      requestedAt: "desc",
+    },
+    include: retirementVaultReleaseRequestInclude,
+    take: 10,
+  },
+  events: {
+    orderBy: retirementVaultEventOrder,
+    take: 10,
+  },
 } satisfies Prisma.RetirementVaultInclude;
 
+const internalReleaseRequestInclude = {
+  reviewCase: {
+    select: releaseRequestReviewCaseSelect,
+  },
+  transactionIntent: {
+    select: releaseRequestIntentSelect,
+  },
+  retirementVault: {
+    include: {
+      asset: {
+        select: retirementVaultAssetSelect,
+      },
+      customerAccount: {
+        select: {
+          id: true,
+          status: true,
+          customer: {
+            select: {
+              id: true,
+              supabaseUserId: true,
+              email: true,
+              firstName: true,
+              lastName: true,
+            },
+          },
+        },
+      },
+    },
+  },
+} satisfies Prisma.RetirementVaultReleaseRequestInclude;
+
 type RetirementVaultRecord = Prisma.RetirementVaultGetPayload<{
-  include: typeof retirementVaultAssetInclude;
+  include: typeof retirementVaultInclude;
 }>;
 
 type RetirementVaultFundingIntentRecord = Prisma.TransactionIntentGetPayload<{
   include: {
     asset: {
-      select: {
-        id: true;
-        symbol: true;
-        displayName: true;
-        decimals: true;
-        chainId: true;
-      };
+      select: typeof retirementVaultAssetSelect;
     };
     retirementVault: {
       select: {
@@ -55,14 +148,85 @@ type RetirementVaultFundingIntentRecord = Prisma.TransactionIntentGetPayload<{
   };
 }>;
 
+type InternalReleaseRequestRecord = Prisma.RetirementVaultReleaseRequestGetPayload<{
+  include: typeof internalReleaseRequestInclude;
+}>;
+
 type CustomerAssetContext = {
   customerId: string;
   customerAccountId: string;
   assetId: string;
   assetSymbol: string;
+  accountStatus: AccountLifecycleStatus;
 };
 
-type RetirementVaultProjection = {
+type RetirementVaultReviewCaseSummary = {
+  id: string;
+  type: ReviewCaseType;
+  status: ReviewCaseStatus;
+  reasonCode: string | null;
+  assignedOperatorId: string | null;
+  updatedAt: string;
+};
+
+type RetirementVaultReleaseIntentSummary = {
+  id: string;
+  intentType: TransactionIntentType;
+  status: TransactionIntentStatus;
+  policyDecision: PolicyDecision;
+  requestedAmount: string;
+  settledAmount: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+type RetirementVaultReleaseRequestProjection = {
+  id: string;
+  retirementVaultId: string;
+  requestKind: RetirementVaultReleaseRequestKind;
+  requestedAmount: string;
+  status: RetirementVaultReleaseRequestStatus;
+  reasonCode: string | null;
+  reasonNote: string | null;
+  evidence: Prisma.JsonValue | null;
+  requestedByActorType: string;
+  requestedByActorId: string | null;
+  reviewRequiredAt: string | null;
+  reviewDecidedAt: string | null;
+  cooldownEndsAt: string | null;
+  requestedAt: string;
+  cooldownStartedAt: string | null;
+  readyForReleaseAt: string | null;
+  approvedAt: string | null;
+  approvedByOperatorId: string | null;
+  approvedByOperatorRole: string | null;
+  rejectedAt: string | null;
+  rejectedByOperatorId: string | null;
+  rejectedByOperatorRole: string | null;
+  cancelledAt: string | null;
+  cancelledByActorType: string | null;
+  cancelledByActorId: string | null;
+  executionStartedAt: string | null;
+  executedByWorkerId: string | null;
+  executionFailureCode: string | null;
+  executionFailureReason: string | null;
+  releasedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  reviewCase: RetirementVaultReviewCaseSummary | null;
+  transactionIntent: RetirementVaultReleaseIntentSummary | null;
+};
+
+type RetirementVaultEventProjection = {
+  id: string;
+  eventType: RetirementVaultEventType;
+  actorType: string;
+  actorId: string | null;
+  metadata: Prisma.JsonValue | null;
+  createdAt: string;
+};
+
+export type RetirementVaultProjection = {
   id: string;
   customerAccountId: string;
   asset: {
@@ -80,6 +244,8 @@ type RetirementVaultProjection = {
   lastFundedAt: string | null;
   createdAt: string;
   updatedAt: string;
+  releaseRequests: RetirementVaultReleaseRequestProjection[];
+  events: RetirementVaultEventProjection[];
 };
 
 type RetirementVaultFundingIntentProjection = {
@@ -102,6 +268,45 @@ type RetirementVaultFundingIntentProjection = {
   updatedAt: string;
 };
 
+type InternalRetirementVaultReleaseRequestProjection = RetirementVaultReleaseRequestProjection & {
+  retirementVault: {
+    id: string;
+    status: RetirementVaultStatus;
+    strictMode: boolean;
+    unlockAt: string;
+    lockedBalance: string;
+    asset: {
+      id: string;
+      symbol: string;
+      displayName: string;
+      decimals: number;
+      chainId: number;
+    };
+    customerAccount: {
+      id: string;
+      status: AccountLifecycleStatus;
+      customer: {
+        id: string;
+        supabaseUserId: string;
+        email: string;
+        firstName: string;
+        lastName: string;
+      };
+    };
+  };
+};
+
+type AuditTimelineProjection = {
+  id: string;
+  actorType: string;
+  actorId: string | null;
+  action: string;
+  targetType: string;
+  targetId: string | null;
+  metadata: Prisma.JsonValue | null;
+  createdAt: string;
+};
+
 type ListMyRetirementVaultsResult = {
   customerAccountId: string;
   vaults: RetirementVaultProjection[];
@@ -118,13 +323,49 @@ type FundMyRetirementVaultResult = {
   idempotencyReused: boolean;
 };
 
+type RequestMyRetirementVaultReleaseResult = {
+  vault: RetirementVaultProjection;
+  releaseRequest: RetirementVaultReleaseRequestProjection;
+  reviewCaseReused: boolean;
+};
+
+type CancelMyRetirementVaultReleaseResult = {
+  vault: RetirementVaultProjection;
+  releaseRequest: RetirementVaultReleaseRequestProjection;
+};
+
+type ListInternalRetirementVaultReleaseRequestsResult = {
+  releaseRequests: InternalRetirementVaultReleaseRequestProjection[];
+  limit: number;
+};
+
+type GetInternalRetirementVaultReleaseRequestWorkspaceResult = {
+  releaseRequest: InternalRetirementVaultReleaseRequestProjection;
+  vaultEvents: RetirementVaultEventProjection[];
+  relatedAuditEvents: AuditTimelineProjection[];
+};
+
+type DecideInternalRetirementVaultReleaseRequestResult = {
+  releaseRequest: InternalRetirementVaultReleaseRequestProjection;
+  stateReused: boolean;
+};
+
+type SweepRetirementVaultReleaseRequestsResult = {
+  limit: number;
+  readyForReleaseCount: number;
+  releasedCount: number;
+  failedCount: number;
+  processedReleaseRequestIds: string[];
+};
+
 @Injectable()
 export class RetirementVaultService {
   private readonly productChainId: number;
 
   constructor(
     private readonly prismaService: PrismaService,
-    private readonly ledgerService: LedgerService
+    private readonly ledgerService: LedgerService,
+    private readonly reviewCasesService: ReviewCasesService
   ) {
     this.productChainId = loadProductChainRuntimeConfig().productChainId;
   }
@@ -137,6 +378,11 @@ export class RetirementVaultService {
     }
 
     return normalizedAssetSymbol;
+  }
+
+  private normalizeOptionalString(value?: string | null): string | null {
+    const normalizedValue = value?.trim() ?? "";
+    return normalizedValue.length > 0 ? normalizedValue : null;
   }
 
   private parseRequestedAmount(amount: string): Prisma.Decimal {
@@ -193,18 +439,18 @@ export class RetirementVaultService {
     const customerAccount = await this.prismaService.customerAccount.findFirst({
       where: {
         customer: {
-          supabaseUserId
-        }
+          supabaseUserId,
+        },
       },
       select: {
         id: true,
         status: true,
         customer: {
           select: {
-            id: true
-          }
-        }
-      }
+            id: true,
+          },
+        },
+      },
     });
 
     if (!customerAccount) {
@@ -217,14 +463,14 @@ export class RetirementVaultService {
       where: {
         chainId_symbol: {
           chainId: this.productChainId,
-          symbol: assetSymbol
-        }
+          symbol: assetSymbol,
+        },
       },
       select: {
         id: true,
         symbol: true,
-        status: true
-      }
+        status: true,
+      },
     });
 
     if (!asset || asset.status !== AssetStatus.active) {
@@ -235,7 +481,8 @@ export class RetirementVaultService {
       customerId: customerAccount.customer.id,
       customerAccountId: customerAccount.id,
       assetId: asset.id,
-      assetSymbol: asset.symbol
+      assetSymbol: asset.symbol,
+      accountStatus: customerAccount.status,
     };
   }
 
@@ -243,12 +490,12 @@ export class RetirementVaultService {
     const customerAccount = await this.prismaService.customerAccount.findFirst({
       where: {
         customer: {
-          supabaseUserId
-        }
+          supabaseUserId,
+        },
       },
       select: {
-        id: true
-      }
+        id: true,
+      },
     });
 
     if (!customerAccount) {
@@ -256,6 +503,129 @@ export class RetirementVaultService {
     }
 
     return customerAccount.id;
+  }
+
+  private mapReviewCaseSummary(
+    reviewCase:
+      | {
+          id: string;
+          type: ReviewCaseType;
+          status: ReviewCaseStatus;
+          reasonCode: string | null;
+          assignedOperatorId: string | null;
+          updatedAt: Date;
+        }
+      | null
+      | undefined
+  ): RetirementVaultReviewCaseSummary | null {
+    if (!reviewCase) {
+      return null;
+    }
+
+    return {
+      id: reviewCase.id,
+      type: reviewCase.type,
+      status: reviewCase.status,
+      reasonCode: reviewCase.reasonCode,
+      assignedOperatorId: reviewCase.assignedOperatorId,
+      updatedAt: reviewCase.updatedAt.toISOString(),
+    };
+  }
+
+  private mapReleaseIntentSummary(
+    intent:
+      | {
+          id: string;
+          intentType: TransactionIntentType;
+          status: TransactionIntentStatus;
+          policyDecision: PolicyDecision;
+          requestedAmount: Prisma.Decimal;
+          settledAmount: Prisma.Decimal | null;
+          createdAt: Date;
+          updatedAt: Date;
+        }
+      | null
+      | undefined
+  ): RetirementVaultReleaseIntentSummary | null {
+    if (!intent) {
+      return null;
+    }
+
+    return {
+      id: intent.id,
+      intentType: intent.intentType,
+      status: intent.status,
+      policyDecision: intent.policyDecision,
+      requestedAmount: intent.requestedAmount.toString(),
+      settledAmount: intent.settledAmount?.toString() ?? null,
+      createdAt: intent.createdAt.toISOString(),
+      updatedAt: intent.updatedAt.toISOString(),
+    };
+  }
+
+  private mapReleaseRequestProjection(
+    request:
+      | (Prisma.RetirementVaultReleaseRequestGetPayload<{
+          include: typeof retirementVaultReleaseRequestInclude;
+        }>)
+      | InternalReleaseRequestRecord
+  ): RetirementVaultReleaseRequestProjection {
+    return {
+      id: request.id,
+      retirementVaultId: request.retirementVaultId,
+      requestKind: request.requestKind,
+      requestedAmount: request.requestedAmount.toString(),
+      status: request.status,
+      reasonCode: request.reasonCode,
+      reasonNote: request.reasonNote,
+      evidence: request.evidence,
+      requestedByActorType: request.requestedByActorType,
+      requestedByActorId: request.requestedByActorId,
+      reviewRequiredAt: request.reviewRequiredAt?.toISOString() ?? null,
+      reviewDecidedAt: request.reviewDecidedAt?.toISOString() ?? null,
+      cooldownEndsAt: request.cooldownEndsAt?.toISOString() ?? null,
+      requestedAt: request.requestedAt.toISOString(),
+      cooldownStartedAt: request.cooldownStartedAt?.toISOString() ?? null,
+      readyForReleaseAt: request.readyForReleaseAt?.toISOString() ?? null,
+      approvedAt: request.approvedAt?.toISOString() ?? null,
+      approvedByOperatorId: request.approvedByOperatorId,
+      approvedByOperatorRole: request.approvedByOperatorRole,
+      rejectedAt: request.rejectedAt?.toISOString() ?? null,
+      rejectedByOperatorId: request.rejectedByOperatorId,
+      rejectedByOperatorRole: request.rejectedByOperatorRole,
+      cancelledAt: request.cancelledAt?.toISOString() ?? null,
+      cancelledByActorType: request.cancelledByActorType,
+      cancelledByActorId: request.cancelledByActorId,
+      executionStartedAt: request.executionStartedAt?.toISOString() ?? null,
+      executedByWorkerId: request.executedByWorkerId,
+      executionFailureCode: request.executionFailureCode,
+      executionFailureReason: request.executionFailureReason,
+      releasedAt: request.releasedAt?.toISOString() ?? null,
+      createdAt: request.createdAt.toISOString(),
+      updatedAt: request.updatedAt.toISOString(),
+      reviewCase: this.mapReviewCaseSummary(request.reviewCase),
+      transactionIntent: this.mapReleaseIntentSummary(request.transactionIntent),
+    };
+  }
+
+  private mapRetirementVaultEventProjection(
+    event: {
+      id: string;
+      eventType: RetirementVaultEventType;
+      actorType: string;
+      actorId: string | null;
+      metadata: Prisma.JsonValue | null;
+      createdAt: Date;
+    }
+  ): RetirementVaultEventProjection {
+    return {
+      id: event.id,
+      eventType: event.eventType,
+      actorType: event.actorType,
+      actorId: event.actorId,
+      metadata: event.metadata,
+      createdAt: event.createdAt.toISOString(),
+    };
   }
 
   private mapRetirementVaultProjection(
@@ -269,7 +639,7 @@ export class RetirementVaultService {
         symbol: vault.asset.symbol,
         displayName: vault.asset.displayName,
         decimals: vault.asset.decimals,
-        chainId: vault.asset.chainId
+        chainId: vault.asset.chainId,
       },
       status: vault.status,
       strictMode: vault.strictMode,
@@ -278,7 +648,13 @@ export class RetirementVaultService {
       fundedAt: vault.fundedAt?.toISOString() ?? null,
       lastFundedAt: vault.lastFundedAt?.toISOString() ?? null,
       createdAt: vault.createdAt.toISOString(),
-      updatedAt: vault.updatedAt.toISOString()
+      updatedAt: vault.updatedAt.toISOString(),
+      releaseRequests: vault.releaseRequests.map((request) =>
+        this.mapReleaseRequestProjection(request)
+      ),
+      events: vault.events.map((event) =>
+        this.mapRetirementVaultEventProjection(event)
+      ),
     };
   }
 
@@ -293,7 +669,7 @@ export class RetirementVaultService {
         symbol: intent.asset.symbol,
         displayName: intent.asset.displayName,
         decimals: intent.asset.decimals,
-        chainId: intent.asset.chainId
+        chainId: intent.asset.chainId,
       },
       intentType: intent.intentType,
       status: intent.status,
@@ -302,7 +678,65 @@ export class RetirementVaultService {
       settledAmount: intent.settledAmount?.toString() ?? null,
       idempotencyKey: intent.idempotencyKey,
       createdAt: intent.createdAt.toISOString(),
-      updatedAt: intent.updatedAt.toISOString()
+      updatedAt: intent.updatedAt.toISOString(),
+    };
+  }
+
+  private mapInternalReleaseRequestProjection(
+    request: InternalReleaseRequestRecord
+  ): InternalRetirementVaultReleaseRequestProjection {
+    return {
+      ...this.mapReleaseRequestProjection(request),
+      retirementVault: {
+        id: request.retirementVault.id,
+        status: request.retirementVault.status,
+        strictMode: request.retirementVault.strictMode,
+        unlockAt: request.retirementVault.unlockAt.toISOString(),
+        lockedBalance: request.retirementVault.lockedBalance.toString(),
+        asset: {
+          id: request.retirementVault.asset.id,
+          symbol: request.retirementVault.asset.symbol,
+          displayName: request.retirementVault.asset.displayName,
+          decimals: request.retirementVault.asset.decimals,
+          chainId: request.retirementVault.asset.chainId,
+        },
+        customerAccount: {
+          id: request.retirementVault.customerAccount.id,
+          status: request.retirementVault.customerAccount.status,
+          customer: {
+            id: request.retirementVault.customerAccount.customer.id,
+            supabaseUserId:
+              request.retirementVault.customerAccount.customer.supabaseUserId,
+            email: request.retirementVault.customerAccount.customer.email,
+            firstName:
+              request.retirementVault.customerAccount.customer.firstName ?? "",
+            lastName:
+              request.retirementVault.customerAccount.customer.lastName ?? "",
+          },
+        },
+      },
+    };
+  }
+
+  private mapAuditTimelineProjection(entry: {
+    id: string;
+    actorType: string;
+    actorId: string | null;
+    action: string;
+    targetType: string;
+    targetId: string | null;
+    metadata: Prisma.JsonValue | null;
+    createdAt: Date;
+  }): AuditTimelineProjection {
+    return {
+      id: entry.id,
+      actorType: entry.actorType,
+      actorId: entry.actorId,
+      action: entry.action,
+      targetType: entry.targetType,
+      targetId: entry.targetId,
+      metadata: entry.metadata,
+      createdAt: entry.createdAt.toISOString(),
     };
   }
 
@@ -311,24 +745,18 @@ export class RetirementVaultService {
   ): Promise<RetirementVaultFundingIntentRecord | null> {
     return this.prismaService.transactionIntent.findUnique({
       where: {
-        idempotencyKey
+        idempotencyKey,
       },
       include: {
         asset: {
-          select: {
-            id: true,
-            symbol: true,
-            displayName: true,
-            decimals: true,
-            chainId: true
-          }
+          select: retirementVaultAssetSelect,
         },
         retirementVault: {
           select: {
-            id: true
-          }
-        }
-      }
+            id: true,
+          },
+        },
+      },
     });
   }
 
@@ -353,6 +781,201 @@ export class RetirementVaultService {
     }
   }
 
+  private buildReleaseEvidence(dto: RequestRetirementVaultReleaseDto): Prisma.InputJsonValue | null {
+    if (!dto.evidenceNote?.trim()) {
+      return null;
+    }
+
+    return {
+      note: dto.evidenceNote.trim(),
+    };
+  }
+
+  private deriveReleaseKind(vault: RetirementVaultRecord): RetirementVaultReleaseRequestKind {
+    return vault.unlockAt <= new Date()
+      ? RetirementVaultReleaseRequestKind.scheduled_unlock
+      : RetirementVaultReleaseRequestKind.early_unlock;
+  }
+
+  private buildCooldownEndsAt(
+    requestedAt: Date,
+    strictMode: boolean,
+    requestKind: RetirementVaultReleaseRequestKind
+  ): Date {
+    const cooldownDays =
+      requestKind === RetirementVaultReleaseRequestKind.scheduled_unlock
+        ? strictMode
+          ? 3
+          : 1
+        : strictMode
+          ? 14
+          : 7;
+    const cooldownEndsAt = new Date(requestedAt);
+    cooldownEndsAt.setUTCDate(cooldownEndsAt.getUTCDate() + cooldownDays);
+    return cooldownEndsAt;
+  }
+
+  private async loadVaultByCustomerAsset(
+    customerAccountId: string,
+    assetId: string
+  ): Promise<RetirementVaultRecord> {
+    const vault = await this.prismaService.retirementVault.findUnique({
+      where: {
+        customerAccountId_assetId: {
+          customerAccountId,
+          assetId,
+        },
+      },
+      include: retirementVaultInclude,
+    });
+
+    if (!vault) {
+      throw new NotFoundException(
+        "Retirement vault not found for the requested asset."
+      );
+    }
+
+    return vault;
+  }
+
+  private assertVaultSupportsFunding(vault: RetirementVaultRecord): void {
+    if (vault.status !== RetirementVaultStatus.active) {
+      throw new ConflictException(
+        "Retirement vault is not eligible for new funding in its current state."
+      );
+    }
+  }
+
+  private assertNoActiveReleaseRequest(vault: RetirementVaultRecord): void {
+    const activeReleaseRequest = vault.releaseRequests.find((request) =>
+      ACTIVE_RELEASE_REQUEST_STATUSES.includes(request.status)
+    );
+
+    if (activeReleaseRequest) {
+      throw new ConflictException(
+        "A retirement vault unlock request is already active for this asset."
+      );
+    }
+  }
+
+  private assertReleaseRequestActionable(
+    request: InternalReleaseRequestRecord,
+    allowedStatuses: RetirementVaultReleaseRequestStatus[]
+  ): void {
+    if (!allowedStatuses.includes(request.status)) {
+      throw new ConflictException(
+        "Retirement vault release request is not actionable in its current state."
+      );
+    }
+  }
+
+  private assertCanDecideRelease(operatorRole?: string | null): string {
+    return assertOperatorRoleAuthorized(
+      operatorRole,
+      OPERATOR_RELEASE_APPROVER_ROLES,
+      "Operator role is not authorized to decide retirement vault release requests."
+    );
+  }
+
+  private async closeLinkedReviewCase(params: {
+    transaction: Prisma.TransactionClient;
+    reviewCaseId: string | null;
+    actorType: string;
+    actorId: string | null;
+    note: string | null;
+    disposition: "resolved" | "dismissed";
+    customerId: string | null;
+    releaseRequestId: string;
+  }): Promise<void> {
+    if (!params.reviewCaseId) {
+      return;
+    }
+
+    const existingReviewCase = await params.transaction.reviewCase.findUnique({
+      where: {
+        id: params.reviewCaseId,
+      },
+      select: {
+        id: true,
+        type: true,
+        status: true,
+        customerAccountId: true,
+        transactionIntentId: true,
+      },
+    });
+
+    if (
+      !existingReviewCase ||
+      existingReviewCase.status === ReviewCaseStatus.resolved ||
+      existingReviewCase.status === ReviewCaseStatus.dismissed
+    ) {
+      return;
+    }
+
+    const nextStatus =
+      params.disposition === "resolved"
+        ? ReviewCaseStatus.resolved
+        : ReviewCaseStatus.dismissed;
+    const eventType =
+      params.disposition === "resolved"
+        ? ReviewCaseEventType.resolved
+        : ReviewCaseEventType.dismissed;
+    const occurredAt = new Date();
+
+    await params.transaction.reviewCase.update({
+      where: {
+        id: existingReviewCase.id,
+      },
+      data: {
+        status: nextStatus,
+        assignedOperatorId:
+          params.actorType === "operator" ? params.actorId : null,
+        resolvedAt: params.disposition === "resolved" ? occurredAt : undefined,
+        dismissedAt:
+          params.disposition === "dismissed" ? occurredAt : undefined,
+        notes: params.note ?? undefined,
+      },
+    });
+
+    await params.transaction.reviewCaseEvent.create({
+      data: {
+        reviewCaseId: existingReviewCase.id,
+        actorType: params.actorType,
+        actorId: params.actorId,
+        eventType,
+        note: params.note,
+        metadata: {
+          releaseRequestId: params.releaseRequestId,
+          previousStatus: existingReviewCase.status,
+          newStatus: nextStatus,
+        },
+      },
+    });
+
+    await params.transaction.auditEvent.create({
+      data: {
+        customerId: params.customerId,
+        actorType: params.actorType,
+        actorId: params.actorId,
+        action:
+          params.disposition === "resolved"
+            ? "review_case.resolved"
+            : "review_case.dismissed",
+        targetType: "ReviewCase",
+        targetId: existingReviewCase.id,
+        metadata: {
+          releaseRequestId: params.releaseRequestId,
+          previousStatus: existingReviewCase.status,
+          newStatus: nextStatus,
+          note: params.note,
+          reviewCaseType: existingReviewCase.type,
+          transactionIntentId: existingReviewCase.transactionIntentId,
+          customerAccountId: existingReviewCase.customerAccountId,
+        },
+      },
+    });
+  }
+
   async listMyRetirementVaults(
     supabaseUserId: string
   ): Promise<ListMyRetirementVaultsResult> {
@@ -360,24 +983,24 @@ export class RetirementVaultService {
 
     const vaults = await this.prismaService.retirementVault.findMany({
       where: {
-        customerAccountId
+        customerAccountId,
       },
-      include: retirementVaultAssetInclude,
+      include: retirementVaultInclude,
       orderBy: [
         {
           asset: {
-            symbol: "asc"
-          }
+            symbol: "asc",
+          },
         },
         {
-          createdAt: "asc"
-        }
-      ]
+          createdAt: "asc",
+        },
+      ],
     });
 
     return {
       customerAccountId,
-      vaults: vaults.map((vault) => this.mapRetirementVaultProjection(vault))
+      vaults: vaults.map((vault) => this.mapRetirementVaultProjection(vault)),
     };
   }
 
@@ -397,10 +1020,10 @@ export class RetirementVaultService {
       where: {
         customerAccountId_assetId: {
           customerAccountId: context.customerAccountId,
-          assetId: context.assetId
-        }
+          assetId: context.assetId,
+        },
       },
-      include: retirementVaultAssetInclude
+      include: retirementVaultInclude,
     });
 
     if (existingVault) {
@@ -415,7 +1038,7 @@ export class RetirementVaultService {
 
       return {
         vault: this.mapRetirementVaultProjection(existingVault),
-        created: false
+        created: false,
       };
     }
 
@@ -425,9 +1048,9 @@ export class RetirementVaultService {
           customerAccountId: context.customerAccountId,
           assetId: context.assetId,
           unlockAt,
-          strictMode
+          strictMode,
         },
-        include: retirementVaultAssetInclude
+        include: retirementVaultInclude,
       });
 
       await transaction.retirementVaultEvent.create({
@@ -441,9 +1064,9 @@ export class RetirementVaultService {
             assetId: context.assetId,
             assetSymbol: context.assetSymbol,
             strictMode,
-            unlockAt: unlockAt.toISOString()
-          }
-        }
+            unlockAt: unlockAt.toISOString(),
+          },
+        },
       });
 
       await transaction.auditEvent.create({
@@ -459,9 +1082,9 @@ export class RetirementVaultService {
             assetId: context.assetId,
             assetSymbol: context.assetSymbol,
             strictMode,
-            unlockAt: unlockAt.toISOString()
-          }
-        }
+            unlockAt: unlockAt.toISOString(),
+          },
+        },
       });
 
       return vault;
@@ -469,7 +1092,7 @@ export class RetirementVaultService {
 
     return {
       vault: this.mapRetirementVaultProjection(createdVault),
-      created: true
+      created: true,
     };
   }
 
@@ -484,27 +1107,11 @@ export class RetirementVaultService {
       normalizedAssetSymbol
     );
 
-    const vault = await this.prismaService.retirementVault.findUnique({
-      where: {
-        customerAccountId_assetId: {
-          customerAccountId: context.customerAccountId,
-          assetId: context.assetId
-        }
-      },
-      include: retirementVaultAssetInclude
-    });
-
-    if (!vault) {
-      throw new NotFoundException(
-        "Retirement vault not found for the requested asset."
-      );
-    }
-
-    if (vault.status !== RetirementVaultStatus.active) {
-      throw new ConflictException(
-        "Retirement vault is not eligible for new funding in its current state."
-      );
-    }
+    const vault = await this.loadVaultByCustomerAsset(
+      context.customerAccountId,
+      context.assetId
+    );
+    this.assertVaultSupportsFunding(vault);
 
     const existingIntent = await this.findFundingIntentByIdempotencyKey(
       dto.idempotencyKey
@@ -520,9 +1127,9 @@ export class RetirementVaultService {
 
       const latestVault = await this.prismaService.retirementVault.findUnique({
         where: {
-          id: vault.id
+          id: vault.id,
         },
-        include: retirementVaultAssetInclude
+        include: retirementVaultInclude,
       });
 
       if (!latestVault) {
@@ -532,7 +1139,7 @@ export class RetirementVaultService {
       return {
         vault: this.mapRetirementVaultProjection(latestVault),
         intent: this.mapFundingIntentProjection(existingIntent),
-        idempotencyReused: true
+        idempotencyReused: true,
       };
     }
 
@@ -548,24 +1155,18 @@ export class RetirementVaultService {
           policyDecision: PolicyDecision.approved,
           requestedAmount,
           settledAmount: requestedAmount,
-          idempotencyKey: dto.idempotencyKey
+          idempotencyKey: dto.idempotencyKey,
         },
         include: {
           asset: {
-            select: {
-              id: true,
-              symbol: true,
-              displayName: true,
-              decimals: true,
-              chainId: true
-            }
+            select: retirementVaultAssetSelect,
           },
           retirementVault: {
             select: {
-              id: true
-            }
-          }
-        }
+              id: true,
+            },
+          },
+        },
       });
 
       const ledgerResult = await this.ledgerService.fundRetirementVaultBalance(
@@ -576,7 +1177,7 @@ export class RetirementVaultService {
           customerAccountId: context.customerAccountId,
           assetId: context.assetId,
           chainId: this.productChainId,
-          amount: requestedAmount
+          amount: requestedAmount,
         }
       );
 
@@ -591,9 +1192,9 @@ export class RetirementVaultService {
             requestedAmount: requestedAmount.toString(),
             ledgerJournalId: ledgerResult.ledgerJournalId,
             availableBalanceAfter: ledgerResult.availableBalance,
-            lockedBalanceAfter: ledgerResult.lockedBalance
-          }
-        }
+            lockedBalanceAfter: ledgerResult.lockedBalance,
+          },
+        },
       });
 
       await transaction.auditEvent.create({
@@ -615,16 +1216,16 @@ export class RetirementVaultService {
             availableBalanceAfter: ledgerResult.availableBalance,
             lockedBalanceAfter: ledgerResult.lockedBalance,
             strictMode: vault.strictMode,
-            unlockAt: vault.unlockAt.toISOString()
-          }
-        }
+            unlockAt: vault.unlockAt.toISOString(),
+          },
+        },
       });
 
       const updatedVault = await transaction.retirementVault.findUnique({
         where: {
-          id: vault.id
+          id: vault.id,
         },
-        include: retirementVaultAssetInclude
+        include: retirementVaultInclude,
       });
 
       if (!updatedVault) {
@@ -633,14 +1234,968 @@ export class RetirementVaultService {
 
       return {
         updatedVault,
-        intent
+        intent,
       };
     });
 
     return {
       vault: this.mapRetirementVaultProjection(result.updatedVault),
       intent: this.mapFundingIntentProjection(result.intent),
-      idempotencyReused: false
+      idempotencyReused: false,
+    };
+  }
+
+  async requestMyRetirementVaultRelease(
+    supabaseUserId: string,
+    dto: RequestRetirementVaultReleaseDto
+  ): Promise<RequestMyRetirementVaultReleaseResult> {
+    const normalizedAssetSymbol = this.normalizeAssetSymbol(dto.assetSymbol);
+    const requestedAmount = this.parseRequestedAmount(dto.amount);
+    const context = await this.resolveCustomerAssetContext(
+      supabaseUserId,
+      normalizedAssetSymbol
+    );
+    const reasonCode = this.normalizeOptionalString(dto.reasonCode);
+    const reasonNote = this.normalizeOptionalString(dto.reasonNote);
+    const evidence = this.buildReleaseEvidence(dto);
+
+    const vault = await this.loadVaultByCustomerAsset(
+      context.customerAccountId,
+      context.assetId
+    );
+
+    if (vault.status !== RetirementVaultStatus.active) {
+      throw new ConflictException(
+        "Retirement vault is not eligible for unlock requests in its current state."
+      );
+    }
+
+    if (vault.lockedBalance.lt(requestedAmount)) {
+      throw new ConflictException(
+        "Requested amount exceeds the locked balance for this retirement vault."
+      );
+    }
+
+    this.assertNoActiveReleaseRequest(vault);
+
+    const requestKind = this.deriveReleaseKind(vault);
+
+    if (
+      requestKind === RetirementVaultReleaseRequestKind.early_unlock &&
+      !reasonCode
+    ) {
+      throw new BadRequestException(
+        "Early unlock requests require a reason code."
+      );
+    }
+
+    const requestedAt = new Date();
+    const requiresReview =
+      requestKind === RetirementVaultReleaseRequestKind.early_unlock;
+    const initialStatus = requiresReview
+      ? RetirementVaultReleaseRequestStatus.review_required
+      : RetirementVaultReleaseRequestStatus.cooldown_active;
+    let reviewCaseReused = false;
+
+    const result = await this.prismaService.$transaction(async (transaction) => {
+      let releaseRequest = await transaction.retirementVaultReleaseRequest.create({
+        data: {
+          retirementVaultId: vault.id,
+          requestKind,
+          requestedAmount,
+          status: initialStatus,
+          reasonCode:
+            reasonCode ??
+            (requestKind === RetirementVaultReleaseRequestKind.scheduled_unlock
+              ? "scheduled_unlock"
+              : null),
+          reasonNote,
+          evidence: evidence ?? undefined,
+          requestedByActorType: "customer",
+          requestedByActorId: supabaseUserId,
+          reviewRequiredAt: requiresReview ? requestedAt : null,
+          requestedAt,
+          cooldownStartedAt: requiresReview ? null : requestedAt,
+          cooldownEndsAt: requiresReview
+            ? null
+            : this.buildCooldownEndsAt(requestedAt, vault.strictMode, requestKind),
+          approvedAt: requiresReview ? null : requestedAt,
+        },
+        include: retirementVaultReleaseRequestInclude,
+      });
+
+      if (requiresReview) {
+        const reviewCaseResult = await this.reviewCasesService.openOrReuseReviewCase(
+          transaction,
+          {
+            customerId: context.customerId,
+            customerAccountId: context.customerAccountId,
+            transactionIntentId: null,
+            type: ReviewCaseType.manual_intervention,
+            reasonCode: "retirement_vault_early_release",
+            notes:
+              reasonNote ??
+              `Early retirement vault unlock requested for ${context.assetSymbol}.`,
+            actorType: "customer",
+            actorId: supabaseUserId,
+            auditAction: "retirement_vault.release_review_case_opened",
+            auditMetadata: {
+              retirementVaultId: vault.id,
+              releaseRequestId: releaseRequest.id,
+              assetSymbol: context.assetSymbol,
+              requestedAmount: requestedAmount.toString(),
+              strictMode: vault.strictMode,
+              unlockAt: vault.unlockAt.toISOString(),
+              reasonCode,
+              evidence,
+            },
+          }
+        );
+        reviewCaseReused = reviewCaseResult.reviewCaseReused;
+        releaseRequest = await transaction.retirementVaultReleaseRequest.update({
+          where: {
+            id: releaseRequest.id,
+          },
+          data: {
+            reviewCaseId: reviewCaseResult.reviewCase.id,
+          },
+          include: retirementVaultReleaseRequestInclude,
+        });
+      }
+
+      await transaction.retirementVaultEvent.create({
+        data: {
+          retirementVaultId: vault.id,
+          eventType: RetirementVaultEventType.release_requested,
+          actorType: "customer",
+          actorId: supabaseUserId,
+          metadata: {
+            releaseRequestId: releaseRequest.id,
+            requestKind,
+            requestedAmount: requestedAmount.toString(),
+            reasonCode: releaseRequest.reasonCode,
+            reasonNote,
+          },
+        },
+      });
+
+      await transaction.retirementVaultEvent.create({
+        data: {
+          retirementVaultId: vault.id,
+          eventType: requiresReview
+            ? RetirementVaultEventType.release_review_required
+            : RetirementVaultEventType.cooldown_started,
+          actorType: requiresReview ? "system" : "customer",
+          actorId: requiresReview ? null : supabaseUserId,
+          metadata: requiresReview
+            ? {
+                releaseRequestId: releaseRequest.id,
+                reviewCaseId: releaseRequest.reviewCaseId,
+                status: releaseRequest.status,
+              }
+            : {
+                releaseRequestId: releaseRequest.id,
+                cooldownEndsAt: releaseRequest.cooldownEndsAt?.toISOString() ?? null,
+                approvedAt: releaseRequest.approvedAt?.toISOString() ?? null,
+              },
+        },
+      });
+
+      await transaction.auditEvent.create({
+        data: {
+          customerId: context.customerId,
+          actorType: "customer",
+          actorId: supabaseUserId,
+          action: "retirement_vault.release_requested",
+          targetType: "RetirementVaultReleaseRequest",
+          targetId: releaseRequest.id,
+          metadata: {
+            customerAccountId: context.customerAccountId,
+            retirementVaultId: vault.id,
+            requestKind,
+            requestedAmount: requestedAmount.toString(),
+            strictMode: vault.strictMode,
+            unlockAt: vault.unlockAt.toISOString(),
+            status: releaseRequest.status,
+            reviewCaseId: releaseRequest.reviewCaseId,
+            cooldownEndsAt: releaseRequest.cooldownEndsAt?.toISOString() ?? null,
+            reasonCode: releaseRequest.reasonCode,
+            reasonNote,
+            evidence,
+          },
+        },
+      });
+
+      const updatedVault = await transaction.retirementVault.findUnique({
+        where: {
+          id: vault.id,
+        },
+        include: retirementVaultInclude,
+      });
+
+      if (!updatedVault) {
+        throw new NotFoundException("Retirement vault not found.");
+      }
+
+      return {
+        releaseRequest,
+        updatedVault,
+      };
+    });
+
+    return {
+      vault: this.mapRetirementVaultProjection(result.updatedVault),
+      releaseRequest: this.mapReleaseRequestProjection(result.releaseRequest),
+      reviewCaseReused,
+    };
+  }
+
+  async cancelMyRetirementVaultRelease(
+    supabaseUserId: string,
+    releaseRequestId: string
+  ): Promise<CancelMyRetirementVaultReleaseResult> {
+    const releaseRequest = await this.prismaService.retirementVaultReleaseRequest.findFirst({
+      where: {
+        id: releaseRequestId,
+        retirementVault: {
+          customerAccount: {
+            customer: {
+              supabaseUserId,
+            },
+          },
+        },
+      },
+      include: internalReleaseRequestInclude,
+    });
+
+    if (!releaseRequest) {
+      throw new NotFoundException("Retirement vault release request not found.");
+    }
+
+    const cancellableStatuses: RetirementVaultReleaseRequestStatus[] = [
+      RetirementVaultReleaseRequestStatus.requested,
+      RetirementVaultReleaseRequestStatus.review_required,
+      RetirementVaultReleaseRequestStatus.approved,
+      RetirementVaultReleaseRequestStatus.cooldown_active,
+    ];
+
+    if (!cancellableStatuses.includes(releaseRequest.status)) {
+      throw new ConflictException(
+        "Retirement vault release request can no longer be cancelled."
+      );
+    }
+
+    const result = await this.prismaService.$transaction(async (transaction) => {
+      const cancelledRequest = await transaction.retirementVaultReleaseRequest.update({
+        where: {
+          id: releaseRequest.id,
+        },
+        data: {
+          status: RetirementVaultReleaseRequestStatus.cancelled,
+          cancelledAt: new Date(),
+          cancelledByActorType: "customer",
+          cancelledByActorId: supabaseUserId,
+        },
+        include: internalReleaseRequestInclude,
+      });
+
+      await this.closeLinkedReviewCase({
+        transaction,
+        reviewCaseId: cancelledRequest.reviewCaseId,
+        actorType: "customer",
+        actorId: supabaseUserId,
+        note: "Customer cancelled the retirement vault unlock request.",
+        disposition: "dismissed",
+        customerId:
+          cancelledRequest.retirementVault.customerAccount.customer.id ?? null,
+        releaseRequestId: cancelledRequest.id,
+      });
+
+      await transaction.retirementVaultEvent.create({
+        data: {
+          retirementVaultId: cancelledRequest.retirementVaultId,
+          eventType: RetirementVaultEventType.release_cancelled,
+          actorType: "customer",
+          actorId: supabaseUserId,
+          metadata: {
+            releaseRequestId: cancelledRequest.id,
+            previousStatus: releaseRequest.status,
+          },
+        },
+      });
+
+      await transaction.auditEvent.create({
+        data: {
+          customerId:
+            cancelledRequest.retirementVault.customerAccount.customer.id ?? null,
+          actorType: "customer",
+          actorId: supabaseUserId,
+          action: "retirement_vault.release_cancelled",
+          targetType: "RetirementVaultReleaseRequest",
+          targetId: cancelledRequest.id,
+          metadata: {
+            retirementVaultId: cancelledRequest.retirementVaultId,
+            previousStatus: releaseRequest.status,
+            status: cancelledRequest.status,
+            reviewCaseId: cancelledRequest.reviewCaseId,
+          },
+        },
+      });
+
+      const updatedVault = await transaction.retirementVault.findUnique({
+        where: {
+          id: cancelledRequest.retirementVaultId,
+        },
+        include: retirementVaultInclude,
+      });
+
+      if (!updatedVault) {
+        throw new NotFoundException("Retirement vault not found.");
+      }
+
+      return {
+        cancelledRequest,
+        updatedVault,
+      };
+    });
+
+    return {
+      vault: this.mapRetirementVaultProjection(result.updatedVault),
+      releaseRequest: this.mapReleaseRequestProjection(result.cancelledRequest),
+    };
+  }
+
+  async listInternalReleaseRequests(
+    query: ListInternalRetirementVaultReleaseRequestsDto
+  ): Promise<ListInternalRetirementVaultReleaseRequestsResult> {
+    const limit = query.limit ?? 25;
+    const where: Prisma.RetirementVaultReleaseRequestWhereInput = {};
+
+    if (query.status) {
+      where.status = query.status;
+    }
+
+    const releaseRequests =
+      await this.prismaService.retirementVaultReleaseRequest.findMany({
+        where,
+        include: internalReleaseRequestInclude,
+        orderBy: {
+          updatedAt: "desc",
+        },
+        take: limit,
+      });
+
+    return {
+      releaseRequests: releaseRequests.map((request) =>
+        this.mapInternalReleaseRequestProjection(request)
+      ),
+      limit,
+    };
+  }
+
+  async getInternalReleaseRequestWorkspace(
+    releaseRequestId: string
+  ): Promise<GetInternalRetirementVaultReleaseRequestWorkspaceResult> {
+    const releaseRequest =
+      await this.prismaService.retirementVaultReleaseRequest.findUnique({
+        where: {
+          id: releaseRequestId,
+        },
+        include: internalReleaseRequestInclude,
+      });
+
+    if (!releaseRequest) {
+      throw new NotFoundException("Retirement vault release request not found.");
+    }
+
+    const [vaultEvents, relatedAuditEvents] = await Promise.all([
+      this.prismaService.retirementVaultEvent.findMany({
+        where: {
+          retirementVaultId: releaseRequest.retirementVaultId,
+        },
+        orderBy: {
+          createdAt: "desc",
+        },
+        take: 20,
+      }),
+      this.prismaService.auditEvent.findMany({
+        where: {
+          OR: [
+            {
+              targetType: "RetirementVaultReleaseRequest",
+              targetId: releaseRequest.id,
+            },
+            {
+              targetType: "RetirementVault",
+              targetId: releaseRequest.retirementVaultId,
+            },
+            releaseRequest.reviewCaseId
+              ? {
+                  targetType: "ReviewCase",
+                  targetId: releaseRequest.reviewCaseId,
+                }
+              : undefined,
+            releaseRequest.transactionIntentId
+              ? {
+                  targetType: "TransactionIntent",
+                  targetId: releaseRequest.transactionIntentId,
+                }
+              : undefined,
+          ].filter(Boolean) as Prisma.AuditEventWhereInput[],
+        },
+        orderBy: {
+          createdAt: "desc",
+        },
+        take: 30,
+      }),
+    ]);
+
+    return {
+      releaseRequest: this.mapInternalReleaseRequestProjection(releaseRequest),
+      vaultEvents: vaultEvents.map((event) =>
+        this.mapRetirementVaultEventProjection(event)
+      ),
+      relatedAuditEvents: relatedAuditEvents.map((event) =>
+        this.mapAuditTimelineProjection(event)
+      ),
+    };
+  }
+
+  async approveInternalReleaseRequest(
+    releaseRequestId: string,
+    operatorId: string,
+    operatorRole?: string | null,
+    note?: string
+  ): Promise<DecideInternalRetirementVaultReleaseRequestResult> {
+    const normalizedOperatorRole = this.assertCanDecideRelease(operatorRole);
+    const normalizedNote = this.normalizeOptionalString(note);
+    const existingRequest =
+      await this.prismaService.retirementVaultReleaseRequest.findUnique({
+        where: {
+          id: releaseRequestId,
+        },
+        include: internalReleaseRequestInclude,
+      });
+
+    if (!existingRequest) {
+      throw new NotFoundException("Retirement vault release request not found.");
+    }
+
+    if (
+      existingRequest.status === RetirementVaultReleaseRequestStatus.cooldown_active ||
+      existingRequest.status === RetirementVaultReleaseRequestStatus.ready_for_release ||
+      existingRequest.status === RetirementVaultReleaseRequestStatus.executing ||
+      existingRequest.status === RetirementVaultReleaseRequestStatus.released
+    ) {
+      return {
+        releaseRequest: this.mapInternalReleaseRequestProjection(existingRequest),
+        stateReused: true,
+      };
+    }
+
+    this.assertReleaseRequestActionable(existingRequest, [
+      RetirementVaultReleaseRequestStatus.review_required,
+    ]);
+
+    const occurredAt = new Date();
+    const cooldownEndsAt = this.buildCooldownEndsAt(
+      occurredAt,
+      existingRequest.retirementVault.strictMode,
+      existingRequest.requestKind
+    );
+
+    const updatedRequest = await this.prismaService.$transaction(
+      async (transaction) => {
+        const approvedRequest = await transaction.retirementVaultReleaseRequest.update({
+          where: {
+            id: existingRequest.id,
+          },
+          data: {
+            status: RetirementVaultReleaseRequestStatus.cooldown_active,
+            reviewDecidedAt: occurredAt,
+            approvedAt: occurredAt,
+            approvedByOperatorId: operatorId,
+            approvedByOperatorRole: normalizedOperatorRole,
+            cooldownStartedAt: occurredAt,
+            cooldownEndsAt,
+            executionFailureCode: null,
+            executionFailureReason: null,
+          },
+          include: internalReleaseRequestInclude,
+        });
+
+        await this.closeLinkedReviewCase({
+          transaction,
+          reviewCaseId: approvedRequest.reviewCaseId,
+          actorType: "operator",
+          actorId: operatorId,
+          note:
+            normalizedNote ??
+            "Retirement vault early unlock approved and moved into cooldown.",
+          disposition: "resolved",
+          customerId:
+            approvedRequest.retirementVault.customerAccount.customer.id ?? null,
+          releaseRequestId: approvedRequest.id,
+        });
+
+        await transaction.retirementVaultEvent.createMany({
+          data: [
+            {
+              retirementVaultId: approvedRequest.retirementVaultId,
+              eventType: RetirementVaultEventType.release_approved,
+              actorType: "operator",
+              actorId: operatorId,
+              metadata: {
+                releaseRequestId: approvedRequest.id,
+                operatorRole: normalizedOperatorRole,
+                note: normalizedNote,
+              },
+            },
+            {
+              retirementVaultId: approvedRequest.retirementVaultId,
+              eventType: RetirementVaultEventType.cooldown_started,
+              actorType: "operator",
+              actorId: operatorId,
+              metadata: {
+                releaseRequestId: approvedRequest.id,
+                operatorRole: normalizedOperatorRole,
+                cooldownEndsAt: cooldownEndsAt.toISOString(),
+              },
+            },
+          ],
+        });
+
+        await transaction.auditEvent.create({
+          data: {
+            customerId:
+              approvedRequest.retirementVault.customerAccount.customer.id ?? null,
+            actorType: "operator",
+            actorId: operatorId,
+            action: "retirement_vault.release_approved",
+            targetType: "RetirementVaultReleaseRequest",
+            targetId: approvedRequest.id,
+            metadata: {
+              retirementVaultId: approvedRequest.retirementVaultId,
+              status: approvedRequest.status,
+              operatorRole: normalizedOperatorRole,
+              cooldownEndsAt: cooldownEndsAt.toISOString(),
+              reviewCaseId: approvedRequest.reviewCaseId,
+              note: normalizedNote,
+            },
+          },
+        });
+
+        return approvedRequest;
+      }
+    );
+
+    return {
+      releaseRequest: this.mapInternalReleaseRequestProjection(updatedRequest),
+      stateReused: false,
+    };
+  }
+
+  async rejectInternalReleaseRequest(
+    releaseRequestId: string,
+    operatorId: string,
+    operatorRole?: string | null,
+    note?: string
+  ): Promise<DecideInternalRetirementVaultReleaseRequestResult> {
+    const normalizedOperatorRole = this.assertCanDecideRelease(operatorRole);
+    const normalizedNote = this.normalizeOptionalString(note);
+    const existingRequest =
+      await this.prismaService.retirementVaultReleaseRequest.findUnique({
+        where: {
+          id: releaseRequestId,
+        },
+        include: internalReleaseRequestInclude,
+      });
+
+    if (!existingRequest) {
+      throw new NotFoundException("Retirement vault release request not found.");
+    }
+
+    if (existingRequest.status === RetirementVaultReleaseRequestStatus.rejected) {
+      return {
+        releaseRequest: this.mapInternalReleaseRequestProjection(existingRequest),
+        stateReused: true,
+      };
+    }
+
+    this.assertReleaseRequestActionable(existingRequest, [
+      RetirementVaultReleaseRequestStatus.review_required,
+    ]);
+
+    const occurredAt = new Date();
+
+    const updatedRequest = await this.prismaService.$transaction(
+      async (transaction) => {
+        const rejectedRequest = await transaction.retirementVaultReleaseRequest.update({
+          where: {
+            id: existingRequest.id,
+          },
+          data: {
+            status: RetirementVaultReleaseRequestStatus.rejected,
+            reviewDecidedAt: occurredAt,
+            rejectedAt: occurredAt,
+            rejectedByOperatorId: operatorId,
+            rejectedByOperatorRole: normalizedOperatorRole,
+          },
+          include: internalReleaseRequestInclude,
+        });
+
+        await this.closeLinkedReviewCase({
+          transaction,
+          reviewCaseId: rejectedRequest.reviewCaseId,
+          actorType: "operator",
+          actorId: operatorId,
+          note:
+            normalizedNote ??
+            "Retirement vault early unlock rejected after operator review.",
+          disposition: "resolved",
+          customerId:
+            rejectedRequest.retirementVault.customerAccount.customer.id ?? null,
+          releaseRequestId: rejectedRequest.id,
+        });
+
+        await transaction.retirementVaultEvent.create({
+          data: {
+            retirementVaultId: rejectedRequest.retirementVaultId,
+            eventType: RetirementVaultEventType.release_rejected,
+            actorType: "operator",
+            actorId: operatorId,
+            metadata: {
+              releaseRequestId: rejectedRequest.id,
+              operatorRole: normalizedOperatorRole,
+              note: normalizedNote,
+            },
+          },
+        });
+
+        await transaction.auditEvent.create({
+          data: {
+            customerId:
+              rejectedRequest.retirementVault.customerAccount.customer.id ?? null,
+            actorType: "operator",
+            actorId: operatorId,
+            action: "retirement_vault.release_rejected",
+            targetType: "RetirementVaultReleaseRequest",
+            targetId: rejectedRequest.id,
+            metadata: {
+              retirementVaultId: rejectedRequest.retirementVaultId,
+              status: rejectedRequest.status,
+              operatorRole: normalizedOperatorRole,
+              reviewCaseId: rejectedRequest.reviewCaseId,
+              note: normalizedNote,
+            },
+          },
+        });
+
+        return rejectedRequest;
+      }
+    );
+
+    return {
+      releaseRequest: this.mapInternalReleaseRequestProjection(updatedRequest),
+      stateReused: false,
+    };
+  }
+
+  async sweepReleaseRequests(
+    workerId: string,
+    limit: number
+  ): Promise<SweepRetirementVaultReleaseRequestsResult> {
+    const now = new Date();
+    const processedReleaseRequestIds: string[] = [];
+    let readyForReleaseCount = 0;
+    let releasedCount = 0;
+    let failedCount = 0;
+
+    const cooldownReadyRequests =
+      await this.prismaService.retirementVaultReleaseRequest.findMany({
+        where: {
+          status: RetirementVaultReleaseRequestStatus.cooldown_active,
+          cooldownEndsAt: {
+            lte: now,
+          },
+        },
+        orderBy: {
+          cooldownEndsAt: "asc",
+        },
+        take: limit,
+      });
+
+    for (const request of cooldownReadyRequests) {
+      const transitioned = await this.prismaService.$transaction(async (transaction) => {
+        const transitionCount = await transaction.retirementVaultReleaseRequest.updateMany({
+          where: {
+            id: request.id,
+            status: RetirementVaultReleaseRequestStatus.cooldown_active,
+            cooldownEndsAt: {
+              lte: now,
+            },
+          },
+          data: {
+            status: RetirementVaultReleaseRequestStatus.ready_for_release,
+            readyForReleaseAt: now,
+          },
+        });
+
+        if (transitionCount.count !== 1) {
+          return false;
+        }
+
+        await transaction.retirementVaultEvent.create({
+          data: {
+            retirementVaultId: request.retirementVaultId,
+            eventType: RetirementVaultEventType.cooldown_completed,
+            actorType: "worker",
+            actorId: workerId,
+            metadata: {
+              releaseRequestId: request.id,
+              cooldownEndsAt: request.cooldownEndsAt?.toISOString() ?? null,
+            },
+          },
+        });
+
+        await transaction.auditEvent.create({
+          data: {
+            actorType: "worker",
+            actorId: workerId,
+            action: "retirement_vault.cooldown_completed",
+            targetType: "RetirementVaultReleaseRequest",
+            targetId: request.id,
+            metadata: {
+              retirementVaultId: request.retirementVaultId,
+              cooldownEndsAt: request.cooldownEndsAt?.toISOString() ?? null,
+            },
+          },
+        });
+
+        return true;
+      });
+
+      if (transitioned) {
+        readyForReleaseCount += 1;
+      }
+    }
+
+    const readyRequests =
+      await this.prismaService.retirementVaultReleaseRequest.findMany({
+        where: {
+          status: RetirementVaultReleaseRequestStatus.ready_for_release,
+          retirementVault: {
+            status: RetirementVaultStatus.active,
+            customerAccount: {
+              status: AccountLifecycleStatus.active,
+            },
+          },
+        },
+        include: internalReleaseRequestInclude,
+        orderBy: {
+          readyForReleaseAt: "asc",
+        },
+        take: limit,
+      });
+
+    for (const request of readyRequests) {
+      const claimedCount =
+        await this.prismaService.retirementVaultReleaseRequest.updateMany({
+          where: {
+            id: request.id,
+            status: RetirementVaultReleaseRequestStatus.ready_for_release,
+          },
+          data: {
+            status: RetirementVaultReleaseRequestStatus.executing,
+            executionStartedAt: new Date(),
+            executedByWorkerId: workerId,
+          },
+        });
+
+      if (claimedCount.count !== 1) {
+        continue;
+      }
+
+      try {
+        await this.prismaService.$transaction(async (transaction) => {
+          const currentRequest =
+            await transaction.retirementVaultReleaseRequest.findUnique({
+              where: {
+                id: request.id,
+              },
+              include: internalReleaseRequestInclude,
+            });
+
+          if (!currentRequest) {
+            throw new NotFoundException(
+              "Retirement vault release request not found."
+            );
+          }
+
+          if (
+            currentRequest.status !==
+            RetirementVaultReleaseRequestStatus.executing
+          ) {
+            throw new ConflictException(
+              "Retirement vault release request is no longer executing."
+            );
+          }
+
+          const idempotencyKey = `vault_release:${currentRequest.id}`;
+
+          const releaseIntent = await transaction.transactionIntent.create({
+            data: {
+              customerAccountId:
+                currentRequest.retirementVault.customerAccount.id,
+              retirementVaultId: currentRequest.retirementVaultId,
+              assetId: currentRequest.retirementVault.asset.id,
+              chainId: this.productChainId,
+              intentType: TransactionIntentType.vault_redemption,
+              status: TransactionIntentStatus.settled,
+              policyDecision: PolicyDecision.approved,
+              requestedAmount: currentRequest.requestedAmount,
+              settledAmount: currentRequest.requestedAmount,
+              idempotencyKey,
+            },
+          });
+
+          const ledgerResult =
+            await this.ledgerService.releaseRetirementVaultBalance(transaction, {
+              transactionIntentId: releaseIntent.id,
+              retirementVaultId: currentRequest.retirementVaultId,
+              customerAccountId: currentRequest.retirementVault.customerAccount.id,
+              assetId: currentRequest.retirementVault.asset.id,
+              chainId: this.productChainId,
+              amount: currentRequest.requestedAmount,
+            });
+
+          const releaseOccurredAt = new Date();
+
+          const updatedVault = await transaction.retirementVault.update({
+            where: {
+              id: currentRequest.retirementVaultId,
+            },
+            data: {
+              status:
+                ledgerResult.lockedBalance === "0"
+                  ? RetirementVaultStatus.released
+                  : RetirementVaultStatus.active,
+            },
+          });
+
+          await transaction.retirementVaultReleaseRequest.update({
+            where: {
+              id: currentRequest.id,
+            },
+            data: {
+              status: RetirementVaultReleaseRequestStatus.released,
+              releasedAt: releaseOccurredAt,
+              transactionIntentId: releaseIntent.id,
+              executionFailureCode: null,
+              executionFailureReason: null,
+            },
+          });
+
+          await transaction.retirementVaultEvent.create({
+            data: {
+              retirementVaultId: currentRequest.retirementVaultId,
+              eventType: RetirementVaultEventType.released,
+              actorType: "worker",
+              actorId: workerId,
+              metadata: {
+                releaseRequestId: currentRequest.id,
+                transactionIntentId: releaseIntent.id,
+                ledgerJournalId: ledgerResult.ledgerJournalId,
+                availableBalanceAfter: ledgerResult.availableBalance,
+                lockedBalanceAfter: ledgerResult.lockedBalance,
+                vaultStatusAfter: updatedVault.status,
+              },
+            },
+          });
+
+          await transaction.auditEvent.create({
+            data: {
+              customerId:
+                currentRequest.retirementVault.customerAccount.customer.id,
+              actorType: "worker",
+              actorId: workerId,
+              action: "retirement_vault.released",
+              targetType: "RetirementVaultReleaseRequest",
+              targetId: currentRequest.id,
+              metadata: {
+                retirementVaultId: currentRequest.retirementVaultId,
+                transactionIntentId: releaseIntent.id,
+                ledgerJournalId: ledgerResult.ledgerJournalId,
+                availableBalanceAfter: ledgerResult.availableBalance,
+                lockedBalanceAfter: ledgerResult.lockedBalance,
+                vaultStatusAfter: updatedVault.status,
+              },
+            },
+          });
+        });
+
+        releasedCount += 1;
+        processedReleaseRequestIds.push(request.id);
+      } catch (error) {
+        const failureMessage =
+          error instanceof Error
+            ? error.message
+            : "Retirement vault release execution failed.";
+
+        await this.prismaService.$transaction(async (transaction) => {
+          await transaction.retirementVaultReleaseRequest.update({
+            where: {
+              id: request.id,
+            },
+            data: {
+              status: RetirementVaultReleaseRequestStatus.failed,
+              executionFailureCode: "release_execution_failed",
+              executionFailureReason: failureMessage,
+            },
+          });
+
+          await transaction.retirementVaultEvent.create({
+            data: {
+              retirementVaultId: request.retirementVaultId,
+              eventType: RetirementVaultEventType.release_failed,
+              actorType: "worker",
+              actorId: workerId,
+              metadata: {
+                releaseRequestId: request.id,
+                failureCode: "release_execution_failed",
+                failureReason: failureMessage,
+              },
+            },
+          });
+
+          await transaction.auditEvent.create({
+            data: {
+              customerId: request.retirementVault.customerAccount.customer.id,
+              actorType: "worker",
+              actorId: workerId,
+              action: "retirement_vault.release_failed",
+              targetType: "RetirementVaultReleaseRequest",
+              targetId: request.id,
+              metadata: {
+                retirementVaultId: request.retirementVaultId,
+                failureCode: "release_execution_failed",
+                failureReason: failureMessage,
+              },
+            },
+          });
+        });
+
+        failedCount += 1;
+        processedReleaseRequestIds.push(request.id);
+      }
+    }
+
+    return {
+      limit,
+      readyForReleaseCount,
+      releasedCount,
+      failedCount,
+      processedReleaseRequestIds,
     };
   }
 }

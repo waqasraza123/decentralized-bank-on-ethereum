@@ -25,7 +25,9 @@ import {
   useFundRetirementVault,
   type FundMyRetirementVaultResult
 } from "@/hooks/retirement-vault/useFundRetirementVault";
+import { useCancelRetirementVaultRelease } from "@/hooks/retirement-vault/useCancelRetirementVaultRelease";
 import { useMyRetirementVaults } from "@/hooks/retirement-vault/useMyRetirementVaults";
+import { useRequestRetirementVaultRelease } from "@/hooks/retirement-vault/useRequestRetirementVaultRelease";
 import { useLocale } from "@/i18n/use-locale";
 import {
   buildRequestIdempotencyKey,
@@ -49,6 +51,23 @@ function dateValueToIsoString(value: string): string {
   return new Date(`${value}T00:00:00.000Z`).toISOString();
 }
 
+function isActiveReleaseStatus(status: string): boolean {
+  return [
+    "requested",
+    "review_required",
+    "approved",
+    "cooldown_active",
+    "ready_for_release",
+    "executing"
+  ].includes(status);
+}
+
+function canCancelReleaseStatus(status: string): boolean {
+  return ["requested", "review_required", "approved", "cooldown_active"].includes(
+    status
+  );
+}
+
 const RetirementVault = () => {
   const { locale } = useLocale();
   const balancesQuery = useMyBalances();
@@ -56,13 +75,21 @@ const RetirementVault = () => {
   const retirementVaultsQuery = useMyRetirementVaults();
   const createRetirementVault = useCreateRetirementVault();
   const fundRetirementVault = useFundRetirementVault();
+  const requestRetirementVaultRelease = useRequestRetirementVaultRelease();
+  const cancelRetirementVaultRelease = useCancelRetirementVaultRelease();
   const [createAssetSymbol, setCreateAssetSymbol] = useState("");
   const [fundAssetSymbol, setFundAssetSymbol] = useState("");
+  const [releaseAssetSymbol, setReleaseAssetSymbol] = useState("");
   const [unlockDate, setUnlockDate] = useState(getDefaultUnlockDateValue);
   const [strictMode, setStrictMode] = useState(true);
   const [fundAmount, setFundAmount] = useState("");
+  const [releaseAmount, setReleaseAmount] = useState("");
+  const [releaseReasonCode, setReleaseReasonCode] = useState("hardship");
+  const [releaseReasonNote, setReleaseReasonNote] = useState("");
+  const [releaseEvidenceNote, setReleaseEvidenceNote] = useState("");
   const [createError, setCreateError] = useState<string | null>(null);
   const [fundError, setFundError] = useState<string | null>(null);
+  const [releaseError, setReleaseError] = useState<string | null>(null);
   const [latestCreatedVault, setLatestCreatedVault] =
     useState<CreateMyRetirementVaultResult | null>(null);
   const [latestFunding, setLatestFunding] =
@@ -83,9 +110,15 @@ const RetirementVault = () => {
     vaults.find((vault) => vault.asset.symbol === fundAssetSymbol)?.asset.symbol ??
     vaults[0]?.asset.symbol ??
     "";
+  const selectedReleaseAssetSymbol =
+    vaults.find((vault) => vault.asset.symbol === releaseAssetSymbol)?.asset.symbol ??
+    vaults[0]?.asset.symbol ??
+    "";
   const selectedFundBalance =
     balances.find((balance) => balance.asset.symbol === selectedFundAssetSymbol) ??
     null;
+  const selectedReleaseVault =
+    vaults.find((vault) => vault.asset.symbol === selectedReleaseAssetSymbol) ?? null;
   const totalLockedBalance = useMemo(
     () =>
       vaults.reduce(
@@ -97,6 +130,22 @@ const RetirementVault = () => {
   const nextUnlockAt = vaults
     .map((vault) => vault.unlockAt)
     .sort((left, right) => Date.parse(left) - Date.parse(right))[0];
+  const activeReleaseRequests = useMemo(
+    () =>
+      vaults
+        .flatMap((vault) =>
+          vault.releaseRequests.map((request) => ({
+            ...request,
+            asset: vault.asset
+          }))
+        )
+        .filter((request) => isActiveReleaseStatus(request.status))
+        .sort(
+          (left, right) =>
+            Date.parse(right.updatedAt) - Date.parse(left.updatedAt)
+        ),
+    [vaults]
+  );
 
   function getFundingIdempotencyKey(signature: string): string {
     if (lastFundingRef.current?.signature === signature) {
@@ -253,6 +302,116 @@ const RetirementVault = () => {
     }
   }
 
+  async function handleRequestRelease(
+    event: React.FormEvent<HTMLFormElement>
+  ) {
+    event.preventDefault();
+
+    const normalizedAmount = releaseAmount.trim();
+
+    if (!selectedReleaseVault) {
+      setReleaseError(
+        locale === "ar"
+          ? "أنشئ قبو تقاعد وموله أولاً."
+          : "Create and fund a retirement vault first."
+      );
+      return;
+    }
+
+    if (!isPositiveDecimalString(normalizedAmount)) {
+      setReleaseError(
+        locale === "ar"
+          ? "أدخل مبلغ إفراج صالحاً."
+          : "Enter a valid release amount."
+      );
+      return;
+    }
+
+    if (
+      Number.parseFloat(normalizedAmount) >
+      Number.parseFloat(selectedReleaseVault.lockedBalance)
+    ) {
+      setReleaseError(
+        locale === "ar"
+          ? "المبلغ يتجاوز الرصيد المقفل في هذا القبو."
+          : "Amount exceeds the locked balance in this vault."
+      );
+      return;
+    }
+
+    setReleaseError(null);
+
+    try {
+      const result = await requestRetirementVaultRelease.mutateAsync({
+        assetSymbol: selectedReleaseVault.asset.symbol,
+        amount: normalizedAmount,
+        reasonCode:
+          new Date(selectedReleaseVault.unlockAt) > new Date()
+            ? releaseReasonCode
+            : undefined,
+        reasonNote: releaseReasonNote.trim() || undefined,
+        evidenceNote: releaseEvidenceNote.trim() || undefined
+      });
+
+      setReleaseAmount("");
+      setReleaseReasonNote("");
+      setReleaseEvidenceNote("");
+
+      toast({
+        title:
+          locale === "ar"
+            ? "تم تسجيل طلب الإفراج"
+            : "Governed release requested",
+        description:
+          result.releaseRequest.status === "review_required"
+            ? locale === "ar"
+              ? "الإفراج المبكر دخل مسار مراجعة إلزامي قبل بدء التهدئة."
+              : "Early unlock entered a mandatory review path before cooldown begins."
+            : locale === "ar"
+              ? "تم فتح نافذة التهدئة قبل إعادة المال إلى الرصيد السائل."
+              : "A cooldown window is now open before funds return to liquid balance."
+      });
+    } catch (error) {
+      const message = readApiErrorMessage(
+        error,
+        locale === "ar"
+          ? "تعذر تسجيل طلب الإفراج."
+          : "Failed to request governed release."
+      );
+      setReleaseError(message);
+    }
+  }
+
+  async function handleCancelRelease(releaseRequestId: string) {
+    try {
+      await cancelRetirementVaultRelease.mutateAsync(releaseRequestId);
+      toast({
+        title:
+          locale === "ar"
+            ? "تم إلغاء طلب الإفراج"
+            : "Unlock request cancelled",
+        description:
+          locale === "ar"
+            ? "تمت إزالة الطلب من المسار النشط."
+            : "The request was removed from the active workflow."
+      });
+    } catch (error) {
+      toast({
+        title:
+          locale === "ar"
+            ? "فشل إلغاء الطلب"
+            : "Failed to cancel unlock request",
+        description: readApiErrorMessage(
+          error,
+          locale === "ar"
+            ? "تعذر إلغاء طلب الإفراج."
+            : "Could not cancel the unlock request."
+        ),
+        variant: "destructive"
+      });
+    }
+  }
+
   const latestFundingConfidence = latestFunding
     ? getIntentConfidenceStatus(latestFunding.intent.status)
     : null;
@@ -330,8 +489,8 @@ const RetirementVault = () => {
                     </div>
                     <p className="mt-3 text-sm leading-7 text-amber-900/80">
                       {locale === "ar"
-                        ? "الإفراج المبكر غير متاح بعد في هذه المرحلة. هذا السطح يبني الرصيد المقفل ويجعل وجوده واضحاً قبل فتح الحوكمة الكاملة."
-                        : "Early release is not exposed yet in this phase. This surface establishes the locked balance and makes it visible before full governance is opened."}
+                        ? "الإفراج المبكر يمر الآن عبر مراجعة إلزامية ونافذة تهدئة واضحة قبل إعادة أي مال إلى الرصيد السائل."
+                        : "Early release now moves through mandatory review and a visible cooldown window before any money returns to liquid balance."}
                     </p>
                   </div>
                 </div>
@@ -347,9 +506,9 @@ const RetirementVault = () => {
                     {locale === "ar" ? "المسار الحالي" : "Current phase"}
                   </p>
                   <h2 className="mt-2 text-2xl font-semibold text-slate-950">
-                    {locale === "ar"
-                      ? "الإنشاء والتمويل والعرض"
-                      : "Create, fund, and monitor"}
+                      {locale === "ar"
+                      ? "الإنشاء والتمويل وطلب الإفراج"
+                      : "Create, fund, and request release"}
                   </h2>
                 </div>
                 <div className="rounded-[1.5rem] bg-slate-950 p-5 text-white">
@@ -362,9 +521,9 @@ const RetirementVault = () => {
                     </p>
                   </div>
                   <p className="mt-3 text-sm leading-7 text-white/72">
-                    {locale === "ar"
-                      ? "ابدأ بإنشاء القبو للأصل الذي تريد حمايته، ثم انقل الأموال من الرصيد المتاح إلى الرصيد المقفل."
-                      : "Start by creating the vault for the asset you want to protect, then move funds from available balance into locked balance."}
+                      {locale === "ar"
+                      ? "ابدأ بإنشاء القبو وتمويله، ثم افتح طلب الإفراج الطبيعي أو المبكر عبر هذا السطح نفسه."
+                      : "Create and fund the vault first, then open either a normal or early release request from this same surface."}
                   </p>
                   <Button asChild className="mt-5 rounded-full bg-white text-slate-950 hover:bg-white/92">
                     <Link to="/wallet">
@@ -607,6 +766,219 @@ const RetirementVault = () => {
                   </div>
                 ) : null}
               </form>
+            </Card>
+          </MotionSurface>
+        </section>
+
+        <section className="grid gap-6 xl:grid-cols-[minmax(0,1.1fr)_minmax(360px,0.9fr)]">
+          <MotionSurface className="stb-pressable-shell">
+            <Card className="stb-surface stb-reveal rounded-[2rem] border-0 p-6" data-delay="4">
+              <form className="space-y-5" onSubmit={handleRequestRelease}>
+                <div>
+                  <p className="stb-section-kicker">
+                    {locale === "ar" ? "طلب الإفراج" : "Request release"}
+                  </p>
+                  <h2 className="mt-2 text-2xl font-semibold text-slate-950">
+                    {locale === "ar"
+                      ? "افتح الإفراج عبر مسار محكوم"
+                      : "Open release through a governed path"}
+                  </h2>
+                </div>
+
+                <label className="block space-y-2">
+                  <span className="text-sm font-semibold text-slate-700">
+                    {locale === "ar" ? "القبو" : "Vault asset"}
+                  </span>
+                  <select
+                    className="stb-premium-input"
+                    value={selectedReleaseAssetSymbol}
+                    onChange={(event) => setReleaseAssetSymbol(event.target.value)}
+                  >
+                    {vaults.length > 0 ? (
+                      vaults.map((vault) => (
+                        <option key={vault.id} value={vault.asset.symbol}>
+                          {vault.asset.symbol} · {formatTokenAmount(vault.lockedBalance, locale)} locked
+                        </option>
+                      ))
+                    ) : (
+                      <option value="">
+                        {locale === "ar" ? "أنشئ قبو أولاً" : "Create a vault first"}
+                      </option>
+                    )}
+                  </select>
+                </label>
+
+                <div className="grid gap-4 md:grid-cols-2">
+                  <label className="block space-y-2">
+                    <span className="text-sm font-semibold text-slate-700">
+                      {locale === "ar" ? "مبلغ الإفراج" : "Release amount"}
+                    </span>
+                    <Input
+                      inputMode="decimal"
+                      value={releaseAmount}
+                      onChange={(event) => setReleaseAmount(event.target.value)}
+                    />
+                  </label>
+
+                  <label className="block space-y-2">
+                    <span className="text-sm font-semibold text-slate-700">
+                      {locale === "ar" ? "سبب الإفراج المبكر" : "Early release reason"}
+                    </span>
+                    <select
+                      className="stb-premium-input"
+                      value={releaseReasonCode}
+                      onChange={(event) => setReleaseReasonCode(event.target.value)}
+                    >
+                      <option value="hardship">
+                        {locale === "ar" ? "ضائقة" : "Hardship"}
+                      </option>
+                      <option value="medical">
+                        {locale === "ar" ? "طبي" : "Medical"}
+                      </option>
+                      <option value="family">
+                        {locale === "ar" ? "عائلي" : "Family"}
+                      </option>
+                    </select>
+                  </label>
+                </div>
+
+                <label className="block space-y-2">
+                  <span className="text-sm font-semibold text-slate-700">
+                    {locale === "ar" ? "مذكرة الطلب" : "Request note"}
+                  </span>
+                  <Input
+                    value={releaseReasonNote}
+                    onChange={(event) => setReleaseReasonNote(event.target.value)}
+                  />
+                </label>
+
+                <label className="block space-y-2">
+                  <span className="text-sm font-semibold text-slate-700">
+                    {locale === "ar" ? "دليل أو شرح إضافي" : "Evidence or extra context"}
+                  </span>
+                  <Input
+                    value={releaseEvidenceNote}
+                    onChange={(event) => setReleaseEvidenceNote(event.target.value)}
+                  />
+                </label>
+
+                <div className="stb-trust-note text-sm text-amber-900" data-tone="warning">
+                  {selectedReleaseVault &&
+                  new Date(selectedReleaseVault.unlockAt) > new Date()
+                    ? locale === "ar"
+                      ? "هذا إفراج مبكر. سيحتاج إلى مراجعة إلزامية ثم فترة تهدئة قبل التنفيذ."
+                      : "This is an early unlock. It will require mandatory review and then a cooldown before execution."
+                    : locale === "ar"
+                      ? "هذا إفراج طبيعي بعد تحقق تاريخ القفل. سيبدأ مباشرة في نافذة تهدئة محكومة."
+                      : "This is a normal unlock after the lock date. It will move directly into a governed cooldown window."}
+                </div>
+
+                {releaseError ? (
+                  <div className="stb-trust-note text-sm text-red-700" data-tone="critical">
+                    {releaseError}
+                  </div>
+                ) : null}
+
+                <LoadingButton
+                  className="w-full rounded-[1rem]"
+                  disabled={vaults.length === 0}
+                  isLoading={requestRetirementVaultRelease.isPending}
+                  type="submit"
+                >
+                  {locale === "ar" ? "طلب الإفراج المحكوم" : "Request governed release"}
+                </LoadingButton>
+              </form>
+            </Card>
+          </MotionSurface>
+
+          <MotionSurface className="stb-pressable-shell">
+            <Card className="stb-surface stb-reveal rounded-[2rem] border-0 p-6" data-delay="5">
+              <div className="space-y-4">
+                <div>
+                  <p className="stb-section-kicker">
+                    {locale === "ar" ? "الطلبات النشطة" : "Active unlock requests"}
+                  </p>
+                  <h2 className="mt-2 text-2xl font-semibold text-slate-950">
+                    {locale === "ar"
+                      ? "المراجعة والتهدئة والتنفيذ"
+                      : "Review, cooldown, and release"}
+                  </h2>
+                </div>
+
+                {activeReleaseRequests.length > 0 ? (
+                  activeReleaseRequests.map((request) => (
+                    <div
+                      key={request.id}
+                      className="rounded-[1.4rem] border border-slate-200 bg-white/80 p-4"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-semibold text-slate-950">
+                            {request.asset.displayName}
+                          </p>
+                          <p className="mt-1 text-sm text-slate-600">
+                            {formatTokenAmount(request.requestedAmount, locale)} {request.asset.symbol}
+                          </p>
+                        </div>
+                        <StatusBadge
+                          label={request.status.replaceAll("_", " ")}
+                          tone={
+                            request.status === "review_required" ||
+                            request.status === "cooldown_active"
+                              ? "warning"
+                              : request.status === "ready_for_release" ||
+                                  request.status === "executing"
+                                ? "technical"
+                                : "positive"
+                          }
+                        />
+                      </div>
+                      <div className="mt-4 grid gap-2 text-sm text-slate-600">
+                        <p>
+                          {locale === "ar" ? "طُلب في" : "Requested"}{" "}
+                          <span className="font-semibold text-slate-950">
+                            {formatDateLabel(request.requestedAt, locale)}
+                          </span>
+                        </p>
+                        {request.cooldownEndsAt ? (
+                          <p>
+                            {locale === "ar" ? "تنتهي التهدئة" : "Cooldown ends"}{" "}
+                            <span className="font-semibold text-slate-950">
+                              {formatDateLabel(request.cooldownEndsAt, locale)}
+                            </span>
+                          </p>
+                        ) : null}
+                        {request.reasonCode ? (
+                          <p>
+                            {locale === "ar" ? "السبب" : "Reason"}{" "}
+                            <span className="font-semibold text-slate-950">
+                              {request.reasonCode.replaceAll("_", " ")}
+                            </span>
+                          </p>
+                        ) : null}
+                      </div>
+                      {canCancelReleaseStatus(request.status) ? (
+                        <LoadingButton
+                          className="mt-4 w-full rounded-[1rem]"
+                          isLoading={cancelRetirementVaultRelease.isPending}
+                          type="button"
+                          onClick={() => {
+                            void handleCancelRelease(request.id);
+                          }}
+                        >
+                          {locale === "ar" ? "إلغاء الطلب" : "Cancel request"}
+                        </LoadingButton>
+                      ) : null}
+                    </div>
+                  ))
+                ) : (
+                  <div className="rounded-[1.4rem] border border-dashed border-slate-200 p-5 text-sm text-slate-600">
+                    {locale === "ar"
+                      ? "لا يوجد طلب إفراج نشط الآن."
+                      : "No active governed release request is open right now."}
+                  </div>
+                )}
+              </div>
             </Card>
           </MotionSurface>
         </section>

@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Get,
+  Param,
   Post,
   Request,
   UseGuards,
@@ -11,6 +12,7 @@ import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { CustomJsonResponse } from "../types/CustomJsonResponse";
 import { CreateRetirementVaultDto } from "./dto/create-retirement-vault.dto";
 import { FundRetirementVaultDto } from "./dto/fund-retirement-vault.dto";
+import { RequestRetirementVaultReleaseDto } from "./dto/request-retirement-vault-release.dto";
 import { RetirementVaultService } from "./retirement-vault.service";
 
 type AuthenticatedRequest = {
@@ -85,6 +87,46 @@ export class RetirementVaultController {
       message: result.idempotencyReused
         ? "Retirement vault funding request reused successfully."
         : "Retirement vault funded successfully.",
+      data: result
+    };
+  }
+
+  @Post("me/release-requests")
+  async requestMyRetirementVaultRelease(
+    @Body(
+      new ValidationPipe({
+        whitelist: true,
+        forbidNonWhitelisted: true
+      })
+    )
+    dto: RequestRetirementVaultReleaseDto,
+    @Request() request: AuthenticatedRequest
+  ): Promise<CustomJsonResponse> {
+    const result = await this.retirementVaultService.requestMyRetirementVaultRelease(
+      request.user.id,
+      dto
+    );
+
+    return {
+      status: "success",
+      message: "Retirement vault unlock request recorded successfully.",
+      data: result
+    };
+  }
+
+  @Post("me/release-requests/:releaseRequestId/cancel")
+  async cancelMyRetirementVaultRelease(
+    @Param("releaseRequestId") releaseRequestId: string,
+    @Request() request: AuthenticatedRequest
+  ): Promise<CustomJsonResponse> {
+    const result = await this.retirementVaultService.cancelMyRetirementVaultRelease(
+      request.user.id,
+      releaseRequestId
+    );
+
+    return {
+      status: "success",
+      message: "Retirement vault unlock request cancelled successfully.",
       data: result
     };
   }

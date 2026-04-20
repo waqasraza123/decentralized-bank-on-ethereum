@@ -56,6 +56,9 @@ function createEmptyIterationMetrics(): WorkerIterationMetrics {
   return {
     queuedDepositCount: 0,
     queuedWithdrawalCount: 0,
+    retirementVaultCooldownCompletedCount: 0,
+    retirementVaultReleasedCount: 0,
+    retirementVaultReleaseFailureCount: 0,
     claimableGovernedExecutionRequestCount: 0,
     claimedGovernedExecutionRequestCount: 0,
     dispatchedGovernedExecutionRequestCount: 0,
@@ -165,6 +168,24 @@ export class WorkerOrchestrator {
     );
 
     const now = Date.now();
+    const retirementVaultSweep =
+      await this.deps.internalApiClient.sweepRetirementVaultReleaseRequests(
+        this.deps.runtime.batchLimit
+      );
+    metrics.retirementVaultCooldownCompletedCount =
+      retirementVaultSweep.readyForReleaseCount;
+    metrics.retirementVaultReleasedCount = retirementVaultSweep.releasedCount;
+    metrics.retirementVaultReleaseFailureCount = retirementVaultSweep.failedCount;
+
+    if (retirementVaultSweep.processedReleaseRequestIds.length > 0) {
+      this.deps.logger.info("retirement_vault_release_sweep_completed", {
+        readyForReleaseCount: retirementVaultSweep.readyForReleaseCount,
+        releasedCount: retirementVaultSweep.releasedCount,
+        failedCount: retirementVaultSweep.failedCount,
+        releaseRequestIds: retirementVaultSweep.processedReleaseRequestIds,
+      });
+    }
+
     if (
       now - this.lastGovernedExecutionDispatchAttemptedAt >=
       this.deps.runtime.governedExecutionDispatchIntervalMs

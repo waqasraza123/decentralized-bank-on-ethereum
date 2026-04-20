@@ -13,8 +13,10 @@ import { OptionChips } from "../components/ui/OptionChips";
 import { SectionCard } from "../components/ui/SectionCard";
 import {
   useBalancesQuery,
+  useCancelRetirementVaultReleaseMutation,
   useCreateRetirementVaultMutation,
   useFundRetirementVaultMutation,
+  useRequestRetirementVaultReleaseMutation,
   useRetirementVaultsQuery,
   useSupportedAssetsQuery,
 } from "../hooks/use-customer-queries";
@@ -27,11 +29,31 @@ import {
   isPositiveDecimalString,
   isPositiveIntegerString,
 } from "../lib/finance";
+import type { RetirementVaultReleaseRequestProjection } from "../lib/api/types";
 import { useSessionStore } from "../stores/session-store";
 
 type RetirementVaultScreenProps = {
-  initialFocus?: "create" | "fund";
+  initialFocus?: "create" | "fund" | "release";
 };
+
+function isActiveReleaseStatus(status: RetirementVaultReleaseRequestProjection["status"]) {
+  return [
+    "requested",
+    "review_required",
+    "approved",
+    "cooldown_active",
+    "ready_for_release",
+    "executing",
+  ].includes(status);
+}
+
+function canCancelReleaseStatus(
+  status: RetirementVaultReleaseRequestProjection["status"],
+) {
+  return ["requested", "review_required", "approved", "cooldown_active"].includes(
+    status,
+  );
+}
 
 export function RetirementVaultScreen({
   initialFocus = "fund",
@@ -48,15 +70,26 @@ export function RetirementVaultScreen({
   const retirementVaultsQuery = useRetirementVaultsQuery();
   const createRetirementVaultMutation = useCreateRetirementVaultMutation();
   const fundRetirementVaultMutation = useFundRetirementVaultMutation();
+  const requestRetirementVaultReleaseMutation =
+    useRequestRetirementVaultReleaseMutation();
+  const cancelRetirementVaultReleaseMutation =
+    useCancelRetirementVaultReleaseMutation();
   const assets = assetsQuery.data?.assets ?? [];
   const balances = balancesQuery.data?.balances ?? [];
   const vaults = retirementVaultsQuery.data?.vaults ?? [];
-  const [focus, setFocus] = useState<"create" | "fund">(initialFocus);
+  const [focus, setFocus] = useState<"create" | "fund" | "release">(
+    initialFocus,
+  );
   const [createAsset, setCreateAsset] = useState("");
   const [fundAsset, setFundAsset] = useState("");
+  const [releaseAsset, setReleaseAsset] = useState("");
   const [unlockYears, setUnlockYears] = useState("10");
   const [strictMode, setStrictMode] = useState("strict");
   const [fundAmount, setFundAmount] = useState("");
+  const [releaseAmount, setReleaseAmount] = useState("");
+  const [releaseReasonCode, setReleaseReasonCode] = useState("hardship");
+  const [releaseReasonNote, setReleaseReasonNote] = useState("");
+  const [releaseEvidenceNote, setReleaseEvidenceNote] = useState("");
 
   useEffect(() => {
     setFocus(initialFocus);
@@ -64,8 +97,11 @@ export function RetirementVaultScreen({
 
   const activeCreateAsset = createAsset || assets[0]?.symbol || "";
   const activeFundAsset = fundAsset || vaults[0]?.asset.symbol || "";
+  const activeReleaseAsset = releaseAsset || vaults[0]?.asset.symbol || "";
   const selectedFundBalance =
     balances.find((balance) => balance.asset.symbol === activeFundAsset) ?? null;
+  const selectedReleaseVault =
+    vaults.find((vault) => vault.asset.symbol === activeReleaseAsset) ?? null;
   const lockedVaultBalance = vaults.reduce(
     (sum, vault) => sum + Number.parseFloat(vault.lockedBalance || "0"),
     0,
@@ -73,6 +109,22 @@ export function RetirementVaultScreen({
   const nextVaultUnlock = vaults
     .map((vault) => vault.unlockAt)
     .sort((left, right) => Date.parse(left) - Date.parse(right))[0];
+  const activeReleaseRequests = useMemo(
+    () =>
+      vaults
+        .flatMap((vault) =>
+          vault.releaseRequests.map((request) => ({
+            ...request,
+            asset: vault.asset,
+          })),
+        )
+        .filter((request) => isActiveReleaseStatus(request.status))
+        .sort(
+          (left, right) =>
+            Date.parse(right.updatedAt) - Date.parse(left.updatedAt),
+        ),
+    [vaults],
+  );
 
   function getIdempotencyKey(signature: string): string {
     const existing = consumeRequestKey(signature);
@@ -119,6 +171,7 @@ export function RetirementVaultScreen({
         strictMode: strictMode === "strict",
       });
       setFundAsset(result.vault.asset.symbol);
+      setReleaseAsset(result.vault.asset.symbol);
       setFocus("fund");
       Alert.alert(
         locale === "ar" ? "قبو التقاعد" : "Retirement Vault",
@@ -206,6 +259,91 @@ export function RetirementVaultScreen({
     }
   }
 
+  async function handleRequestRelease() {
+    if (!selectedReleaseVault) {
+      Alert.alert(
+        locale === "ar" ? "قبو التقاعد" : "Retirement Vault",
+        locale === "ar"
+          ? "أنشئ أو اختر قبو تقاعد أولاً."
+          : "Create or select a retirement vault first.",
+      );
+      return;
+    }
+
+    if (!isPositiveDecimalString(releaseAmount)) {
+      Alert.alert(
+        locale === "ar" ? "قبو التقاعد" : "Retirement Vault",
+        locale === "ar" ? "أدخل مبلغ إفراج صالحاً." : "Enter a valid release amount.",
+      );
+      return;
+    }
+
+    if (
+      compareDecimalStrings(releaseAmount.trim(), selectedReleaseVault.lockedBalance) ===
+      1
+    ) {
+      Alert.alert(
+        locale === "ar" ? "قبو التقاعد" : "Retirement Vault",
+        locale === "ar"
+          ? "المبلغ يتجاوز الرصيد المقفل داخل القبو."
+          : "Amount exceeds the locked balance in the vault.",
+      );
+      return;
+    }
+
+    try {
+      const result = await requestRetirementVaultReleaseMutation.mutateAsync({
+        assetSymbol: selectedReleaseVault.asset.symbol,
+        amount: releaseAmount.trim(),
+        reasonCode:
+          new Date(selectedReleaseVault.unlockAt) > new Date()
+            ? releaseReasonCode
+            : undefined,
+        reasonNote: releaseReasonNote.trim() || undefined,
+        evidenceNote: releaseEvidenceNote.trim() || undefined,
+      });
+      setReleaseAmount("");
+      setReleaseReasonNote("");
+      setReleaseEvidenceNote("");
+      Alert.alert(
+        locale === "ar" ? "قبو التقاعد" : "Retirement Vault",
+        result.releaseRequest.status === "review_required"
+          ? locale === "ar"
+            ? "تم تسجيل الإفراج المبكر ودخل الآن مسار مراجعة إلزامي."
+            : "Early unlock was recorded and has entered mandatory review."
+          : locale === "ar"
+            ? "تم فتح نافذة التهدئة قبل إعادة المال إلى الرصيد السائل."
+            : "A cooldown window is now open before funds return to liquid balance.",
+      );
+    } catch (requestError) {
+      Alert.alert(
+        locale === "ar" ? "قبو التقاعد" : "Retirement Vault",
+        requestError instanceof Error
+          ? requestError.message
+          : String(requestError),
+      );
+    }
+  }
+
+  async function handleCancelRelease(releaseRequestId: string) {
+    try {
+      await cancelRetirementVaultReleaseMutation.mutateAsync(releaseRequestId);
+      Alert.alert(
+        locale === "ar" ? "قبو التقاعد" : "Retirement Vault",
+        locale === "ar"
+          ? "تم إلغاء طلب الإفراج."
+          : "The unlock request was cancelled.",
+      );
+    } catch (requestError) {
+      Alert.alert(
+        locale === "ar" ? "قبو التقاعد" : "Retirement Vault",
+        requestError instanceof Error
+          ? requestError.message
+          : String(requestError),
+      );
+    }
+  }
+
   const assetOptions = useMemo(
     () =>
       assets.map((asset) => ({
@@ -228,8 +366,8 @@ export function RetirementVaultScreen({
       title={locale === "ar" ? "قبو التقاعد" : "Retirement Vault"}
       subtitle={
         locale === "ar"
-          ? "أنشئ القفل، ثم انقل الأموال من الرصيد السائل إلى الرصيد المقفل."
-          : "Create the lock, then move funds from liquid balance into locked balance."
+          ? "أنشئ القفل، موّل الرصيد المقفل، ثم افتح الإفراج المحكوم عند الحاجة."
+          : "Create the lock, fund the protected balance, then open governed release when needed."
       }
       trailing={<LanguageToggle />}
     >
@@ -270,6 +408,14 @@ export function RetirementVaultScreen({
               </View>
               <View className="min-w-[46%] flex-1 rounded-[24px] bg-white/8 px-4 py-4">
                 <AppText className="text-xs uppercase tracking-[1.2px] text-sea">
+                  {locale === "ar" ? "طلبات نشطة" : "Active requests"}
+                </AppText>
+                <AppText className="mt-2 text-3xl text-white" weight="bold">
+                  {activeReleaseRequests.length}
+                </AppText>
+              </View>
+              <View className="min-w-[46%] flex-1 rounded-[24px] bg-white/8 px-4 py-4">
+                <AppText className="text-xs uppercase tracking-[1.2px] text-sea">
                   {locale === "ar" ? "وضع الحماية" : "Protection mode"}
                 </AppText>
                 <AppText className="mt-2 text-sm text-white" weight="semibold">
@@ -292,8 +438,8 @@ export function RetirementVaultScreen({
               </AppText>
               <AppText className="text-sm leading-6 text-slate">
                 {locale === "ar"
-                  ? "أنشئ القبو أولاً، ثم موّله من رصيدك المتاح."
-                  : "Create the vault first, then fund it from available balance."}
+                  ? "أنشئ القبو، موّله، ثم استخدم الإفراج المحكوم بدلاً من السحب العادي."
+                  : "Create the vault, fund it, then use governed release instead of ordinary withdrawals."}
               </AppText>
             </View>
             <View className="h-11 w-11 items-center justify-center rounded-2xl bg-ink/6">
@@ -305,7 +451,7 @@ export function RetirementVaultScreen({
             </View>
           </View>
           <OptionChips
-            onChange={(value) => setFocus(value as "create" | "fund")}
+            onChange={(value) => setFocus(value as "create" | "fund" | "release")}
             options={[
               {
                 label: locale === "ar" ? "إنشاء" : "Create",
@@ -314,6 +460,10 @@ export function RetirementVaultScreen({
               {
                 label: locale === "ar" ? "تمويل" : "Fund",
                 value: "fund",
+              },
+              {
+                label: locale === "ar" ? "إفراج" : "Release",
+                value: "release",
               },
             ]}
             value={focus}
@@ -377,7 +527,7 @@ export function RetirementVaultScreen({
                 }}
               />
             </>
-          ) : (
+          ) : focus === "fund" ? (
             <>
               <AppText className="text-xl text-ink" weight="bold">
                 {locale === "ar" ? "تمويل القبو" : "Fund vault"}
@@ -430,11 +580,178 @@ export function RetirementVaultScreen({
                 }}
               />
             </>
+          ) : (
+            <>
+              <AppText className="text-xl text-ink" weight="bold">
+                {locale === "ar" ? "طلب الإفراج" : "Request release"}
+              </AppText>
+              <OptionChips
+                onChange={setReleaseAsset}
+                options={
+                  vaultOptions.length > 0
+                    ? vaultOptions
+                    : [
+                        {
+                          label: locale === "ar" ? "لا توجد أقبية" : "No vaults",
+                          value: "",
+                        },
+                      ]
+                }
+                value={activeReleaseAsset}
+              />
+              <FieldInput
+                keyboardType="decimal-pad"
+                label={locale === "ar" ? "مبلغ الإفراج" : "Release amount"}
+                onChangeText={setReleaseAmount}
+                value={releaseAmount}
+              />
+              <OptionChips
+                onChange={setReleaseReasonCode}
+                options={[
+                  {
+                    label: locale === "ar" ? "ضائقة" : "Hardship",
+                    value: "hardship",
+                  },
+                  {
+                    label: locale === "ar" ? "طوارئ" : "Emergency",
+                    value: "emergency",
+                  },
+                  {
+                    label: locale === "ar" ? "التزام عائلي" : "Family",
+                    value: "family_commitment",
+                  },
+                ]}
+                value={releaseReasonCode}
+              />
+              <FieldInput
+                label={locale === "ar" ? "ملاحظة السبب" : "Reason note"}
+                onChangeText={setReleaseReasonNote}
+                value={releaseReasonNote}
+              />
+              <FieldInput
+                label={
+                  locale === "ar" ? "دليل أو شرح إضافي" : "Evidence or extra context"
+                }
+                onChangeText={setReleaseEvidenceNote}
+                value={releaseEvidenceNote}
+              />
+              <InlineNotice
+                message={
+                  selectedReleaseVault &&
+                  new Date(selectedReleaseVault.unlockAt) > new Date()
+                    ? locale === "ar"
+                      ? "هذا إفراج مبكر. سيدخل مسار مراجعة إلزامي ثم فترة تهدئة قبل التنفيذ."
+                      : "This is an early unlock. It enters mandatory review and then a cooldown before execution."
+                    : locale === "ar"
+                      ? "هذا إفراج طبيعي بعد تحقق تاريخ القفل. سيدخل مباشرة في نافذة تهدئة محكومة."
+                      : "This is a normal unlock after the lock date. It moves directly into a governed cooldown window."
+                }
+                tone="warning"
+              />
+              <AppButton
+                disabled={
+                  requestRetirementVaultReleaseMutation.isPending ||
+                  vaults.length === 0
+                }
+                label={
+                  requestRetirementVaultReleaseMutation.isPending
+                    ? locale === "ar"
+                      ? "جارٍ تسجيل الإفراج..."
+                      : "Recording release..."
+                    : locale === "ar"
+                      ? "طلب الإفراج المحكوم"
+                      : "Request governed release"
+                }
+                onPress={() => {
+                  void handleRequestRelease();
+                }}
+              />
+            </>
           )}
         </SectionCard>
       </AnimatedSection>
 
       <AnimatedSection delayOrder={4}>
+        <SectionCard className="gap-3">
+          <View className="flex-row items-center justify-between gap-3">
+            <AppText className="text-xl text-ink" weight="bold">
+              {locale === "ar" ? "الطلبات النشطة" : "Active unlock requests"}
+            </AppText>
+            <View className="rounded-full bg-ink px-3 py-1">
+              <AppText className="text-xs text-white" weight="semibold">
+                {activeReleaseRequests.length}
+              </AppText>
+            </View>
+          </View>
+          {activeReleaseRequests.length === 0 ? (
+            <AppText className="text-sm leading-6 text-slate">
+              {locale === "ar"
+                ? "لا يوجد طلب إفراج نشط الآن."
+                : "No active governed release request is open right now."}
+            </AppText>
+          ) : (
+            activeReleaseRequests.map((request) => (
+              <View
+                key={request.id}
+                className="gap-3 rounded-2xl border border-border bg-white px-4 py-4"
+              >
+                <View className="flex-row items-start justify-between gap-3">
+                  <View className="flex-1 gap-1">
+                    <AppText className="text-base text-ink" weight="semibold">
+                      {request.asset.displayName}
+                    </AppText>
+                    <AppText className="text-lg text-ink" weight="bold">
+                      {formatTokenAmount(request.requestedAmount, locale)}{" "}
+                      {request.asset.symbol}
+                    </AppText>
+                  </View>
+                  <View className="rounded-full bg-amber-100 px-3 py-1">
+                    <AppText className="text-xs text-amber-950" weight="semibold">
+                      {request.status.replaceAll("_", " ")}
+                    </AppText>
+                  </View>
+                </View>
+                <AppText className="text-sm text-slate">
+                  {locale === "ar" ? "طُلب في:" : "Requested:"}{" "}
+                  {formatDateLabel(request.requestedAt, locale)}
+                </AppText>
+                {request.cooldownEndsAt ? (
+                  <AppText className="text-sm text-slate">
+                    {locale === "ar" ? "تنتهي التهدئة:" : "Cooldown ends:"}{" "}
+                    {formatDateLabel(request.cooldownEndsAt, locale)}
+                  </AppText>
+                ) : null}
+                {request.reasonCode ? (
+                  <AppText className="text-sm text-slate">
+                    {locale === "ar" ? "السبب:" : "Reason:"}{" "}
+                    {request.reasonCode.replaceAll("_", " ")}
+                  </AppText>
+                ) : null}
+                {canCancelReleaseStatus(request.status) ? (
+                  <AppButton
+                    disabled={cancelRetirementVaultReleaseMutation.isPending}
+                    label={
+                      cancelRetirementVaultReleaseMutation.isPending
+                        ? locale === "ar"
+                          ? "جارٍ الإلغاء..."
+                          : "Cancelling..."
+                        : locale === "ar"
+                          ? "إلغاء الطلب"
+                          : "Cancel request"
+                    }
+                    onPress={() => {
+                      void handleCancelRelease(request.id);
+                    }}
+                    variant="ghost"
+                  />
+                ) : null}
+              </View>
+            ))
+          )}
+        </SectionCard>
+      </AnimatedSection>
+
+      <AnimatedSection delayOrder={5}>
         <SectionCard className="gap-3">
           <View className="flex-row items-center justify-between gap-3">
             <AppText className="text-xl text-ink" weight="bold">
@@ -476,7 +793,8 @@ export function RetirementVaultScreen({
                       {vault.asset.displayName}
                     </AppText>
                     <AppText className="text-lg text-ink" weight="bold">
-                      {formatTokenAmount(vault.lockedBalance, locale)} {vault.asset.symbol}
+                      {formatTokenAmount(vault.lockedBalance, locale)}{" "}
+                      {vault.asset.symbol}
                     </AppText>
                   </View>
                   <View className="rounded-full bg-ink px-3 py-1">
@@ -495,6 +813,12 @@ export function RetirementVaultScreen({
                   {locale === "ar" ? "الإفراج:" : "Release:"}{" "}
                   {formatDateLabel(vault.unlockAt, locale)}
                 </AppText>
+                {vault.releaseRequests[0] ? (
+                  <AppText className="text-sm text-slate">
+                    {locale === "ar" ? "آخر حالة:" : "Latest status:"}{" "}
+                    {vault.releaseRequests[0].status.replaceAll("_", " ")}
+                  </AppText>
+                ) : null}
               </View>
             ))
           )}

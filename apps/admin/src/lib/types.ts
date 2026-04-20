@@ -2337,6 +2337,126 @@ export type AccountReleaseReviewMutationResult = {
   stateReused: boolean;
 };
 
+export type RetirementVaultReviewCaseSummary = {
+  id: string;
+  type: string;
+  status: string;
+  reasonCode: string | null;
+  assignedOperatorId: string | null;
+  updatedAt: string;
+};
+
+export type RetirementVaultReleaseIntentSummary = {
+  id: string;
+  intentType: string;
+  status: string;
+  policyDecision: string;
+  requestedAmount: string;
+  settledAmount: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type RetirementVaultEventProjection = {
+  id: string;
+  eventType: string;
+  actorType: string;
+  actorId: string | null;
+  metadata: JsonValue | null;
+  createdAt: string;
+};
+
+export type RetirementVaultReleaseRequestProjection = {
+  id: string;
+  retirementVaultId: string;
+  requestKind: "scheduled_unlock" | "early_unlock";
+  requestedAmount: string;
+  status:
+    | "requested"
+    | "review_required"
+    | "approved"
+    | "cooldown_active"
+    | "ready_for_release"
+    | "executing"
+    | "rejected"
+    | "released"
+    | "cancelled"
+    | "failed";
+  reasonCode: string | null;
+  reasonNote: string | null;
+  evidence: JsonValue | null;
+  requestedByActorType: string;
+  requestedByActorId: string | null;
+  reviewRequiredAt: string | null;
+  reviewDecidedAt: string | null;
+  cooldownEndsAt: string | null;
+  requestedAt: string;
+  cooldownStartedAt: string | null;
+  readyForReleaseAt: string | null;
+  approvedAt: string | null;
+  approvedByOperatorId: string | null;
+  approvedByOperatorRole: string | null;
+  rejectedAt: string | null;
+  rejectedByOperatorId: string | null;
+  rejectedByOperatorRole: string | null;
+  cancelledAt: string | null;
+  cancelledByActorType: string | null;
+  cancelledByActorId: string | null;
+  executionStartedAt: string | null;
+  executedByWorkerId: string | null;
+  executionFailureCode: string | null;
+  executionFailureReason: string | null;
+  releasedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  reviewCase: RetirementVaultReviewCaseSummary | null;
+  transactionIntent: RetirementVaultReleaseIntentSummary | null;
+};
+
+export type InternalRetirementVaultReleaseRequest = RetirementVaultReleaseRequestProjection & {
+  retirementVault: {
+    id: string;
+    status: string;
+    strictMode: boolean;
+    unlockAt: string;
+    lockedBalance: string;
+    asset: {
+      id: string;
+      symbol: string;
+      displayName: string;
+      decimals: number;
+      chainId: number;
+    };
+    customerAccount: {
+      id: string;
+      status: string;
+      customer: {
+        id: string;
+        supabaseUserId: string;
+        email: string;
+        firstName: string;
+        lastName: string;
+      };
+    };
+  };
+};
+
+export type InternalRetirementVaultReleaseRequestList = {
+  releaseRequests: InternalRetirementVaultReleaseRequest[];
+  limit: number;
+};
+
+export type InternalRetirementVaultReleaseRequestWorkspace = {
+  releaseRequest: InternalRetirementVaultReleaseRequest;
+  vaultEvents: RetirementVaultEventProjection[];
+  relatedAuditEvents: AuditTimelineEntry[];
+};
+
+export type InternalRetirementVaultReleaseDecisionResult = {
+  releaseRequest: InternalRetirementVaultReleaseRequest;
+  stateReused: boolean;
+};
+
 export type IncidentPackageRelease = {
   id: string;
   customer: {

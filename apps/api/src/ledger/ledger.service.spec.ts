@@ -22,7 +22,8 @@ function createTransactionClient() {
     },
     retirementVault: {
       findUnique: jest.fn(),
-      update: jest.fn()
+      update: jest.fn(),
+      updateMany: jest.fn()
     }
   };
 }
@@ -158,6 +159,70 @@ describe("LedgerService", () => {
         },
         {
           ledgerJournalId: "ledger_journal_vault_1",
+          ledgerAccountId: "ledger_account_vault",
+          direction: LedgerPostingDirection.credit,
+          amount: new Prisma.Decimal("8.25")
+        }
+      ]
+    });
+  });
+
+  it("releases retirement vault balance back into customer available balance", async () => {
+    const service = new LedgerService();
+    const transaction = createTransactionClient();
+
+    transaction.ledgerJournal.findUnique.mockResolvedValue(null);
+    transaction.ledgerAccount.upsert
+      .mockResolvedValueOnce({
+        id: "ledger_account_vault"
+      })
+      .mockResolvedValueOnce({
+        id: "ledger_account_customer"
+      });
+    transaction.retirementVault.updateMany.mockResolvedValue({
+      count: 1
+    });
+    transaction.retirementVault.findUnique.mockResolvedValue({
+      lockedBalance: new Prisma.Decimal("0")
+    });
+    transaction.customerAssetBalance.updateMany.mockResolvedValue({
+      count: 1
+    });
+    transaction.customerAssetBalance.findUnique.mockResolvedValue({
+      availableBalance: new Prisma.Decimal("10")
+    });
+    transaction.ledgerJournal.create.mockResolvedValue({
+      id: "ledger_journal_release_1"
+    });
+    transaction.ledgerPosting.createMany.mockResolvedValue({
+      count: 2
+    });
+
+    const result = await service.releaseRetirementVaultBalance(
+      transaction as never,
+      {
+        transactionIntentId: "intent_release_1",
+        retirementVaultId: "vault_1",
+        customerAccountId: "account_1",
+        assetId: "asset_1",
+        chainId: 8453,
+        amount: new Prisma.Decimal("8.25")
+      }
+    );
+
+    expect(result.ledgerJournalId).toBe("ledger_journal_release_1");
+    expect(result.availableBalance).toBe("10");
+    expect(result.lockedBalance).toBe("0");
+    expect(transaction.ledgerPosting.createMany).toHaveBeenCalledWith({
+      data: [
+        {
+          ledgerJournalId: "ledger_journal_release_1",
+          ledgerAccountId: "ledger_account_customer",
+          direction: LedgerPostingDirection.debit,
+          amount: new Prisma.Decimal("8.25")
+        },
+        {
+          ledgerJournalId: "ledger_journal_release_1",
           ledgerAccountId: "ledger_account_vault",
           direction: LedgerPostingDirection.credit,
           amount: new Prisma.Decimal("8.25")

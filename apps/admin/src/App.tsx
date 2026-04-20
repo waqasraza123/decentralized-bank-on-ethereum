@@ -45,6 +45,7 @@ import { ReconciliationPage } from "@/pages/ReconciliationPage";
 import { StakingGovernancePage } from "@/pages/StakingGovernancePage";
 import { SolvencyPage } from "@/pages/SolvencyPage";
 import { TreasuryPage } from "@/pages/TreasuryPage";
+import { VaultReleasesPage } from "@/pages/VaultReleasesPage";
 import { buildSystemHealthTone } from "@/pages/shared";
 
 const runtimeConfig = loadWebRuntimeConfig(import.meta.env);
@@ -54,6 +55,7 @@ const queryClient = createAdminQueryClient();
 const navItems = [
   { label: "Operations Overview", path: "/operations" },
   { label: "Queues", path: "/queues" },
+  { label: "Vault Releases", path: "/vault-releases" },
   { label: "Accounts & Reviews", path: "/accounts" },
   { label: "Incident Packages", path: "/incident-packages" },
   { label: "Lending", path: "/lending" },
@@ -191,6 +193,7 @@ function AdminConsole() {
         <Route path="/" element={<Navigate to="/operations" replace />} />
         <Route path="/operations" element={<OperationsPage />} />
         <Route path="/queues" element={<QueuesPage />} />
+        <Route path="/vault-releases" element={<VaultReleasesPage />} />
         <Route path="/accounts" element={<AccountsPage />} />
         <Route path="/incident-packages" element={<IncidentPackagesPage />} />
         <Route path="/lending" element={<LoansPage />} />

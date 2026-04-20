@@ -211,6 +211,7 @@ model TransactionIntent {
   depositSettlementReplayApprovalRequests DepositSettlementReplayApprovalRequest[]
   withdrawalSettlementReplayApprovalRequests WithdrawalSettlementReplayApprovalRequest[]
   reviewCases                  ReviewCase[]
+  retirementVaultReleaseRequest RetirementVaultReleaseRequest? @relation("RetirementVaultReleaseTransactionIntent")
 
   @@index([customerAccountId])
   @@index([assetId])
@@ -258,20 +259,45 @@ model RetirementVaultReleaseRequest {
   id                String                              @id @default(cuid())
   retirementVaultId String
   retirementVault   RetirementVault                     @relation(fields: [retirementVaultId], references: [id])
+  requestKind       RetirementVaultReleaseRequestKind
   requestedAmount   Decimal                             @db.Decimal(36, 18)
   status            RetirementVaultReleaseRequestStatus @default(requested)
   reasonCode        String?
   reasonNote        String?
+  evidence          Json?
+  requestedByActorType String                           @default("customer")
+  requestedByActorId String?
+  reviewCaseId      String?
+  reviewCase        ReviewCase?                         @relation("RetirementVaultReleaseReviewCase", fields: [reviewCaseId], references: [id])
+  transactionIntentId String?                          @unique
+  transactionIntent TransactionIntent?                 @relation("RetirementVaultReleaseTransactionIntent", fields: [transactionIntentId], references: [id])
+  reviewRequiredAt  DateTime?
+  reviewDecidedAt   DateTime?
   cooldownEndsAt    DateTime?
   requestedAt       DateTime                            @default(now())
+  cooldownStartedAt DateTime?
+  readyForReleaseAt DateTime?
   approvedAt        DateTime?
+  approvedByOperatorId String?
+  approvedByOperatorRole String?
   rejectedAt        DateTime?
+  rejectedByOperatorId String?
+  rejectedByOperatorRole String?
+  cancelledAt       DateTime?
+  cancelledByActorType String?
+  cancelledByActorId String?
+  executionStartedAt DateTime?
+  executedByWorkerId String?
+  executionFailureCode String?
+  executionFailureReason String?
   releasedAt        DateTime?
   createdAt         DateTime                            @default(now())
   updatedAt         DateTime                            @updatedAt
 
   @@index([retirementVaultId, status, requestedAt])
   @@index([status, cooldownEndsAt])
+  @@index([status, readyForReleaseAt])
+  @@index([reviewCaseId])
 }
 
 model RetirementVaultEvent {
@@ -453,6 +479,7 @@ model ReviewCase {
   updatedAt           DateTime           @updatedAt
   events              ReviewCaseEvent[]
   manualInterventionIntents TransactionIntent[] @relation("ManualInterventionReviewCase")
+  retirementVaultReleaseRequests RetirementVaultReleaseRequest[] @relation("RetirementVaultReleaseReviewCase")
   restrictionReleaseReviews CustomerAccountRestriction[] @relation("RestrictionReleaseReviewCase")
   ledgerReconciliationMismatches LedgerReconciliationMismatch[]
 
@@ -569,15 +596,32 @@ enum RetirementVaultReleaseRequestStatus {
   requested
   review_required
   approved
+  cooldown_active
+  ready_for_release
+  executing
   rejected
   released
   cancelled
+  failed
+}
+
+enum RetirementVaultReleaseRequestKind {
+  scheduled_unlock
+  early_unlock
 }
 
 enum RetirementVaultEventType {
   created
   funded
   release_requested
+  release_review_required
+  release_approved
+  release_rejected
+  release_cancelled
+  cooldown_started
+  cooldown_completed
+  released
+  release_failed
 }
 
 enum PolicyDecision {
@@ -1267,6 +1311,7 @@ enum LedgerJournalType {
   withdrawal_reservation_release
   withdrawal_settlement
   retirement_vault_funding
+  retirement_vault_release
   loan_disbursement
   loan_repayment
   loan_service_fee_accrual

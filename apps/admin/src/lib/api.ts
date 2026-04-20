@@ -19,6 +19,9 @@ import type {
   GovernedTreasuryExecutionRequest,
   GovernedExecutionWorkspace,
   GovernedIncidentPackageExport,
+  InternalRetirementVaultReleaseDecisionResult,
+  InternalRetirementVaultReleaseRequestList,
+  InternalRetirementVaultReleaseRequestWorkspace,
   IncidentPackageReleaseList,
   IncidentPackageReleaseMutationResult,
   IncidentPackageSnapshot,
@@ -1339,6 +1342,55 @@ export async function listPendingAccountReleaseReviews(
     method: "GET",
     url: "/review-cases/internal/account-release-requests/pending",
     params
+  });
+}
+
+export async function listRetirementVaultReleaseRequests(
+  session: OperatorSession,
+  params: Record<string, string | number | undefined> = {}
+): Promise<InternalRetirementVaultReleaseRequestList> {
+  return requestData(session, {
+    method: "GET",
+    url: "/retirement-vault/internal/release-requests",
+    params
+  });
+}
+
+export async function getRetirementVaultReleaseRequestWorkspace(
+  session: OperatorSession,
+  releaseRequestId: string
+): Promise<InternalRetirementVaultReleaseRequestWorkspace> {
+  return requestData(session, {
+    method: "GET",
+    url: `/retirement-vault/internal/release-requests/${releaseRequestId}`
+  });
+}
+
+export async function approveRetirementVaultReleaseRequest(
+  session: OperatorSession,
+  releaseRequestId: string,
+  payload: {
+    note?: string;
+  }
+): Promise<InternalRetirementVaultReleaseDecisionResult> {
+  return requestData(session, {
+    method: "POST",
+    url: `/retirement-vault/internal/release-requests/${releaseRequestId}/approve`,
+    data: payload
+  });
+}
+
+export async function rejectRetirementVaultReleaseRequest(
+  session: OperatorSession,
+  releaseRequestId: string,
+  payload: {
+    note?: string;
+  }
+): Promise<InternalRetirementVaultReleaseDecisionResult> {
+  return requestData(session, {
+    method: "POST",
+    url: `/retirement-vault/internal/release-requests/${releaseRequestId}/reject`,
+    data: payload
   });
 }
 
