@@ -177,11 +177,25 @@ export class WorkerOrchestrator {
     metrics.retirementVaultReleasedCount = retirementVaultSweep.releasedCount;
     metrics.retirementVaultReleaseFailureCount = retirementVaultSweep.failedCount;
 
-    if (retirementVaultSweep.processedReleaseRequestIds.length > 0) {
+    if (
+      retirementVaultSweep.processedReleaseRequestIds.length > 0 ||
+      retirementVaultSweep.blockedReleaseCount > 0 ||
+      retirementVaultSweep.staleReviewRequiredCount > 0 ||
+      retirementVaultSweep.staleCooldownCount > 0 ||
+      retirementVaultSweep.staleReadyForReleaseCount > 0 ||
+      retirementVaultSweep.staleExecutingCount > 0
+    ) {
       this.deps.logger.info("retirement_vault_release_sweep_completed", {
         readyForReleaseCount: retirementVaultSweep.readyForReleaseCount,
         releasedCount: retirementVaultSweep.releasedCount,
         failedCount: retirementVaultSweep.failedCount,
+        blockedReleaseCount: retirementVaultSweep.blockedReleaseCount,
+        staleReviewRequiredCount:
+          retirementVaultSweep.staleReviewRequiredCount,
+        staleCooldownCount: retirementVaultSweep.staleCooldownCount,
+        staleReadyForReleaseCount:
+          retirementVaultSweep.staleReadyForReleaseCount,
+        staleExecutingCount: retirementVaultSweep.staleExecutingCount,
         releaseRequestIds: retirementVaultSweep.processedReleaseRequestIds,
       });
     }

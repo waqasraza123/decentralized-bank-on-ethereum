@@ -6,6 +6,7 @@ jest.mock("@stealth-trails-bank/config/api", () => ({
 
 import { ConflictException } from "@nestjs/common";
 import {
+  LedgerAccountType,
   LedgerReconciliationMismatchRecommendedAction,
   LedgerReconciliationMismatchScope,
   LedgerReconciliationMismatchSeverity,
@@ -105,6 +106,12 @@ function createService() {
     },
     transactionIntent: {
       findMany: jest.fn()
+    },
+    retirementVault: {
+      findMany: jest.fn().mockResolvedValue([])
+    },
+    retirementVaultReleaseRequest: {
+      findMany: jest.fn().mockResolvedValue([])
     },
     depositSettlementReplayApprovalRequest: {
       findMany: jest.fn()
@@ -780,6 +787,153 @@ describe("LedgerReconciliationService", () => {
     );
     expect(result.mismatch.status).toBe("resolved");
     expect(result.mismatch.resolvedByOperatorId).toBe("ops_1");
+  });
+
+  it("detects retirement vault projection drift as a balance mismatch requiring review", async () => {
+    const { service, prismaService } = createService();
+
+    (prismaService.customerAssetBalance.findMany as jest.Mock).mockResolvedValue([
+      {
+        customerAccountId: "account_1",
+        assetId: "asset_1",
+        availableBalance: new Prisma.Decimal("5"),
+        pendingBalance: new Prisma.Decimal("0"),
+        customerAccount: {
+          id: "account_1",
+          customerId: "customer_1",
+          status: "active",
+          customer: {
+            id: "customer_1",
+            email: "user@example.com",
+            supabaseUserId: "supabase_1",
+            firstName: "Waqas",
+            lastName: "Raza"
+          }
+        },
+        asset: {
+          id: "asset_1",
+          symbol: "USDC",
+          displayName: "USD Coin",
+          decimals: 6,
+          chainId: 8453
+        }
+      }
+    ]);
+    (prismaService.ledgerAccount.findMany as jest.Mock).mockResolvedValue([
+      {
+        customerAccountId: "account_1",
+        accountType: LedgerAccountType.customer_asset_liability,
+        asset: {
+          id: "asset_1",
+          symbol: "USDC",
+          displayName: "USD Coin",
+          decimals: 6,
+          chainId: 8453
+        },
+        customerAccount: {
+          id: "account_1",
+          customerId: "customer_1",
+          status: "active",
+          customer: {
+            id: "customer_1",
+            email: "user@example.com",
+            supabaseUserId: "supabase_1",
+            firstName: "Waqas",
+            lastName: "Raza"
+          }
+        },
+        ledgerPostings: [
+          {
+            direction: "credit",
+            amount: new Prisma.Decimal("5")
+          }
+        ]
+      },
+      {
+        customerAccountId: "account_1",
+        accountType: LedgerAccountType.customer_retirement_vault_liability,
+        asset: {
+          id: "asset_1",
+          symbol: "USDC",
+          displayName: "USD Coin",
+          decimals: 6,
+          chainId: 8453
+        },
+        customerAccount: {
+          id: "account_1",
+          customerId: "customer_1",
+          status: "active",
+          customer: {
+            id: "customer_1",
+            email: "user@example.com",
+            supabaseUserId: "supabase_1",
+            firstName: "Waqas",
+            lastName: "Raza"
+          }
+        },
+        ledgerPostings: [
+          {
+            direction: "credit",
+            amount: new Prisma.Decimal("4")
+          }
+        ]
+      }
+    ]);
+    (prismaService.transactionIntent.findMany as jest.Mock).mockResolvedValue([]);
+    (prismaService.retirementVault.findMany as jest.Mock).mockResolvedValue([
+      {
+        id: "vault_1",
+        customerAccountId: "account_1",
+        lockedBalance: new Prisma.Decimal("2"),
+        customerAccount: {
+          id: "account_1",
+          customerId: "customer_1",
+          status: "active",
+          customer: {
+            id: "customer_1",
+            email: "user@example.com",
+            supabaseUserId: "supabase_1",
+            firstName: "Waqas",
+            lastName: "Raza"
+          }
+        },
+        asset: {
+          id: "asset_1",
+          symbol: "USDC",
+          displayName: "USD Coin",
+          decimals: 6,
+          chainId: 8453
+        }
+      }
+    ]);
+    (prismaService.retirementVaultReleaseRequest.findMany as jest.Mock).mockResolvedValue([
+      {
+        id: "vault_release_1",
+        requestedAmount: new Prisma.Decimal("1"),
+        retirementVault: {
+          id: "vault_1",
+          customerAccountId: "account_1",
+          assetId: "asset_1"
+        }
+      }
+    ]);
+
+    const candidates = await (service as any).buildBalanceCandidates({});
+
+    expect(candidates).toHaveLength(1);
+    expect(candidates[0]?.reasonCode).toBe(
+      "customer_retirement_vault_balance_projection_mismatch"
+    );
+    expect(candidates[0]?.recommendedAction).toBe(
+      LedgerReconciliationMismatchRecommendedAction.open_review_case
+    );
+    expect(candidates[0]?.latestSnapshot).toEqual(
+      expect.objectContaining({
+        ledgerRetirementVaultLiabilityAmount: "4",
+        pendingRetirementVaultReleaseAmount: "1",
+        retirementVaultProjectionMatchesLedger: false
+      })
+    );
   });
 
   it("tracks operator-triggered scan runs and persists the scan summary", async () => {

@@ -34,6 +34,8 @@ import {
   Prisma,
   ReviewCaseStatus,
   ReviewCaseType,
+  RetirementVaultReleaseRequestStatus,
+  RetirementVaultStatus,
   TransactionIntentStatus,
   TransactionIntentType,
   WithdrawalExecutionFailureCategory,
@@ -317,6 +319,20 @@ type OperationsStatusResult = {
     openOversightIncidentCount: number;
     activeRestrictedAccountCount: number;
   };
+  retirementVaultHealth: {
+    status: OperationsSectionStatus;
+    activeVaultCount: number;
+    restrictedVaultCount: number;
+    pendingReviewCount: number;
+    cooldownActiveCount: number;
+    readyForReleaseCount: number;
+    failedReleaseCount: number;
+    blockedReleaseCount: number;
+    staleReviewRequiredCount: number;
+    staleCooldownCount: number;
+    staleReadyForReleaseCount: number;
+    staleExecutingCount: number;
+  };
   recentAlerts: PlatformAlertProjection[];
 };
 
@@ -331,6 +347,7 @@ type OperationsSnapshot = {
   treasuryHealth: OperationsStatusResult["treasuryHealth"];
   reconciliationHealth: OperationsStatusResult["reconciliationHealth"];
   incidentSafety: OperationsStatusResult["incidentSafety"];
+  retirementVaultHealth: OperationsStatusResult["retirementVaultHealth"];
   deliveryTargetHealth: PlatformAlertDeliveryTargetHealthListResult;
   alertCandidates: PlatformAlertCandidate[];
 };
@@ -360,6 +377,9 @@ const CHAIN_FAILED_CRITICAL_COUNT = 5;
 const INCIDENT_REVIEW_WARNING_COUNT = 10;
 const INCIDENT_OVERSIGHT_WARNING_COUNT = 5;
 const INCIDENT_RESTRICTED_WARNING_COUNT = 5;
+const RETIREMENT_VAULT_REVIEW_STALE_SECONDS = 24 * 60 * 60;
+const RETIREMENT_VAULT_RELEASE_STALE_GRACE_SECONDS = 30 * 60;
+const RETIREMENT_VAULT_EXECUTING_STALE_SECONDS = 15 * 60;
 const DEFAULT_CRITICAL_PLATFORM_ALERT_REESCALATION_LIMIT = 25;
 const WORKER_ITERATION_METRIC_KEYS = [
   "queuedDepositCount",
@@ -1362,6 +1382,7 @@ export class OperationsMonitoringService {
     chainHealth: OperationsStatusResult["chainHealth"];
     treasuryHealth: OperationsStatusResult["treasuryHealth"];
     reconciliationHealth: OperationsStatusResult["reconciliationHealth"];
+    retirementVaultHealth: OperationsStatusResult["retirementVaultHealth"];
     deliveryTargetHealth: PlatformAlertDeliveryTargetHealthListResult;
   }): PlatformAlertCandidate[] {
     const alertCandidates: PlatformAlertCandidate[] = [];
@@ -1538,6 +1559,54 @@ export class OperationsMonitoringService {
             snapshot.treasuryHealth.activeOperationalWalletCount,
           chainId: this.productChainId,
         },
+      });
+    }
+
+    if (
+      snapshot.retirementVaultHealth.failedReleaseCount > 0 ||
+      snapshot.retirementVaultHealth.blockedReleaseCount > 0 ||
+      snapshot.retirementVaultHealth.staleCooldownCount > 0 ||
+      snapshot.retirementVaultHealth.staleReadyForReleaseCount > 0 ||
+      snapshot.retirementVaultHealth.staleExecutingCount > 0 ||
+      snapshot.retirementVaultHealth.staleReviewRequiredCount > 0
+    ) {
+      alertCandidates.push({
+        dedupeKey: "operations:retirement-vault-release-health",
+        category: PlatformAlertCategory.operations,
+        severity:
+          snapshot.retirementVaultHealth.failedReleaseCount > 0 ||
+          snapshot.retirementVaultHealth.blockedReleaseCount > 0 ||
+          snapshot.retirementVaultHealth.staleCooldownCount > 0 ||
+          snapshot.retirementVaultHealth.staleReadyForReleaseCount > 0 ||
+          snapshot.retirementVaultHealth.staleExecutingCount > 0
+            ? PlatformAlertSeverity.critical
+            : PlatformAlertSeverity.warning,
+        code: "retirement_vault_release_attention_required",
+        summary: "Retirement vault release workflows require operator attention.",
+        detail: `Pending review: ${snapshot.retirementVaultHealth.pendingReviewCount}. Cooldown active: ${snapshot.retirementVaultHealth.cooldownActiveCount}. Ready for release: ${snapshot.retirementVaultHealth.readyForReleaseCount}. Failed: ${snapshot.retirementVaultHealth.failedReleaseCount}. Blocked: ${snapshot.retirementVaultHealth.blockedReleaseCount}.`,
+        metadata: {
+          runbookPath: "docs/runbooks/operations-monitoring-and-alerts-api.md",
+          activeVaultCount: snapshot.retirementVaultHealth.activeVaultCount,
+          restrictedVaultCount:
+            snapshot.retirementVaultHealth.restrictedVaultCount,
+          pendingReviewCount: snapshot.retirementVaultHealth.pendingReviewCount,
+          cooldownActiveCount:
+            snapshot.retirementVaultHealth.cooldownActiveCount,
+          readyForReleaseCount:
+            snapshot.retirementVaultHealth.readyForReleaseCount,
+          failedReleaseCount:
+            snapshot.retirementVaultHealth.failedReleaseCount,
+          blockedReleaseCount:
+            snapshot.retirementVaultHealth.blockedReleaseCount,
+          staleReviewRequiredCount:
+            snapshot.retirementVaultHealth.staleReviewRequiredCount,
+          staleCooldownCount:
+            snapshot.retirementVaultHealth.staleCooldownCount,
+          staleReadyForReleaseCount:
+            snapshot.retirementVaultHealth.staleReadyForReleaseCount,
+          staleExecutingCount:
+            snapshot.retirementVaultHealth.staleExecutingCount,
+        } as PrismaJsonValue,
       });
     }
 
@@ -1783,6 +1852,15 @@ export class OperationsMonitoringService {
     const chainCriticalBefore = buildPastDateSeconds(
       CHAIN_CRITICAL_AGE_SECONDS,
     );
+    const retirementVaultReviewStaleBefore = buildPastDateSeconds(
+      RETIREMENT_VAULT_REVIEW_STALE_SECONDS,
+    );
+    const retirementVaultReleaseStaleBefore = buildPastDateSeconds(
+      RETIREMENT_VAULT_RELEASE_STALE_GRACE_SECONDS,
+    );
+    const retirementVaultExecutingStaleBefore = buildPastDateSeconds(
+      RETIREMENT_VAULT_EXECUTING_STALE_SECONDS,
+    );
 
     const [
       workerRecords,
@@ -1810,6 +1888,17 @@ export class OperationsMonitoringService {
       openReviewCaseCount,
       openOversightIncidentCount,
       activeRestrictedAccountCount,
+      activeRetirementVaultCount,
+      restrictedRetirementVaultCount,
+      pendingVaultReviewCount,
+      cooldownActiveVaultReleaseCount,
+      readyForReleaseVaultCount,
+      failedVaultReleaseCount,
+      blockedVaultReleaseCount,
+      staleVaultReviewCount,
+      staleVaultCooldownCount,
+      staleVaultReadyCount,
+      staleVaultExecutingCount,
       deliveryTargetHealth,
     ] = await Promise.all([
       this.prismaService.workerRuntimeHeartbeat.findMany({
@@ -2031,6 +2120,97 @@ export class OperationsMonitoringService {
           status: AccountLifecycleStatus.restricted,
         },
       }),
+      this.prismaService.retirementVault.count({
+        where: {
+          lockedBalance: {
+            gt: 0,
+          },
+        },
+      }),
+      this.prismaService.retirementVault.count({
+        where: {
+          status: RetirementVaultStatus.restricted,
+        },
+      }),
+      this.prismaService.retirementVaultReleaseRequest.count({
+        where: {
+          status: RetirementVaultReleaseRequestStatus.review_required,
+        },
+      }),
+      this.prismaService.retirementVaultReleaseRequest.count({
+        where: {
+          status: RetirementVaultReleaseRequestStatus.cooldown_active,
+        },
+      }),
+      this.prismaService.retirementVaultReleaseRequest.count({
+        where: {
+          status: RetirementVaultReleaseRequestStatus.ready_for_release,
+        },
+      }),
+      this.prismaService.retirementVaultReleaseRequest.count({
+        where: {
+          status: RetirementVaultReleaseRequestStatus.failed,
+        },
+      }),
+      this.prismaService.retirementVaultReleaseRequest.count({
+        where: {
+          status: {
+            in: [
+              RetirementVaultReleaseRequestStatus.cooldown_active,
+              RetirementVaultReleaseRequestStatus.ready_for_release,
+              RetirementVaultReleaseRequestStatus.executing,
+            ],
+          },
+          OR: [
+            {
+              retirementVault: {
+                status: RetirementVaultStatus.restricted,
+              },
+            },
+            {
+              retirementVault: {
+                customerAccount: {
+                  status: {
+                    not: AccountLifecycleStatus.active,
+                  },
+                },
+              },
+            },
+          ],
+        },
+      }),
+      this.prismaService.retirementVaultReleaseRequest.count({
+        where: {
+          status: RetirementVaultReleaseRequestStatus.review_required,
+          updatedAt: {
+            lte: retirementVaultReviewStaleBefore,
+          },
+        },
+      }),
+      this.prismaService.retirementVaultReleaseRequest.count({
+        where: {
+          status: RetirementVaultReleaseRequestStatus.cooldown_active,
+          cooldownEndsAt: {
+            lt: retirementVaultReleaseStaleBefore,
+          },
+        },
+      }),
+      this.prismaService.retirementVaultReleaseRequest.count({
+        where: {
+          status: RetirementVaultReleaseRequestStatus.ready_for_release,
+          updatedAt: {
+            lte: retirementVaultReleaseStaleBefore,
+          },
+        },
+      }),
+      this.prismaService.retirementVaultReleaseRequest.count({
+        where: {
+          status: RetirementVaultReleaseRequestStatus.executing,
+          updatedAt: {
+            lte: retirementVaultExecutingStaleBefore,
+          },
+        },
+      }),
       this.listPlatformAlertDeliveryTargetHealthInternal(
         this.platformAlertDeliveryHealthSloRuntimeConfig.lookbackHours,
       ),
@@ -2194,6 +2374,42 @@ export class OperationsMonitoringService {
       activeRestrictedAccountCount,
     };
 
+    let retirementVaultStatus: OperationsSectionStatus = "healthy";
+
+    if (
+      failedVaultReleaseCount > 0 ||
+      blockedVaultReleaseCount > 0 ||
+      staleVaultCooldownCount > 0 ||
+      staleVaultReadyCount > 0 ||
+      staleVaultExecutingCount > 0
+    ) {
+      retirementVaultStatus = "critical";
+    } else if (
+      pendingVaultReviewCount > 0 ||
+      cooldownActiveVaultReleaseCount > 0 ||
+      readyForReleaseVaultCount > 0 ||
+      restrictedRetirementVaultCount > 0 ||
+      staleVaultReviewCount > 0
+    ) {
+      retirementVaultStatus = "warning";
+    }
+
+    const retirementVaultHealth: OperationsStatusResult["retirementVaultHealth"] =
+      {
+        status: retirementVaultStatus,
+        activeVaultCount: activeRetirementVaultCount,
+        restrictedVaultCount: restrictedRetirementVaultCount,
+        pendingReviewCount: pendingVaultReviewCount,
+        cooldownActiveCount: cooldownActiveVaultReleaseCount,
+        readyForReleaseCount: readyForReleaseVaultCount,
+        failedReleaseCount: failedVaultReleaseCount,
+        blockedReleaseCount: blockedVaultReleaseCount,
+        staleReviewRequiredCount: staleVaultReviewCount,
+        staleCooldownCount: staleVaultCooldownCount,
+        staleReadyForReleaseCount: staleVaultReadyCount,
+        staleExecutingCount: staleVaultExecutingCount,
+      };
+
     return {
       generatedAt: new Date(),
       staleAfterSeconds,
@@ -2205,6 +2421,7 @@ export class OperationsMonitoringService {
       treasuryHealth,
       reconciliationHealth,
       incidentSafety,
+      retirementVaultHealth,
       deliveryTargetHealth,
       alertCandidates: this.buildAlertCandidates({
         workers,
@@ -2214,6 +2431,7 @@ export class OperationsMonitoringService {
         chainHealth,
         treasuryHealth,
         reconciliationHealth,
+        retirementVaultHealth,
         deliveryTargetHealth,
       }),
     };
@@ -2414,6 +2632,7 @@ export class OperationsMonitoringService {
       treasuryHealth: snapshot.treasuryHealth,
       reconciliationHealth: snapshot.reconciliationHealth,
       incidentSafety: snapshot.incidentSafety,
+      retirementVaultHealth: snapshot.retirementVaultHealth,
       recentAlerts: recentAlerts.map((alert) =>
         this.mapPlatformAlertProjection(
           alert,
@@ -3395,6 +3614,55 @@ export class OperationsMonitoringService {
         "stb_operations_incident_open_total",
         snapshot.incidentSafety.activeRestrictedAccountCount,
         { incident_type: "restricted_account" },
+      ),
+      "# HELP stb_operations_retirement_vault_release_total Current retirement vault workflow counts by state.",
+      "# TYPE stb_operations_retirement_vault_release_total gauge",
+      formatPrometheusLine(
+        "stb_operations_retirement_vault_release_total",
+        snapshot.retirementVaultHealth.pendingReviewCount,
+        { state: "review_required" },
+      ),
+      formatPrometheusLine(
+        "stb_operations_retirement_vault_release_total",
+        snapshot.retirementVaultHealth.cooldownActiveCount,
+        { state: "cooldown_active" },
+      ),
+      formatPrometheusLine(
+        "stb_operations_retirement_vault_release_total",
+        snapshot.retirementVaultHealth.readyForReleaseCount,
+        { state: "ready_for_release" },
+      ),
+      formatPrometheusLine(
+        "stb_operations_retirement_vault_release_total",
+        snapshot.retirementVaultHealth.failedReleaseCount,
+        { state: "failed" },
+      ),
+      formatPrometheusLine(
+        "stb_operations_retirement_vault_release_total",
+        snapshot.retirementVaultHealth.blockedReleaseCount,
+        { state: "blocked" },
+      ),
+      "# HELP stb_operations_retirement_vault_stale_total Current stale retirement vault workflow counts by state.",
+      "# TYPE stb_operations_retirement_vault_stale_total gauge",
+      formatPrometheusLine(
+        "stb_operations_retirement_vault_stale_total",
+        snapshot.retirementVaultHealth.staleReviewRequiredCount,
+        { state: "review_required" },
+      ),
+      formatPrometheusLine(
+        "stb_operations_retirement_vault_stale_total",
+        snapshot.retirementVaultHealth.staleCooldownCount,
+        { state: "cooldown_active" },
+      ),
+      formatPrometheusLine(
+        "stb_operations_retirement_vault_stale_total",
+        snapshot.retirementVaultHealth.staleReadyForReleaseCount,
+        { state: "ready_for_release" },
+      ),
+      formatPrometheusLine(
+        "stb_operations_retirement_vault_stale_total",
+        snapshot.retirementVaultHealth.staleExecutingCount,
+        { state: "executing" },
       ),
       "# HELP stb_platform_alerts_open_total Current open platform alerts by category and severity.",
       "# TYPE stb_platform_alerts_open_total gauge",

@@ -23,6 +23,7 @@ import {
   ReviewCaseStatus,
   ReviewCaseType,
   ReviewCaseEventType,
+  RetirementVaultReleaseRequestStatus,
   TransactionIntentStatus,
   TransactionIntentType,
   WithdrawalSettlementReplayApprovalRequestStatus,
@@ -1307,143 +1308,218 @@ export class LedgerReconciliationService {
     query: ScanLedgerReconciliationDto
   ): Promise<ReconciliationCandidate[]> {
     const accountFilter = query.customerAccountId?.trim();
-    const balances = await this.prismaService.customerAssetBalance.findMany({
-      where: {
-        asset: {
-          chainId: this.productChainId
-        },
-        ...(accountFilter
-          ? {
-              customerAccountId: accountFilter
-            }
-          : {})
-      },
-      include: {
-        customerAccount: {
-          select: {
-            id: true,
-            customerId: true,
-            status: true,
-            customer: {
+    const activeVaultReleaseStatuses: RetirementVaultReleaseRequestStatus[] = [
+      RetirementVaultReleaseRequestStatus.requested,
+      RetirementVaultReleaseRequestStatus.review_required,
+      RetirementVaultReleaseRequestStatus.approved,
+      RetirementVaultReleaseRequestStatus.cooldown_active,
+      RetirementVaultReleaseRequestStatus.ready_for_release,
+      RetirementVaultReleaseRequestStatus.executing,
+    ];
+    const [balances, liabilityAccounts, reservedWithdrawals, retirementVaults, activeVaultReleaseRequests] =
+      await Promise.all([
+        this.prismaService.customerAssetBalance.findMany({
+          where: {
+            asset: {
+              chainId: this.productChainId
+            },
+            ...(accountFilter
+              ? {
+                  customerAccountId: accountFilter
+                }
+              : {})
+          },
+          include: {
+            customerAccount: {
               select: {
                 id: true,
-                email: true,
-                supabaseUserId: true,
-                firstName: true,
-                lastName: true
+                customerId: true,
+                status: true,
+                customer: {
+                  select: {
+                    id: true,
+                    email: true,
+                    supabaseUserId: true,
+                    firstName: true,
+                    lastName: true
+                  }
+                }
+              }
+            },
+            asset: {
+              select: {
+                id: true,
+                symbol: true,
+                displayName: true,
+                decimals: true,
+                chainId: true
               }
             }
           }
-        },
-        asset: {
-          select: {
-            id: true,
-            symbol: true,
-            displayName: true,
-            decimals: true,
-            chainId: true
-          }
-        }
-      }
-    });
-
-    const liabilityAccounts = await this.prismaService.ledgerAccount.findMany({
-      where: {
-        accountType: {
-          in: [
-            LedgerAccountType.customer_asset_liability,
-            LedgerAccountType.customer_asset_pending_withdrawal_liability
-          ]
-        },
-        chainId: this.productChainId,
-        ...(accountFilter
-          ? {
-              customerAccountId: accountFilter
-            }
-          : {})
-      },
-      include: {
-        asset: {
-          select: {
-            id: true,
-            symbol: true,
-            displayName: true,
-            decimals: true,
-            chainId: true
-          }
-        },
-        customerAccount: {
-          select: {
-            id: true,
-            customerId: true,
-            status: true,
-            customer: {
+        }),
+        this.prismaService.ledgerAccount.findMany({
+          where: {
+            accountType: {
+              in: [
+                LedgerAccountType.customer_asset_liability,
+                LedgerAccountType.customer_asset_pending_withdrawal_liability,
+                LedgerAccountType.customer_retirement_vault_liability
+              ]
+            },
+            chainId: this.productChainId,
+            ...(accountFilter
+              ? {
+                  customerAccountId: accountFilter
+                }
+              : {})
+          },
+          include: {
+            asset: {
               select: {
                 id: true,
-                email: true,
-                supabaseUserId: true,
-                firstName: true,
-                lastName: true
+                symbol: true,
+                displayName: true,
+                decimals: true,
+                chainId: true
+              }
+            },
+            customerAccount: {
+              select: {
+                id: true,
+                customerId: true,
+                status: true,
+                customer: {
+                  select: {
+                    id: true,
+                    email: true,
+                    supabaseUserId: true,
+                    firstName: true,
+                    lastName: true
+                  }
+                }
+              }
+            },
+            ledgerPostings: {
+              select: {
+                direction: true,
+                amount: true
               }
             }
           }
-        },
-        ledgerPostings: {
-          select: {
-            direction: true,
-            amount: true
-          }
-        }
-      }
-    });
-
-    const reservedWithdrawals = await this.prismaService.transactionIntent.findMany({
-      where: {
-        chainId: this.productChainId,
-        intentType: TransactionIntentType.withdrawal,
-        status: {
-          in: [
-            TransactionIntentStatus.requested,
-            TransactionIntentStatus.approved,
-            TransactionIntentStatus.queued,
-            TransactionIntentStatus.broadcast,
-            TransactionIntentStatus.confirmed
-          ]
-        },
-        ...(accountFilter
-          ? {
-              customerAccountId: accountFilter
-            }
-          : {})
-      },
-      include: {
-        asset: {
-          select: {
-            id: true,
-            symbol: true,
-            displayName: true,
-            decimals: true,
-            chainId: true
-          }
-        },
-        customerAccount: {
-          select: {
-            id: true,
-            customerId: true,
-            status: true,
-            customer: {
+        }),
+        this.prismaService.transactionIntent.findMany({
+          where: {
+            chainId: this.productChainId,
+            intentType: TransactionIntentType.withdrawal,
+            status: {
+              in: [
+                TransactionIntentStatus.requested,
+                TransactionIntentStatus.approved,
+                TransactionIntentStatus.queued,
+                TransactionIntentStatus.broadcast,
+                TransactionIntentStatus.confirmed
+              ]
+            },
+            ...(accountFilter
+              ? {
+                  customerAccountId: accountFilter
+                }
+              : {})
+          },
+          include: {
+            asset: {
               select: {
                 id: true,
-                email: true,
-                supabaseUserId: true,
-                firstName: true,
-                lastName: true
+                symbol: true,
+                displayName: true,
+                decimals: true,
+                chainId: true
+              }
+            },
+            customerAccount: {
+              select: {
+                id: true,
+                customerId: true,
+                status: true,
+                customer: {
+                  select: {
+                    id: true,
+                    email: true,
+                    supabaseUserId: true,
+                    firstName: true,
+                    lastName: true
+                  }
+                }
               }
             }
           }
-        }
-      }
-    });
+        }),
+        this.prismaService.retirementVault.findMany({
+          where: {
+            asset: {
+              chainId: this.productChainId
+            },
+            ...(accountFilter
+              ? {
+                  customerAccountId: accountFilter
+                }
+              : {})
+          },
+          include: {
+            asset: {
+              select: {
+                id: true,
+                symbol: true,
+                displayName: true,
+                decimals: true,
+                chainId: true
+              }
+            },
+            customerAccount: {
+              select: {
+                id: true,
+                customerId: true,
+                status: true,
+                customer: {
+                  select: {
+                    id: true,
+                    email: true,
+                    supabaseUserId: true,
+                    firstName: true,
+                    lastName: true
+                  }
+                }
+              }
+            }
+          }
+        }),
+        this.prismaService.retirementVaultReleaseRequest.findMany({
+          where: {
+            status: {
+              in: activeVaultReleaseStatuses
+            },
+            retirementVault: {
+              asset: {
+                chainId: this.productChainId
+              },
+              ...(accountFilter
+                ? {
+                    customerAccountId: accountFilter
+                  }
+                : {})
+            }
+          },
+          include: {
+            retirementVault: {
+              select: {
+                id: true,
+                customerAccountId: true,
+                assetId: true
+              }
+            }
+          }
+        })
+      ]);
 
     type BalanceKeyEntry = {
       balance: BalanceProjectionRecord | null;
@@ -1468,8 +1544,12 @@ export class LedgerReconciliationService {
       };
       availableLiabilityAmount: Prisma.Decimal;
       pendingLiabilityAmount: Prisma.Decimal;
+      vaultLiabilityAmount: Prisma.Decimal;
+      projectedVaultLockedAmount: Prisma.Decimal;
+      pendingVaultReleaseAmount: Prisma.Decimal;
       reservedAmount: Prisma.Decimal;
       reservedIntentIds: string[];
+      retirementVaultIds: string[];
     };
 
     const byKey = new Map<string, BalanceKeyEntry>();
@@ -1494,8 +1574,12 @@ export class LedgerReconciliationService {
         customerAccount,
         availableLiabilityAmount: this.createZeroDecimal(),
         pendingLiabilityAmount: this.createZeroDecimal(),
+        vaultLiabilityAmount: this.createZeroDecimal(),
+        projectedVaultLockedAmount: this.createZeroDecimal(),
+        pendingVaultReleaseAmount: this.createZeroDecimal(),
         reservedAmount: this.createZeroDecimal(),
-        reservedIntentIds: []
+        reservedIntentIds: [],
+        retirementVaultIds: []
       };
 
       byKey.set(key, created);
@@ -1530,6 +1614,12 @@ export class LedgerReconciliationService {
       ) {
         entry.pendingLiabilityAmount =
           entry.pendingLiabilityAmount.plus(liabilityAmount);
+      } else if (
+        account.accountType ===
+        LedgerAccountType.customer_retirement_vault_liability
+      ) {
+        entry.vaultLiabilityAmount =
+          entry.vaultLiabilityAmount.plus(liabilityAmount);
       } else {
         entry.availableLiabilityAmount =
           entry.availableLiabilityAmount.plus(liabilityAmount);
@@ -1546,17 +1636,46 @@ export class LedgerReconciliationService {
       entry.reservedIntentIds.push(intent.id);
     }
 
+    for (const vault of retirementVaults) {
+      const entry = ensureEntry(vault.customerAccount, vault.asset);
+      entry.projectedVaultLockedAmount =
+        entry.projectedVaultLockedAmount.plus(vault.lockedBalance);
+      entry.retirementVaultIds.push(vault.id);
+    }
+
+    for (const releaseRequest of activeVaultReleaseRequests) {
+      const matchingVault = retirementVaults.find(
+        (vault) => vault.id === releaseRequest.retirementVault.id
+      );
+
+      if (!matchingVault) {
+        continue;
+      }
+
+      const entry = ensureEntry(
+        matchingVault.customerAccount,
+        matchingVault.asset
+      );
+      entry.pendingVaultReleaseAmount =
+        entry.pendingVaultReleaseAmount.plus(releaseRequest.requestedAmount);
+    }
+
     return Array.from(byKey.values()).flatMap((entry) => {
       const actualAvailable = this.toDecimal(entry.balance?.availableBalance ?? 0);
       const actualPending = this.toDecimal(entry.balance?.pendingBalance ?? 0);
       const expectedPending = entry.pendingLiabilityAmount;
       const expectedAvailable = entry.availableLiabilityAmount;
+      const expectedVaultLocked = entry.vaultLiabilityAmount;
       const reservationMatchesPendingLiability =
         entry.reservedAmount.eq(entry.pendingLiabilityAmount);
+      const vaultProjectionMatchesLedger =
+        entry.projectedVaultLockedAmount.eq(entry.vaultLiabilityAmount);
 
       const hasMeaningfulExpectedBalance =
         !entry.availableLiabilityAmount.eq(0) ||
         !entry.pendingLiabilityAmount.eq(0) ||
+        !entry.vaultLiabilityAmount.eq(0) ||
+        !entry.projectedVaultLockedAmount.eq(0) ||
         !entry.reservedAmount.eq(0);
       const hasActualBalance = Boolean(entry.balance);
 
@@ -1569,20 +1688,25 @@ export class LedgerReconciliationService {
       }
 
       const impossibleExpectedState =
-        expectedAvailable.lessThan(0) || expectedPending.lessThan(0);
+        expectedAvailable.lessThan(0) ||
+        expectedPending.lessThan(0) ||
+        expectedVaultLocked.lessThan(0);
       const expectedMatchesActual =
         actualAvailable.eq(expectedAvailable) && actualPending.eq(expectedPending);
 
       if (
         !impossibleExpectedState &&
         expectedMatchesActual &&
-        reservationMatchesPendingLiability
+        reservationMatchesPendingLiability &&
+        vaultProjectionMatchesLedger
       ) {
         return [];
       }
 
       const recommendedAction =
-        impossibleExpectedState || !reservationMatchesPendingLiability
+        impossibleExpectedState ||
+        !reservationMatchesPendingLiability ||
+        !vaultProjectionMatchesLedger
           ? LedgerReconciliationMismatchRecommendedAction.open_review_case
           : LedgerReconciliationMismatchRecommendedAction.repair_customer_balance;
 
@@ -1590,12 +1714,16 @@ export class LedgerReconciliationService {
         ? "customer_asset_balance_projection_unrepairable"
         : !reservationMatchesPendingLiability
           ? "customer_asset_pending_withdrawal_liability_mismatch"
+          : !vaultProjectionMatchesLedger
+            ? "customer_retirement_vault_balance_projection_mismatch"
           : "customer_asset_balance_projection_mismatch";
 
       const summary = impossibleExpectedState
         ? `Customer balance projection for ${entry.asset.symbol} on account ${entry.customerAccount.id} cannot be repaired safely because the derived available balance would be negative.`
         : !reservationMatchesPendingLiability
           ? `Customer balance projection for ${entry.asset.symbol} on account ${entry.customerAccount.id} has a pending withdrawal liability mismatch between the immutable ledger and active withdrawal reservations.`
+          : !vaultProjectionMatchesLedger
+            ? `Retirement vault projection for ${entry.asset.symbol} on account ${entry.customerAccount.id} diverges from immutable locked-liability state.`
           : `Customer balance projection for ${entry.asset.symbol} on account ${entry.customerAccount.id} diverges from immutable ledger liability state.`;
 
       return [
@@ -1627,20 +1755,29 @@ export class LedgerReconciliationService {
             actualBalance: {
               exists: hasActualBalance,
               availableBalance: actualAvailable.toString(),
-              pendingBalance: actualPending.toString()
+              pendingBalance: actualPending.toString(),
+              lockedVaultBalance: entry.projectedVaultLockedAmount.toString()
             },
             expectedBalance: {
               availableBalance: expectedAvailable.toString(),
-              pendingBalance: expectedPending.toString()
+              pendingBalance: expectedPending.toString(),
+              lockedVaultBalance: expectedVaultLocked.toString()
             },
             ledgerAvailableLiabilityAmount:
               entry.availableLiabilityAmount.toString(),
             ledgerPendingWithdrawalLiabilityAmount:
               entry.pendingLiabilityAmount.toString(),
+            ledgerRetirementVaultLiabilityAmount:
+              entry.vaultLiabilityAmount.toString(),
             reservedWithdrawalAmount: entry.reservedAmount.toString(),
             reservedWithdrawalMatchesPendingLiability:
               reservationMatchesPendingLiability,
-            reservedWithdrawalIntentIds: entry.reservedIntentIds
+            reservedWithdrawalIntentIds: entry.reservedIntentIds,
+            retirementVaultProjectionMatchesLedger:
+              vaultProjectionMatchesLedger,
+            pendingRetirementVaultReleaseAmount:
+              entry.pendingVaultReleaseAmount.toString(),
+            retirementVaultIds: entry.retirementVaultIds
           } as Prisma.JsonValue
         }
       ];

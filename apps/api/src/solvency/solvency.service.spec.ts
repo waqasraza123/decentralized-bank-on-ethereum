@@ -48,8 +48,11 @@ jest.mock("@stealth-trails-bank/contracts-sdk", () => ({
 type ScenarioInput = {
   ledgerAvailableAmount: string;
   ledgerReservedAmount?: string;
+  ledgerVaultAmount?: string;
   projectionAvailableAmount?: string;
   projectionPendingAmount?: string;
+  projectionVaultLockedAmount?: string;
+  pendingVaultReleaseAmount?: string;
   reserveWallets?: Array<{
     id: string;
     address: string;
@@ -194,6 +197,22 @@ function createScenario(input: ScenarioInput) {
                 ]
               }
             : null
+          ,
+          input.ledgerVaultAmount && input.ledgerVaultAmount !== "0"
+            ? {
+                id: "ledger_vault",
+                assetId: asset.id,
+                chainId: 8453,
+                customerAccountId: "customer_account_1",
+                accountType: LedgerAccountType.customer_retirement_vault_liability,
+                ledgerPostings: [
+                  {
+                    direction: LedgerPostingDirection.credit,
+                    amount: decimal(input.ledgerVaultAmount)
+                  }
+                ]
+              }
+            : null
         ].filter(Boolean)
       )
     },
@@ -213,6 +232,36 @@ function createScenario(input: ScenarioInput) {
           )
         }
       ])
+    },
+    retirementVault: {
+      findMany: jest.fn().mockResolvedValue(
+        input.projectionVaultLockedAmount && input.projectionVaultLockedAmount !== "0"
+          ? [
+              {
+                id: "vault_1",
+                customerAccountId: "customer_account_1",
+                assetId: asset.id,
+                lockedBalance: decimal(input.projectionVaultLockedAmount)
+              }
+            ]
+          : []
+      )
+    },
+    retirementVaultReleaseRequest: {
+      findMany: jest.fn().mockResolvedValue(
+        input.pendingVaultReleaseAmount && input.pendingVaultReleaseAmount !== "0"
+          ? [
+              {
+                id: "vault_release_1",
+                requestedAmount: decimal(input.pendingVaultReleaseAmount),
+                retirementVault: {
+                  customerAccountId: "customer_account_1",
+                  assetId: asset.id
+                }
+              }
+            ]
+          : []
+      )
     },
     transactionIntent: {
       findMany: jest.fn().mockResolvedValue(
@@ -698,6 +747,50 @@ describe("SolvencyService", () => {
     expect(createdAssetRow.encumberedReserveAmount.toString()).toBe("1");
     expect(createdAssetRow.usableReserveAmount.toString()).toBe("11");
     expect(createdEvidenceRow.usableBalanceAmount.toString()).toBe("11");
+  });
+
+  it("includes retirement vault liabilities and pending vault releases in solvency output", async () => {
+    const { service, transactionClient } = createScenario({
+      ledgerAvailableAmount: "6",
+      ledgerReservedAmount: "2",
+      ledgerVaultAmount: "4",
+      projectionVaultLockedAmount: "4",
+      pendingVaultReleaseAmount: "1.5",
+      reserveBalancesByWalletId: {
+        wallet_treasury_1: "15"
+      }
+    });
+
+    const result = await service.generateSnapshot({
+      actorType: "worker",
+      actorId: "worker_1"
+    });
+
+    const createdAssetRow =
+      (transactionClient.solvencyAssetSnapshot.createMany as jest.Mock).mock
+        .calls[0][0].data[0];
+    const createdLiabilityLeaf =
+      (transactionClient.solvencyLiabilityLeaf.createMany as jest.Mock).mock
+        .calls[0][0].data[0];
+    const createdSnapshot =
+      (transactionClient.solvencySnapshot.update as jest.Mock).mock.calls[0][0]
+        .data;
+
+    expect(createdAssetRow.totalLiabilityAmount.toString()).toBe("12");
+    expect(createdAssetRow.summarySnapshot.liabilityVaultAmount).toBe("4");
+    expect(createdAssetRow.summarySnapshot.pendingVaultReleaseAmount).toBe(
+      "1.5"
+    );
+    expect(createdLiabilityLeaf.canonicalPayload.vaultLiabilityAmount).toBe("4");
+    expect(createdLiabilityLeaf.canonicalPayload.pendingVaultReleaseAmount).toBe(
+      "1.5"
+    );
+    expect(createdSnapshot.summarySnapshot.totalVaultLiabilityAmount).toBe("4");
+    expect(createdSnapshot.summarySnapshot.totalPendingVaultReleaseAmount).toBe(
+      "1.5"
+    );
+    expect(result.snapshot.totalLiabilityAmount).toBe("12");
+    expect(result.snapshot.totalVaultLiabilityAmount).toBe("4");
   });
 
   it("detects reserve shortfalls and triggers paused policy controls", async () => {

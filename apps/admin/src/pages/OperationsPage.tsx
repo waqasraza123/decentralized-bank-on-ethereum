@@ -98,6 +98,18 @@ export function OperationsPage() {
               detail={`${formatCount(operations.incidentSafety.openReviewCaseCount)} review cases`}
             />
           </AdminStaggerItem>
+          <AdminStaggerItem>
+            <MetricCard
+              label="Vault release rail"
+              value={formatCount(operations.retirementVaultHealth.pendingReviewCount)}
+              detail={`${formatCount(
+                operations.retirementVaultHealth.staleCooldownCount +
+                  operations.retirementVaultHealth.staleReadyForReleaseCount +
+                  operations.retirementVaultHealth.staleExecutingCount +
+                  operations.retirementVaultHealth.failedReleaseCount
+              )} stale or failed`}
+            />
+          </AdminStaggerItem>
         </AdminStagger>
       </SectionPanel>
 
@@ -160,6 +172,13 @@ export function OperationsPage() {
               {formatCount(operations.withdrawalExecutionHealth.retryableWithdrawalFailureCount)} retryable /{" "}
               {formatCount(operations.withdrawalExecutionHealth.manualInterventionWithdrawalCount)} manual /{" "}
               {formatCount(operations.withdrawalExecutionHealth.unresolvedReserveMismatchCount)} reserve mismatches
+            </p>
+            <p className="admin-copy">
+              Retirement vaults: {formatCount(operations.retirementVaultHealth.activeVaultCount)} active /{" "}
+              {formatCount(operations.retirementVaultHealth.pendingReviewCount)} review required /{" "}
+              {formatCount(operations.retirementVaultHealth.cooldownActiveCount)} cooling down /{" "}
+              {formatCount(operations.retirementVaultHealth.blockedReleaseCount)} blocked by restriction /{" "}
+              {formatCount(operations.retirementVaultHealth.failedReleaseCount)} failed
             </p>
           </div>
           <div className="admin-list-card">

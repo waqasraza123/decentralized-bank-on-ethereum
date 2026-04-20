@@ -265,7 +265,7 @@ export function SolvencyPage() {
                 value={toTitleCase(workspace.latestSnapshot?.status ?? "missing")}
                 detail={
                   workspace.latestSnapshot
-                    ? `Generated ${formatDateTime(workspace.latestSnapshot.generatedAt)}`
+                    ? `Generated ${formatDateTime(workspace.latestSnapshot.generatedAt)} · vault liability ${workspace.latestSnapshot.totalVaultLiabilityAmount}`
                     : "No solvency snapshot has been persisted yet."
                 }
               />
@@ -375,6 +375,16 @@ export function SolvencyPage() {
                     mono: true
                   },
                   {
+                    label: "Vault liabilities",
+                    value: detail.snapshot.totalVaultLiabilityAmount,
+                    mono: true
+                  },
+                  {
+                    label: "Pending vault releases",
+                    value: detail.snapshot.totalPendingVaultReleaseAmount,
+                    mono: true
+                  },
+                  {
                     label: "Observed reserves",
                     value: detail.snapshot.totalObservedReserveAmount,
                     mono: true
@@ -455,6 +465,8 @@ export function SolvencyPage() {
                   <div key={assetRow.asset.id} className="admin-list-row">
                     <strong>{assetRow.asset.symbol}</strong>
                     <span>Liability: {assetRow.totalLiabilityAmount}</span>
+                    <span>Vault: {assetRow.liabilityVaultAmount}</span>
+                    <span>Pending vault release: {assetRow.pendingVaultReleaseAmount}</span>
                     <span>Usable reserve: {assetRow.usableReserveAmount}</span>
                     <span>Delta: {assetRow.reserveDeltaAmount}</span>
                     <span>

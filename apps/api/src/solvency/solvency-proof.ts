@@ -10,6 +10,8 @@ export type LiabilityLeafPayload = {
   leafIndex: number;
   availableLiabilityAmount: string;
   reservedLiabilityAmount: string;
+  vaultLiabilityAmount: string;
+  pendingVaultReleaseAmount: string;
   pendingCreditAmount: string;
   totalLiabilityAmount: string;
 };
@@ -25,6 +27,8 @@ export type SolvencyReportPayload = {
   completedAt: string | null;
   totals: {
     totalLiabilityAmount: string;
+    totalVaultLiabilityAmount: string;
+    totalPendingVaultReleaseAmount: string;
     totalObservedReserveAmount: string;
     totalUsableReserveAmount: string;
     totalEncumberedReserveAmount: string;
@@ -50,6 +54,10 @@ export type SolvencyReportPayload = {
     assetType: string;
     snapshotStatus: string;
     evidenceFreshness: string;
+    availableLiabilityAmount: string;
+    reservedLiabilityAmount: string;
+    vaultLiabilityAmount: string;
+    pendingVaultReleaseAmount: string;
     totalLiabilityAmount: string;
     usableReserveAmount: string;
     observedReserveAmount: string;

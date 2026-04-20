@@ -219,6 +219,12 @@ function createService() {
     customerAccount: {
       count: jest.fn(),
     },
+    retirementVault: {
+      count: jest.fn().mockResolvedValue(0),
+    },
+    retirementVaultReleaseRequest: {
+      count: jest.fn().mockResolvedValue(0),
+    },
     auditEvent: {
       create: jest.fn(),
       findMany: jest.fn().mockResolvedValue([]),
@@ -580,6 +586,72 @@ describe("OperationsMonitoringService", () => {
     expect(
       result.withdrawalExecutionHealth.manualInterventionWithdrawalCount,
     ).toBe(0);
+  });
+
+  it("surfaces stale retirement vault workflows in operations status and alerting", async () => {
+    const { service, prismaService } = createService();
+
+    jest
+      .spyOn(Date, "now")
+      .mockReturnValue(new Date("2026-04-06T10:00:30.000Z").getTime());
+
+    mockHealthySnapshotQueries(prismaService);
+    (prismaService.retirementVault.count as jest.Mock)
+      .mockResolvedValueOnce(3)
+      .mockResolvedValueOnce(1);
+    (prismaService.retirementVaultReleaseRequest.count as jest.Mock)
+      .mockResolvedValueOnce(2)
+      .mockResolvedValueOnce(1)
+      .mockResolvedValueOnce(1)
+      .mockResolvedValueOnce(1)
+      .mockResolvedValueOnce(2)
+      .mockResolvedValueOnce(1)
+      .mockResolvedValueOnce(1)
+      .mockResolvedValueOnce(1)
+      .mockResolvedValueOnce(1);
+    (prismaService.platformAlert.create as jest.Mock).mockResolvedValue(
+      buildPlatformAlertRecord({
+        category: PlatformAlertCategory.operations,
+        code: "retirement_vault_release_attention_required",
+        summary: "Retirement vault release workflows require operator attention.",
+      }),
+    );
+    (prismaService.platformAlert.findMany as jest.Mock)
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([
+        buildPlatformAlertRecord({
+          id: "alert_vault_1",
+          dedupeKey: "operations:retirement-vault-release-health",
+          category: PlatformAlertCategory.operations,
+          severity: PlatformAlertSeverity.critical,
+          code: "retirement_vault_release_attention_required",
+          summary:
+            "Retirement vault release workflows require operator attention.",
+        }),
+      ]);
+    (prismaService.platformAlert.count as jest.Mock)
+      .mockResolvedValueOnce(1)
+      .mockResolvedValueOnce(1)
+      .mockResolvedValueOnce(0);
+
+    const result = await service.getOperationsStatus({
+      recentAlertLimit: 6,
+      staleAfterSeconds: 180,
+    });
+
+    expect(result.retirementVaultHealth.status).toBe("critical");
+    expect(result.retirementVaultHealth.activeVaultCount).toBe(3);
+    expect(result.retirementVaultHealth.blockedReleaseCount).toBe(2);
+    expect(result.retirementVaultHealth.staleCooldownCount).toBe(1);
+    expect(result.retirementVaultHealth.staleExecutingCount).toBe(1);
+    expect(prismaService.platformAlert.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          code: "retirement_vault_release_attention_required",
+        }),
+      }),
+    );
   });
 
   it("lists platform alerts after refreshing durable alert state", async () => {

@@ -51,6 +51,9 @@ const ACTIVE_RELEASE_REQUEST_STATUSES: RetirementVaultReleaseRequestStatus[] = [
   RetirementVaultReleaseRequestStatus.ready_for_release,
   RetirementVaultReleaseRequestStatus.executing,
 ];
+const RETIREMENT_VAULT_REVIEW_STALE_SECONDS = 24 * 60 * 60;
+const RETIREMENT_VAULT_RELEASE_STALE_GRACE_SECONDS = 30 * 60;
+const RETIREMENT_VAULT_EXECUTING_STALE_SECONDS = 15 * 60;
 
 const retirementVaultAssetSelect = {
   id: true,
@@ -425,6 +428,11 @@ type SweepRetirementVaultReleaseRequestsResult = {
   readyForReleaseCount: number;
   releasedCount: number;
   failedCount: number;
+  blockedReleaseCount: number;
+  staleReviewRequiredCount: number;
+  staleCooldownCount: number;
+  staleReadyForReleaseCount: number;
+  staleExecutingCount: number;
   processedReleaseRequestIds: string[];
 };
 
@@ -2505,6 +2513,15 @@ export class RetirementVaultService {
     limit: number
   ): Promise<SweepRetirementVaultReleaseRequestsResult> {
     const now = new Date();
+    const staleReviewBefore = new Date(
+      now.getTime() - RETIREMENT_VAULT_REVIEW_STALE_SECONDS * 1000,
+    );
+    const staleReleaseBefore = new Date(
+      now.getTime() - RETIREMENT_VAULT_RELEASE_STALE_GRACE_SECONDS * 1000,
+    );
+    const staleExecutingBefore = new Date(
+      now.getTime() - RETIREMENT_VAULT_EXECUTING_STALE_SECONDS * 1000,
+    );
     const processedReleaseRequestIds: string[] = [];
     let readyForReleaseCount = 0;
     let releasedCount = 0;
@@ -2795,11 +2812,84 @@ export class RetirementVaultService {
       }
     }
 
+    const [
+      blockedReleaseCount,
+      staleReviewRequiredCount,
+      staleCooldownCount,
+      staleReadyForReleaseCount,
+      staleExecutingCount,
+    ] = await Promise.all([
+      this.prismaService.retirementVaultReleaseRequest.count({
+        where: {
+          status: {
+            in: [
+              RetirementVaultReleaseRequestStatus.cooldown_active,
+              RetirementVaultReleaseRequestStatus.ready_for_release,
+              RetirementVaultReleaseRequestStatus.executing,
+            ],
+          },
+          OR: [
+            {
+              retirementVault: {
+                status: RetirementVaultStatus.restricted,
+              },
+            },
+            {
+              retirementVault: {
+                customerAccount: {
+                  status: {
+                    not: AccountLifecycleStatus.active,
+                  },
+                },
+              },
+            },
+          ],
+        },
+      }),
+      this.prismaService.retirementVaultReleaseRequest.count({
+        where: {
+          status: RetirementVaultReleaseRequestStatus.review_required,
+          updatedAt: {
+            lte: staleReviewBefore,
+          },
+        },
+      }),
+      this.prismaService.retirementVaultReleaseRequest.count({
+        where: {
+          status: RetirementVaultReleaseRequestStatus.cooldown_active,
+          cooldownEndsAt: {
+            lt: staleReleaseBefore,
+          },
+        },
+      }),
+      this.prismaService.retirementVaultReleaseRequest.count({
+        where: {
+          status: RetirementVaultReleaseRequestStatus.ready_for_release,
+          updatedAt: {
+            lte: staleReleaseBefore,
+          },
+        },
+      }),
+      this.prismaService.retirementVaultReleaseRequest.count({
+        where: {
+          status: RetirementVaultReleaseRequestStatus.executing,
+          updatedAt: {
+            lte: staleExecutingBefore,
+          },
+        },
+      }),
+    ]);
+
     return {
       limit,
       readyForReleaseCount,
       releasedCount,
       failedCount,
+      blockedReleaseCount,
+      staleReviewRequiredCount,
+      staleCooldownCount,
+      staleReadyForReleaseCount,
+      staleExecutingCount,
       processedReleaseRequestIds,
     };
   }

@@ -20,6 +20,7 @@ import {
   LedgerPostingDirection,
   Prisma,
   ReviewCaseType,
+  RetirementVaultReleaseRequestStatus,
   SolvencyEvidenceFreshness,
   SolvencyIssueClassification,
   SolvencyIssueSeverity,
@@ -156,6 +157,8 @@ type SolvencyWorkspaceSummarySnapshot = {
   generatedAt: string;
   completedAt: string | null;
   totalLiabilityAmount: string;
+  totalVaultLiabilityAmount: string;
+  totalPendingVaultReleaseAmount: string;
   totalObservedReserveAmount: string;
   totalUsableReserveAmount: string;
   totalEncumberedReserveAmount: string;
@@ -192,10 +195,13 @@ type SolvencyAssetDetailProjection = {
   evidenceFreshness: SolvencyEvidenceFreshness;
   liabilityAvailableAmount: string;
   liabilityReservedAmount: string;
+  liabilityVaultAmount: string;
+  pendingVaultReleaseAmount: string;
   pendingCreditAmount: string;
   totalLiabilityAmount: string;
   projectionAvailableAmount: string;
   projectionPendingAmount: string;
+  projectionVaultLockedAmount: string;
   observedReserveAmount: string;
   usableReserveAmount: string;
   encumberedReserveAmount: string;
@@ -321,10 +327,13 @@ type LiabilityAssetComputation = {
   asset: AssetRecord;
   availableLiabilityAmount: Prisma.Decimal;
   reservedLiabilityAmount: Prisma.Decimal;
+  vaultLiabilityAmount: Prisma.Decimal;
+  pendingVaultReleaseAmount: Prisma.Decimal;
   pendingCreditAmount: Prisma.Decimal;
   totalLiabilityAmount: Prisma.Decimal;
   projectionAvailableAmount: Prisma.Decimal;
   projectionPendingAmount: Prisma.Decimal;
+  projectionVaultLockedAmount: Prisma.Decimal;
   projectionMatchesLedger: boolean;
   openReconciliationMismatchCount: number;
   criticalReconciliationMismatchCount: number;
@@ -335,6 +344,8 @@ type LiabilityLeafComputation = {
   customerAccountId: string;
   availableLiabilityAmount: Prisma.Decimal;
   reservedLiabilityAmount: Prisma.Decimal;
+  vaultLiabilityAmount: Prisma.Decimal;
+  pendingVaultReleaseAmount: Prisma.Decimal;
   pendingCreditAmount: Prisma.Decimal;
   totalLiabilityAmount: Prisma.Decimal;
 };
@@ -346,6 +357,8 @@ type LiabilityProofLeafComputation = {
   payload: LiabilityLeafPayload;
   availableLiabilityAmount: Prisma.Decimal;
   reservedLiabilityAmount: Prisma.Decimal;
+  vaultLiabilityAmount: Prisma.Decimal;
+  pendingVaultReleaseAmount: Prisma.Decimal;
   pendingCreditAmount: Prisma.Decimal;
   totalLiabilityAmount: Prisma.Decimal;
 };
@@ -394,10 +407,13 @@ type AssetSnapshotComputation = {
   evidenceFreshness: SolvencyEvidenceFreshness;
   liabilityAvailableAmount: Prisma.Decimal;
   liabilityReservedAmount: Prisma.Decimal;
+  liabilityVaultAmount: Prisma.Decimal;
+  pendingVaultReleaseAmount: Prisma.Decimal;
   pendingCreditAmount: Prisma.Decimal;
   totalLiabilityAmount: Prisma.Decimal;
   projectionAvailableAmount: Prisma.Decimal;
   projectionPendingAmount: Prisma.Decimal;
+  projectionVaultLockedAmount: Prisma.Decimal;
   observedReserveAmount: Prisma.Decimal;
   usableReserveAmount: Prisma.Decimal;
   encumberedReserveAmount: Prisma.Decimal;
@@ -438,28 +454,48 @@ export class SolvencyService {
   private readonly reportSignerPrivateKey: string;
   private readonly resumeRequestAllowedOperatorRoles: string[];
   private readonly resumeApproverAllowedOperatorRoles: string[];
-  private readonly provider: ethers.providers.JsonRpcProvider;
+  private readonly provider: ethers.providers.JsonRpcProvider | null;
+  private readonly infrastructureDisabledReason: string | null;
 
   constructor(
     private readonly prismaService: PrismaService,
     private readonly reviewCasesService: ReviewCasesService
   ) {
     this.productChainId = loadProductChainRuntimeConfig().productChainId;
-    const runtimeConfig = loadSolvencyRuntimeConfig();
-    const chainRuntimeConfig = loadOptionalBlockchainContractReadRuntimeConfig();
-    this.environment =
-      runtimeConfig.environment as unknown as WorkerRuntimeEnvironment;
-    this.evidenceStaleAfterSeconds = runtimeConfig.evidenceStaleAfterSeconds;
-    this.warningReserveRatioBps = runtimeConfig.warningReserveRatioBps;
-    this.criticalReserveRatioBps = runtimeConfig.criticalReserveRatioBps;
-    this.reportSignerPrivateKey = runtimeConfig.reportSignerPrivateKey;
-    this.resumeRequestAllowedOperatorRoles = [
-      ...runtimeConfig.resumeRequestAllowedOperatorRoles
-    ];
-    this.resumeApproverAllowedOperatorRoles = [
-      ...runtimeConfig.resumeApproverAllowedOperatorRoles
-    ];
-    this.provider = createJsonRpcProvider(chainRuntimeConfig.rpcUrl);
+    this.environment = WorkerRuntimeEnvironment.production;
+    this.evidenceStaleAfterSeconds = 300;
+    this.warningReserveRatioBps = 10500;
+    this.criticalReserveRatioBps = 10000;
+    this.reportSignerPrivateKey =
+      "0x59c6995e998f97a5a0044966f094538c5f6d4e07f16b8ad8cc7658f0f1b0f9d8";
+    this.resumeRequestAllowedOperatorRoles = [];
+    this.resumeApproverAllowedOperatorRoles = [];
+    this.provider = null;
+    this.infrastructureDisabledReason = null;
+
+    try {
+      const runtimeConfig = loadSolvencyRuntimeConfig();
+      const chainRuntimeConfig = loadOptionalBlockchainContractReadRuntimeConfig();
+      this.environment =
+        runtimeConfig.environment as unknown as WorkerRuntimeEnvironment;
+      this.evidenceStaleAfterSeconds = runtimeConfig.evidenceStaleAfterSeconds;
+      this.warningReserveRatioBps = runtimeConfig.warningReserveRatioBps;
+      this.criticalReserveRatioBps = runtimeConfig.criticalReserveRatioBps;
+      this.reportSignerPrivateKey = runtimeConfig.reportSignerPrivateKey;
+      this.resumeRequestAllowedOperatorRoles = [
+        ...runtimeConfig.resumeRequestAllowedOperatorRoles
+      ];
+      this.resumeApproverAllowedOperatorRoles = [
+        ...runtimeConfig.resumeApproverAllowedOperatorRoles
+      ];
+      this.provider = createJsonRpcProvider(chainRuntimeConfig.rpcUrl);
+    } catch (error) {
+      this.infrastructureDisabledReason =
+        error instanceof Error ? error.message : "unknown error";
+      this.logger.warn(
+        `Solvency bootstrap is running in read-only degraded mode: ${this.infrastructureDisabledReason}.`
+      );
+    }
   }
 
   async getWorkspace(
@@ -635,10 +671,22 @@ export class SolvencyService {
         evidenceFreshness: item.evidenceFreshness,
         liabilityAvailableAmount: item.liabilityAvailableAmount.toString(),
         liabilityReservedAmount: item.liabilityReservedAmount.toString(),
+        liabilityVaultAmount: this.readDecimalStringFromJson(
+          item.summarySnapshot ?? null,
+          "liabilityVaultAmount",
+        ),
+        pendingVaultReleaseAmount: this.readDecimalStringFromJson(
+          item.summarySnapshot ?? null,
+          "pendingVaultReleaseAmount",
+        ),
         pendingCreditAmount: item.pendingCreditAmount.toString(),
         totalLiabilityAmount: item.totalLiabilityAmount.toString(),
         projectionAvailableAmount: item.projectionAvailableAmount.toString(),
         projectionPendingAmount: item.projectionPendingAmount.toString(),
+        projectionVaultLockedAmount: this.readDecimalStringFromJson(
+          item.summarySnapshot ?? null,
+          "projectionVaultLockedAmount",
+        ),
         observedReserveAmount: item.observedReserveAmount.toString(),
         usableReserveAmount: item.usableReserveAmount.toString(),
         encumberedReserveAmount: item.encumberedReserveAmount.toString(),
@@ -1836,6 +1884,14 @@ export class SolvencyService {
       generatedAt: snapshot.generatedAt.toISOString(),
       completedAt: snapshot.completedAt?.toISOString() ?? null,
       totalLiabilityAmount: snapshot.totalLiabilityAmount.toString(),
+      totalVaultLiabilityAmount: this.readDecimalStringFromJson(
+        snapshot.summarySnapshot ?? null,
+        "totalVaultLiabilityAmount",
+      ),
+      totalPendingVaultReleaseAmount: this.readDecimalStringFromJson(
+        snapshot.summarySnapshot ?? null,
+        "totalPendingVaultReleaseAmount",
+      ),
       totalObservedReserveAmount: snapshot.totalObservedReserveAmount.toString(),
       totalUsableReserveAmount: snapshot.totalUsableReserveAmount.toString(),
       totalEncumberedReserveAmount:
@@ -1947,35 +2003,71 @@ export class SolvencyService {
     assets: AssetRecord[],
     mismatchCounts: Map<string, { open: number; critical: number }>
   ): Promise<Map<string, LiabilityAssetComputation>> {
-    const [ledgerAccounts, customerBalances] = await Promise.all([
+    const activeVaultReleaseStatuses: RetirementVaultReleaseRequestStatus[] = [
+      RetirementVaultReleaseRequestStatus.requested,
+      RetirementVaultReleaseRequestStatus.review_required,
+      RetirementVaultReleaseRequestStatus.approved,
+      RetirementVaultReleaseRequestStatus.cooldown_active,
+      RetirementVaultReleaseRequestStatus.ready_for_release,
+      RetirementVaultReleaseRequestStatus.executing,
+    ];
+    const [ledgerAccounts, customerBalances, retirementVaults, activeReleaseRequests] =
+      await Promise.all([
       this.prismaService.ledgerAccount.findMany({
         where: {
           chainId: this.productChainId,
           accountType: {
             in: [
               LedgerAccountType.customer_asset_liability,
-              LedgerAccountType.customer_asset_pending_withdrawal_liability
-            ]
-          }
+              LedgerAccountType.customer_asset_pending_withdrawal_liability,
+              LedgerAccountType.customer_retirement_vault_liability,
+            ],
+          },
         },
         include: {
           ledgerPostings: {
             select: {
               direction: true,
-              amount: true
-            }
-          }
-        }
+              amount: true,
+            },
+          },
+        },
       }),
       this.prismaService.customerAssetBalance.findMany({
         include: {
           asset: {
             select: {
-              id: true
-            }
-          }
+              id: true,
+            },
+          },
+        },
+      }),
+      this.prismaService.retirementVault.findMany({
+        where: {
+          assetId: {
+            in: assets.map((asset) => asset.id),
+          },
         }
-      })
+      }),
+      this.prismaService.retirementVaultReleaseRequest.findMany({
+        where: {
+          status: {
+            in: activeVaultReleaseStatuses,
+          },
+          retirementVault: {
+            assetId: {
+              in: assets.map((asset) => asset.id),
+            },
+          },
+        },
+        include: {
+          retirementVault: {
+            select: {
+              assetId: true,
+            },
+          },
+        },
+      }),
     ]);
 
     const byAsset = new Map<string, LiabilityAssetComputation>();
@@ -1989,10 +2081,13 @@ export class SolvencyService {
         asset,
         availableLiabilityAmount: this.decimal(0),
         reservedLiabilityAmount: this.decimal(0),
+        vaultLiabilityAmount: this.decimal(0),
+        pendingVaultReleaseAmount: this.decimal(0),
         pendingCreditAmount: this.decimal(0),
         totalLiabilityAmount: this.decimal(0),
         projectionAvailableAmount: this.decimal(0),
         projectionPendingAmount: this.decimal(0),
+        projectionVaultLockedAmount: this.decimal(0),
         projectionMatchesLedger: true,
         openReconciliationMismatchCount: mismatch.open,
         criticalReconciliationMismatchCount: mismatch.critical
@@ -2019,6 +2114,11 @@ export class SolvencyService {
       ) {
         entry.reservedLiabilityAmount =
           entry.reservedLiabilityAmount.plus(netAmount);
+      } else if (
+        account.accountType ===
+        LedgerAccountType.customer_retirement_vault_liability
+      ) {
+        entry.vaultLiabilityAmount = entry.vaultLiabilityAmount.plus(netAmount);
       } else {
         entry.availableLiabilityAmount =
           entry.availableLiabilityAmount.plus(netAmount);
@@ -2040,13 +2140,38 @@ export class SolvencyService {
       );
     }
 
-    for (const entry of byAsset.values()) {
-      entry.totalLiabilityAmount = entry.availableLiabilityAmount.plus(
-        entry.reservedLiabilityAmount
+    for (const vault of retirementVaults) {
+      const entry = byAsset.get(vault.assetId);
+
+      if (!entry) {
+        continue;
+      }
+
+      entry.projectionVaultLockedAmount = entry.projectionVaultLockedAmount.plus(
+        vault.lockedBalance
       );
+    }
+
+    for (const releaseRequest of activeReleaseRequests) {
+      const entry = byAsset.get(releaseRequest.retirementVault.assetId);
+
+      if (!entry) {
+        continue;
+      }
+
+      entry.pendingVaultReleaseAmount = entry.pendingVaultReleaseAmount.plus(
+        releaseRequest.requestedAmount
+      );
+    }
+
+    for (const entry of byAsset.values()) {
+      entry.totalLiabilityAmount = entry.availableLiabilityAmount
+        .plus(entry.reservedLiabilityAmount)
+        .plus(entry.vaultLiabilityAmount);
       entry.projectionMatchesLedger =
         entry.projectionAvailableAmount.eq(entry.availableLiabilityAmount) &&
-        entry.projectionPendingAmount.eq(entry.reservedLiabilityAmount);
+        entry.projectionPendingAmount.eq(entry.reservedLiabilityAmount) &&
+        entry.projectionVaultLockedAmount.eq(entry.vaultLiabilityAmount);
     }
 
     return byAsset;
@@ -2056,7 +2181,16 @@ export class SolvencyService {
     snapshotId: string,
     assets: AssetRecord[]
   ): Promise<Map<string, LiabilityProofAssetComputation>> {
-    const [ledgerAccounts, customerBalances] = await Promise.all([
+    const activeVaultReleaseStatuses: RetirementVaultReleaseRequestStatus[] = [
+      RetirementVaultReleaseRequestStatus.requested,
+      RetirementVaultReleaseRequestStatus.review_required,
+      RetirementVaultReleaseRequestStatus.approved,
+      RetirementVaultReleaseRequestStatus.cooldown_active,
+      RetirementVaultReleaseRequestStatus.ready_for_release,
+      RetirementVaultReleaseRequestStatus.executing,
+    ];
+    const [ledgerAccounts, customerBalances, retirementVaults, activeReleaseRequests] =
+      await Promise.all([
       this.prismaService.ledgerAccount.findMany({
         where: {
           chainId: this.productChainId,
@@ -2066,32 +2200,59 @@ export class SolvencyService {
           accountType: {
             in: [
               LedgerAccountType.customer_asset_liability,
-              LedgerAccountType.customer_asset_pending_withdrawal_liability
-            ]
-          }
+              LedgerAccountType.customer_asset_pending_withdrawal_liability,
+              LedgerAccountType.customer_retirement_vault_liability,
+            ],
+          },
         },
         include: {
           ledgerPostings: {
             select: {
               direction: true,
-              amount: true
-            }
-          }
-        }
+              amount: true,
+            },
+          },
+        },
       }),
       this.prismaService.customerAssetBalance.findMany({
         where: {
           assetId: {
+            in: assets.map((asset) => asset.id),
+          },
+        }
+      }),
+      this.prismaService.retirementVault.findMany({
+        where: {
+          assetId: {
             in: assets.map((asset) => asset.id)
-          }
+          },
         },
         select: {
           customerAccountId: true,
           assetId: true,
-          availableBalance: true,
-          pendingBalance: true
-        }
-      })
+          lockedBalance: true,
+        },
+      }),
+      this.prismaService.retirementVaultReleaseRequest.findMany({
+        where: {
+          status: {
+            in: activeVaultReleaseStatuses,
+          },
+          retirementVault: {
+            assetId: {
+              in: assets.map((asset) => asset.id),
+            },
+          },
+        },
+        include: {
+          retirementVault: {
+            select: {
+              customerAccountId: true,
+              assetId: true,
+            },
+          },
+        },
+      }),
     ]);
 
     const rawLeavesByAsset = new Map<string, LiabilityLeafComputation[]>();
@@ -2108,6 +2269,8 @@ export class SolvencyService {
         customerAccountId: account.customerAccountId,
         availableLiabilityAmount: this.decimal(0),
         reservedLiabilityAmount: this.decimal(0),
+        vaultLiabilityAmount: this.decimal(0),
+        pendingVaultReleaseAmount: this.decimal(0),
         pendingCreditAmount: this.decimal(0),
         totalLiabilityAmount: this.decimal(0)
       };
@@ -2124,18 +2287,80 @@ export class SolvencyService {
       ) {
         existing.reservedLiabilityAmount =
           existing.reservedLiabilityAmount.plus(netAmount);
+      } else if (
+        account.accountType ===
+        LedgerAccountType.customer_retirement_vault_liability
+      ) {
+        existing.vaultLiabilityAmount =
+          existing.vaultLiabilityAmount.plus(netAmount);
       } else {
         existing.availableLiabilityAmount =
           existing.availableLiabilityAmount.plus(netAmount);
       }
 
-      existing.totalLiabilityAmount = existing.availableLiabilityAmount.plus(
-        existing.reservedLiabilityAmount
-      );
+      existing.totalLiabilityAmount = existing.availableLiabilityAmount
+        .plus(existing.reservedLiabilityAmount)
+        .plus(existing.vaultLiabilityAmount);
       byCompositeKey.set(compositeKey, existing);
     }
 
-    for (const [compositeKey, entry] of byCompositeKey.entries()) {
+    for (const balance of customerBalances) {
+      const compositeKey = `${balance.assetId}:${balance.customerAccountId}`;
+      const existing = byCompositeKey.get(compositeKey) ?? {
+        assetId: balance.assetId,
+        customerAccountId: balance.customerAccountId,
+        availableLiabilityAmount: this.decimal(0),
+        reservedLiabilityAmount: this.decimal(0),
+        vaultLiabilityAmount: this.decimal(0),
+        pendingVaultReleaseAmount: this.decimal(0),
+        pendingCreditAmount: this.decimal(0),
+        totalLiabilityAmount: this.decimal(0),
+      };
+      existing.availableLiabilityAmount = balance.availableBalance;
+      existing.reservedLiabilityAmount = balance.pendingBalance;
+      existing.totalLiabilityAmount = existing.availableLiabilityAmount
+        .plus(existing.reservedLiabilityAmount)
+        .plus(existing.vaultLiabilityAmount);
+      byCompositeKey.set(compositeKey, existing);
+    }
+
+    for (const vault of retirementVaults) {
+      const compositeKey = `${vault.assetId}:${vault.customerAccountId}`;
+      const existing = byCompositeKey.get(compositeKey) ?? {
+        assetId: vault.assetId,
+        customerAccountId: vault.customerAccountId,
+        availableLiabilityAmount: this.decimal(0),
+        reservedLiabilityAmount: this.decimal(0),
+        vaultLiabilityAmount: this.decimal(0),
+        pendingVaultReleaseAmount: this.decimal(0),
+        pendingCreditAmount: this.decimal(0),
+        totalLiabilityAmount: this.decimal(0),
+      };
+      existing.vaultLiabilityAmount = vault.lockedBalance;
+      existing.totalLiabilityAmount = existing.availableLiabilityAmount
+        .plus(existing.reservedLiabilityAmount)
+        .plus(existing.vaultLiabilityAmount);
+      byCompositeKey.set(compositeKey, existing);
+    }
+
+    for (const releaseRequest of activeReleaseRequests) {
+      const compositeKey = `${releaseRequest.retirementVault.assetId}:${releaseRequest.retirementVault.customerAccountId}`;
+      const existing = byCompositeKey.get(compositeKey) ?? {
+        assetId: releaseRequest.retirementVault.assetId,
+        customerAccountId: releaseRequest.retirementVault.customerAccountId,
+        availableLiabilityAmount: this.decimal(0),
+        reservedLiabilityAmount: this.decimal(0),
+        vaultLiabilityAmount: this.decimal(0),
+        pendingVaultReleaseAmount: this.decimal(0),
+        pendingCreditAmount: this.decimal(0),
+        totalLiabilityAmount: this.decimal(0),
+      };
+      existing.pendingVaultReleaseAmount =
+        existing.pendingVaultReleaseAmount.plus(releaseRequest.requestedAmount);
+      byCompositeKey.set(compositeKey, existing);
+    }
+
+    for (const entry of byCompositeKey.values()) {
       if (entry.totalLiabilityAmount.lte(0)) {
         continue;
       }
@@ -2143,29 +2368,6 @@ export class SolvencyService {
       const current = rawLeavesByAsset.get(entry.assetId) ?? [];
       current.push(entry);
       rawLeavesByAsset.set(entry.assetId, current);
-    }
-
-    for (const balance of customerBalances) {
-      const compositeKey = `${balance.assetId}:${balance.customerAccountId}`;
-      if (byCompositeKey.has(compositeKey)) {
-        continue;
-      }
-
-      const totalLiabilityAmount = balance.availableBalance.plus(balance.pendingBalance);
-      if (totalLiabilityAmount.lte(0)) {
-        continue;
-      }
-
-      const current = rawLeavesByAsset.get(balance.assetId) ?? [];
-      current.push({
-        assetId: balance.assetId,
-        customerAccountId: balance.customerAccountId,
-        availableLiabilityAmount: balance.availableBalance,
-        reservedLiabilityAmount: balance.pendingBalance,
-        pendingCreditAmount: this.decimal(0),
-        totalLiabilityAmount
-      });
-      rawLeavesByAsset.set(balance.assetId, current);
     }
 
     const proofByAsset = new Map<string, LiabilityProofAssetComputation>();
@@ -2177,7 +2379,7 @@ export class SolvencyService {
         )
         .map((entry, leafIndex) => {
           const payload: LiabilityLeafPayload = {
-            version: 1,
+            version: 2,
             snapshotId,
             assetId: asset.id,
             assetSymbol: asset.symbol,
@@ -2185,6 +2387,9 @@ export class SolvencyService {
             leafIndex,
             availableLiabilityAmount: entry.availableLiabilityAmount.toString(),
             reservedLiabilityAmount: entry.reservedLiabilityAmount.toString(),
+            vaultLiabilityAmount: entry.vaultLiabilityAmount.toString(),
+            pendingVaultReleaseAmount:
+              entry.pendingVaultReleaseAmount.toString(),
             pendingCreditAmount: entry.pendingCreditAmount.toString(),
             totalLiabilityAmount: entry.totalLiabilityAmount.toString()
           };
@@ -2196,6 +2401,8 @@ export class SolvencyService {
             payload,
             availableLiabilityAmount: entry.availableLiabilityAmount,
             reservedLiabilityAmount: entry.reservedLiabilityAmount,
+            vaultLiabilityAmount: entry.vaultLiabilityAmount,
+            pendingVaultReleaseAmount: entry.pendingVaultReleaseAmount,
             pendingCreditAmount: entry.pendingCreditAmount,
             totalLiabilityAmount: entry.totalLiabilityAmount
           };
@@ -2413,10 +2620,16 @@ export class SolvencyService {
             input.liabilities.projectionAvailableAmount.toString(),
           projectionPendingAmount:
             input.liabilities.projectionPendingAmount.toString(),
+          projectionVaultLockedAmount:
+            input.liabilities.projectionVaultLockedAmount.toString(),
           ledgerAvailableAmount:
             input.liabilities.availableLiabilityAmount.toString(),
           ledgerReservedAmount:
-            input.liabilities.reservedLiabilityAmount.toString()
+            input.liabilities.reservedLiabilityAmount.toString(),
+          ledgerVaultLiabilityAmount:
+            input.liabilities.vaultLiabilityAmount.toString(),
+          pendingVaultReleaseAmount:
+            input.liabilities.pendingVaultReleaseAmount.toString(),
         }
       });
     }
@@ -2559,10 +2772,14 @@ export class SolvencyService {
       evidenceFreshness,
       liabilityAvailableAmount: input.liabilities.availableLiabilityAmount,
       liabilityReservedAmount: input.liabilities.reservedLiabilityAmount,
+      liabilityVaultAmount: input.liabilities.vaultLiabilityAmount,
+      pendingVaultReleaseAmount: input.liabilities.pendingVaultReleaseAmount,
       pendingCreditAmount: input.liabilities.pendingCreditAmount,
       totalLiabilityAmount: input.liabilities.totalLiabilityAmount,
       projectionAvailableAmount: input.liabilities.projectionAvailableAmount,
       projectionPendingAmount: input.liabilities.projectionPendingAmount,
+      projectionVaultLockedAmount:
+        input.liabilities.projectionVaultLockedAmount,
       observedReserveAmount,
       usableReserveAmount,
       encumberedReserveAmount,
@@ -2580,7 +2797,20 @@ export class SolvencyService {
       reserveEvidence: input.reserveEvidence,
       summarySnapshot: {
         assetSymbol: input.asset.symbol,
+        liabilityAvailableAmount:
+          input.liabilities.availableLiabilityAmount.toString(),
+        liabilityReservedAmount:
+          input.liabilities.reservedLiabilityAmount.toString(),
+        liabilityVaultAmount: input.liabilities.vaultLiabilityAmount.toString(),
+        pendingVaultReleaseAmount:
+          input.liabilities.pendingVaultReleaseAmount.toString(),
         totalLiabilityAmount: input.liabilities.totalLiabilityAmount.toString(),
+        projectionAvailableAmount:
+          input.liabilities.projectionAvailableAmount.toString(),
+        projectionPendingAmount:
+          input.liabilities.projectionPendingAmount.toString(),
+        projectionVaultLockedAmount:
+          input.liabilities.projectionVaultLockedAmount.toString(),
         usableReserveAmount: usableReserveAmount.toString(),
         observedReserveAmount: observedReserveAmount.toString(),
         reserveDeltaAmount: reserveDeltaAmount.toString(),
@@ -2666,6 +2896,14 @@ export class SolvencyService {
       (current, item) => current.plus(item.totalLiabilityAmount),
       this.decimal(0)
     );
+    const totalVaultLiabilityAmount = assetComputations.reduce(
+      (current, item) => current.plus(item.liabilityVaultAmount),
+      this.decimal(0),
+    );
+    const totalPendingVaultReleaseAmount = assetComputations.reduce(
+      (current, item) => current.plus(item.pendingVaultReleaseAmount),
+      this.decimal(0),
+    );
     const totalObservedReserveAmount = assetComputations.reduce(
       (current, item) => current.plus(item.observedReserveAmount),
       this.decimal(0)
@@ -2688,12 +2926,17 @@ export class SolvencyService {
         assetComputations.map((item) => item.evidenceFreshness)
       ),
       totalLiabilityAmount,
+      totalVaultLiabilityAmount,
+      totalPendingVaultReleaseAmount,
       totalObservedReserveAmount,
       totalUsableReserveAmount,
       totalEncumberedReserveAmount,
       totalReserveDeltaAmount,
       summarySnapshot: {
         totalLiabilityAmount: totalLiabilityAmount.toString(),
+        totalVaultLiabilityAmount: totalVaultLiabilityAmount.toString(),
+        totalPendingVaultReleaseAmount:
+          totalPendingVaultReleaseAmount.toString(),
         totalObservedReserveAmount: totalObservedReserveAmount.toString(),
         totalUsableReserveAmount: totalUsableReserveAmount.toString(),
         totalEncumberedReserveAmount: totalEncumberedReserveAmount.toString(),
@@ -2923,10 +3166,13 @@ export class SolvencyService {
       asset,
       availableLiabilityAmount: this.decimal(0),
       reservedLiabilityAmount: this.decimal(0),
+      vaultLiabilityAmount: this.decimal(0),
+      pendingVaultReleaseAmount: this.decimal(0),
       pendingCreditAmount: this.decimal(0),
       totalLiabilityAmount: this.decimal(0),
       projectionAvailableAmount: this.decimal(0),
       projectionPendingAmount: this.decimal(0),
+      projectionVaultLockedAmount: this.decimal(0),
       projectionMatchesLedger: true,
       openReconciliationMismatchCount: 0,
       criticalReconciliationMismatchCount: 0
@@ -2949,6 +3195,12 @@ export class SolvencyService {
     wallet: ReserveWalletRecord,
     asset: AssetRecord
   ): Promise<Prisma.Decimal> {
+    if (!this.provider) {
+      throw new ServiceUnavailableException(
+        `Solvency blockchain reads are unavailable: ${this.infrastructureDisabledReason ?? "RPC provider is not configured"}.`
+      );
+    }
+
     if (asset.assetType === AssetType.native) {
       const balance = await this.provider.getBalance(wallet.address);
       return this.decimal(
@@ -3037,8 +3289,14 @@ export class SolvencyService {
     signatureAlgorithm: string;
     signerAddress: string;
   } {
+    if (this.infrastructureDisabledReason) {
+      throw new ServiceUnavailableException(
+        `Solvency reporting is unavailable: ${this.infrastructureDisabledReason}.`
+      );
+    }
+
     const payload: SolvencyReportPayload = {
-      version: 1,
+      version: 2,
       snapshotId: input.snapshotId,
       environment: this.environment,
       chainId: this.productChainId,
@@ -3048,6 +3306,10 @@ export class SolvencyService {
       completedAt: input.completedAt,
       totals: {
         totalLiabilityAmount: input.summary.totalLiabilityAmount.toString(),
+        totalVaultLiabilityAmount:
+          input.summary.totalVaultLiabilityAmount.toString(),
+        totalPendingVaultReleaseAmount:
+          input.summary.totalPendingVaultReleaseAmount.toString(),
         totalObservedReserveAmount:
           input.summary.totalObservedReserveAmount.toString(),
         totalUsableReserveAmount:
@@ -3078,6 +3340,11 @@ export class SolvencyService {
         assetType: item.asset.assetType,
         snapshotStatus: item.status,
         evidenceFreshness: item.evidenceFreshness,
+        availableLiabilityAmount: item.liabilityAvailableAmount.toString(),
+        reservedLiabilityAmount: item.liabilityReservedAmount.toString(),
+        vaultLiabilityAmount: item.liabilityVaultAmount.toString(),
+        pendingVaultReleaseAmount:
+          item.pendingVaultReleaseAmount.toString(),
         totalLiabilityAmount: item.totalLiabilityAmount.toString(),
         usableReserveAmount: item.usableReserveAmount.toString(),
         observedReserveAmount: item.observedReserveAmount.toString(),
@@ -3101,6 +3368,21 @@ export class SolvencyService {
   private normalizeOptionalString(value?: string | null): string | null {
     const normalizedValue = value?.trim() ?? null;
     return normalizedValue && normalizedValue.length > 0 ? normalizedValue : null;
+  }
+
+  private readDecimalStringFromJson(
+    value: Prisma.JsonValue | null,
+    key: string
+  ): string {
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      return "0";
+    }
+
+    const rawValue = value[key];
+
+    return typeof rawValue === "string" && rawValue.trim().length > 0
+      ? rawValue.trim()
+      : "0";
   }
 
   private assertCanRequestResume(operatorRole?: string | null): string {

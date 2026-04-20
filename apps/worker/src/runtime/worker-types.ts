@@ -222,6 +222,11 @@ export type SweepRetirementVaultReleaseRequestsResult = {
   readyForReleaseCount: number;
   releasedCount: number;
   failedCount: number;
+  blockedReleaseCount: number;
+  staleReviewRequiredCount: number;
+  staleCooldownCount: number;
+  staleReadyForReleaseCount: number;
+  staleExecutingCount: number;
   processedReleaseRequestIds: string[];
 };
 

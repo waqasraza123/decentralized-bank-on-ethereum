@@ -822,6 +822,8 @@ export type SolvencyWorkspace = {
     generatedAt: string;
     completedAt: string | null;
     totalLiabilityAmount: string;
+    totalVaultLiabilityAmount: string;
+    totalPendingVaultReleaseAmount: string;
     totalObservedReserveAmount: string;
     totalUsableReserveAmount: string;
     totalEncumberedReserveAmount: string;
@@ -856,6 +858,8 @@ export type SolvencyWorkspace = {
     generatedAt: string;
     completedAt: string | null;
     totalLiabilityAmount: string;
+    totalVaultLiabilityAmount: string;
+    totalPendingVaultReleaseAmount: string;
     totalObservedReserveAmount: string;
     totalUsableReserveAmount: string;
     totalEncumberedReserveAmount: string;
@@ -893,6 +897,8 @@ export type SolvencySnapshotDetail = {
     generatedAt: string;
     completedAt: string | null;
     totalLiabilityAmount: string;
+    totalVaultLiabilityAmount: string;
+    totalPendingVaultReleaseAmount: string;
     totalObservedReserveAmount: string;
     totalUsableReserveAmount: string;
     totalEncumberedReserveAmount: string;
@@ -935,10 +941,13 @@ export type SolvencySnapshotDetail = {
     evidenceFreshness: string;
     liabilityAvailableAmount: string;
     liabilityReservedAmount: string;
+    liabilityVaultAmount: string;
+    pendingVaultReleaseAmount: string;
     pendingCreditAmount: string;
     totalLiabilityAmount: string;
     projectionAvailableAmount: string;
     projectionPendingAmount: string;
+    projectionVaultLockedAmount: string;
     observedReserveAmount: string;
     usableReserveAmount: string;
     encumberedReserveAmount: string;
@@ -1355,6 +1364,20 @@ export type OperationsStatus = {
     openReviewCaseCount: number;
     openOversightIncidentCount: number;
     activeRestrictedAccountCount: number;
+  };
+  retirementVaultHealth: {
+    status: "healthy" | "warning" | "critical";
+    activeVaultCount: number;
+    restrictedVaultCount: number;
+    pendingReviewCount: number;
+    cooldownActiveCount: number;
+    readyForReleaseCount: number;
+    failedReleaseCount: number;
+    blockedReleaseCount: number;
+    staleReviewRequiredCount: number;
+    staleCooldownCount: number;
+    staleReadyForReleaseCount: number;
+    staleExecutingCount: number;
   };
   recentAlerts: PlatformAlert[];
 };
