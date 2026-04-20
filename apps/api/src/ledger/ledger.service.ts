@@ -61,6 +61,23 @@ type SettledWithdrawalLedgerResult = {
   pendingBalance: string;
 };
 
+type FundRetirementVaultBalanceParams = {
+  transactionIntentId: string;
+  retirementVaultId: string;
+  customerAccountId: string;
+  assetId: string;
+  chainId: number;
+  amount: Prisma.Decimal;
+};
+
+type RetirementVaultBalanceTransitionResult = {
+  ledgerJournalId: string;
+  debitLedgerAccountId: string;
+  creditLedgerAccountId: string;
+  availableBalance: string;
+  lockedBalance: string;
+};
+
 type RecordLoanDisbursementParams = {
   loanAgreementId: string;
   assetId: string;
@@ -121,6 +138,13 @@ export class LedgerService {
     assetId: string
   ): string {
     return `customer_asset_pending_withdrawal_liability:${customerAccountId}:${assetId}`;
+  }
+
+  private buildRetirementVaultLiabilityLedgerKey(
+    retirementVaultId: string,
+    assetId: string
+  ): string {
+    return `customer_retirement_vault_liability:${retirementVaultId}:${assetId}`;
   }
 
   private buildLoanPrincipalReceivableLedgerKey(
@@ -696,6 +720,166 @@ export class LedgerService {
       creditLedgerAccountId: outboundClearingAccount.id,
       availableBalance: updatedBalance.availableBalance.toString(),
       pendingBalance: updatedBalance.pendingBalance.toString()
+    };
+  }
+
+  async fundRetirementVaultBalance(
+    transaction: Prisma.TransactionClient,
+    params: FundRetirementVaultBalanceParams
+  ): Promise<RetirementVaultBalanceTransitionResult> {
+    const existingJournal = await this.findLedgerJournalByIntentAndType(
+      transaction,
+      params.transactionIntentId,
+      LedgerJournalType.retirement_vault_funding
+    );
+
+    if (existingJournal) {
+      throw new ConflictException(
+        "Retirement vault funding ledger journal already exists for this transaction intent."
+      );
+    }
+
+    const customerAvailableLiabilityAccount = await transaction.ledgerAccount.upsert({
+      where: {
+        ledgerKey: this.buildCustomerLiabilityLedgerKey(
+          params.customerAccountId,
+          params.assetId
+        )
+      },
+      update: {},
+      create: {
+        ledgerKey: this.buildCustomerLiabilityLedgerKey(
+          params.customerAccountId,
+          params.assetId
+        ),
+        accountType: LedgerAccountType.customer_asset_liability,
+        chainId: params.chainId,
+        assetId: params.assetId,
+        customerAccountId: params.customerAccountId
+      }
+    });
+
+    const retirementVaultLiabilityAccount = await transaction.ledgerAccount.upsert({
+      where: {
+        ledgerKey: this.buildRetirementVaultLiabilityLedgerKey(
+          params.retirementVaultId,
+          params.assetId
+        )
+      },
+      update: {},
+      create: {
+        ledgerKey: this.buildRetirementVaultLiabilityLedgerKey(
+          params.retirementVaultId,
+          params.assetId
+        ),
+        accountType: LedgerAccountType.customer_retirement_vault_liability,
+        chainId: params.chainId,
+        assetId: params.assetId,
+        customerAccountId: params.customerAccountId
+      }
+    });
+
+    const updatedBalanceCount = await transaction.customerAssetBalance.updateMany({
+      where: {
+        customerAccountId: params.customerAccountId,
+        assetId: params.assetId,
+        availableBalance: {
+          gte: params.amount
+        }
+      },
+      data: {
+        availableBalance: {
+          decrement: params.amount
+        }
+      }
+    });
+
+    if (updatedBalanceCount.count !== 1) {
+      throw new ConflictException(
+        "Insufficient available balance for retirement vault funding."
+      );
+    }
+
+    const existingVault = await transaction.retirementVault.findUnique({
+      where: {
+        id: params.retirementVaultId
+      },
+      select: {
+        id: true,
+        fundedAt: true
+      }
+    });
+
+    if (!existingVault) {
+      throw new ConflictException("Retirement vault not found.");
+    }
+
+    const observedAt = new Date();
+
+    const updatedVault = await transaction.retirementVault.update({
+      where: {
+        id: params.retirementVaultId
+      },
+      data: {
+        lockedBalance: {
+          increment: params.amount
+        },
+        fundedAt: existingVault.fundedAt ?? observedAt,
+        lastFundedAt: observedAt
+      },
+      select: {
+        lockedBalance: true
+      }
+    });
+
+    const updatedBalance = await transaction.customerAssetBalance.findUnique({
+      where: {
+        customerAccountId_assetId: {
+          customerAccountId: params.customerAccountId,
+          assetId: params.assetId
+        }
+      },
+      select: {
+        availableBalance: true
+      }
+    });
+
+    if (!updatedBalance) {
+      throw new ConflictException("Customer balance row not found.");
+    }
+
+    const ledgerJournal = await transaction.ledgerJournal.create({
+      data: {
+        transactionIntentId: params.transactionIntentId,
+        journalType: LedgerJournalType.retirement_vault_funding,
+        chainId: params.chainId,
+        assetId: params.assetId
+      }
+    });
+
+    await transaction.ledgerPosting.createMany({
+      data: [
+        {
+          ledgerJournalId: ledgerJournal.id,
+          ledgerAccountId: customerAvailableLiabilityAccount.id,
+          direction: LedgerPostingDirection.debit,
+          amount: params.amount
+        },
+        {
+          ledgerJournalId: ledgerJournal.id,
+          ledgerAccountId: retirementVaultLiabilityAccount.id,
+          direction: LedgerPostingDirection.credit,
+          amount: params.amount
+        }
+      ]
+    });
+
+    return {
+      ledgerJournalId: ledgerJournal.id,
+      debitLedgerAccountId: customerAvailableLiabilityAccount.id,
+      creditLedgerAccountId: retirementVaultLiabilityAccount.id,
+      availableBalance: updatedBalance.availableBalance.toString(),
+      lockedBalance: updatedVault.lockedBalance.toString()
     };
   }
 

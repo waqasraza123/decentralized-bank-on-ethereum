@@ -88,6 +88,7 @@ model CustomerAccount {
   loanAgreements                  LoanAgreement[]
   loanStatements                  LoanStatement[]
   solvencyLiabilityLeaves         SolvencyLiabilityLeaf[]
+  retirementVaults                RetirementVault[]
 }
 
 model CustomerAuthSession {
@@ -165,12 +166,15 @@ model Asset {
   loanRepaymentEvents LoanRepaymentEvent[] @relation("LoanRepaymentAsset")
   solvencyLiabilityLeaves SolvencyLiabilityLeaf[]
   governedExecutionRequests GovernedTreasuryExecutionRequest[]
+  retirementVaults         RetirementVault[]
 }
 
 model TransactionIntent {
   id                           String                  @id @default(cuid())
   customerAccountId            String?
   customerAccount              CustomerAccount?        @relation(fields: [customerAccountId], references: [id])
+  retirementVaultId            String?
+  retirementVault              RetirementVault?        @relation(fields: [retirementVaultId], references: [id])
   assetId                      String
   asset                        Asset                   @relation(fields: [assetId], references: [id])
   sourceWalletId               String?
@@ -222,8 +226,66 @@ model TransactionIntent {
   @@index([manualInterventionReviewCaseId])
   @@index([manualResolvedByOperatorId, manuallyResolvedAt])
   @@index([manualResolutionReasonCode, manuallyResolvedAt])
+  @@index([retirementVaultId])
   ledgerJournals               LedgerJournal[]
   ledgerReconciliationMismatches LedgerReconciliationMismatch[]
+}
+
+model RetirementVault {
+  id                String                          @id @default(cuid())
+  customerAccountId String
+  customerAccount   CustomerAccount                 @relation(fields: [customerAccountId], references: [id])
+  assetId           String
+  asset             Asset                           @relation(fields: [assetId], references: [id])
+  status            RetirementVaultStatus           @default(active)
+  strictMode        Boolean                         @default(false)
+  unlockAt          DateTime
+  lockedBalance     Decimal                         @default(0) @db.Decimal(36, 18)
+  fundedAt          DateTime?
+  lastFundedAt      DateTime?
+  createdAt         DateTime                        @default(now())
+  updatedAt         DateTime                        @updatedAt
+  transactionIntents TransactionIntent[]
+  releaseRequests   RetirementVaultReleaseRequest[]
+  events            RetirementVaultEvent[]
+
+  @@unique([customerAccountId, assetId])
+  @@index([status, unlockAt])
+  @@index([assetId, status])
+}
+
+model RetirementVaultReleaseRequest {
+  id                String                              @id @default(cuid())
+  retirementVaultId String
+  retirementVault   RetirementVault                     @relation(fields: [retirementVaultId], references: [id])
+  requestedAmount   Decimal                             @db.Decimal(36, 18)
+  status            RetirementVaultReleaseRequestStatus @default(requested)
+  reasonCode        String?
+  reasonNote        String?
+  cooldownEndsAt    DateTime?
+  requestedAt       DateTime                            @default(now())
+  approvedAt        DateTime?
+  rejectedAt        DateTime?
+  releasedAt        DateTime?
+  createdAt         DateTime                            @default(now())
+  updatedAt         DateTime                            @updatedAt
+
+  @@index([retirementVaultId, status, requestedAt])
+  @@index([status, cooldownEndsAt])
+}
+
+model RetirementVaultEvent {
+  id                String                   @id @default(cuid())
+  retirementVaultId String
+  retirementVault   RetirementVault          @relation(fields: [retirementVaultId], references: [id])
+  eventType         RetirementVaultEventType
+  actorType         String
+  actorId           String?
+  metadata          Json?
+  createdAt         DateTime                 @default(now())
+
+  @@index([retirementVaultId, createdAt])
+  @@index([eventType, createdAt])
 }
 
 model BlockchainTransaction {
@@ -495,6 +557,27 @@ enum TransactionIntentStatus {
   failed
   cancelled
   manually_resolved
+}
+
+enum RetirementVaultStatus {
+  active
+  restricted
+  released
+}
+
+enum RetirementVaultReleaseRequestStatus {
+  requested
+  review_required
+  approved
+  rejected
+  released
+  cancelled
+}
+
+enum RetirementVaultEventType {
+  created
+  funded
+  release_requested
 }
 
 enum PolicyDecision {
@@ -1170,6 +1253,7 @@ enum LedgerAccountType {
   asset_outbound_clearing
   customer_asset_liability
   customer_asset_pending_withdrawal_liability
+  customer_retirement_vault_liability
   loan_principal_receivable
   loan_service_fee_receivable
   loan_service_fee_income
@@ -1182,6 +1266,7 @@ enum LedgerJournalType {
   withdrawal_reservation
   withdrawal_reservation_release
   withdrawal_settlement
+  retirement_vault_funding
   loan_disbursement
   loan_repayment
   loan_service_fee_accrual
