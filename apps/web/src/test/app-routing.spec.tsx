@@ -9,11 +9,13 @@ import {
   useStakeDeposit,
   useStakeWithdrawal
 } from "@/hooks/staking/useMyStakingSnapshot";
+import { useMyRetirementVaults } from "@/hooks/retirement-vault/useMyRetirementVaults";
 import { useMyTransactionHistory } from "@/hooks/transactions/useMyTransactionHistory";
 import App from "@/App";
 import { useUserStore } from "@/stores/userStore";
 
 const mockUseMyBalances = vi.mocked(useMyBalances);
+const mockUseMyRetirementVaults = vi.mocked(useMyRetirementVaults);
 const mockUseMyTransactionHistory = vi.mocked(useMyTransactionHistory);
 const mockUseAuth = vi.mocked(useAuth);
 const mockUseMyStakingSnapshot = vi.mocked(useMyStakingSnapshot);
@@ -24,6 +26,10 @@ const mockUseEmergencyStakeWithdrawal = vi.mocked(useEmergencyStakeWithdrawal);
 
 vi.mock("@/hooks/balances/useMyBalances", () => ({
   useMyBalances: vi.fn(),
+}));
+
+vi.mock("@/hooks/retirement-vault/useMyRetirementVaults", () => ({
+  useMyRetirementVaults: vi.fn(),
 }));
 
 vi.mock("@/hooks/transactions/useMyTransactionHistory", () => ({
@@ -75,6 +81,16 @@ describe("app routing", () => {
       isError: false,
       error: null,
     } as ReturnType<typeof useMyTransactionHistory>);
+
+    mockUseMyRetirementVaults.mockReturnValue({
+      data: {
+        customerAccountId: "account_1",
+        vaults: []
+      },
+      isLoading: false,
+      isError: false,
+      error: null
+    } as ReturnType<typeof useMyRetirementVaults>);
 
     mockUseMyStakingSnapshot.mockReturnValue({
       data: {

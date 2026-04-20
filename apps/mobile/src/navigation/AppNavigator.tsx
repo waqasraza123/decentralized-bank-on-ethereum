@@ -31,6 +31,7 @@ import { YieldScreen } from "../screens/YieldScreen";
 import { TransactionsScreen } from "../screens/TransactionsScreen";
 import { ProfileScreen } from "../screens/ProfileScreen";
 import { LoansScreen } from "../screens/LoansScreen";
+import { RetirementVaultScreen } from "../screens/RetirementVaultScreen";
 import { SignInScreen } from "../screens/auth/SignInScreen";
 import { SignUpScreen } from "../screens/auth/SignUpScreen";
 import { AppButton } from "../components/ui/AppButton";
@@ -187,6 +188,7 @@ function SignedInTabs() {
 
 function SignedInNavigator() {
   const t = useT();
+  const { locale } = useLocale();
 
   return (
     <RootStack.Navigator>
@@ -200,6 +202,16 @@ function SignedInNavigator() {
         component={LoansScreen}
         options={{ title: t("navigation.loans") }}
       />
+      <RootStack.Screen
+        name="RetirementVault"
+        options={{
+          title: locale === "ar" ? "قبو التقاعد" : "Retirement Vault"
+        }}
+      >
+        {({ route }) => (
+          <RetirementVaultScreen initialFocus={route.params?.focus} />
+        )}
+      </RootStack.Screen>
     </RootStack.Navigator>
   );
 }

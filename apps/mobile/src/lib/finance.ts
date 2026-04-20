@@ -12,7 +12,11 @@ import {
   type TransactionConfidenceStatus
 } from "@stealth-trails-bank/ui-foundation";
 
-export type CustomerIntentType = "deposit" | "withdrawal";
+export type CustomerIntentType =
+  | "deposit"
+  | "withdrawal"
+  | "vault_subscription"
+  | "vault_redemption";
 
 const positiveDecimalPattern = /^(?:0|[1-9]\d*)(?:\.\d{1,18})?$/;
 const positiveIntegerPattern = /^[1-9]\d*$/;
@@ -125,10 +129,30 @@ export function normalizeIntentTypeLabel(
   locale: SupportedLocale = "en"
 ): string {
   if (locale === "ar") {
-    return intentType === "deposit" ? "إيداع" : "سحب";
+    if (intentType === "deposit") {
+      return "إيداع";
+    }
+
+    if (intentType === "withdrawal") {
+      return "سحب";
+    }
+
+    return intentType === "vault_subscription"
+      ? "تمويل قبو التقاعد"
+      : "إطلاق من قبو التقاعد";
   }
 
-  return intentType === "deposit" ? "Deposit" : "Withdrawal";
+  if (intentType === "deposit") {
+    return "Deposit";
+  }
+
+  if (intentType === "withdrawal") {
+    return "Withdrawal";
+  }
+
+  return intentType === "vault_subscription"
+    ? "Retirement Vault funding"
+    : "Retirement Vault release";
 }
 
 export function formatIntentAmount(
@@ -137,7 +161,8 @@ export function formatIntentAmount(
   intentType: CustomerIntentType,
   locale: SupportedLocale = "en"
 ): string {
-  const prefix = intentType === "deposit" ? "+" : "-";
+  const prefix =
+    intentType === "deposit" || intentType === "vault_redemption" ? "+" : "-";
   return `${prefix}${formatTokenAmount(amount, locale)} ${assetSymbol}`;
 }
 
@@ -153,6 +178,13 @@ export function resolveIntentAddress(input: {
       }
     | null;
 }): string {
+  if (
+    input.intentType === "vault_subscription" ||
+    input.intentType === "vault_redemption"
+  ) {
+    return input.latestBlockchainTransaction?.toAddress ?? "Vault ledger";
+  }
+
   if (input.intentType === "withdrawal") {
     return (
       input.externalAddress ??

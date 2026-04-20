@@ -1,16 +1,19 @@
 import { Layout } from "@/components/Layout";
 import { MotionSurface, ScreenTransition } from "@/components/motion/primitives";
 import { Card } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { Link } from "react-router-dom";
 import { useT } from "@/i18n/use-t";
 import { useLocale } from "@/i18n/use-locale";
 import { useMyBalances } from "@/hooks/balances/useMyBalances";
+import { useMyRetirementVaults } from "@/hooks/retirement-vault/useMyRetirementVaults";
 import { useSupportedAssets } from "@/hooks/assets/useSupportedAssets";
 import DepositCard from "./wallet/DepositCard";
 import WithdrawCard from "./wallet/WithdrawCard";
 import { useUserStore } from "@/stores/userStore";
 import { formatDateLabel, formatTokenAmount } from "@/lib/customer-finance";
 import { formatRelativeTimeLabel, isTimestampOlderThan } from "@stealth-trails-bank/ui-foundation";
+import { LockKeyhole, ShieldCheck } from "lucide-react";
 
 const Wallet = () => {
   const t = useT();
@@ -18,11 +21,20 @@ const Wallet = () => {
   const user = useUserStore((state) => state.user);
   const supportedAssetsQuery = useSupportedAssets();
   const balancesQuery = useMyBalances();
+  const retirementVaultsQuery = useMyRetirementVaults();
   const balances = balancesQuery.data?.balances ?? [];
+  const vaults = retirementVaultsQuery.data?.vaults ?? [];
   const latestBalanceUpdate = balances
     .map((balance) => balance.updatedAt)
     .sort((left, right) => Date.parse(right) - Date.parse(left))[0];
   const staleBalanceData = isTimestampOlderThan(latestBalanceUpdate, 24);
+  const totalLockedBalance = vaults.reduce(
+    (sum, vault) => sum + Number.parseFloat(vault.lockedBalance || "0"),
+    0
+  );
+  const nextVaultUnlock = vaults
+    .map((vault) => vault.unlockAt)
+    .sort((left, right) => Date.parse(left) - Date.parse(right))[0];
 
   return (
     <Layout>
@@ -171,6 +183,120 @@ const Wallet = () => {
             </Card>
           </MotionSurface>
         </section>
+
+        <MotionSurface className="stb-pressable-shell">
+          <Card className="stb-surface stb-reveal rounded-[2rem] border-0 p-6" data-delay="2">
+            <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_320px] xl:items-center">
+              <div className="space-y-4">
+                <div>
+                  <p className="stb-section-kicker">
+                    {locale === "ar" ? "قبو التقاعد" : "Retirement Vault"}
+                  </p>
+                  <h2 className="mt-2 text-2xl font-semibold text-slate-950">
+                    {locale === "ar"
+                      ? "الرصيد المقفل خارج السحب العادي"
+                      : "Locked balance outside normal withdrawals"}
+                  </h2>
+                  <p className="mt-3 max-w-3xl text-sm leading-7 text-slate-600">
+                    {locale === "ar"
+                      ? "يمكنك الآن عرض الرصيد المقفل بوضوح وتمويله من هذا المنتج دون خلطه مع الرصيد المتاح أو المعلّق."
+                      : "You can now view locked balance clearly and fund it from this product without mixing it into available or pending balance."}
+                  </p>
+                </div>
+
+                <div className="grid gap-3 md:grid-cols-3">
+                  <div className="stb-section-frame p-4">
+                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+                      {locale === "ar" ? "إجمالي المقفل" : "Total locked"}
+                    </p>
+                    <p className="mt-3 text-3xl font-semibold text-slate-950">
+                      {retirementVaultsQuery.isLoading
+                        ? "..."
+                        : formatTokenAmount(String(totalLockedBalance), locale)}
+                    </p>
+                  </div>
+                  <div className="stb-section-frame p-4">
+                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+                      {locale === "ar" ? "عدد الأقبية" : "Vault count"}
+                    </p>
+                    <p className="mt-3 text-3xl font-semibold text-slate-950">
+                      {vaults.length}
+                    </p>
+                  </div>
+                  <div className="stb-section-frame p-4">
+                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+                      {locale === "ar" ? "أقرب إفراج" : "Next release"}
+                    </p>
+                    <p className="mt-3 text-sm font-semibold text-slate-950">
+                      {nextVaultUnlock
+                        ? formatDateLabel(nextVaultUnlock, locale)
+                        : locale === "ar"
+                          ? "لا يوجد بعد"
+                          : "Not scheduled yet"}
+                    </p>
+                  </div>
+                </div>
+
+                {vaults.length > 0 ? (
+                  <div className="grid gap-3 md:grid-cols-2">
+                    {vaults.slice(0, 2).map((vault) => (
+                      <div key={vault.id} className="rounded-[1.25rem] border border-slate-200/70 bg-white/75 p-4">
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <p className="text-sm font-semibold text-slate-900">
+                              {vault.asset.displayName}
+                            </p>
+                            <p className="mt-2 text-xl font-semibold text-slate-950">
+                              {formatTokenAmount(vault.lockedBalance, locale)} {vault.asset.symbol}
+                            </p>
+                          </div>
+                          <div className="rounded-full bg-slate-950 px-3 py-1 text-xs font-semibold text-white">
+                            {vault.strictMode
+                              ? locale === "ar"
+                                ? "صارم"
+                                : "Strict"
+                              : locale === "ar"
+                                ? "نشط"
+                                : "Active"}
+                          </div>
+                        </div>
+                        <p className="mt-3 text-sm text-slate-600">
+                          {locale === "ar" ? "الإفراج:" : "Release:"}{" "}
+                          {formatDateLabel(vault.unlockAt, locale)}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+
+              <div className="rounded-[1.6rem] bg-slate-950 p-5 text-white">
+                <div className="flex items-center gap-2 text-sm font-medium text-white/84">
+                  <LockKeyhole className="h-4 w-4 text-emerald-300" />
+                  {locale === "ar" ? "حماية السحب" : "Withdrawal protection"}
+                </div>
+                <p className="mt-3 text-sm leading-7 text-white/72">
+                  {locale === "ar"
+                    ? "أموال القبو لا تظهر كرصد متاح للسحب. أنشئ القبو أو موّله من صفحة القبو المخصصة."
+                    : "Vault funds do not appear as spendable withdrawal balance. Create or fund the vault from the dedicated vault page."}
+                </p>
+                <div className="mt-5 space-y-3">
+                  <Button asChild className="w-full rounded-[1rem] bg-white text-slate-950 hover:bg-white/92">
+                    <Link to="/vault">
+                      {locale === "ar" ? "فتح قبو التقاعد" : "Open Retirement Vault"}
+                    </Link>
+                  </Button>
+                  <div className="flex items-center gap-2 text-sm text-white/65">
+                    <ShieldCheck className="h-4 w-4 text-emerald-300" />
+                    {locale === "ar"
+                      ? "تمويل القبو ينقل المال من الرصيد السائل إلى الرصيد المقفل."
+                      : "Funding the vault moves money from liquid balance into locked balance."}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </Card>
+        </MotionSurface>
 
         <div className="grid gap-6 xl:grid-cols-2">
           <DepositCard

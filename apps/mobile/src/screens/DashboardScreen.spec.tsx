@@ -12,14 +12,17 @@ jest.mock("@react-navigation/native", () => ({
 
 jest.mock("../hooks/use-customer-queries", () => ({
   useBalancesQuery: jest.fn(),
+  useRetirementVaultsQuery: jest.fn(),
   useTransactionHistoryQuery: jest.fn()
 }));
 
 const {
   useBalancesQuery,
+  useRetirementVaultsQuery,
   useTransactionHistoryQuery
 } = jest.requireMock("../hooks/use-customer-queries") as {
   useBalancesQuery: jest.Mock;
+  useRetirementVaultsQuery: jest.Mock;
   useTransactionHistoryQuery: jest.Mock;
 };
 
@@ -75,6 +78,33 @@ describe("DashboardScreen", () => {
       },
       isError: false
     });
+    useRetirementVaultsQuery.mockReturnValue({
+      data: {
+        vaults: [
+          {
+            id: "vault-1",
+            customerAccountId: "account-1",
+            asset: {
+              id: "eth",
+              symbol: "ETH",
+              displayName: "Ether",
+              decimals: 18,
+              chainId: 1
+            },
+            status: "active",
+            strictMode: true,
+            unlockAt: "2036-04-15T12:00:00.000Z",
+            lockedBalance: "0.75",
+            fundedAt: "2026-04-15T12:00:00.000Z",
+            lastFundedAt: "2026-04-15T12:00:00.000Z",
+            createdAt: "2026-04-15T10:00:00.000Z",
+            updatedAt: "2026-04-15T12:00:00.000Z"
+          }
+        ]
+      },
+      isError: false,
+      isLoading: false
+    });
   });
 
   it("renders stale operational data notice and opens direct actions", () => {
@@ -98,5 +128,11 @@ describe("DashboardScreen", () => {
     fireEvent.press(screen.getByTestId("dashboard-action-deposit"));
 
     expect(mockNavigate).toHaveBeenCalledWith("Wallet", { focus: "deposit" });
+
+    fireEvent.press(screen.getByText("Open Retirement Vault"));
+
+    expect(mockNavigate).toHaveBeenCalledWith("RetirementVault", {
+      focus: "fund"
+    });
   });
 });

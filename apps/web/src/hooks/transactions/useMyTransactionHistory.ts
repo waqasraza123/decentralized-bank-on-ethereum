@@ -25,7 +25,11 @@ export type TransactionHistoryIntent = {
   sourceWalletAddress: string | null;
   destinationWalletAddress: string | null;
   externalAddress: string | null;
-  intentType: "deposit" | "withdrawal";
+  intentType:
+    | "deposit"
+    | "withdrawal"
+    | "vault_subscription"
+    | "vault_redemption";
   status:
     | "requested"
     | "review_required"

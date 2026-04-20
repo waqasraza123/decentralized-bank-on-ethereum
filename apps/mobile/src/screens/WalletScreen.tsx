@@ -24,8 +24,11 @@ import { TimelineList } from "../components/ui/TimelineList";
 import { AnimatedSection } from "../components/ui/AnimatedSection";
 import {
   useBalancesQuery,
+  useCreateRetirementVaultMutation,
   useCreateDepositIntentMutation,
   useCreateWithdrawalIntentMutation,
+  useFundRetirementVaultMutation,
+  useRetirementVaultsQuery,
   useStartMfaChallengeMutation,
   useSupportedAssetsQuery,
   useVerifyMfaChallengeMutation,
@@ -41,6 +44,7 @@ import {
   formatTokenAmount,
   formatIntentStatusLabel,
   getIntentStatusTone,
+  isPositiveIntegerString,
   isEthereumAddress,
   isPositiveDecimalString,
 } from "../lib/finance";
@@ -63,18 +67,27 @@ export function WalletScreen({ initialFocus }: WalletScreenProps = {}) {
   const clearRequestKey = useSessionStore((state) => state.clearRequestKey);
   const assetsQuery = useSupportedAssetsQuery();
   const balancesQuery = useBalancesQuery();
+  const retirementVaultsQuery = useRetirementVaultsQuery();
   const depositMutation = useCreateDepositIntentMutation();
   const withdrawalMutation = useCreateWithdrawalIntentMutation();
+  const createRetirementVaultMutation = useCreateRetirementVaultMutation();
+  const fundRetirementVaultMutation = useFundRetirementVaultMutation();
   const startMfaChallengeMutation = useStartMfaChallengeMutation();
   const verifyMfaChallengeMutation = useVerifyMfaChallengeMutation();
   const assets = assetsQuery.data?.assets ?? [];
   const balances = balancesQuery.data?.balances ?? [];
+  const vaults = retirementVaultsQuery.data?.vaults ?? [];
   const [showQr, setShowQr] = useState(false);
   const [depositAsset, setDepositAsset] = useState("");
   const [withdrawAsset, setWithdrawAsset] = useState("");
   const [depositAmount, setDepositAmount] = useState("");
   const [withdrawAmount, setWithdrawAmount] = useState("");
   const [withdrawAddress, setWithdrawAddress] = useState("");
+  const [vaultCreateAsset, setVaultCreateAsset] = useState("");
+  const [vaultFundAsset, setVaultFundAsset] = useState("");
+  const [vaultFundAmount, setVaultFundAmount] = useState("");
+  const [vaultUnlockYears, setVaultUnlockYears] = useState("10");
+  const [vaultStrictMode, setVaultStrictMode] = useState("strict");
   const [activeAction, setActiveAction] = useState<WalletPrimaryAction>(
     initialFocus ?? "deposit",
   );
@@ -98,8 +111,14 @@ export function WalletScreen({ initialFocus }: WalletScreenProps = {}) {
   }));
   const activeDepositAsset = depositAsset || assets[0]?.symbol || "";
   const activeWithdrawAsset = withdrawAsset || assets[0]?.symbol || "";
+  const activeVaultCreateAsset = vaultCreateAsset || assets[0]?.symbol || "";
+  const activeVaultFundAsset =
+    vaultFundAsset || vaults[0]?.asset.symbol || "";
   const selectedBalance =
     balances.find((balance) => balance.asset.symbol === activeWithdrawAsset) ??
+    null;
+  const selectedVaultFundBalance =
+    balances.find((balance) => balance.asset.symbol === activeVaultFundAsset) ??
     null;
   const fundedAssetCount = balances.filter(
     (balance) =>
@@ -141,6 +160,13 @@ export function WalletScreen({ initialFocus }: WalletScreenProps = {}) {
   const stepUpFresh =
     Boolean(user?.mfa?.stepUpFreshUntil) &&
     Date.parse(user?.mfa?.stepUpFreshUntil ?? "") > Date.now();
+  const lockedVaultBalance = vaults.reduce(
+    (sum, vault) => sum + Number.parseFloat(vault.lockedBalance || "0"),
+    0,
+  );
+  const nextVaultUnlock = vaults
+    .map((vault) => vault.unlockAt)
+    .sort((left, right) => Date.parse(left) - Date.parse(right))[0];
 
   function getIdempotencyKey(signature: string, prefix: string) {
     const existing = consumeRequestKey(signature);
@@ -332,6 +358,126 @@ export function WalletScreen({ initialFocus }: WalletScreenProps = {}) {
     }
   }
 
+  async function handleCreateRetirementVault() {
+    if (!activeVaultCreateAsset) {
+      Alert.alert(
+        locale === "ar" ? "قبو التقاعد" : "Retirement Vault",
+        locale === "ar"
+          ? "اختر أصلاً قبل إنشاء القبو."
+          : "Select an asset before creating the vault.",
+      );
+      return;
+    }
+
+    if (!isPositiveIntegerString(vaultUnlockYears)) {
+      Alert.alert(
+        locale === "ar" ? "قبو التقاعد" : "Retirement Vault",
+        locale === "ar"
+          ? "أدخل عدداً صحيحاً من السنوات."
+          : "Enter a whole number of years.",
+      );
+      return;
+    }
+
+    const unlockAt = new Date();
+    unlockAt.setUTCFullYear(
+      unlockAt.getUTCFullYear() + Number.parseInt(vaultUnlockYears, 10),
+    );
+
+    try {
+      const result = await createRetirementVaultMutation.mutateAsync({
+        assetSymbol: activeVaultCreateAsset,
+        unlockAt: unlockAt.toISOString(),
+        strictMode: vaultStrictMode === "strict",
+      });
+
+      setVaultFundAsset(result.vault.asset.symbol);
+      Alert.alert(
+        locale === "ar" ? "قبو التقاعد" : "Retirement Vault",
+        result.created
+          ? locale === "ar"
+            ? "تم إنشاء القبو ويمكنك تمويله الآن."
+            : "The vault was created and can be funded now."
+          : locale === "ar"
+            ? "القبو موجود بالفعل لهذا الأصل."
+            : "A vault already exists for this asset.",
+      );
+    } catch (requestError) {
+      Alert.alert(
+        locale === "ar" ? "قبو التقاعد" : "Retirement Vault",
+        requestError instanceof Error
+          ? requestError.message
+          : String(requestError),
+      );
+    }
+  }
+
+  async function handleFundRetirementVault() {
+    if (!activeVaultFundAsset) {
+      Alert.alert(
+        locale === "ar" ? "قبو التقاعد" : "Retirement Vault",
+        locale === "ar"
+          ? "أنشئ قبو تقاعد أولاً."
+          : "Create a retirement vault first.",
+      );
+      return;
+    }
+
+    if (!isPositiveDecimalString(vaultFundAmount)) {
+      Alert.alert(
+        locale === "ar" ? "قبو التقاعد" : "Retirement Vault",
+        locale === "ar"
+          ? "أدخل مبلغاً موجباً صالحاً."
+          : "Enter a valid positive amount.",
+      );
+      return;
+    }
+
+    if (
+      selectedVaultFundBalance &&
+      compareDecimalStrings(
+        vaultFundAmount.trim(),
+        selectedVaultFundBalance.availableBalance,
+      ) === 1
+    ) {
+      Alert.alert(
+        locale === "ar" ? "قبو التقاعد" : "Retirement Vault",
+        locale === "ar"
+          ? "المبلغ يتجاوز الرصيد المتاح."
+          : "Amount exceeds the available balance.",
+      );
+      return;
+    }
+
+    const signature = JSON.stringify({
+      assetSymbol: activeVaultFundAsset,
+      amount: vaultFundAmount.trim(),
+    });
+
+    try {
+      await fundRetirementVaultMutation.mutateAsync({
+        idempotencyKey: getIdempotencyKey(signature, "vault_fund_req"),
+        assetSymbol: activeVaultFundAsset,
+        amount: vaultFundAmount.trim(),
+      });
+      clearRequestKey(signature);
+      setVaultFundAmount("");
+      Alert.alert(
+        locale === "ar" ? "قبو التقاعد" : "Retirement Vault",
+        locale === "ar"
+          ? "تم نقل الأموال إلى الرصيد المقفل."
+          : "Funds were moved into the locked vault balance.",
+      );
+    } catch (requestError) {
+      Alert.alert(
+        locale === "ar" ? "قبو التقاعد" : "Retirement Vault",
+        requestError instanceof Error
+          ? requestError.message
+          : String(requestError),
+      );
+    }
+  }
+
   return (
     <AppScreen
       title={t("wallet.title")}
@@ -397,6 +543,62 @@ export function WalletScreen({ initialFocus }: WalletScreenProps = {}) {
       </AnimatedSection>
 
       <AnimatedSection delayOrder={3}>
+        <SectionCard className="gap-4">
+          <View className="flex-row items-start justify-between gap-3">
+            <View className="flex-1 gap-1">
+              <AppText className="text-xl text-ink" weight="bold">
+                {locale === "ar" ? "قبو التقاعد" : "Retirement Vault"}
+              </AppText>
+              <AppText className="text-sm leading-6 text-slate">
+                {locale === "ar"
+                  ? "رصيد محمي لا يظهر كرصيد متاح للسحب."
+                  : "Protected balance that does not show up as spendable withdrawal balance."}
+              </AppText>
+            </View>
+            <View className="h-11 w-11 items-center justify-center rounded-2xl bg-ink/6">
+              <MaterialCommunityIcons
+                color="#14212b"
+                name="shield-lock-outline"
+                size={22}
+              />
+            </View>
+          </View>
+          <View className="flex-row flex-wrap gap-3">
+            <View className="min-w-[46%] flex-1 rounded-[24px] bg-white px-4 py-4">
+              <AppText className="text-xs uppercase tracking-[1.2px] text-slate">
+                {locale === "ar" ? "الأموال المقفلة" : "Locked funds"}
+              </AppText>
+              <AppText className="mt-2 text-3xl text-ink" weight="bold">
+                {retirementVaultsQuery.isLoading
+                  ? "..."
+                  : formatTokenAmount(String(lockedVaultBalance), locale)}
+              </AppText>
+            </View>
+            <View className="min-w-[46%] flex-1 rounded-[24px] bg-white px-4 py-4">
+              <AppText className="text-xs uppercase tracking-[1.2px] text-slate">
+                {locale === "ar" ? "أقرب إفراج" : "Next release"}
+              </AppText>
+              <AppText className="mt-2 text-sm text-ink" weight="semibold">
+                {nextVaultUnlock
+                  ? formatDateLabel(nextVaultUnlock, locale)
+                  : locale === "ar"
+                    ? "لا يوجد بعد"
+                    : "Not scheduled yet"}
+              </AppText>
+            </View>
+          </View>
+          <AppButton
+            label={
+              locale === "ar"
+                ? "افتح قبو التقاعد"
+                : "Open Retirement Vault"
+            }
+            onPress={() => navigation.navigate("RetirementVault", { focus: "fund" })}
+          />
+        </SectionCard>
+      </AnimatedSection>
+
+      <AnimatedSection delayOrder={4}>
         <View className="gap-3">
           <AppText className="text-xl text-ink" weight="bold">
             {t("wallet.primaryActions")}
@@ -442,7 +644,114 @@ export function WalletScreen({ initialFocus }: WalletScreenProps = {}) {
         </View>
       </AnimatedSection>
 
-      <AnimatedSection delayOrder={4}>
+      <AnimatedSection delayOrder={5}>
+        <SectionCard className="gap-4">
+          <View className="flex-row items-center justify-between gap-3">
+            <View className="flex-1 gap-1">
+              <AppText className="text-xl text-ink" weight="bold">
+                {locale === "ar" ? "إنشاء أو تمويل سريع" : "Quick create or fund"}
+              </AppText>
+              <AppText className="text-sm leading-6 text-slate">
+                {locale === "ar"
+                  ? "ابدأ القفل من المحفظة ثم افتح صفحة القبو للمراجعة الكاملة."
+                  : "Start the lock from Wallet, then open the vault page for the full review surface."}
+              </AppText>
+            </View>
+          </View>
+          <OptionChips
+            onChange={setVaultCreateAsset}
+            options={assetOptions}
+            value={activeVaultCreateAsset}
+          />
+          <FieldInput
+            keyboardType="number-pad"
+            label={locale === "ar" ? "سنوات القفل" : "Lock years"}
+            onChangeText={setVaultUnlockYears}
+            value={vaultUnlockYears}
+          />
+          <OptionChips
+            onChange={setVaultStrictMode}
+            options={[
+              {
+                label: locale === "ar" ? "صارم" : "Strict",
+                value: "strict",
+              },
+              {
+                label: locale === "ar" ? "قياسي" : "Standard",
+                value: "standard",
+              },
+            ]}
+            value={vaultStrictMode}
+          />
+          <AppButton
+            disabled={createRetirementVaultMutation.isPending}
+            label={
+              createRetirementVaultMutation.isPending
+                ? locale === "ar"
+                  ? "جارٍ إنشاء القبو..."
+                  : "Creating vault..."
+                : locale === "ar"
+                  ? "إنشاء القبو"
+                  : "Create vault"
+            }
+            onPress={() => {
+              void handleCreateRetirementVault();
+            }}
+          />
+          <OptionChips
+            onChange={setVaultFundAsset}
+            options={
+              vaults.length > 0
+                ? vaults.map((vault) => ({
+                    label: vault.asset.symbol,
+                    value: vault.asset.symbol,
+                  }))
+                : [
+                    {
+                      label: locale === "ar" ? "لا توجد أقبية" : "No vaults",
+                      value: "",
+                    },
+                  ]
+            }
+            value={activeVaultFundAsset}
+          />
+          <FieldInput
+            keyboardType="decimal-pad"
+            label={locale === "ar" ? "مبلغ التمويل" : "Funding amount"}
+            onChangeText={setVaultFundAmount}
+            value={vaultFundAmount}
+          />
+          <InlineNotice
+            message={
+              selectedVaultFundBalance
+                ? locale === "ar"
+                  ? `الرصيد المتاح: ${formatTokenAmount(selectedVaultFundBalance.availableBalance, locale)} ${selectedVaultFundBalance.asset.symbol}`
+                  : `Available balance: ${formatTokenAmount(selectedVaultFundBalance.availableBalance, locale)} ${selectedVaultFundBalance.asset.symbol}`
+                : locale === "ar"
+                  ? "أنشئ القبو أولاً لبدء التمويل."
+                  : "Create the vault first to start funding."
+            }
+            tone="neutral"
+          />
+          <AppButton
+            disabled={fundRetirementVaultMutation.isPending || vaults.length === 0}
+            label={
+              fundRetirementVaultMutation.isPending
+                ? locale === "ar"
+                  ? "جارٍ تمويل القبو..."
+                  : "Funding vault..."
+                : locale === "ar"
+                  ? "تمويل القبو"
+                  : "Fund vault"
+            }
+            onPress={() => {
+              void handleFundRetirementVault();
+            }}
+          />
+        </SectionCard>
+      </AnimatedSection>
+
+      <AnimatedSection delayOrder={6}>
         <SectionCard className="gap-4">
           <View className="flex-row items-center justify-between gap-3">
             <View className="flex-1 gap-1">

@@ -40,10 +40,10 @@ export function TransactionsScreen() {
   const typeOptions = useMemo(
     () =>
       Array.from(new Set(intents.map((intent) => intent.intentType))).map((value) => ({
-        label: value === "deposit" ? "Deposit" : "Withdrawal",
+        label: normalizeIntentTypeLabel(value, locale),
         value
       })),
-    [intents]
+    [intents, locale]
   );
   const statusOptions = useMemo(
     () =>

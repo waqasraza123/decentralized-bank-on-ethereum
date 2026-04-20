@@ -16,6 +16,7 @@ import { StatusChip } from "../components/ui/StatusChip";
 import { AnimatedSection } from "../components/ui/AnimatedSection";
 import {
   useBalancesQuery,
+  useRetirementVaultsQuery,
   useTransactionHistoryQuery
 } from "../hooks/use-customer-queries";
 import { useLocale } from "../i18n/use-locale";
@@ -24,6 +25,7 @@ import {
   formatIntentAmount,
   formatIntentStatusLabel,
   formatShortAddress,
+  formatTokenAmount,
   getIntentStatusTone,
   normalizeIntentTypeLabel
 } from "../lib/finance";
@@ -36,8 +38,10 @@ export function DashboardScreen() {
   const navigation = useNavigation<DashboardNavigationProp>();
   const user = useSessionStore((state) => state.user);
   const balancesQuery = useBalancesQuery();
+  const retirementVaultsQuery = useRetirementVaultsQuery();
   const historyQuery = useTransactionHistoryQuery(5);
   const balances = balancesQuery.data?.balances ?? [];
+  const vaults = retirementVaultsQuery.data?.vaults ?? [];
   const intents = historyQuery.data?.intents ?? [];
   const pendingAssetCount = balances.filter(
     (balance) => Number(balance.pendingBalance) > 0
@@ -55,6 +59,13 @@ export function DashboardScreen() {
   const staleOperationalData =
     isTimestampOlderThan(latestBalanceUpdate, 24) ||
     isTimestampOlderThan(latestIntentUpdate, 24);
+  const lockedVaultBalance = vaults.reduce(
+    (sum, vault) => sum + Number.parseFloat(vault.lockedBalance || "0"),
+    0
+  );
+  const nextVaultUnlock = vaults
+    .map((vault) => vault.unlockAt)
+    .sort((left, right) => Date.parse(left) - Date.parse(right))[0];
 
   return (
     <AppScreen
@@ -114,6 +125,62 @@ export function DashboardScreen() {
       </AnimatedSection>
 
       <AnimatedSection delayOrder={3}>
+        <SectionCard className="gap-4">
+          <View className="flex-row items-start justify-between gap-3">
+            <View className="flex-1 gap-1">
+              <AppText className="text-xl text-ink" weight="bold">
+                {locale === "ar" ? "قبو التقاعد" : "Retirement Vault"}
+              </AppText>
+              <AppText className="text-sm leading-6 text-slate">
+                {locale === "ar"
+                  ? "أموال محمية تبقى خارج السحب العادي وتتحرك فقط إلى رصيد مقفل."
+                  : "Protected funds stay outside normal withdrawals and move only into a locked balance."}
+              </AppText>
+            </View>
+            <View className="h-11 w-11 items-center justify-center rounded-2xl bg-ink/6">
+              <MaterialCommunityIcons
+                color="#14212b"
+                name="shield-lock-outline"
+                size={22}
+              />
+            </View>
+          </View>
+          <View className="flex-row flex-wrap gap-3">
+            <View className="min-w-[46%] flex-1 rounded-[24px] bg-white px-4 py-4">
+              <AppText className="text-xs uppercase tracking-[1.2px] text-slate">
+                {locale === "ar" ? "الأموال المقفلة" : "Locked funds"}
+              </AppText>
+              <AppText className="mt-2 text-3xl text-ink" weight="bold">
+                {retirementVaultsQuery.isLoading
+                  ? "..."
+                  : formatTokenAmount(String(lockedVaultBalance), locale)}
+              </AppText>
+            </View>
+            <View className="min-w-[46%] flex-1 rounded-[24px] bg-white px-4 py-4">
+              <AppText className="text-xs uppercase tracking-[1.2px] text-slate">
+                {locale === "ar" ? "أقرب إفراج" : "Next release"}
+              </AppText>
+              <AppText className="mt-2 text-sm text-ink" weight="semibold">
+                {nextVaultUnlock
+                  ? formatRelativeTimeLabel(nextVaultUnlock, locale)
+                  : locale === "ar"
+                    ? "لا يوجد بعد"
+                    : "Not scheduled yet"}
+              </AppText>
+            </View>
+          </View>
+          <AppButton
+            label={
+              locale === "ar"
+                ? "افتح قبو التقاعد"
+                : "Open Retirement Vault"
+            }
+            onPress={() => navigation.navigate("RetirementVault", { focus: "fund" })}
+          />
+        </SectionCard>
+      </AnimatedSection>
+
+      <AnimatedSection delayOrder={4}>
         <View className="gap-3">
           <AppText className="text-xl text-ink" weight="bold">
             {t("dashboard.primaryActions")}
@@ -151,6 +218,20 @@ export function DashboardScreen() {
             </View>
             <View className="min-w-[47%] flex-1">
               <FeatureActionCard
+                description={
+                  locale === "ar"
+                    ? "أنشئ القبو أو موّله"
+                    : "Create or fund the vault"
+                }
+                icon="shield-lock-outline"
+                label={locale === "ar" ? "قبو التقاعد" : "Retirement Vault"}
+                onPress={() => navigation.navigate("RetirementVault", { focus: "fund" })}
+                testID="dashboard-action-retirement-vault"
+                tone="dark"
+              />
+            </View>
+            <View className="min-w-[47%] flex-1">
+              <FeatureActionCard
                 description={t("dashboard.actionStakeDescription")}
                 icon="chart-timeline-variant"
                 label={t("wallet.stake")}
@@ -163,7 +244,7 @@ export function DashboardScreen() {
         </View>
       </AnimatedSection>
 
-      <AnimatedSection delayOrder={4}>
+      <AnimatedSection delayOrder={5}>
         <InlineNotice
           message={
             staleOperationalData
@@ -174,7 +255,7 @@ export function DashboardScreen() {
         />
       </AnimatedSection>
 
-      <AnimatedSection delayOrder={5}>
+      <AnimatedSection delayOrder={6}>
         <SectionCard className="gap-4">
           <View className="flex-row items-center justify-between">
             <View className="gap-1">
@@ -248,7 +329,7 @@ export function DashboardScreen() {
         </SectionCard>
       </AnimatedSection>
 
-      <AnimatedSection delayOrder={6}>
+      <AnimatedSection delayOrder={7}>
         <SectionCard className="gap-4">
           <View className="flex-row items-center justify-between">
             <AppText className="text-xl text-ink" weight="bold">

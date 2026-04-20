@@ -37,6 +37,10 @@ export const Layout = ({ children }: LayoutProps) => {
   const navItems = [
     { label: t("navigation.dashboard"), path: "/" },
     { label: t("navigation.wallet"), path: "/wallet" },
+    {
+      label: locale === "ar" ? "قبو التقاعد" : "Retirement Vault",
+      path: "/vault"
+    },
     { label: locale === "ar" ? "العائد" : "Yield", path: "/yield" },
     { label: t("navigation.transactions"), path: "/transactions" },
     { label: t("navigation.profile"), path: "/profile" }

@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useSupportedAssets } from "@/hooks/assets/useSupportedAssets";
 import { useMyBalances } from "@/hooks/balances/useMyBalances";
+import { useMyRetirementVaults } from "@/hooks/retirement-vault/useMyRetirementVaults";
 import { useCreateDepositIntent } from "@/hooks/transaction-intents/useCreateDepositIntent";
 import { useCreateWithdrawalIntent } from "@/hooks/transaction-intents/useCreateWithdrawalIntent";
 import { webLocaleStorageKey } from "@/i18n/provider";
@@ -12,6 +13,7 @@ import { renderWithRouter } from "@/test/render-with-router";
 
 const mockUseSupportedAssets = vi.mocked(useSupportedAssets);
 const mockUseMyBalances = vi.mocked(useMyBalances);
+const mockUseMyRetirementVaults = vi.mocked(useMyRetirementVaults);
 const mockUseCreateDepositIntent = vi.mocked(useCreateDepositIntent);
 const mockUseCreateWithdrawalIntent = vi.mocked(useCreateWithdrawalIntent);
 
@@ -21,6 +23,10 @@ vi.mock("@/hooks/assets/useSupportedAssets", () => ({
 
 vi.mock("@/hooks/balances/useMyBalances", () => ({
   useMyBalances: vi.fn()
+}));
+
+vi.mock("@/hooks/retirement-vault/useMyRetirementVaults", () => ({
+  useMyRetirementVaults: vi.fn()
 }));
 
 vi.mock("@/hooks/transaction-intents/useCreateDepositIntent", () => ({
@@ -34,6 +40,19 @@ vi.mock("@/hooks/transaction-intents/useCreateWithdrawalIntent", () => ({
 describe("wallet page", () => {
   const mutateDepositAsync = vi.fn();
   const mutateWithdrawalAsync = vi.fn();
+  const readyMfa = {
+    required: true,
+    totpEnrolled: true,
+    emailOtpEnrolled: true,
+    requiresSetup: false,
+    moneyMovementBlocked: false,
+    stepUpFreshUntil: "2099-04-01T10:00:00.000Z",
+    lockedUntil: null
+  };
+  const readySessionSecurity = {
+    currentSessionTrusted: true,
+    currentSessionRequiresVerification: false
+  };
 
   beforeEach(() => {
     localStorage.clear();
@@ -46,7 +65,9 @@ describe("wallet page", () => {
         lastName: "Rahman",
         email: "amina@example.com",
         supabaseUserId: "supabase_1",
-        ethereumAddress: "0x1111222233334444555566667777888899990000"
+        ethereumAddress: "0x1111222233334444555566667777888899990000",
+        mfa: readyMfa,
+        sessionSecurity: readySessionSecurity
       }
     });
 
@@ -125,6 +146,36 @@ describe("wallet page", () => {
       mutateAsync: mutateWithdrawalAsync,
       isPending: false
     } as ReturnType<typeof useCreateWithdrawalIntent>);
+
+    mockUseMyRetirementVaults.mockReturnValue({
+      data: {
+        customerAccountId: "account_1",
+        vaults: [
+          {
+            id: "vault_1",
+            customerAccountId: "account_1",
+            asset: {
+              id: "asset_eth",
+              symbol: "ETH",
+              displayName: "Ether",
+              decimals: 18,
+              chainId: 1
+            },
+            status: "active",
+            strictMode: true,
+            unlockAt: "2036-04-05T00:00:00.000Z",
+            lockedBalance: "1.25",
+            fundedAt: "2026-04-05T10:00:00.000Z",
+            lastFundedAt: "2026-04-05T10:00:00.000Z",
+            createdAt: "2026-04-05T09:00:00.000Z",
+            updatedAt: "2026-04-05T10:00:00.000Z"
+          }
+        ]
+      },
+      isLoading: false,
+      isError: false,
+      error: null
+    } as ReturnType<typeof useMyRetirementVaults>);
   });
 
   afterEach(() => {
@@ -151,6 +202,7 @@ describe("wallet page", () => {
     expect(screen.getByText(/Available:/i)).toBeInTheDocument();
     expect(screen.getAllByText(/2.5 ETH/i).length).toBeGreaterThan(0);
     expect(screen.queryByText(/Transfer Funds/i)).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Open Retirement Vault/i })).toBeInTheDocument();
   });
 
   it("submits a deposit request through the live mutation flow", async () => {
@@ -194,7 +246,7 @@ describe("wallet page", () => {
     });
 
     expect(screen.getByText(/Latest deposit request/i)).toBeInTheDocument();
-    expect(screen.getByText(/1.25 ETH/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/1.25 ETH/i).length).toBeGreaterThan(0);
     expect(
       screen.getByText(
         /This deposit is paused for operator review before execution or final settlement continues/i
@@ -427,7 +479,9 @@ describe("wallet page", () => {
         lastName: "Rahman",
         email: "amina@example.com",
         supabaseUserId: "supabase_1",
-        ethereumAddress: null as unknown as string
+        ethereumAddress: null as unknown as string,
+        mfa: readyMfa,
+        sessionSecurity: readySessionSecurity
       }
     });
 
@@ -505,7 +559,9 @@ describe("wallet page", () => {
         lastName: "رحمن",
         email: "amina@example.com",
         supabaseUserId: "supabase_1",
-        ethereumAddress: null as unknown as string
+        ethereumAddress: null as unknown as string,
+        mfa: readyMfa,
+        sessionSecurity: readySessionSecurity
       }
     });
 

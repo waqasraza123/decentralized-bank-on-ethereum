@@ -18,6 +18,7 @@ import { routerFuture } from "@/lib/router-future";
 const Index = lazy(() => import("./pages/Index"));
 const Transactions = lazy(() => import("./pages/Transactions"));
 const Wallet = lazy(() => import("./pages/Wallet"));
+const RetirementVault = lazy(() => import("./pages/RetirementVault"));
 const Loans = lazy(() => import("./pages/Loans"));
 const Profile = lazy(() => import("./pages/Profile"));
 const Yield = lazy(() => import("./pages/Yield"));
@@ -85,6 +86,14 @@ const App = () => (
                 path="/wallet"
                 element={
                   <ProtectedRoute>{withRouteBoundary(<Wallet />)}</ProtectedRoute>
+                }
+              />
+              <Route
+                path="/vault"
+                element={
+                  <ProtectedRoute>
+                    {withRouteBoundary(<RetirementVault />)}
+                  </ProtectedRoute>
                 }
               />
               <Route

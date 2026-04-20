@@ -4,6 +4,7 @@ import {
   ArrowRight,
   Clock3,
   Landmark,
+  LockKeyhole,
   ShieldCheck,
   Sparkles,
   Wallet
@@ -16,6 +17,7 @@ import { Card } from "@/components/ui/card";
 import { useLocale } from "@/i18n/use-locale";
 import { useT } from "@/i18n/use-t";
 import { useMyBalances } from "@/hooks/balances/useMyBalances";
+import { useMyRetirementVaults } from "@/hooks/retirement-vault/useMyRetirementVaults";
 import { useMyTransactionHistory } from "@/hooks/transactions/useMyTransactionHistory";
 import {
   formatRelativeTimeLabel,
@@ -43,9 +45,11 @@ const Index = () => {
   const { locale } = useLocale();
   const user = useUserStore((state) => state.user);
   const balancesQuery = useMyBalances();
+  const retirementVaultsQuery = useMyRetirementVaults();
   const historyQuery = useMyTransactionHistory(5);
 
   const balances = balancesQuery.data?.balances ?? [];
+  const vaults = retirementVaultsQuery.data?.vaults ?? [];
   const intents = historyQuery.data?.intents ?? [];
   const pendingAssetCount = balances.filter((balance) =>
     hasPendingBalance(balance.pendingBalance)
@@ -59,6 +63,13 @@ const Index = () => {
   const staleOperationalData =
     isTimestampOlderThan(latestBalanceUpdate, 24) ||
     isTimestampOlderThan(latestIntentUpdate, 24);
+  const lockedVaultBalance = vaults.reduce(
+    (sum, vault) => sum + Number.parseFloat(vault.lockedBalance || "0"),
+    0
+  );
+  const nextVaultUnlock = vaults
+    .map((vault) => vault.unlockAt)
+    .sort((left, right) => Date.parse(left) - Date.parse(right))[0];
 
   return (
     <Layout>
@@ -229,44 +240,94 @@ const Index = () => {
             <div className="space-y-5">
               <div>
                 <p className="stb-section-kicker">
-                  {locale === "ar" ? "العائد" : "Yield"}
+                  {locale === "ar" ? "قبو التقاعد" : "Retirement Vault"}
                 </p>
                 <h3 className="stb-page-title mt-2 text-2xl font-semibold text-slate-950">
-                  {locale === "ar" ? "وضع المنتج" : "Product posture"}
+                  {locale === "ar" ? "الأموال المحمية" : "Protected funds"}
                 </h3>
               </div>
               <div className="rounded-[1.5rem] bg-white/85 p-5">
                 <div className="flex items-center gap-2">
-                  <Sparkles className="h-4 w-4 text-indigo-700" />
+                  <LockKeyhole className="h-4 w-4 text-emerald-700" />
                   <p className="text-sm font-semibold text-slate-900">
-                    {locale === "ar" ? "البنية التحتية أولاً" : "Infrastructure-first yield"}
+                    {locale === "ar" ? "رصيد مقفل منفصل" : "Separated locked balance"}
                   </p>
                 </div>
+                {retirementVaultsQuery.isError ? (
+                  <div
+                    className="stb-trust-note mt-4 text-sm text-red-700"
+                    data-tone="critical"
+                    role="alert"
+                  >
+                    {retirementVaultsQuery.error instanceof Error
+                      ? retirementVaultsQuery.error.message
+                      : locale === "ar"
+                        ? "تعذر تحميل حالة قبو التقاعد."
+                        : "Retirement Vault status is unavailable."}
+                  </div>
+                ) : null}
                 <p className="mt-3 text-sm leading-7 text-slate-600">
                   {locale === "ar"
-                    ? "يتم عرض العائد كمنتج خاضع للسيطرة والحالة، وليس كدعوة مضاربية."
-                    : "Yield is presented as a controlled product with visible state, not speculative urgency."}
+                    ? "قبو التقاعد يعزل جزءاً من أموالك عن مسار السحب اليومي ويعيد عرضه كالتزام مقفل منفصل."
+                    : "Retirement Vault isolates part of your money from the daily withdrawal rail and presents it as a separate locked liability."}
                 </p>
+                <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                  <div className="rounded-[1.15rem] border border-slate-200/80 bg-white px-4 py-4">
+                    <p className="text-xs uppercase tracking-[0.14em] text-slate-500">
+                      {locale === "ar" ? "إجمالي المقفل" : "Total locked"}
+                    </p>
+                    <p className="mt-2 text-2xl font-semibold text-slate-950">
+                      {retirementVaultsQuery.isLoading
+                        ? "..."
+                        : formatTokenAmount(String(lockedVaultBalance), locale)}
+                    </p>
+                  </div>
+                  <div className="rounded-[1.15rem] border border-slate-200/80 bg-white px-4 py-4">
+                    <p className="text-xs uppercase tracking-[0.14em] text-slate-500">
+                      {locale === "ar" ? "أقرب إفراج" : "Next release"}
+                    </p>
+                    <p className="mt-2 text-sm font-semibold text-slate-950">
+                      {nextVaultUnlock
+                        ? formatDateLabel(nextVaultUnlock, locale)
+                        : locale === "ar"
+                          ? "لا يوجد بعد"
+                          : "Not scheduled yet"}
+                    </p>
+                  </div>
+                </div>
               </div>
               <div className="rounded-[1.5rem] bg-slate-950 p-5 text-white shadow-[0_30px_80px_rgba(10,18,28,0.24)]">
                 <p className="text-sm font-semibold text-white">
-                  {locale === "ar" ? "المتابعة التالية" : "Next review"}
+                  {locale === "ar" ? "حماية طويلة الأجل" : "Long-term protection"}
                 </p>
                 <p className="mt-3 text-sm leading-7 text-white/70">
                   {locale === "ar"
-                    ? "راجع الأهلية والحالة والمكافآت المتراكمة قبل بدء أي حركة."
-                    : "Review eligibility, pool state, and accrued rewards before starting any action."}
+                    ? "أنشئ القبو، ثبّت تاريخ الإفراج، ثم انقل المال من الرصيد المتاح إلى الرصيد المقفل."
+                    : "Create the vault, set the release date, then move money from available balance into locked balance."}
                 </p>
                 <Button
                   asChild
                   variant="outline"
                   className="mt-5 rounded-full border-white/20 bg-white/8 text-white hover:bg-white/12"
                 >
-                  <Link to="/yield">
-                    {locale === "ar" ? "فتح العائد" : "Open yield"}
+                  <Link to="/vault">
+                    {locale === "ar" ? "فتح القبو" : "Open Retirement Vault"}
                     <ArrowRight className="h-4 w-4" />
                   </Link>
                 </Button>
+              </div>
+              <div className="rounded-[1.5rem] border border-slate-200/80 bg-white/85 p-5">
+                <div className="flex items-center gap-2">
+                  <Sparkles className="h-4 w-4 text-indigo-700" />
+                  <p className="text-sm font-semibold text-slate-900">
+                    {locale === "ar" ? "العائد ما زال متاحاً" : "Yield remains available"}
+                  </p>
+                </div>
+                <p className="mt-3 text-sm leading-7 text-slate-600">
+                  {locale === "ar"
+                    ? "يبقى العائد مساراً منفصلاً. قبو التقاعد لا يستبدله، بل يضيف طبقة حماية أعلى للأموال التي تريد حبسها."
+                    : "Yield remains a separate rail. Retirement Vault does not replace it; it adds a heavier protection layer for money you want locked away."}
+                </p>
               </div>
             </div>
             </Card>

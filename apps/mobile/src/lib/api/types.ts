@@ -109,6 +109,72 @@ export type ListMyBalancesResult = {
   balances: CustomerAssetBalance[];
 };
 
+export type RetirementVaultProjection = {
+  id: string;
+  customerAccountId: string;
+  asset: {
+    id: string;
+    symbol: string;
+    displayName: string;
+    decimals: number;
+    chainId: number;
+  };
+  status: "active" | "restricted" | "released";
+  strictMode: boolean;
+  unlockAt: string;
+  lockedBalance: string;
+  fundedAt: string | null;
+  lastFundedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ListMyRetirementVaultsResult = {
+  customerAccountId: string;
+  vaults: RetirementVaultProjection[];
+};
+
+export type CreateMyRetirementVaultResult = {
+  vault: RetirementVaultProjection;
+  created: boolean;
+};
+
+export type RetirementVaultFundingIntentProjection = {
+  id: string;
+  retirementVaultId: string | null;
+  asset: {
+    id: string;
+    symbol: string;
+    displayName: string;
+    decimals: number;
+    chainId: number;
+  };
+  intentType: "vault_subscription";
+  status:
+    | "requested"
+    | "review_required"
+    | "approved"
+    | "queued"
+    | "broadcast"
+    | "confirmed"
+    | "settled"
+    | "failed"
+    | "cancelled"
+    | "manually_resolved";
+  policyDecision: "pending" | "approved" | "denied" | "review_required";
+  requestedAmount: string;
+  settledAmount: string | null;
+  idempotencyKey: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type FundMyRetirementVaultResult = {
+  vault: RetirementVaultProjection;
+  intent: RetirementVaultFundingIntentProjection;
+  idempotencyReused: boolean;
+};
+
 export type TransactionHistoryIntent = {
   id: string;
   asset: {
@@ -121,7 +187,11 @@ export type TransactionHistoryIntent = {
   sourceWalletAddress: string | null;
   destinationWalletAddress: string | null;
   externalAddress: string | null;
-  intentType: "deposit" | "withdrawal";
+  intentType:
+    | "deposit"
+    | "withdrawal"
+    | "vault_subscription"
+    | "vault_redemption";
   status:
     | "requested"
     | "review_required"

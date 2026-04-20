@@ -9,11 +9,14 @@ import { apiClient, readApiErrorMessage } from "../lib/api/client";
 import type {
   ApiEnvelope,
   CreateDepositIntentResult,
+  CreateMyRetirementVaultResult,
   CreateWithdrawalIntentResult,
+  FundMyRetirementVaultResult,
   CustomerLoansDashboard,
   CustomerStakingSnapshot,
   ListCustomerSecurityActivityResult,
   ListMyBalancesResult,
+  ListMyRetirementVaultsResult,
   ListMyTransactionHistoryResult,
   ListCustomerSessionsResult,
   ListSupportedAssetsResult,
@@ -119,6 +122,29 @@ export function useBalancesQuery() {
   });
 }
 
+export function useRetirementVaultsQuery() {
+  const token = useSessionStore((state) => state.token);
+
+  return useQuery({
+    queryKey: ["retirement-vaults"],
+    enabled: Boolean(token),
+    queryFn: async () => {
+      const response =
+        await apiClient.get<ApiEnvelope<ListMyRetirementVaultsResult>>(
+          "/retirement-vault/me",
+        );
+
+      if (response.data.status !== "success" || !response.data.data) {
+        throw new Error(
+          response.data.message || "Failed to load retirement vaults.",
+        );
+      }
+
+      return response.data.data;
+    },
+  });
+}
+
 export function useTransactionHistoryQuery(limit = 100) {
   const token = useSessionStore((state) => state.token);
 
@@ -194,6 +220,62 @@ export function useCreateWithdrawalIntentMutation() {
       return response.data.data;
     },
     onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["transactions"] });
+      await queryClient.invalidateQueries({ queryKey: ["balances"] });
+    },
+  });
+}
+
+export function useCreateRetirementVaultMutation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (input: {
+      assetSymbol: string;
+      unlockAt: string;
+      strictMode?: boolean;
+    }) => {
+      const response = await apiClient.post<
+        ApiEnvelope<CreateMyRetirementVaultResult>
+      >("/retirement-vault/me", input);
+
+      if (response.data.status !== "success" || !response.data.data) {
+        throw new Error(
+          response.data.message || "Failed to create retirement vault.",
+        );
+      }
+
+      return response.data.data;
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["retirement-vaults"] });
+    },
+  });
+}
+
+export function useFundRetirementVaultMutation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (input: {
+      idempotencyKey: string;
+      assetSymbol: string;
+      amount: string;
+    }) => {
+      const response = await apiClient.post<
+        ApiEnvelope<FundMyRetirementVaultResult>
+      >("/retirement-vault/me/funding-requests", input);
+
+      if (response.data.status !== "success" || !response.data.data) {
+        throw new Error(
+          response.data.message || "Failed to fund retirement vault.",
+        );
+      }
+
+      return response.data.data;
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["retirement-vaults"] });
       await queryClient.invalidateQueries({ queryKey: ["transactions"] });
       await queryClient.invalidateQueries({ queryKey: ["balances"] });
     },

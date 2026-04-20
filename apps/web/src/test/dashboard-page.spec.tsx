@@ -1,6 +1,7 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useMyBalances } from "@/hooks/balances/useMyBalances";
+import { useMyRetirementVaults } from "@/hooks/retirement-vault/useMyRetirementVaults";
 import { useMyTransactionHistory } from "@/hooks/transactions/useMyTransactionHistory";
 import { webLocaleStorageKey } from "@/i18n/provider";
 import Index from "@/pages/Index";
@@ -8,10 +9,15 @@ import { useUserStore } from "@/stores/userStore";
 import { renderWithRouter } from "@/test/render-with-router";
 
 const mockUseMyBalances = vi.mocked(useMyBalances);
+const mockUseMyRetirementVaults = vi.mocked(useMyRetirementVaults);
 const mockUseMyTransactionHistory = vi.mocked(useMyTransactionHistory);
 
 vi.mock("@/hooks/balances/useMyBalances", () => ({
   useMyBalances: vi.fn()
+}));
+
+vi.mock("@/hooks/retirement-vault/useMyRetirementVaults", () => ({
+  useMyRetirementVaults: vi.fn()
 }));
 
 vi.mock("@/hooks/transactions/useMyTransactionHistory", () => ({
@@ -89,6 +95,36 @@ describe("dashboard page", () => {
       isError: false,
       error: null
     } as ReturnType<typeof useMyTransactionHistory>);
+
+    mockUseMyRetirementVaults.mockReturnValue({
+      data: {
+        customerAccountId: "account_1",
+        vaults: [
+          {
+            id: "vault_1",
+            customerAccountId: "account_1",
+            asset: {
+              id: "asset_eth",
+              symbol: "ETH",
+              displayName: "Ethereum",
+              decimals: 18,
+              chainId: 1
+            },
+            status: "active",
+            strictMode: true,
+            unlockAt: "2036-04-05T00:00:00.000Z",
+            lockedBalance: "0.75",
+            fundedAt: "2026-04-05T09:30:00.000Z",
+            lastFundedAt: "2026-04-05T09:30:00.000Z",
+            createdAt: "2026-04-05T09:00:00.000Z",
+            updatedAt: "2026-04-05T09:30:00.000Z"
+          }
+        ]
+      },
+      isLoading: false,
+      isError: false,
+      error: null
+    } as ReturnType<typeof useMyRetirementVaults>);
   });
 
   afterEach(() => {
@@ -107,6 +143,7 @@ describe("dashboard page", () => {
     expect(screen.getAllByText("Deposit").length).toBeGreaterThan(0);
     expect(screen.getAllByText("+1.25 ETH").length).toBeGreaterThan(0);
     expect(screen.getByText(/trust layer/i)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Open Retirement Vault/i })).toBeInTheDocument();
   });
 
   it("renders safe empty states when no balances or transaction history exist", () => {
@@ -130,6 +167,16 @@ describe("dashboard page", () => {
       error: null
     } as ReturnType<typeof useMyTransactionHistory>);
 
+    mockUseMyRetirementVaults.mockReturnValue({
+      data: {
+        customerAccountId: "account_1",
+        vaults: []
+      },
+      isLoading: false,
+      isError: false,
+      error: null
+    } as ReturnType<typeof useMyRetirementVaults>);
+
     renderWithRouter(<Index />);
 
     expect(screen.getByText("No balances yet")).toBeInTheDocument();
@@ -151,10 +198,18 @@ describe("dashboard page", () => {
       error: new Error("History feed unavailable")
     } as ReturnType<typeof useMyTransactionHistory>);
 
+    mockUseMyRetirementVaults.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      isError: true,
+      error: new Error("Vault feed unavailable")
+    } as ReturnType<typeof useMyRetirementVaults>);
+
     renderWithRouter(<Index />);
 
     expect(screen.getByText("Balance feed unavailable")).toBeInTheDocument();
     expect(screen.getByText("History feed unavailable")).toBeInTheDocument();
+    expect(screen.getByText("Vault feed unavailable")).toBeInTheDocument();
     expect(screen.getByText(/Trust & safety/i)).toBeInTheDocument();
   });
 
@@ -222,6 +277,16 @@ describe("dashboard page", () => {
       isError: false,
       error: null
     } as ReturnType<typeof useMyTransactionHistory>);
+
+    mockUseMyRetirementVaults.mockReturnValue({
+      data: {
+        customerAccountId: "account_1",
+        vaults: []
+      },
+      isLoading: false,
+      isError: false,
+      error: null
+    } as ReturnType<typeof useMyRetirementVaults>);
 
     renderWithRouter(<Index />);
 

@@ -3,33 +3,74 @@ import { fireEvent, waitFor } from "@testing-library/react-native";
 import { WalletScreen } from "./WalletScreen";
 import { renderMobile } from "../test/test-utils";
 
+const mockNavigate = jest.fn();
+
+jest.mock("@react-navigation/native", () => ({
+  useNavigation: () => ({
+    navigate: mockNavigate
+  })
+}));
+
 jest.mock("../hooks/use-customer-queries", () => ({
   useSupportedAssetsQuery: jest.fn(),
   useBalancesQuery: jest.fn(),
+  useRetirementVaultsQuery: jest.fn(),
   useCreateDepositIntentMutation: jest.fn(),
-  useCreateWithdrawalIntentMutation: jest.fn()
+  useCreateWithdrawalIntentMutation: jest.fn(),
+  useCreateRetirementVaultMutation: jest.fn(),
+  useFundRetirementVaultMutation: jest.fn(),
+  useStartMfaChallengeMutation: jest.fn(),
+  useVerifyMfaChallengeMutation: jest.fn()
 }));
 
 const {
   useSupportedAssetsQuery,
   useBalancesQuery,
+  useRetirementVaultsQuery,
   useCreateDepositIntentMutation,
-  useCreateWithdrawalIntentMutation
+  useCreateWithdrawalIntentMutation,
+  useCreateRetirementVaultMutation,
+  useFundRetirementVaultMutation,
+  useStartMfaChallengeMutation,
+  useVerifyMfaChallengeMutation
 } = jest.requireMock("../hooks/use-customer-queries") as {
   useSupportedAssetsQuery: jest.Mock;
   useBalancesQuery: jest.Mock;
+  useRetirementVaultsQuery: jest.Mock;
   useCreateDepositIntentMutation: jest.Mock;
   useCreateWithdrawalIntentMutation: jest.Mock;
+  useCreateRetirementVaultMutation: jest.Mock;
+  useFundRetirementVaultMutation: jest.Mock;
+  useStartMfaChallengeMutation: jest.Mock;
+  useVerifyMfaChallengeMutation: jest.Mock;
 };
 
 describe("WalletScreen", () => {
   const depositMutateAsync = jest.fn();
   const withdrawalMutateAsync = jest.fn();
+  const createVaultMutateAsync = jest.fn();
+  const fundVaultMutateAsync = jest.fn();
+  const readyMfa = {
+    required: true,
+    totpEnrolled: true,
+    emailOtpEnrolled: true,
+    requiresSetup: false,
+    moneyMovementBlocked: false,
+    stepUpFreshUntil: "2099-04-18T08:00:00.000Z",
+    lockedUntil: null
+  };
+  const readySessionSecurity = {
+    currentSessionTrusted: true,
+    currentSessionRequiresVerification: false
+  };
 
   beforeEach(() => {
+    mockNavigate.mockReset();
     jest.spyOn(Alert, "alert").mockImplementation(jest.fn());
     depositMutateAsync.mockReset();
     withdrawalMutateAsync.mockReset();
+    createVaultMutateAsync.mockReset();
+    fundVaultMutateAsync.mockReset();
     useSupportedAssetsQuery.mockReturnValue({
       data: {
         assets: [
@@ -65,12 +106,55 @@ describe("WalletScreen", () => {
       },
       isError: false
     });
+    useRetirementVaultsQuery.mockReturnValue({
+      data: {
+        vaults: [
+          {
+            id: "vault-1",
+            customerAccountId: "acct-1",
+            asset: {
+              id: "eth",
+              symbol: "ETH",
+              displayName: "Ether",
+              decimals: 18,
+              chainId: 1
+            },
+            status: "active",
+            strictMode: true,
+            unlockAt: "2036-04-18T08:00:00.000Z",
+            lockedBalance: "1.25",
+            fundedAt: "2026-04-18T08:00:00.000Z",
+            lastFundedAt: "2026-04-18T08:00:00.000Z",
+            createdAt: "2026-04-18T07:00:00.000Z",
+            updatedAt: "2026-04-18T08:00:00.000Z"
+          }
+        ]
+      },
+      isError: false,
+      isLoading: false
+    });
     useCreateDepositIntentMutation.mockReturnValue({
       mutateAsync: depositMutateAsync,
       isPending: false
     });
     useCreateWithdrawalIntentMutation.mockReturnValue({
       mutateAsync: withdrawalMutateAsync,
+      isPending: false
+    });
+    useCreateRetirementVaultMutation.mockReturnValue({
+      mutateAsync: createVaultMutateAsync,
+      isPending: false
+    });
+    useFundRetirementVaultMutation.mockReturnValue({
+      mutateAsync: fundVaultMutateAsync,
+      isPending: false
+    });
+    useStartMfaChallengeMutation.mockReturnValue({
+      mutateAsync: jest.fn(),
+      isPending: false
+    });
+    useVerifyMfaChallengeMutation.mockReturnValue({
+      mutateAsync: jest.fn(),
       isPending: false
     });
   });
@@ -109,7 +193,9 @@ describe("WalletScreen", () => {
         firstName: "Mobile",
         lastName: "Customer",
         supabaseUserId: "supabase-user",
-        ethereumAddress: "0x1234567890123456789012345678901234567890"
+        ethereumAddress: "0x1234567890123456789012345678901234567890",
+        mfa: readyMfa,
+        sessionSecurity: readySessionSecurity
       }
     });
 
@@ -118,6 +204,7 @@ describe("WalletScreen", () => {
         "Deposits are credited only after managed wallet detection, chain confirmation, and policy-safe settlement. Larger or anomalous deposits may pause for operator review."
       )
     ).toBeTruthy();
+    expect(screen.getByText("Retirement Vault")).toBeTruthy();
 
     fireEvent.changeText(screen.getByLabelText("Amount"), "1.5");
     fireEvent.press(screen.getByText("Create deposit request"));
@@ -151,7 +238,9 @@ describe("WalletScreen", () => {
         firstName: "Mobile",
         lastName: "Customer",
         supabaseUserId: "supabase-user",
-        ethereumAddress: "0x1234567890123456789012345678901234567890"
+        ethereumAddress: "0x1234567890123456789012345678901234567890",
+        mfa: readyMfa,
+        sessionSecurity: readySessionSecurity
       }
     });
 

@@ -91,12 +91,12 @@ const WithdrawCard = ({
       ) ?? null,
     [balances, selectedAssetSymbol],
   );
-  const moneyMovementBlocked = user?.mfa.moneyMovementBlocked ?? true;
+  const moneyMovementBlocked = user?.mfa?.moneyMovementBlocked ?? true;
   const sessionRequiresVerification =
     user?.sessionSecurity?.currentSessionRequiresVerification ?? false;
   const stepUpFresh =
-    Boolean(user?.mfa.stepUpFreshUntil) &&
-    Date.parse(user?.mfa.stepUpFreshUntil ?? "") > Date.now();
+    Boolean(user?.mfa?.stepUpFreshUntil) &&
+    Date.parse(user?.mfa?.stepUpFreshUntil ?? "") > Date.now();
 
   function getIdempotencyKey(signature: string): string {
     if (lastSubmissionRef.current?.signature === signature) {
