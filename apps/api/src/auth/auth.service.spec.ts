@@ -26,6 +26,11 @@ jest.mock("@stealth-trails-bank/config/api", () => ({
       "risk_manager",
       "compliance_lead",
     ],
+    sessionRiskEscalationAllowedOperatorRoles: [
+      "operations_admin",
+      "risk_manager",
+      "compliance_lead",
+    ],
   }),
   loadJwtRuntimeConfig: () => ({
     jwtSecret: "test-secret",
@@ -110,9 +115,13 @@ describe("AuthService", () => {
         findUnique: jest.fn(),
         findFirst: jest.fn(),
         findMany: jest.fn(),
+        groupBy: jest.fn(),
         count: jest.fn(),
         update: jest.fn(),
         updateMany: jest.fn(),
+      },
+      reviewCase: {
+        findMany: jest.fn(),
       },
       customerMfaRecoveryRequest: {
         findUnique: jest.fn(),
@@ -141,11 +150,15 @@ describe("AuthService", () => {
     const customerSecurityEmailDeliveryService = {
       sendSessionAlert: jest.fn().mockResolvedValue(undefined),
     };
+    const reviewCasesService = {
+      openOrReuseReviewCase: jest.fn(),
+    };
 
     const service = new AuthService(
       prismaService as never,
       customerMfaEmailDeliveryService as never,
       customerSecurityEmailDeliveryService as never,
+      reviewCasesService as never,
     );
 
     transaction.customerAuthSession.create.mockResolvedValue({
@@ -161,7 +174,9 @@ describe("AuthService", () => {
     prismaService.customerAuthSession.findFirst.mockResolvedValue(null);
     prismaService.customerAuthSession.findUnique.mockResolvedValue(null);
     prismaService.customerAuthSession.findMany.mockResolvedValue([]);
+    prismaService.customerAuthSession.groupBy.mockResolvedValue([]);
     prismaService.customerAuthSession.count.mockResolvedValue(0);
+    prismaService.reviewCase.findMany.mockResolvedValue([]);
     prismaService.auditEvent.findMany.mockResolvedValue([]);
     prismaService.auditEvent.count.mockResolvedValue(0);
     prismaService.customerAuthSession.updateMany.mockResolvedValue({
@@ -181,6 +196,7 @@ describe("AuthService", () => {
       transaction,
       customerMfaEmailDeliveryService,
       customerSecurityEmailDeliveryService,
+      reviewCasesService,
     };
   }
 
@@ -1279,6 +1295,33 @@ describe("AuthService", () => {
       .mockResolvedValueOnce(2)
       .mockResolvedValueOnce(1)
       .mockResolvedValueOnce(0);
+    prismaService.customerAuthSession.groupBy
+      .mockResolvedValueOnce([
+        {
+          customerId: "customer_1",
+          _count: {
+            _all: 4,
+          },
+        },
+      ])
+      .mockResolvedValueOnce([
+        {
+          customerId: "customer_1",
+          _count: {
+            _all: 2,
+          },
+        },
+      ]);
+    prismaService.reviewCase.findMany.mockResolvedValue([
+      {
+        id: "review_case_1",
+        customerAccountId: "account_1",
+        type: "account_review",
+        status: "open",
+        assignedOperatorId: "ops_2",
+        updatedAt: new Date("2026-04-20T10:02:00.000Z"),
+      },
+    ]);
 
     const result = await service.listCustomerSessionRisks(
       {
@@ -1302,6 +1345,17 @@ describe("AuthService", () => {
           id: "session_risk_1",
           clientPlatform: "web",
           challengeState: "expired",
+          riskSeverity: "critical",
+          recommendedAction: "open_review_case",
+          riskReasons: expect.arrayContaining([
+            "expired_trust_challenge",
+            "recent_session_activity",
+            "multiple_untrusted_sessions",
+            "high_active_session_count",
+          ]),
+          linkedReviewCase: expect.objectContaining({
+            reviewCaseId: "review_case_1",
+          }),
           customer: expect.objectContaining({
             email: "ada@example.com",
             customerAccountId: "account_1",
@@ -1336,6 +1390,16 @@ describe("AuthService", () => {
           },
           {
             clientPlatform: "unknown",
+            count: 0,
+          },
+        ],
+        bySeverity: [
+          {
+            riskSeverity: "critical",
+            count: 1,
+          },
+          {
+            riskSeverity: "warning",
             count: 0,
           },
         ],
@@ -1433,8 +1497,99 @@ describe("AuthService", () => {
       session: expect.objectContaining({
         id: "session_risk_1",
         revokedAt: "2026-04-20T10:02:00.000Z",
+        riskSeverity: "warning",
       }),
       stateReused: false,
+    });
+  });
+
+  it("escalates a risky customer session into an account review case", async () => {
+    const { service, prismaService, reviewCasesService } = createService();
+
+    prismaService.customerAuthSession.findUnique.mockResolvedValue({
+      id: "session_risk_1",
+      clientPlatform: "unknown",
+      trustedAt: null,
+      trustChallengeCodeHash: createOtpHash("123456"),
+      trustChallengeExpiresAt: new Date(Date.now() - 60_000),
+      trustChallengeSentAt: new Date(Date.now() - 120_000),
+      userAgent: null,
+      ipAddress: "203.0.113.10",
+      createdAt: new Date("2026-04-20T09:55:00.000Z"),
+      lastSeenAt: new Date(Date.now() - 60_000),
+      revokedAt: null,
+      customerId: "customer_1",
+      customer: {
+        id: "customer_1",
+        supabaseUserId: "supabase_1",
+        email: "ada@example.com",
+        firstName: "Ada",
+        lastName: "Lovelace",
+        accounts: [
+          {
+            id: "account_1",
+            status: "active",
+          },
+        ],
+      },
+    });
+    prismaService.customerAuthSession.count
+      .mockResolvedValueOnce(4)
+      .mockResolvedValueOnce(2);
+    reviewCasesService.openOrReuseReviewCase.mockResolvedValue({
+      reviewCase: {
+        id: "review_case_1",
+        type: "account_review",
+        status: "open",
+        reasonCode: "session_risk_anomaly",
+        assignedOperatorId: null,
+        updatedAt: "2026-04-20T10:05:00.000Z",
+      },
+      reviewCaseReused: false,
+    });
+    prismaService.auditEvent.create.mockResolvedValue(undefined);
+
+    const result = await service.escalateCustomerSessionRisk(
+      "session_risk_1",
+      "ops_1",
+      "risk_manager",
+      "Escalating due to repeated unfamiliar access.",
+    );
+
+    expect(reviewCasesService.openOrReuseReviewCase).toHaveBeenCalledWith(
+      prismaService,
+      expect.objectContaining({
+        customerId: "customer_1",
+        customerAccountId: "account_1",
+        type: "account_review",
+        reasonCode: "session_risk_anomaly",
+      }),
+    );
+    expect(prismaService.auditEvent.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          action: "customer_account.session_risk_escalated",
+          targetId: "session_risk_1",
+        }),
+      }),
+    );
+    expect(result).toEqual({
+      session: expect.objectContaining({
+        id: "session_risk_1",
+        linkedReviewCase: expect.objectContaining({
+          reviewCaseId: "review_case_1",
+        }),
+        riskSeverity: "critical",
+      }),
+      reviewCase: {
+        id: "review_case_1",
+        type: "account_review",
+        status: "open",
+        reasonCode: "session_risk_anomaly",
+        assignedOperatorId: null,
+        updatedAt: "2026-04-20T10:05:00.000Z",
+      },
+      reviewCaseReused: false,
     });
   });
 

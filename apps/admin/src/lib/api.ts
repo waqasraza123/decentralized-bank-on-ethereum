@@ -13,6 +13,7 @@ import type {
   CustomerMfaRecoveryRequestList,
   CustomerMfaRecoveryRequestMutationResult,
   CustomerSessionRiskList,
+  CustomerSessionRiskEscalationResult,
   CustomerSessionRiskMutationResult,
   GovernedExecutionOverrideRequest,
   GovernedTreasuryExecutionRequest,
@@ -162,6 +163,20 @@ export async function revokeCustomerSessionRisk(
   return requestData(session, {
     method: "POST",
     url: `/auth/internal/customer-session-risks/${sessionId}/revoke`,
+    data: payload
+  });
+}
+
+export async function escalateCustomerSessionRisk(
+  session: OperatorSession,
+  sessionId: string,
+  payload: {
+    note?: string;
+  }
+): Promise<CustomerSessionRiskEscalationResult> {
+  return requestData(session, {
+    method: "POST",
+    url: `/auth/internal/customer-session-risks/${sessionId}/escalate`,
     data: payload
   });
 }

@@ -17,6 +17,7 @@ describe("loadCustomerMfaPolicyRuntimeConfig", () => {
     delete process.env["CUSTOMER_MFA_RECOVERY_APPROVER_ALLOWED_OPERATOR_ROLES"];
     delete process.env["CUSTOMER_SESSION_RISK_READ_ALLOWED_OPERATOR_ROLES"];
     delete process.env["CUSTOMER_SESSION_RISK_REVOKE_ALLOWED_OPERATOR_ROLES"];
+    delete process.env["CUSTOMER_SESSION_RISK_ESCALATION_ALLOWED_OPERATOR_ROLES"];
   });
 
   afterAll(() => {
@@ -48,6 +49,11 @@ describe("loadCustomerMfaPolicyRuntimeConfig", () => {
         "risk_manager",
         "compliance_lead",
       ],
+      sessionRiskEscalationAllowedOperatorRoles: [
+        "operations_admin",
+        "risk_manager",
+        "compliance_lead",
+      ],
     });
   });
 
@@ -60,6 +66,8 @@ describe("loadCustomerMfaPolicyRuntimeConfig", () => {
       "operations_admin, risk_manager";
     process.env["CUSTOMER_SESSION_RISK_REVOKE_ALLOWED_OPERATOR_ROLES"] =
       "risk_manager, compliance_lead";
+    process.env["CUSTOMER_SESSION_RISK_ESCALATION_ALLOWED_OPERATOR_ROLES"] =
+      "operations_admin, compliance_lead";
 
     expect(loadCustomerMfaPolicyRuntimeConfig(process.env)).toEqual(
       expect.objectContaining({
@@ -77,6 +85,10 @@ describe("loadCustomerMfaPolicyRuntimeConfig", () => {
         ],
         sessionRiskRevokeAllowedOperatorRoles: [
           "risk_manager",
+          "compliance_lead",
+        ],
+        sessionRiskEscalationAllowedOperatorRoles: [
+          "operations_admin",
           "compliance_lead",
         ],
       }),

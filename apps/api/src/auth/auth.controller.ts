@@ -15,6 +15,7 @@ import { JwtAuthGuard } from "./guards/jwt-auth.guard";
 import { InternalOperatorBearerGuard } from "./guards/internal-operator-bearer.guard";
 import { CustomJsonResponse } from "../types/CustomJsonResponse";
 import { AuthService } from "./auth.service";
+import { EscalateCustomerSessionRiskDto } from "./dto/escalate-customer-session-risk.dto";
 import { ListCustomerMfaRecoveryRequestsDto } from "./dto/list-customer-mfa-recovery-requests.dto";
 import { ListCustomerSessionRisksDto } from "./dto/list-customer-session-risks.dto";
 import { LoginDto } from "./dto/login.dto";
@@ -422,6 +423,35 @@ export class AuthController {
       message: result.stateReused
         ? "Customer risky session revocation reused successfully."
         : "Customer risky session revoked successfully.",
+      data: result,
+    };
+  }
+
+  @UseGuards(InternalOperatorBearerGuard)
+  @Post("internal/customer-session-risks/:sessionId/escalate")
+  async escalateCustomerSessionRisk(
+    @Param("sessionId") sessionId: string,
+    @Body(
+      new ValidationPipe({
+        whitelist: true,
+        forbidNonWhitelisted: true,
+      }),
+    )
+    dto: EscalateCustomerSessionRiskDto,
+    @Request() request: AuthenticatedOperatorRequest,
+  ): Promise<CustomJsonResponse> {
+    const result = await this.authService.escalateCustomerSessionRisk(
+      sessionId,
+      request.internalOperator.operatorId,
+      request.internalOperator.operatorRole ?? null,
+      dto.note,
+    );
+
+    return {
+      status: "success",
+      message: result.reviewCaseReused
+        ? "Customer risky session escalation reused an open review case successfully."
+        : "Customer risky session escalated successfully.",
       data: result,
     };
   }

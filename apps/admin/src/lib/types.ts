@@ -1859,6 +1859,10 @@ export type CustomerSessionRisk = {
   clientPlatform: "web" | "mobile" | "unknown";
   trusted: boolean;
   challengeState: "not_started" | "pending" | "expired";
+  riskSeverity: "warning" | "critical";
+  riskScore: number;
+  riskReasons: string[];
+  recommendedAction: "monitor" | "revoke_session" | "open_review_case";
   trustChallengeSentAt: string | null;
   trustChallengeExpiresAt: string | null;
   userAgent: string | null;
@@ -1866,6 +1870,13 @@ export type CustomerSessionRisk = {
   createdAt: string;
   lastSeenAt: string;
   revokedAt: string | null;
+  linkedReviewCase: {
+    reviewCaseId: string;
+    type: string;
+    status: string;
+    assignedOperatorId: string | null;
+    updatedAt: string;
+  } | null;
   customer: {
     customerId: string;
     customerAccountId: string | null;
@@ -1890,12 +1901,29 @@ export type CustomerSessionRiskList = {
       clientPlatform: CustomerSessionRisk["clientPlatform"];
       count: number;
     }>;
+    bySeverity: Array<{
+      riskSeverity: CustomerSessionRisk["riskSeverity"];
+      count: number;
+    }>;
   };
 };
 
 export type CustomerSessionRiskMutationResult = {
   session: CustomerSessionRisk;
   stateReused: boolean;
+};
+
+export type CustomerSessionRiskEscalationResult = {
+  session: CustomerSessionRisk;
+  reviewCase: {
+    id: string;
+    type: string;
+    status: string;
+    reasonCode: string | null;
+    assignedOperatorId: string | null;
+    updatedAt: string;
+  };
+  reviewCaseReused: boolean;
 };
 
 export type CustomerBalance = {

@@ -23,6 +23,7 @@ describe("AuthController", () => {
     verifyEmailRecovery: jest.fn(),
     listCustomerSessionRisks: jest.fn(),
     revokeCustomerSessionRisk: jest.fn(),
+    escalateCustomerSessionRisk: jest.fn(),
     listCustomerMfaRecoveryRequests: jest.fn(),
     requestCustomerMfaRecovery: jest.fn(),
     approveCustomerMfaRecoveryRequest: jest.fn(),
@@ -344,6 +345,15 @@ describe("AuthController", () => {
       },
       stateReused: false,
     });
+    authService.escalateCustomerSessionRisk.mockResolvedValue({
+      session: {
+        id: "session_risk_1",
+      },
+      reviewCase: {
+        id: "review_case_1",
+      },
+      reviewCaseReused: false,
+    });
     authService.listCustomerMfaRecoveryRequests.mockResolvedValue({
       requests: [],
       limit: 25,
@@ -400,6 +410,21 @@ describe("AuthController", () => {
       "ops_1",
       "operations_admin",
       "Customer reported unfamiliar device activity.",
+    );
+
+    await request(app.getHttpServer())
+      .post("/auth/internal/customer-session-risks/session_risk_1/escalate")
+      .set("Authorization", "Bearer operator-token")
+      .send({
+        note: "Escalating the risky session for governed account review.",
+      })
+      .expect(201);
+
+    expect(authService.escalateCustomerSessionRisk).toHaveBeenCalledWith(
+      "session_risk_1",
+      "ops_1",
+      "operations_admin",
+      "Escalating the risky session for governed account review.",
     );
 
     await request(app.getHttpServer())

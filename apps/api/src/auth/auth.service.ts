@@ -14,6 +14,8 @@ import {
   CustomerMfaRecoveryRequestStatus,
   CustomerMfaRecoveryRequestType,
   Prisma,
+  ReviewCaseStatus,
+  ReviewCaseType,
   WalletCustodyType,
   WalletKind,
   WalletStatus,
@@ -29,6 +31,7 @@ import {
 } from "@stealth-trails-bank/config/api";
 import { PrismaService } from "../prisma/prisma.service";
 import type { PrismaJsonValue } from "../prisma/prisma-json";
+import { ReviewCasesService } from "../review-cases/review-cases.service";
 import { CustomJsonResponse } from "../types/CustomJsonResponse";
 import {
   buildOtpAuthUri,
@@ -190,6 +193,10 @@ type CustomerSessionRiskProjection = {
   clientPlatform: "web" | "mobile" | "unknown";
   trusted: boolean;
   challengeState: CustomerSessionRiskChallengeState;
+  riskSeverity: "warning" | "critical";
+  riskScore: number;
+  riskReasons: string[];
+  recommendedAction: "monitor" | "revoke_session" | "open_review_case";
   trustChallengeSentAt: string | null;
   trustChallengeExpiresAt: string | null;
   userAgent: string | null;
@@ -197,6 +204,13 @@ type CustomerSessionRiskProjection = {
   createdAt: string;
   lastSeenAt: string;
   revokedAt: string | null;
+  linkedReviewCase: {
+    reviewCaseId: string;
+    type: ReviewCaseType;
+    status: ReviewCaseStatus;
+    assignedOperatorId: string | null;
+    updatedAt: string;
+  } | null;
   customer: {
     customerId: string;
     customerAccountId: string | null;
@@ -221,12 +235,29 @@ type ListCustomerSessionRisksResult = {
       clientPlatform: "web" | "mobile" | "unknown";
       count: number;
     }>;
+    bySeverity: Array<{
+      riskSeverity: "warning" | "critical";
+      count: number;
+    }>;
   };
 };
 
 type CustomerSessionRiskMutationResult = {
   session: CustomerSessionRiskProjection;
   stateReused: boolean;
+};
+
+type CustomerSessionRiskEscalationMutationResult = {
+  session: CustomerSessionRiskProjection;
+  reviewCase: {
+    id: string;
+    type: ReviewCaseType;
+    status: ReviewCaseStatus;
+    reasonCode: string | null;
+    assignedOperatorId: string | null;
+    updatedAt: string;
+  };
+  reviewCaseReused: boolean;
 };
 
 type CustomerSecurityActivityProjection = {
@@ -376,6 +407,13 @@ type CustomerSessionRiskRecord = Prisma.CustomerAuthSessionGetPayload<{
   };
 }>;
 
+type CustomerSessionRiskAssessment = {
+  riskSeverity: "warning" | "critical";
+  riskScore: number;
+  riskReasons: string[];
+  recommendedAction: "monitor" | "revoke_session" | "open_review_case";
+};
+
 type CustomerSecurityAuditEventRecord = Prisma.AuditEventGetPayload<{
   select: {
     id: true;
@@ -478,11 +516,13 @@ export class AuthService {
   private readonly recoveryApproverAllowedOperatorRoles: readonly string[];
   private readonly sessionRiskReadAllowedOperatorRoles: readonly string[];
   private readonly sessionRiskRevokeAllowedOperatorRoles: readonly string[];
+  private readonly sessionRiskEscalationAllowedOperatorRoles: readonly string[];
 
   constructor(
     private readonly prismaService: PrismaService,
     private readonly customerMfaEmailDeliveryService: CustomerMfaEmailDeliveryService,
     private readonly customerSecurityEmailDeliveryService: CustomerSecurityEmailDeliveryService,
+    private readonly reviewCasesService: ReviewCasesService,
   ) {
     this.productChainId = loadProductChainRuntimeConfig().productChainId;
     const customerMfaPolicy = loadCustomerMfaPolicyRuntimeConfig();
@@ -502,6 +542,8 @@ export class AuthService {
       customerMfaPolicy.sessionRiskReadAllowedOperatorRoles;
     this.sessionRiskRevokeAllowedOperatorRoles =
       customerMfaPolicy.sessionRiskRevokeAllowedOperatorRoles;
+    this.sessionRiskEscalationAllowedOperatorRoles =
+      customerMfaPolicy.sessionRiskEscalationAllowedOperatorRoles;
   }
 
   private buildCustomerMfaStatus(input: {
@@ -918,6 +960,14 @@ export class AuthService {
 
   private mapCustomerSessionRisk(
     session: CustomerSessionRiskRecord,
+    assessment: CustomerSessionRiskAssessment,
+    linkedReviewCase?: {
+      id: string;
+      type: ReviewCaseType;
+      status: ReviewCaseStatus;
+      assignedOperatorId: string | null;
+      updatedAt: Date;
+    } | null,
   ): CustomerSessionRiskProjection {
     const customerAccount = session.customer.accounts[0] ?? null;
 
@@ -926,6 +976,10 @@ export class AuthService {
       clientPlatform: session.clientPlatform,
       trusted: Boolean(session.trustedAt),
       challengeState: this.resolveCustomerSessionRiskChallengeState(session),
+      riskSeverity: assessment.riskSeverity,
+      riskScore: assessment.riskScore,
+      riskReasons: assessment.riskReasons,
+      recommendedAction: assessment.recommendedAction,
       trustChallengeSentAt: session.trustChallengeSentAt?.toISOString() ?? null,
       trustChallengeExpiresAt:
         session.trustChallengeExpiresAt?.toISOString() ?? null,
@@ -934,6 +988,15 @@ export class AuthService {
       createdAt: session.createdAt.toISOString(),
       lastSeenAt: session.lastSeenAt.toISOString(),
       revokedAt: session.revokedAt?.toISOString() ?? null,
+      linkedReviewCase: linkedReviewCase
+        ? {
+            reviewCaseId: linkedReviewCase.id,
+            type: linkedReviewCase.type,
+            status: linkedReviewCase.status,
+            assignedOperatorId: linkedReviewCase.assignedOperatorId,
+            updatedAt: linkedReviewCase.updatedAt.toISOString(),
+          }
+        : null,
       customer: {
         customerId: session.customer.id,
         customerAccountId: customerAccount?.id ?? null,
@@ -943,6 +1006,80 @@ export class AuthService {
         firstName: session.customer.firstName ?? "",
         lastName: session.customer.lastName ?? "",
       },
+    };
+  }
+
+  private assessCustomerSessionRisk(input: {
+    session: Pick<
+      CustomerSessionRiskRecord,
+      | "clientPlatform"
+      | "trustedAt"
+      | "trustChallengeCodeHash"
+      | "trustChallengeExpiresAt"
+      | "userAgent"
+      | "ipAddress"
+      | "lastSeenAt"
+    >;
+    activeUntrustedSessionCountForCustomer: number;
+    activeSessionCountForCustomer: number;
+  }): CustomerSessionRiskAssessment {
+    const reasons: string[] = [];
+    let riskScore = 0;
+    const challengeState = this.resolveCustomerSessionRiskChallengeState(input.session);
+    const now = Date.now();
+    const lastSeenAgeMs = Math.max(0, now - input.session.lastSeenAt.getTime());
+
+    if (input.session.clientPlatform === CustomerAuthSessionPlatform.unknown) {
+      riskScore += 2;
+      reasons.push("unknown_platform");
+    }
+
+    if (!input.session.userAgent) {
+      riskScore += 1;
+      reasons.push("missing_user_agent");
+    }
+
+    if (!input.session.ipAddress) {
+      riskScore += 1;
+      reasons.push("missing_ip_address");
+    }
+
+    if (challengeState === "expired") {
+      riskScore += 2;
+      reasons.push("expired_trust_challenge");
+    } else if (challengeState === "not_started") {
+      riskScore += 1;
+      reasons.push("trust_challenge_not_started");
+    }
+
+    if (lastSeenAgeMs <= 15 * 60 * 1000) {
+      riskScore += 2;
+      reasons.push("recent_session_activity");
+    }
+
+    if (input.activeUntrustedSessionCountForCustomer >= 2) {
+      riskScore += 2;
+      reasons.push("multiple_untrusted_sessions");
+    }
+
+    if (input.activeSessionCountForCustomer >= 4) {
+      riskScore += 1;
+      reasons.push("high_active_session_count");
+    }
+
+    const riskSeverity = riskScore >= 5 ? "critical" : "warning";
+    const recommendedAction =
+      riskSeverity === "critical" || challengeState === "expired"
+        ? "open_review_case"
+        : challengeState === "pending"
+          ? "revoke_session"
+          : "monitor";
+
+    return {
+      riskSeverity,
+      riskScore,
+      riskReasons: reasons,
+      recommendedAction,
     };
   }
 
@@ -3128,7 +3265,17 @@ export class AuthService {
       ];
     }
 
-    const [sessions, totalCount, pendingCount, expiredCount, webCount, mobileCount, unknownCount] =
+    const [
+      sessions,
+      totalCount,
+      pendingCount,
+      expiredCount,
+      webCount,
+      mobileCount,
+      unknownCount,
+      activeSessionCounts,
+      activeUntrustedSessionCounts,
+    ] =
       await Promise.all([
         this.prismaService.customerAuthSession.findMany({
           where,
@@ -3211,10 +3358,93 @@ export class AuthService {
             clientPlatform: CustomerAuthSessionPlatform.unknown,
           },
         }),
+        this.prismaService.customerAuthSession.groupBy({
+          by: ["customerId"],
+          where: {
+            revokedAt: null,
+          },
+          _count: {
+            _all: true,
+          },
+        }),
+        this.prismaService.customerAuthSession.groupBy({
+          by: ["customerId"],
+          where: {
+            revokedAt: null,
+            trustedAt: null,
+          },
+          _count: {
+            _all: true,
+          },
+        }),
       ]);
 
+    const customerAccountIds = sessions
+      .map((session) => session.customer.accounts[0]?.id ?? null)
+      .filter((value): value is string => Boolean(value));
+    const linkedReviewCases = customerAccountIds.length
+      ? await this.prismaService.reviewCase.findMany({
+          where: {
+            customerAccountId: {
+              in: customerAccountIds,
+            },
+            type: ReviewCaseType.account_review,
+            reasonCode: "session_risk_anomaly",
+            status: {
+              in: [ReviewCaseStatus.open, ReviewCaseStatus.in_progress],
+            },
+          },
+          select: {
+            id: true,
+            customerAccountId: true,
+            type: true,
+            status: true,
+            assignedOperatorId: true,
+            updatedAt: true,
+          },
+          orderBy: {
+            updatedAt: "desc",
+          },
+        })
+      : [];
+    const linkedReviewCaseByAccountId = linkedReviewCases.reduce((map, reviewCase) => {
+      if (!reviewCase.customerAccountId) {
+        return map;
+      }
+
+      if (!map.has(reviewCase.customerAccountId)) {
+        map.set(reviewCase.customerAccountId, reviewCase);
+      }
+
+      return map;
+    }, new Map<string, (typeof linkedReviewCases)[number]>());
+    const activeSessionCountByCustomerId = new Map(
+      activeSessionCounts.map((entry) => [entry.customerId, entry._count._all]),
+    );
+    const activeUntrustedSessionCountByCustomerId = new Map(
+      activeUntrustedSessionCounts.map((entry) => [entry.customerId, entry._count._all]),
+    );
+    const scoredSessions = sessions.map((session) => {
+      const assessment = this.assessCustomerSessionRisk({
+        session,
+        activeUntrustedSessionCountForCustomer:
+          activeUntrustedSessionCountByCustomerId.get(session.customerId) ?? 1,
+        activeSessionCountForCustomer:
+          activeSessionCountByCustomerId.get(session.customerId) ?? 1,
+      });
+
+      return this.mapCustomerSessionRisk(
+        session,
+        assessment,
+        linkedReviewCaseByAccountId.get(session.customer.accounts[0]?.id ?? "") ?? null,
+      );
+    });
+    const criticalCount = scoredSessions.filter(
+      (session) => session.riskSeverity === "critical",
+    ).length;
+
     return {
-      sessions: sessions.map((session) => this.mapCustomerSessionRisk(session)),
+      sessions: scoredSessions,
       limit,
       totalCount,
       summary: {
@@ -3244,6 +3474,16 @@ export class AuthService {
           {
             clientPlatform: "unknown",
             count: unknownCount,
+          },
+        ],
+        bySeverity: [
+          {
+            riskSeverity: "critical",
+            count: criticalCount,
+          },
+          {
+            riskSeverity: "warning",
+            count: Math.max(scoredSessions.length - criticalCount, 0),
           },
         ],
       },
@@ -3310,8 +3550,13 @@ export class AuthService {
     }
 
     if (targetSession.revokedAt) {
+      const assessment = this.assessCustomerSessionRisk({
+        session: targetSession,
+        activeUntrustedSessionCountForCustomer: 1,
+        activeSessionCountForCustomer: 1,
+      });
       return {
-        session: this.mapCustomerSessionRisk(targetSession),
+        session: this.mapCustomerSessionRisk(targetSession, assessment),
         stateReused: true,
       };
     }
@@ -3387,8 +3632,174 @@ export class AuthService {
     );
 
     return {
-      session: this.mapCustomerSessionRisk(updatedSession),
+      session: this.mapCustomerSessionRisk(
+        updatedSession,
+        this.assessCustomerSessionRisk({
+          session: updatedSession,
+          activeUntrustedSessionCountForCustomer: 1,
+          activeSessionCountForCustomer: 1,
+        }),
+      ),
       stateReused: false,
+    };
+  }
+
+  async escalateCustomerSessionRisk(
+    sessionId: string,
+    operatorId: string,
+    operatorRole?: string | null,
+    note?: string | null,
+  ): Promise<CustomerSessionRiskEscalationMutationResult> {
+    const normalizedOperatorRole = assertOperatorRoleAuthorized(
+      operatorRole,
+      this.sessionRiskEscalationAllowedOperatorRoles,
+      "You are not authorized to escalate risky customer sessions.",
+    );
+
+    const targetSession = await this.prismaService.customerAuthSession.findUnique({
+      where: { id: sessionId },
+      select: {
+        id: true,
+        clientPlatform: true,
+        trustedAt: true,
+        trustChallengeCodeHash: true,
+        trustChallengeExpiresAt: true,
+        trustChallengeSentAt: true,
+        userAgent: true,
+        ipAddress: true,
+        createdAt: true,
+        lastSeenAt: true,
+        revokedAt: true,
+        customerId: true,
+        customer: {
+          select: {
+            id: true,
+            supabaseUserId: true,
+            email: true,
+            firstName: true,
+            lastName: true,
+            accounts: {
+              select: {
+                id: true,
+                status: true,
+              },
+              orderBy: {
+                createdAt: "asc",
+              },
+              take: 1,
+            },
+          },
+        },
+      },
+    });
+
+    if (!targetSession) {
+      throw new NotFoundException("Customer risky session was not found.");
+    }
+
+    if (targetSession.trustedAt) {
+      throw new BadRequestException(
+        "Trusted sessions do not support escalation from the session risk queue.",
+      );
+    }
+
+    const customerAccount = targetSession.customer.accounts[0] ?? null;
+
+    if (!customerAccount) {
+      throw new NotFoundException(
+        "Customer account was not found for the risky session.",
+      );
+    }
+
+    const [activeSessionCountForCustomer, activeUntrustedSessionCountForCustomer] =
+      await Promise.all([
+        this.prismaService.customerAuthSession.count({
+          where: {
+            customerId: targetSession.customerId,
+            revokedAt: null,
+          },
+        }),
+        this.prismaService.customerAuthSession.count({
+          where: {
+            customerId: targetSession.customerId,
+            revokedAt: null,
+            trustedAt: null,
+          },
+        }),
+      ]);
+
+    const assessment = this.assessCustomerSessionRisk({
+      session: targetSession,
+      activeSessionCountForCustomer,
+      activeUntrustedSessionCountForCustomer,
+    });
+    const normalizedNote = this.normalizeOptionalText(note);
+    const reviewCaseResult = await this.reviewCasesService.openOrReuseReviewCase(
+      this.prismaService,
+      {
+        customerId: targetSession.customer.id,
+        customerAccountId: customerAccount.id,
+        transactionIntentId: null,
+        type: ReviewCaseType.account_review,
+        reasonCode: "session_risk_anomaly",
+        notes:
+          normalizedNote ??
+          `Session risk escalation for ${targetSession.customer.email}: ${assessment.riskReasons.join(
+            ", ",
+          )}.`,
+        actorType: "operator",
+        actorId: operatorId,
+        auditAction: "review_case.account_review.opened",
+        auditMetadata: {
+          escalationSource: "customer_session_risk",
+          sessionId: targetSession.id,
+          riskSeverity: assessment.riskSeverity,
+          riskScore: assessment.riskScore,
+          riskReasons: assessment.riskReasons,
+          recommendedAction: assessment.recommendedAction,
+          operatorRole: normalizedOperatorRole,
+          clientPlatform: targetSession.clientPlatform,
+          ipAddress: targetSession.ipAddress,
+          userAgent: targetSession.userAgent,
+          challengeState: this.resolveCustomerSessionRiskChallengeState(targetSession),
+        },
+      },
+    );
+
+    await this.appendOperatorAuditEvent({
+      customerId: targetSession.customer.id,
+      actorId: operatorId,
+      action: "customer_account.session_risk_escalated",
+      targetType: "CustomerAuthSession",
+      targetId: targetSession.id,
+      metadata: {
+        operatorRole: normalizedOperatorRole,
+        reviewCaseId: reviewCaseResult.reviewCase.id,
+        reviewCaseReused: reviewCaseResult.reviewCaseReused,
+        riskSeverity: assessment.riskSeverity,
+        riskScore: assessment.riskScore,
+        riskReasons: assessment.riskReasons,
+        note: normalizedNote,
+      } as PrismaJsonValue,
+    });
+
+    return {
+      session: this.mapCustomerSessionRisk(targetSession, assessment, {
+        id: reviewCaseResult.reviewCase.id,
+        type: reviewCaseResult.reviewCase.type,
+        status: reviewCaseResult.reviewCase.status,
+        assignedOperatorId: reviewCaseResult.reviewCase.assignedOperatorId,
+        updatedAt: new Date(reviewCaseResult.reviewCase.updatedAt),
+      }),
+      reviewCase: {
+        id: reviewCaseResult.reviewCase.id,
+        type: reviewCaseResult.reviewCase.type,
+        status: reviewCaseResult.reviewCase.status,
+        reasonCode: reviewCaseResult.reviewCase.reasonCode,
+        assignedOperatorId: reviewCaseResult.reviewCase.assignedOperatorId,
+        updatedAt: reviewCaseResult.reviewCase.updatedAt,
+      },
+      reviewCaseReused: reviewCaseResult.reviewCaseReused,
     };
   }
 

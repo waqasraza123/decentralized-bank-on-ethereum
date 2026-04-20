@@ -52,6 +52,11 @@ const DEFAULT_CUSTOMER_SESSION_RISK_REVOKE_ALLOWED_OPERATOR_ROLES = [
   "risk_manager",
   "compliance_lead",
 ] as const;
+const DEFAULT_CUSTOMER_SESSION_RISK_ESCALATION_ALLOWED_OPERATOR_ROLES = [
+  "operations_admin",
+  "risk_manager",
+  "compliance_lead",
+] as const;
 const DEFAULT_INCIDENT_PACKAGE_EXPORT_MAX_RECENT_LIMIT = 100;
 const DEFAULT_INCIDENT_PACKAGE_EXPORT_MAX_TIMELINE_LIMIT = 500;
 const DEFAULT_INCIDENT_PACKAGE_EXPORT_MAX_SINCE_DAYS = 90;
@@ -1133,6 +1138,7 @@ export type CustomerMfaPolicyRuntimeConfig = {
   readonly recoveryApproverAllowedOperatorRoles: readonly string[];
   readonly sessionRiskReadAllowedOperatorRoles: readonly string[];
   readonly sessionRiskRevokeAllowedOperatorRoles: readonly string[];
+  readonly sessionRiskEscalationAllowedOperatorRoles: readonly string[];
 };
 
 export type CustomerMfaEmailDeliveryMode = "preview" | "webhook";
@@ -2140,6 +2146,10 @@ export function loadCustomerMfaPolicyRuntimeConfig(
     env,
     "CUSTOMER_SESSION_RISK_REVOKE_ALLOWED_OPERATOR_ROLES",
   );
+  const sessionRiskEscalationAllowedOperatorRoles = readOptionalRuntimeEnv(
+    env,
+    "CUSTOMER_SESSION_RISK_ESCALATION_ALLOWED_OPERATOR_ROLES",
+  );
 
   return {
     emailOtpExpirySeconds: parsePositiveInteger(
@@ -2202,6 +2212,13 @@ export function loadCustomerMfaPolicyRuntimeConfig(
             "CUSTOMER_SESSION_RISK_REVOKE_ALLOWED_OPERATOR_ROLES",
           )
         : [...DEFAULT_CUSTOMER_SESSION_RISK_REVOKE_ALLOWED_OPERATOR_ROLES],
+    sessionRiskEscalationAllowedOperatorRoles:
+      sessionRiskEscalationAllowedOperatorRoles !== undefined
+        ? parseCommaSeparatedValues(
+            sessionRiskEscalationAllowedOperatorRoles,
+            "CUSTOMER_SESSION_RISK_ESCALATION_ALLOWED_OPERATOR_ROLES",
+          )
+        : [...DEFAULT_CUSTOMER_SESSION_RISK_ESCALATION_ALLOWED_OPERATOR_ROLES],
   };
 }
 

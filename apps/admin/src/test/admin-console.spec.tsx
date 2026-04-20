@@ -70,6 +70,7 @@ vi.mock("../lib/api", () => ({
       pendingCheckCount: 0
     }
   })),
+  escalateCustomerSessionRisk: vi.fn(),
   listCustomerSessionRisks: vi.fn(),
   revokeCustomerSessionRisk: vi.fn()
 }));

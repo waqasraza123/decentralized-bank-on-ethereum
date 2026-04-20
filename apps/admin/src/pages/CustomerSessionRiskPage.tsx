@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
 import {
+  escalateCustomerSessionRisk,
   listCustomerSessionRisks,
   revokeCustomerSessionRisk,
 } from "@/lib/api";
@@ -47,6 +48,10 @@ function getChallengeStateLabel(
     default:
       return "Challenge Not Started";
   }
+}
+
+function getRiskSeverityLabel(riskSeverity: "warning" | "critical") {
+  return riskSeverity === "critical" ? "Critical" : "Warning";
 }
 
 export function CustomerSessionRiskPage() {
@@ -132,6 +137,27 @@ export function CustomerSessionRiskPage() {
       );
     },
   });
+  const escalateMutation = useMutation({
+    mutationFn: () =>
+      escalateCustomerSessionRisk(session!, selectedSession!.id, {
+        note: trimToUndefined(actionNote),
+      }),
+    onSuccess: async (result) => {
+      setFlash(
+        result.reviewCaseReused
+          ? `Risk escalated into existing review case (${shortenValue(result.reviewCase.id)}).`
+          : `Risk escalated into review case (${shortenValue(result.reviewCase.id)}).`,
+      );
+      setActionError(null);
+      setGovernedConfirm(false);
+      await refreshQueue();
+    },
+    onError: (error) => {
+      setActionError(
+        readApiErrorMessage(error, "Failed to escalate the risky customer session."),
+      );
+    },
+  });
 
   if (fallback) {
     return fallback;
@@ -166,8 +192,14 @@ export function CustomerSessionRiskPage() {
     sessionRisksQuery.data?.summary.byPlatform.find(
       (entry) => entry.clientPlatform === clientPlatform,
     )?.count ?? 0;
+  const countBySeverity = (riskSeverity: "warning" | "critical") =>
+    sessionRisksQuery.data?.summary.bySeverity.find(
+      (entry) => entry.riskSeverity === riskSeverity,
+    )?.count ?? 0;
 
   const canRevoke = Boolean(selectedSession) && !selectedSession!.revokedAt;
+  const canEscalate = Boolean(selectedSession) && !selectedSession!.revokedAt;
+  const mutationPending = revokeMutation.isPending || escalateMutation.isPending;
 
   return (
     <div className="admin-page-grid">
@@ -195,6 +227,11 @@ export function CustomerSessionRiskPage() {
             label="Web sessions"
             value={formatCount(countByPlatform("web"))}
             detail="Web-based risky sessions in the active queue."
+          />
+          <MetricCard
+            label="Critical"
+            value={formatCount(countBySeverity("critical"))}
+            detail="Sessions scoring high enough for immediate review-case escalation."
           />
         </div>
 
@@ -241,6 +278,10 @@ export function CustomerSessionRiskPage() {
                         <span>{getChallengeStateLabel(riskSession.challengeState)}</span>
                         <div className="admin-inline-cluster">
                           <AdminStatusBadge
+                            label={getRiskSeverityLabel(riskSession.riskSeverity)}
+                            tone={riskSession.riskSeverity}
+                          />
+                          <AdminStatusBadge
                             label={toTitleCase(riskSession.clientPlatform)}
                             tone="technical"
                           />
@@ -266,6 +307,10 @@ export function CustomerSessionRiskPage() {
               <>
                 <ListCard title="Session detail">
                   <div className="admin-inline-cluster">
+                    <AdminStatusBadge
+                      label={getRiskSeverityLabel(selectedSession.riskSeverity)}
+                      tone={selectedSession.riskSeverity}
+                    />
                     <AdminStatusBadge
                       label={toTitleCase(selectedSession.clientPlatform)}
                       tone="technical"
@@ -316,6 +361,14 @@ export function CustomerSessionRiskPage() {
                         mono: true,
                       },
                       {
+                        label: "Risk score",
+                        value: String(selectedSession.riskScore),
+                      },
+                      {
+                        label: "Recommended action",
+                        value: toTitleCase(selectedSession.recommendedAction),
+                      },
+                      {
                         label: "IP address",
                         value: selectedSession.ipAddress ?? "Not available",
                         mono: true,
@@ -344,6 +397,13 @@ export function CustomerSessionRiskPage() {
                         label: "Last seen",
                         value: formatDateTime(selectedSession.lastSeenAt),
                       },
+                      {
+                        label: "Linked review case",
+                        value: selectedSession.linkedReviewCase
+                          ? shortenValue(selectedSession.linkedReviewCase.reviewCaseId)
+                          : "Not available",
+                        mono: true,
+                      },
                     ]}
                   />
                 </ListCard>
@@ -354,6 +414,24 @@ export function CustomerSessionRiskPage() {
                     description="Revoke sessions that show high-risk signals, stale trust challenges, or customer-reported unfamiliar access. Customers can still self-verify if the session remains active."
                     tone="warning"
                   />
+                  <div className="admin-inline-cluster">
+                    {selectedSession.riskReasons.map((reason) => (
+                      <AdminStatusBadge
+                        key={reason}
+                        label={toTitleCase(reason)}
+                        tone={mapStatusToTone(reason)}
+                      />
+                    ))}
+                  </div>
+                  {selectedSession.linkedReviewCase ? (
+                    <InlineNotice
+                      title="Governed review already open"
+                      description={`Account review ${shortenValue(
+                        selectedSession.linkedReviewCase.reviewCaseId,
+                      )} is ${toTitleCase(selectedSession.linkedReviewCase.status)}.`}
+                      tone="technical"
+                    />
+                  ) : null}
                 </ListCard>
               </>
             ) : (
@@ -366,7 +444,7 @@ export function CustomerSessionRiskPage() {
           rail={
             <ActionRail
               title="Containment"
-              description="Revoke the selected untrusted session to force a fresh sign-in."
+              description="Revoke the selected session immediately or escalate it into a governed account review."
             >
               {flash ? (
                 <InlineNotice
@@ -383,11 +461,11 @@ export function CustomerSessionRiskPage() {
                 />
               ) : null}
               <label className="admin-form-field">
-                <span>Revocation note</span>
+                <span>Operator note</span>
                 <textarea
                   value={actionNote}
                   onChange={(event) => setActionNote(event.target.value)}
-                  placeholder="Document customer report, analyst observation, or unusual device evidence."
+                  placeholder="Document customer report, analyst observation, or escalation evidence."
                   rows={4}
                 />
               </label>
@@ -397,12 +475,29 @@ export function CustomerSessionRiskPage() {
                   checked={governedConfirm}
                   onChange={(event) => setGovernedConfirm(event.target.checked)}
                 />
-                <span>I reviewed the session context and want to revoke this risky session.</span>
+                <span>I reviewed the session context and want to take this operator action.</span>
               </label>
+              {selectedSession?.linkedReviewCase ? (
+                <InlineNotice
+                  title="Existing review case linked"
+                  description={`Escalation will reuse review case ${shortenValue(
+                    selectedSession.linkedReviewCase.reviewCaseId,
+                  )}.`}
+                  tone="technical"
+                />
+              ) : null}
               <button
                 type="button"
                 className="admin-primary-button"
-                disabled={!canRevoke || !governedConfirm || revokeMutation.isPending}
+                disabled={!canEscalate || !governedConfirm || mutationPending}
+                onClick={() => escalateMutation.mutate()}
+              >
+                Escalate to review case
+              </button>
+              <button
+                type="button"
+                className="admin-primary-button"
+                disabled={!canRevoke || !governedConfirm || mutationPending}
                 onClick={() => revokeMutation.mutate()}
               >
                 Revoke risky session

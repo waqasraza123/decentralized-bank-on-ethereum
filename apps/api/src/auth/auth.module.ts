@@ -8,12 +8,13 @@ import { OperatorIdentityService } from "./operator-identity.service";
 import { InternalOperatorApiKeyGuard } from "./guards/internal-operator-api-key.guard";
 import { InternalOperatorBearerGuard } from "./guards/internal-operator-bearer.guard";
 import { PlatformAlertDeliveryService } from "../operations-monitoring/platform-alert-delivery.service";
+import { ReviewCasesModule } from "../review-cases/review-cases.module";
 import { CustomerMfaEmailDeliveryService } from "./customer-mfa-email-delivery.service";
 import { CustomerSecurityEmailDeliveryService } from "./customer-security-email-delivery.service";
 
 @Global()
 @Module({
-  imports: [],
+  imports: [ReviewCasesModule],
   controllers: [AuthController],
   providers: [
     AuthService,

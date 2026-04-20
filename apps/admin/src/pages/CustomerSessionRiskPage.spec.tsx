@@ -7,11 +7,13 @@ import {
   operatorSessionStorageKey,
 } from "@/state/operator-session";
 import {
+  escalateCustomerSessionRisk,
   listCustomerSessionRisks,
   revokeCustomerSessionRisk,
 } from "@/lib/api";
 
 vi.mock("@/lib/api", () => ({
+  escalateCustomerSessionRisk: vi.fn(),
   listCustomerSessionRisks: vi.fn(),
   revokeCustomerSessionRisk: vi.fn(),
 }));
@@ -22,6 +24,14 @@ function createRiskSession(overrides: Record<string, unknown> = {}) {
     clientPlatform: "web",
     trusted: false,
     challengeState: "expired",
+    riskSeverity: "critical",
+    riskScore: 7,
+    riskReasons: [
+      "expired_trust_challenge",
+      "recent_session_activity",
+      "multiple_untrusted_sessions",
+    ],
+    recommendedAction: "open_review_case",
     trustChallengeSentAt: "2026-04-20T09:00:00.000Z",
     trustChallengeExpiresAt: "2026-04-20T09:10:00.000Z",
     userAgent: "Mozilla/5.0",
@@ -29,6 +39,7 @@ function createRiskSession(overrides: Record<string, unknown> = {}) {
     createdAt: "2026-04-20T08:55:00.000Z",
     lastSeenAt: "2026-04-20T09:12:00.000Z",
     revokedAt: null,
+    linkedReviewCase: null,
     customer: {
       customerId: "customer_1",
       customerAccountId: "account_1",
@@ -119,6 +130,16 @@ describe("CustomerSessionRiskPage", () => {
             count: 0,
           },
         ],
+        bySeverity: [
+          {
+            riskSeverity: "critical",
+            count: 1,
+          },
+          {
+            riskSeverity: "warning",
+            count: 0,
+          },
+        ],
       },
     });
 
@@ -127,6 +148,26 @@ describe("CustomerSessionRiskPage", () => {
         revokedAt: "2026-04-20T09:14:00.000Z",
       }),
       stateReused: false,
+    });
+    vi.mocked(escalateCustomerSessionRisk).mockResolvedValue({
+      session: createRiskSession({
+        linkedReviewCase: {
+          reviewCaseId: "review_case_1",
+          type: "account_review",
+          status: "open",
+          assignedOperatorId: null,
+          updatedAt: "2026-04-20T09:15:00.000Z",
+        },
+      }),
+      reviewCase: {
+        id: "review_case_1",
+        type: "account_review",
+        status: "open",
+        reasonCode: "session_risk_anomaly",
+        assignedOperatorId: null,
+        updatedAt: "2026-04-20T09:15:00.000Z",
+      },
+      reviewCaseReused: false,
     });
   });
 
@@ -138,6 +179,7 @@ describe("CustomerSessionRiskPage", () => {
     expect(screen.getByText("Session detail")).toBeInTheDocument();
     expect(screen.getAllByText("Amina Raza").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Challenge Expired").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Critical").length).toBeGreaterThan(0);
   });
 
   it("revokes the selected risky session with an operator note", async () => {
@@ -145,7 +187,7 @@ describe("CustomerSessionRiskPage", () => {
 
     await screen.findByText("Customer Session Risk");
 
-    fireEvent.change(screen.getByLabelText("Revocation note"), {
+    fireEvent.change(screen.getByLabelText("Operator note"), {
       target: { value: "Customer reported unfamiliar browser activity." },
     });
     fireEvent.click(screen.getByRole("checkbox"));
@@ -164,5 +206,31 @@ describe("CustomerSessionRiskPage", () => {
     });
 
     expect(await screen.findByText(/Risky session revoked/i)).toBeInTheDocument();
+  });
+
+  it("escalates the selected risky session into a review case", async () => {
+    renderPage();
+
+    await screen.findByText("Customer Session Risk");
+
+    fireEvent.change(screen.getByLabelText("Operator note"), {
+      target: { value: "Escalating due to repeated unfamiliar browser activity." },
+    });
+    fireEvent.click(screen.getByRole("checkbox"));
+    fireEvent.click(screen.getByRole("button", { name: "Escalate to review case" }));
+
+    await waitFor(() => {
+      expect(escalateCustomerSessionRisk).toHaveBeenCalledWith(
+        expect.objectContaining({
+          operatorId: "ops_1",
+        }),
+        "session_risk_1",
+        {
+          note: "Escalating due to repeated unfamiliar browser activity.",
+        }
+      );
+    });
+
+    expect(await screen.findByText(/Risk escalated into review case/i)).toBeInTheDocument();
   });
 });
