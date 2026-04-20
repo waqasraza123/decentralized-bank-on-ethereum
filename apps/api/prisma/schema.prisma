@@ -242,6 +242,16 @@ model RetirementVault {
   strictMode        Boolean                         @default(false)
   unlockAt          DateTime
   lockedBalance     Decimal                         @default(0) @db.Decimal(36, 18)
+  restrictedAt      DateTime?
+  restrictionReasonCode String?
+  restrictedByOperatorId String?
+  restrictedByOperatorRole String?
+  restrictedByOversightIncidentId String?
+  restrictionNote   String?
+  restrictionReleasedAt DateTime?
+  restrictionReleasedByOperatorId String?
+  restrictionReleasedByOperatorRole String?
+  restrictionReleaseNote String?
   fundedAt          DateTime?
   lastFundedAt      DateTime?
   createdAt         DateTime                        @default(now())
@@ -253,6 +263,7 @@ model RetirementVault {
   @@unique([customerAccountId, assetId])
   @@index([status, unlockAt])
   @@index([assetId, status])
+  @@index([restrictedByOversightIncidentId])
 }
 
 model RetirementVaultReleaseRequest {
@@ -622,6 +633,8 @@ enum RetirementVaultEventType {
   cooldown_completed
   released
   release_failed
+  restricted
+  restriction_released
 }
 
 enum PolicyDecision {

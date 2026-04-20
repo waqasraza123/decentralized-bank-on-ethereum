@@ -4,10 +4,14 @@ import {
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
-import { loadProductChainRuntimeConfig } from "@stealth-trails-bank/config/api";
+import {
+  loadAccountHoldPolicyRuntimeConfig,
+  loadProductChainRuntimeConfig,
+} from "@stealth-trails-bank/config/api";
 import {
   AccountLifecycleStatus,
   AssetStatus,
+  OversightIncidentStatus,
   PolicyDecision,
   Prisma,
   RetirementVaultEventType,
@@ -24,15 +28,21 @@ import {
   assertOperatorRoleAuthorized,
   normalizeOperatorRole,
 } from "../auth/internal-operator-role-policy";
+import { CustomerAccountOperationsService } from "../customer-account-operations/customer-account-operations.service";
 import { LedgerService } from "../ledger/ledger.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { ReviewCasesService } from "../review-cases/review-cases.service";
 import { CreateRetirementVaultDto } from "./dto/create-retirement-vault.dto";
 import { FundRetirementVaultDto } from "./dto/fund-retirement-vault.dto";
+import { GetInternalRetirementVaultWorkspaceDto } from "./dto/get-internal-retirement-vault-workspace.dto";
 import { ListInternalRetirementVaultReleaseRequestsDto } from "./dto/list-internal-retirement-vault-release-requests.dto";
+import { ListInternalRetirementVaultsDto } from "./dto/list-internal-retirement-vaults.dto";
+import { ReleaseRetirementVaultRestrictionDto } from "./dto/release-retirement-vault-restriction.dto";
 import { RequestRetirementVaultReleaseDto } from "./dto/request-retirement-vault-release.dto";
+import { RestrictRetirementVaultDto } from "./dto/restrict-retirement-vault.dto";
 
 const OPERATOR_RELEASE_APPROVER_ROLES = ["risk_manager", "operations_admin"] as const;
+const RESTRICTED_VAULT_OPERATOR_ROLES = ["risk_manager", "operations_admin", "compliance_admin"] as const;
 const ACTIVE_RELEASE_REQUEST_STATUSES: RetirementVaultReleaseRequestStatus[] = [
   RetirementVaultReleaseRequestStatus.requested,
   RetirementVaultReleaseRequestStatus.review_required,
@@ -82,6 +92,38 @@ const retirementVaultReleaseRequestInclude = {
     select: releaseRequestIntentSelect,
   },
 } satisfies Prisma.RetirementVaultReleaseRequestInclude;
+
+const internalVaultInclude = {
+  asset: {
+    select: retirementVaultAssetSelect,
+  },
+  customerAccount: {
+    select: {
+      id: true,
+      status: true,
+      customer: {
+        select: {
+          id: true,
+          supabaseUserId: true,
+          email: true,
+          firstName: true,
+          lastName: true,
+        },
+      },
+    },
+  },
+  releaseRequests: {
+    orderBy: {
+      requestedAt: "desc",
+    },
+    include: retirementVaultReleaseRequestInclude,
+    take: 12,
+  },
+  events: {
+    orderBy: retirementVaultEventOrder,
+    take: 12,
+  },
+} satisfies Prisma.RetirementVaultInclude;
 
 const retirementVaultInclude = {
   asset: {
@@ -150,6 +192,10 @@ type RetirementVaultFundingIntentRecord = Prisma.TransactionIntentGetPayload<{
 
 type InternalReleaseRequestRecord = Prisma.RetirementVaultReleaseRequestGetPayload<{
   include: typeof internalReleaseRequestInclude;
+}>;
+
+type InternalRetirementVaultRecord = Prisma.RetirementVaultGetPayload<{
+  include: typeof internalVaultInclude;
 }>;
 
 type CustomerAssetContext = {
@@ -248,6 +294,19 @@ export type RetirementVaultProjection = {
   events: RetirementVaultEventProjection[];
 };
 
+type RetirementVaultRestrictionProjection = {
+  restrictedAt: string | null;
+  restrictionReasonCode: string | null;
+  restrictedByOperatorId: string | null;
+  restrictedByOperatorRole: string | null;
+  restrictedByOversightIncidentId: string | null;
+  restrictionNote: string | null;
+  restrictionReleasedAt: string | null;
+  restrictionReleasedByOperatorId: string | null;
+  restrictionReleasedByOperatorRole: string | null;
+  restrictionReleaseNote: string | null;
+};
+
 type RetirementVaultFundingIntentProjection = {
   id: string;
   retirementVaultId: string | null;
@@ -307,6 +366,17 @@ type AuditTimelineProjection = {
   createdAt: string;
 };
 
+type LinkedOversightIncidentProjection = {
+  id: string;
+  incidentType: string;
+  status: OversightIncidentStatus;
+  reasonCode: string | null;
+  summaryNote: string | null;
+  assignedOperatorId: string | null;
+  openedAt: string;
+  updatedAt: string;
+} | null;
+
 type ListMyRetirementVaultsResult = {
   customerAccountId: string;
   vaults: RetirementVaultProjection[];
@@ -358,16 +428,68 @@ type SweepRetirementVaultReleaseRequestsResult = {
   processedReleaseRequestIds: string[];
 };
 
+type InternalRetirementVaultProjection = RetirementVaultProjection & {
+  restriction: RetirementVaultRestrictionProjection;
+  customerAccount: {
+    id: string;
+    status: AccountLifecycleStatus;
+    customer: {
+      id: string;
+      supabaseUserId: string;
+      email: string;
+      firstName: string;
+      lastName: string;
+    };
+  };
+};
+
+type ListInternalRetirementVaultsResult = {
+  vaults: InternalRetirementVaultProjection[];
+  limit: number;
+};
+
+type GetInternalRetirementVaultWorkspaceResult = {
+  vault: InternalRetirementVaultProjection;
+  linkedOversightIncident: LinkedOversightIncidentProjection;
+  vaultEvents: RetirementVaultEventProjection[];
+  relatedAuditEvents: AuditTimelineProjection[];
+  customerAccountTimeline: Awaited<
+    ReturnType<CustomerAccountOperationsService["listCustomerAccountTimeline"]>
+  >;
+  recentLimit: number;
+};
+
+type UpdateInternalRetirementVaultRestrictionResult = {
+  vault: InternalRetirementVaultProjection;
+  stateReused: boolean;
+};
+
 @Injectable()
 export class RetirementVaultService {
   private readonly productChainId: number;
+  private readonly vaultRestrictionApplyAllowedOperatorRoles: string[];
+  private readonly vaultRestrictionReleaseAllowedOperatorRoles: string[];
 
   constructor(
     private readonly prismaService: PrismaService,
     private readonly ledgerService: LedgerService,
-    private readonly reviewCasesService: ReviewCasesService
+    private readonly reviewCasesService: ReviewCasesService,
+    private readonly customerAccountOperationsService: CustomerAccountOperationsService
   ) {
     this.productChainId = loadProductChainRuntimeConfig().productChainId;
+    const accountHoldPolicy = loadAccountHoldPolicyRuntimeConfig();
+    this.vaultRestrictionApplyAllowedOperatorRoles = [
+      ...new Set([
+        ...accountHoldPolicy.accountHoldApplyAllowedOperatorRoles,
+        ...RESTRICTED_VAULT_OPERATOR_ROLES,
+      ]),
+    ];
+    this.vaultRestrictionReleaseAllowedOperatorRoles = [
+      ...new Set([
+        ...accountHoldPolicy.accountHoldReleaseAllowedOperatorRoles,
+        ...RESTRICTED_VAULT_OPERATOR_ROLES,
+      ]),
+    ];
   }
 
   private normalizeAssetSymbol(assetSymbol: string): string {
@@ -658,6 +780,32 @@ export class RetirementVaultService {
     };
   }
 
+  private mapRetirementVaultRestrictionProjection(vault: {
+    restrictedAt: Date | null;
+    restrictionReasonCode: string | null;
+    restrictedByOperatorId: string | null;
+    restrictedByOperatorRole: string | null;
+    restrictedByOversightIncidentId: string | null;
+    restrictionNote: string | null;
+    restrictionReleasedAt: Date | null;
+    restrictionReleasedByOperatorId: string | null;
+    restrictionReleasedByOperatorRole: string | null;
+    restrictionReleaseNote: string | null;
+  }): RetirementVaultRestrictionProjection {
+    return {
+      restrictedAt: vault.restrictedAt?.toISOString() ?? null,
+      restrictionReasonCode: vault.restrictionReasonCode,
+      restrictedByOperatorId: vault.restrictedByOperatorId,
+      restrictedByOperatorRole: vault.restrictedByOperatorRole,
+      restrictedByOversightIncidentId: vault.restrictedByOversightIncidentId,
+      restrictionNote: vault.restrictionNote,
+      restrictionReleasedAt: vault.restrictionReleasedAt?.toISOString() ?? null,
+      restrictionReleasedByOperatorId: vault.restrictionReleasedByOperatorId,
+      restrictionReleasedByOperatorRole: vault.restrictionReleasedByOperatorRole,
+      restrictionReleaseNote: vault.restrictionReleaseNote,
+    };
+  }
+
   private mapFundingIntentProjection(
     intent: RetirementVaultFundingIntentRecord
   ): RetirementVaultFundingIntentProjection {
@@ -715,6 +863,57 @@ export class RetirementVaultService {
           },
         },
       },
+    };
+  }
+
+  private mapInternalRetirementVaultProjection(
+    vault: InternalRetirementVaultRecord
+  ): InternalRetirementVaultProjection {
+    return {
+      ...this.mapRetirementVaultProjection(vault),
+      restriction: this.mapRetirementVaultRestrictionProjection(vault),
+      customerAccount: {
+        id: vault.customerAccount.id,
+        status: vault.customerAccount.status,
+        customer: {
+          id: vault.customerAccount.customer.id,
+          supabaseUserId: vault.customerAccount.customer.supabaseUserId,
+          email: vault.customerAccount.customer.email,
+          firstName: vault.customerAccount.customer.firstName ?? "",
+          lastName: vault.customerAccount.customer.lastName ?? "",
+        },
+      },
+    };
+  }
+
+  private mapLinkedOversightIncidentProjection(
+    incident:
+      | {
+          id: string;
+          incidentType: string;
+          status: OversightIncidentStatus;
+          reasonCode: string | null;
+          summaryNote: string | null;
+          assignedOperatorId: string | null;
+          openedAt: Date;
+          updatedAt: Date;
+        }
+      | null
+      | undefined
+  ): LinkedOversightIncidentProjection {
+    if (!incident) {
+      return null;
+    }
+
+    return {
+      id: incident.id,
+      incidentType: incident.incidentType,
+      status: incident.status,
+      reasonCode: incident.reasonCode,
+      summaryNote: incident.summaryNote,
+      assignedOperatorId: incident.assignedOperatorId,
+      openedAt: incident.openedAt.toISOString(),
+      updatedAt: incident.updatedAt.toISOString(),
     };
   }
 
@@ -838,6 +1037,23 @@ export class RetirementVaultService {
     return vault;
   }
 
+  private async loadInternalVaultById(
+    vaultId: string
+  ): Promise<InternalRetirementVaultRecord> {
+    const vault = await this.prismaService.retirementVault.findUnique({
+      where: {
+        id: vaultId,
+      },
+      include: internalVaultInclude,
+    });
+
+    if (!vault) {
+      throw new NotFoundException("Retirement vault not found.");
+    }
+
+    return vault;
+  }
+
   private assertVaultSupportsFunding(vault: RetirementVaultRecord): void {
     if (vault.status !== RetirementVaultStatus.active) {
       throw new ConflictException(
@@ -875,6 +1091,100 @@ export class RetirementVaultService {
       OPERATOR_RELEASE_APPROVER_ROLES,
       "Operator role is not authorized to decide retirement vault release requests."
     );
+  }
+
+  private assertCanApplyVaultRestriction(operatorRole?: string | null): string {
+    return assertOperatorRoleAuthorized(
+      operatorRole,
+      this.vaultRestrictionApplyAllowedOperatorRoles,
+      "Operator role is not authorized to restrict retirement vaults."
+    );
+  }
+
+  private assertCanReleaseVaultRestriction(operatorRole?: string | null): string {
+    return assertOperatorRoleAuthorized(
+      operatorRole,
+      this.vaultRestrictionReleaseAllowedOperatorRoles,
+      "Operator role is not authorized to release retirement vault restrictions."
+    );
+  }
+
+  private async resolveLinkedOversightIncident(
+    oversightIncidentId: string | null | undefined,
+    customerAccountId: string
+  ): Promise<LinkedOversightIncidentProjection> {
+    if (!oversightIncidentId) {
+      return null;
+    }
+
+    const oversightIncident = await this.prismaService.oversightIncident.findUnique({
+      where: {
+        id: oversightIncidentId,
+      },
+      select: {
+        id: true,
+        incidentType: true,
+        status: true,
+        reasonCode: true,
+        summaryNote: true,
+        assignedOperatorId: true,
+        openedAt: true,
+        updatedAt: true,
+        subjectCustomerAccountId: true,
+      },
+    });
+
+    if (
+      !oversightIncident ||
+      oversightIncident.subjectCustomerAccountId !== customerAccountId
+    ) {
+      return null;
+    }
+
+    return this.mapLinkedOversightIncidentProjection(oversightIncident);
+  }
+
+  private async assertOversightIncidentMatchesVault(
+    oversightIncidentId: string | null,
+    customerAccountId: string
+  ): Promise<string | null> {
+    if (!oversightIncidentId) {
+      return null;
+    }
+
+    const oversightIncident = await this.prismaService.oversightIncident.findUnique({
+      where: {
+        id: oversightIncidentId,
+      },
+      select: {
+        id: true,
+        status: true,
+        subjectCustomerAccountId: true,
+      },
+    });
+
+    if (!oversightIncident) {
+      throw new NotFoundException("Oversight incident not found for vault restriction.");
+    }
+
+    if (oversightIncident.subjectCustomerAccountId !== customerAccountId) {
+      throw new ConflictException(
+        "Oversight incident does not belong to the retirement vault customer account."
+      );
+    }
+
+    const actionableOversightStatuses: OversightIncidentStatus[] = [
+      OversightIncidentStatus.open,
+      OversightIncidentStatus.in_progress,
+    ];
+
+    if (!actionableOversightStatuses.includes(oversightIncident.status)) {
+      throw new ConflictException(
+        "Oversight incident is not active enough to be linked to a vault restriction."
+      );
+    }
+
+    return oversightIncident.id;
   }
 
   private async closeLinkedReviewCase(params: {
@@ -1565,6 +1875,295 @@ export class RetirementVaultService {
     };
   }
 
+  async listInternalVaults(
+    query: ListInternalRetirementVaultsDto
+  ): Promise<ListInternalRetirementVaultsResult> {
+    const limit = query.limit ?? 25;
+    const where: Prisma.RetirementVaultWhereInput = {};
+
+    if (query.status) {
+      where.status = query.status;
+    }
+
+    if (query.releaseRequestStatus) {
+      where.releaseRequests = {
+        some: {
+          status: query.releaseRequestStatus,
+        },
+      };
+    }
+
+    const vaults = await this.prismaService.retirementVault.findMany({
+      where,
+      include: internalVaultInclude,
+      orderBy: [
+        {
+          updatedAt: "desc",
+        },
+        {
+          createdAt: "desc",
+        },
+      ],
+      take: limit,
+    });
+
+    return {
+      vaults: vaults.map((vault) => this.mapInternalRetirementVaultProjection(vault)),
+      limit,
+    };
+  }
+
+  async getInternalVaultWorkspace(
+    vaultId: string,
+    query: GetInternalRetirementVaultWorkspaceDto
+  ): Promise<GetInternalRetirementVaultWorkspaceResult> {
+    const recentLimit = query.recentLimit ?? 12;
+    const vault = await this.loadInternalVaultById(vaultId);
+    const linkedOversightIncident = await this.resolveLinkedOversightIncident(
+      vault.restrictedByOversightIncidentId,
+      vault.customerAccount.id
+    );
+    const releaseRequestIds = vault.releaseRequests.map((request) => request.id);
+    const reviewCaseIds = vault.releaseRequests
+      .map((request) => request.reviewCaseId)
+      .filter((value): value is string => Boolean(value));
+    const transactionIntentIds = vault.releaseRequests
+      .map((request) => request.transactionIntentId)
+      .filter((value): value is string => Boolean(value));
+    const relatedAuditWhereOr: Prisma.AuditEventWhereInput[] = [
+      {
+        targetType: "RetirementVault",
+        targetId: vault.id,
+      },
+      ...releaseRequestIds.map((releaseRequestId) => ({
+        targetType: "RetirementVaultReleaseRequest",
+        targetId: releaseRequestId,
+      })),
+      ...reviewCaseIds.map((reviewCaseId) => ({
+        targetType: "ReviewCase",
+        targetId: reviewCaseId,
+      })),
+      ...transactionIntentIds.map((transactionIntentId) => ({
+        targetType: "TransactionIntent",
+        targetId: transactionIntentId,
+      })),
+    ];
+
+    const [vaultEvents, relatedAuditEvents, customerAccountTimeline] = await Promise.all([
+      this.prismaService.retirementVaultEvent.findMany({
+        where: {
+          retirementVaultId: vault.id,
+        },
+        orderBy: {
+          createdAt: "desc",
+        },
+        take: recentLimit,
+      }),
+      this.prismaService.auditEvent.findMany({
+        where: {
+          OR: relatedAuditWhereOr,
+        },
+        orderBy: {
+          createdAt: "desc",
+        },
+        take: Math.max(recentLimit * 2, 20),
+      }),
+      this.customerAccountOperationsService.listCustomerAccountTimeline({
+        customerAccountId: vault.customerAccount.id,
+        limit: recentLimit,
+      }),
+    ]);
+
+    return {
+      vault: this.mapInternalRetirementVaultProjection(vault),
+      linkedOversightIncident,
+      vaultEvents: vaultEvents.map((event) =>
+        this.mapRetirementVaultEventProjection(event)
+      ),
+      relatedAuditEvents: relatedAuditEvents.map((event) =>
+        this.mapAuditTimelineProjection(event)
+      ),
+      customerAccountTimeline,
+      recentLimit,
+    };
+  }
+
+  async restrictInternalVault(
+    vaultId: string,
+    operatorId: string,
+    operatorRole?: string | null,
+    dto?: RestrictRetirementVaultDto
+  ): Promise<UpdateInternalRetirementVaultRestrictionResult> {
+    const normalizedOperatorRole = this.assertCanApplyVaultRestriction(operatorRole);
+    const existingVault = await this.loadInternalVaultById(vaultId);
+
+    if (existingVault.status === RetirementVaultStatus.released) {
+      throw new ConflictException(
+        "Released retirement vaults cannot be restricted."
+      );
+    }
+
+    if (existingVault.status === RetirementVaultStatus.restricted) {
+      return {
+        vault: this.mapInternalRetirementVaultProjection(existingVault),
+        stateReused: true,
+      };
+    }
+
+    const reasonCode = this.normalizeOptionalString(dto?.reasonCode);
+
+    if (!reasonCode) {
+      throw new BadRequestException(
+        "Vault restriction reason code is required."
+      );
+    }
+
+    const note = this.normalizeOptionalString(dto?.note);
+    const linkedOversightIncidentId = await this.assertOversightIncidentMatchesVault(
+      this.normalizeOptionalString(dto?.oversightIncidentId),
+      existingVault.customerAccount.id
+    );
+    const occurredAt = new Date();
+
+    const updatedVault = await this.prismaService.$transaction(async (transaction) => {
+      const restrictedVault = await transaction.retirementVault.update({
+        where: {
+          id: existingVault.id,
+        },
+        data: {
+          status: RetirementVaultStatus.restricted,
+          restrictedAt: occurredAt,
+          restrictionReasonCode: reasonCode,
+          restrictedByOperatorId: operatorId,
+          restrictedByOperatorRole: normalizedOperatorRole,
+          restrictedByOversightIncidentId: linkedOversightIncidentId,
+          restrictionNote: note,
+          restrictionReleasedAt: null,
+          restrictionReleasedByOperatorId: null,
+          restrictionReleasedByOperatorRole: null,
+          restrictionReleaseNote: null,
+        },
+        include: internalVaultInclude,
+      });
+
+      await transaction.retirementVaultEvent.create({
+        data: {
+          retirementVaultId: restrictedVault.id,
+          eventType: RetirementVaultEventType.restricted,
+          actorType: "operator",
+          actorId: operatorId,
+          metadata: {
+            reasonCode,
+            note,
+            operatorRole: normalizedOperatorRole,
+            oversightIncidentId: linkedOversightIncidentId,
+          },
+        },
+      });
+
+      await transaction.auditEvent.create({
+        data: {
+          customerId: restrictedVault.customerAccount.customer.id,
+          actorType: "operator",
+          actorId: operatorId,
+          action: "retirement_vault.restricted",
+          targetType: "RetirementVault",
+          targetId: restrictedVault.id,
+          metadata: {
+            customerAccountId: restrictedVault.customerAccount.id,
+            reasonCode,
+            note,
+            operatorRole: normalizedOperatorRole,
+            oversightIncidentId: linkedOversightIncidentId,
+          },
+        },
+      });
+
+      return restrictedVault;
+    });
+
+    return {
+      vault: this.mapInternalRetirementVaultProjection(updatedVault),
+      stateReused: false,
+    };
+  }
+
+  async releaseInternalVaultRestriction(
+    vaultId: string,
+    operatorId: string,
+    operatorRole?: string | null,
+    dto?: ReleaseRetirementVaultRestrictionDto
+  ): Promise<UpdateInternalRetirementVaultRestrictionResult> {
+    const normalizedOperatorRole = this.assertCanReleaseVaultRestriction(operatorRole);
+    const existingVault = await this.loadInternalVaultById(vaultId);
+
+    if (existingVault.status !== RetirementVaultStatus.restricted) {
+      return {
+        vault: this.mapInternalRetirementVaultProjection(existingVault),
+        stateReused: true,
+      };
+    }
+
+    const note = this.normalizeOptionalString(dto?.note);
+    const occurredAt = new Date();
+
+    const updatedVault = await this.prismaService.$transaction(async (transaction) => {
+      const unrestrictedVault = await transaction.retirementVault.update({
+        where: {
+          id: existingVault.id,
+        },
+        data: {
+          status: RetirementVaultStatus.active,
+          restrictionReleasedAt: occurredAt,
+          restrictionReleasedByOperatorId: operatorId,
+          restrictionReleasedByOperatorRole: normalizedOperatorRole,
+          restrictionReleaseNote: note,
+        },
+        include: internalVaultInclude,
+      });
+
+      await transaction.retirementVaultEvent.create({
+        data: {
+          retirementVaultId: unrestrictedVault.id,
+          eventType: RetirementVaultEventType.restriction_released,
+          actorType: "operator",
+          actorId: operatorId,
+          metadata: {
+            operatorRole: normalizedOperatorRole,
+            note,
+            restrictedByOversightIncidentId:
+              unrestrictedVault.restrictedByOversightIncidentId,
+          },
+        },
+      });
+
+      await transaction.auditEvent.create({
+        data: {
+          customerId: unrestrictedVault.customerAccount.customer.id,
+          actorType: "operator",
+          actorId: operatorId,
+          action: "retirement_vault.restriction_released",
+          targetType: "RetirementVault",
+          targetId: unrestrictedVault.id,
+          metadata: {
+            customerAccountId: unrestrictedVault.customerAccount.id,
+            operatorRole: normalizedOperatorRole,
+            note,
+            restrictedByOversightIncidentId:
+              unrestrictedVault.restrictedByOversightIncidentId,
+          },
+        },
+      });
+
+      return unrestrictedVault;
+    });
+
+    return {
+      vault: this.mapInternalRetirementVaultProjection(updatedVault),
+      stateReused: false,
+    };
+  }
+
   async listInternalReleaseRequests(
     query: ListInternalRetirementVaultReleaseRequestsDto
   ): Promise<ListInternalRetirementVaultReleaseRequestsResult> {
@@ -1917,6 +2516,12 @@ export class RetirementVaultService {
           status: RetirementVaultReleaseRequestStatus.cooldown_active,
           cooldownEndsAt: {
             lte: now,
+          },
+          retirementVault: {
+            status: RetirementVaultStatus.active,
+            customerAccount: {
+              status: AccountLifecycleStatus.active,
+            },
           },
         },
         orderBy: {

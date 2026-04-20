@@ -19,6 +19,9 @@ import type {
   GovernedTreasuryExecutionRequest,
   GovernedExecutionWorkspace,
   GovernedIncidentPackageExport,
+  InternalRetirementVaultList,
+  InternalRetirementVaultRestrictionResult,
+  InternalRetirementVaultWorkspace,
   InternalRetirementVaultReleaseDecisionResult,
   InternalRetirementVaultReleaseRequestList,
   InternalRetirementVaultReleaseRequestWorkspace,
@@ -1353,6 +1356,59 @@ export async function listRetirementVaultReleaseRequests(
     method: "GET",
     url: "/retirement-vault/internal/release-requests",
     params
+  });
+}
+
+export async function listRetirementVaults(
+  session: OperatorSession,
+  params: Record<string, string | number | undefined> = {}
+): Promise<InternalRetirementVaultList> {
+  return requestData(session, {
+    method: "GET",
+    url: "/retirement-vault/internal/vaults",
+    params
+  });
+}
+
+export async function getRetirementVaultWorkspace(
+  session: OperatorSession,
+  vaultId: string,
+  params: Record<string, string | number | undefined> = {}
+): Promise<InternalRetirementVaultWorkspace> {
+  return requestData(session, {
+    method: "GET",
+    url: `/retirement-vault/internal/vaults/${vaultId}`,
+    params
+  });
+}
+
+export async function restrictRetirementVault(
+  session: OperatorSession,
+  vaultId: string,
+  payload: {
+    reasonCode: string;
+    note?: string;
+    oversightIncidentId?: string;
+  }
+): Promise<InternalRetirementVaultRestrictionResult> {
+  return requestData(session, {
+    method: "POST",
+    url: `/retirement-vault/internal/vaults/${vaultId}/restrict`,
+    data: payload
+  });
+}
+
+export async function releaseRetirementVaultRestriction(
+  session: OperatorSession,
+  vaultId: string,
+  payload: {
+    note?: string;
+  }
+): Promise<InternalRetirementVaultRestrictionResult> {
+  return requestData(session, {
+    method: "POST",
+    url: `/retirement-vault/internal/vaults/${vaultId}/release-restriction`,
+    data: payload
   });
 }
 

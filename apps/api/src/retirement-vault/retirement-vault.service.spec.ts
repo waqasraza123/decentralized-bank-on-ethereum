@@ -25,6 +25,16 @@ function buildVaultRecord(
     unlockAt: Date;
     lockedBalance: string;
     status: RetirementVaultStatus;
+    restrictedAt: Date | null;
+    restrictionReasonCode: string | null;
+    restrictedByOperatorId: string | null;
+    restrictedByOperatorRole: string | null;
+    restrictedByOversightIncidentId: string | null;
+    restrictionNote: string | null;
+    restrictionReleasedAt: Date | null;
+    restrictionReleasedByOperatorId: string | null;
+    restrictionReleasedByOperatorRole: string | null;
+    restrictionReleaseNote: string | null;
     releaseRequests: unknown[];
     events: unknown[];
   }> = {},
@@ -37,6 +47,19 @@ function buildVaultRecord(
     strictMode: overrides.strictMode ?? true,
     unlockAt: overrides.unlockAt ?? new Date("2027-01-01T00:00:00.000Z"),
     lockedBalance: new Prisma.Decimal(overrides.lockedBalance ?? "10"),
+    restrictedAt: overrides.restrictedAt ?? null,
+    restrictionReasonCode: overrides.restrictionReasonCode ?? null,
+    restrictedByOperatorId: overrides.restrictedByOperatorId ?? null,
+    restrictedByOperatorRole: overrides.restrictedByOperatorRole ?? null,
+    restrictedByOversightIncidentId:
+      overrides.restrictedByOversightIncidentId ?? null,
+    restrictionNote: overrides.restrictionNote ?? null,
+    restrictionReleasedAt: overrides.restrictionReleasedAt ?? null,
+    restrictionReleasedByOperatorId:
+      overrides.restrictionReleasedByOperatorId ?? null,
+    restrictionReleasedByOperatorRole:
+      overrides.restrictionReleasedByOperatorRole ?? null,
+    restrictionReleaseNote: overrides.restrictionReleaseNote ?? null,
     fundedAt: new Date("2026-04-20T10:00:00.000Z"),
     lastFundedAt: new Date("2026-04-20T10:00:00.000Z"),
     createdAt: new Date("2026-04-20T09:00:00.000Z"),
@@ -237,6 +260,7 @@ function createService() {
       create: jest.fn(),
       findUnique: jest.fn(),
       update: jest.fn(),
+      updateMany: jest.fn(),
     },
     retirementVaultEvent: {
       create: jest.fn(),
@@ -274,6 +298,9 @@ function createService() {
       findMany: jest.fn(),
       findUnique: jest.fn(),
     },
+    oversightIncident: {
+      findUnique: jest.fn(),
+    },
     transactionIntent: {
       findUnique: jest.fn(),
     },
@@ -304,10 +331,15 @@ function createService() {
     openOrReuseReviewCase: jest.fn(),
   };
 
+  const customerAccountOperationsService = {
+    listCustomerAccountTimeline: jest.fn(),
+  };
+
   const service = new RetirementVaultService(
     prismaService as never,
     ledgerService as never,
     reviewCasesService as never,
+    customerAccountOperationsService as never,
   );
 
   return {
@@ -316,6 +348,7 @@ function createService() {
     transactionClient,
     ledgerService,
     reviewCasesService,
+    customerAccountOperationsService,
   };
 }
 
@@ -476,6 +509,54 @@ describe("RetirementVaultService", () => {
     );
     expect(result.releaseRequest.reviewCase?.id).toBe(reviewCase.id);
     expect(reviewCasesService.openOrReuseReviewCase).toHaveBeenCalledTimes(1);
+  });
+
+  it("restricts an internal retirement vault and records operator governance metadata", async () => {
+    const { service, prismaService, transactionClient } = createService();
+
+    const activeVault = {
+      ...buildVaultRecord(),
+      customerAccount: {
+        id: "account_1",
+        status: AccountLifecycleStatus.active,
+        customer: {
+          id: "customer_1",
+          supabaseUserId: "supabase_1",
+          email: "vault@example.com",
+          firstName: "Ada",
+          lastName: "Vault",
+        },
+      },
+    };
+    const restrictedVault = {
+      ...activeVault,
+      status: RetirementVaultStatus.restricted,
+      restrictedAt: new Date("2026-04-20T13:00:00.000Z"),
+      restrictionReasonCode: "suspicious_unlock_activity",
+      restrictedByOperatorId: "ops_1",
+      restrictedByOperatorRole: "risk_manager",
+    };
+
+    prismaService.retirementVault.findUnique.mockResolvedValue(activeVault);
+    transactionClient.retirementVault.update.mockResolvedValue(restrictedVault);
+    transactionClient.retirementVaultEvent.create.mockResolvedValue({
+      id: "vault_event_restricted_1",
+      eventType: RetirementVaultEventType.restricted,
+    });
+    transactionClient.auditEvent.create.mockResolvedValue({ id: "audit_1" });
+
+    const result = await service.restrictInternalVault("vault_1", "ops_1", "risk_manager", {
+      reasonCode: "suspicious_unlock_activity",
+      note: "Freeze this vault while the unlock request is reviewed.",
+    });
+
+    expect(result.stateReused).toBe(false);
+    expect(result.vault.status).toBe(RetirementVaultStatus.restricted);
+    expect(result.vault.restriction.restrictionReasonCode).toBe(
+      "suspicious_unlock_activity"
+    );
+    expect(transactionClient.retirementVaultEvent.create).toHaveBeenCalledTimes(1);
+    expect(transactionClient.auditEvent.create).toHaveBeenCalledTimes(1);
   });
 
   it("sweeps ready retirement vault release requests into released state", async () => {

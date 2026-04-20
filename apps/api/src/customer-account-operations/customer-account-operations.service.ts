@@ -134,6 +134,23 @@ type RestrictionRecord = Prisma.CustomerAccountRestrictionGetPayload<{
   };
 }>;
 
+type RetirementVaultEventRecord = Prisma.RetirementVaultEventGetPayload<{
+  include: {
+    retirementVault: {
+      select: {
+        id: true;
+        asset: {
+          select: {
+            id: true;
+            symbol: true;
+            displayName: true;
+          };
+        };
+      };
+    };
+  };
+}>;
+
 type CurrentRestrictionProjection = {
   active: boolean;
   restrictedAt: string | null;
@@ -481,6 +498,45 @@ export class CustomerAccountOperationsService {
     };
   }
 
+  private buildRetirementVaultEventEntry(
+    customerAccountId: string,
+    event: RetirementVaultEventRecord
+  ): CustomerAccountTimelineEntryProjection {
+    const metadata =
+      event.metadata &&
+      typeof event.metadata === "object" &&
+      !Array.isArray(event.metadata)
+        ? (event.metadata as Record<string, unknown>)
+        : null;
+
+    return {
+      id: "retirement_vault_event:" + event.id,
+      eventType: "retirement_vault." + event.eventType,
+      occurredAt: event.createdAt.toISOString(),
+      actorType: event.actorType,
+      actorId: event.actorId ?? null,
+      customerAccountId,
+      transactionIntentId:
+        typeof metadata?.transactionIntentId === "string"
+          ? metadata.transactionIntentId
+          : null,
+      reviewCaseId:
+        typeof metadata?.reviewCaseId === "string" ? metadata.reviewCaseId : null,
+      oversightIncidentId:
+        typeof metadata?.oversightIncidentId === "string"
+          ? metadata.oversightIncidentId
+          : null,
+      accountRestrictionId: null,
+      metadata: {
+        retirementVaultId: event.retirementVault.id,
+        retirementVaultAssetSymbol: event.retirementVault.asset.symbol,
+        retirementVaultAssetDisplayName: event.retirementVault.asset.displayName,
+        note: typeof metadata?.note === "string" ? metadata.note : null,
+        eventMetadata: event.metadata,
+      },
+    };
+  }
+
   async listCustomerAccountTimeline(
     query: ListCustomerAccountTimelineDto
   ): Promise<ListCustomerAccountTimelineResult> {
@@ -500,6 +556,7 @@ export class CustomerAccountOperationsService {
       reviewCaseEvents,
       oversightIncidentEvents,
       restrictions,
+      retirementVaultEvents,
       totalTransactionIntents,
       manuallyResolvedTransactionIntents,
       openReviewCases,
@@ -589,6 +646,31 @@ export class CustomerAccountOperationsService {
           }
         }
       }),
+      this.prismaService.retirementVaultEvent.findMany({
+        where: {
+          retirementVault: {
+            customerAccountId: customerAccount.id,
+          },
+        },
+        orderBy: {
+          createdAt: "desc",
+        },
+        take: sourceFetchLimit,
+        include: {
+          retirementVault: {
+            select: {
+              id: true,
+              asset: {
+                select: {
+                  id: true,
+                  symbol: true,
+                  displayName: true,
+                },
+              },
+            },
+          },
+        },
+      }),
       this.prismaService.transactionIntent.count({
         where: {
           customerAccountId: customerAccount.id,
@@ -653,6 +735,12 @@ export class CustomerAccountOperationsService {
     for (const event of oversightIncidentEvents) {
       timelineEntries.push(
         this.buildOversightIncidentEventEntry(customerAccount.id, event)
+      );
+    }
+
+    for (const event of retirementVaultEvents) {
+      timelineEntries.push(
+        this.buildRetirementVaultEventEntry(customerAccount.id, event)
       );
     }
 

@@ -2457,6 +2457,83 @@ export type InternalRetirementVaultReleaseDecisionResult = {
   stateReused: boolean;
 };
 
+export type RetirementVaultRestrictionProjection = {
+  restrictedAt: string | null;
+  restrictionReasonCode: string | null;
+  restrictedByOperatorId: string | null;
+  restrictedByOperatorRole: string | null;
+  restrictedByOversightIncidentId: string | null;
+  restrictionNote: string | null;
+  restrictionReleasedAt: string | null;
+  restrictionReleasedByOperatorId: string | null;
+  restrictionReleasedByOperatorRole: string | null;
+  restrictionReleaseNote: string | null;
+};
+
+export type InternalRetirementVault = {
+  id: string;
+  customerAccountId: string;
+  asset: {
+    id: string;
+    symbol: string;
+    displayName: string;
+    decimals: number;
+    chainId: number;
+  };
+  status: string;
+  strictMode: boolean;
+  unlockAt: string;
+  lockedBalance: string;
+  fundedAt: string | null;
+  lastFundedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  releaseRequests: RetirementVaultReleaseRequestProjection[];
+  events: RetirementVaultEventProjection[];
+  restriction: RetirementVaultRestrictionProjection;
+  customerAccount: {
+    id: string;
+    status: string;
+    customer: {
+      id: string;
+      supabaseUserId: string;
+      email: string;
+      firstName: string;
+      lastName: string;
+    };
+  };
+};
+
+export type InternalRetirementVaultList = {
+  vaults: InternalRetirementVault[];
+  limit: number;
+};
+
+export type LinkedRetirementVaultOversightIncident = {
+  id: string;
+  incidentType: string;
+  status: string;
+  reasonCode: string | null;
+  summaryNote: string | null;
+  assignedOperatorId: string | null;
+  openedAt: string;
+  updatedAt: string;
+} | null;
+
+export type InternalRetirementVaultWorkspace = {
+  vault: InternalRetirementVault;
+  linkedOversightIncident: LinkedRetirementVaultOversightIncident;
+  vaultEvents: RetirementVaultEventProjection[];
+  relatedAuditEvents: AuditTimelineEntry[];
+  customerAccountTimeline: CustomerAccountOperationsTimeline;
+  recentLimit: number;
+};
+
+export type InternalRetirementVaultRestrictionResult = {
+  vault: InternalRetirementVault;
+  stateReused: boolean;
+};
+
 export type IncidentPackageRelease = {
   id: string;
   customer: {
