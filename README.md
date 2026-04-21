@@ -13,7 +13,10 @@
 
 ## Screenshots
 
-![alt text](<.github/screenshots/Screenshot 2026-04-10 at 8.58.46 PM.jpg>) ![alt text](<.github/screenshots/Screenshot 2026-04-10 at 8.59.31 PM.jpg>) ![alt text](<.github/screenshots/Screenshot 2026-04-10 at 8.59.40 PM.jpg>) ![alt text](<.github/screenshots/Screenshot 2026-04-10 at 8.59.50 PM.jpg>) ![alt text](<.github/screenshots/Screenshot 2026-04-10 at 9.00.14 PM.jpg>) ![alt text](<.github/screenshots/Screenshot 2026-04-10 at 9.00.32 PM.jpg>) ![alt text](<.github/screenshots/Screenshot 2026-04-10 at 9.00.47 PM.jpg>) ![alt text](<.github/screenshots/Screenshot 2026-04-10 at 9.00.57 PM.jpg>)
+![alt text](.github/screenshots/mobile1.jpg) ![alt text](.github/screenshots/mobile2.jpg)
+![alt text](<.github/screenshots/Screenshot 2026-04-10 at 8.59.31 PM.jpg>) ![alt text](<.github/screenshots/Screenshot 2026-04-10 at 8.59.40 PM.jpg>)
+![alt text](.github/screenshots/mobile3.jpg) ![alt text](.github/screenshots/mobile4.jpg) ![alt text](.github/screenshots/mobile5.jpg) ![alt text](.github/screenshots/mobile6.jpg) ![alt text](.github/screenshots/mobile7.jpg) ![alt text](.github/screenshots/mobile8.jpg) ![alt text](.github/screenshots/mobile9.jpg) ![alt text](.github/screenshots/mobile10.jpg) ![alt text](.github/screenshots/mobile11.jpg)
+![alt text](<.github/screenshots/Screenshot 2026-04-10 at 8.58.46 PM.jpg>) ![alt text](<.github/screenshots/Screenshot 2026-04-10 at 8.59.50 PM.jpg>) ![alt text](<.github/screenshots/Screenshot 2026-04-10 at 9.00.14 PM.jpg>) ![alt text](<.github/screenshots/Screenshot 2026-04-10 at 9.00.32 PM.jpg>) ![alt text](<.github/screenshots/Screenshot 2026-04-10 at 9.00.47 PM.jpg>) ![alt text](<.github/screenshots/Screenshot 2026-04-10 at 9.00.57 PM.jpg>)
 
 ## Overview
 
@@ -175,28 +178,28 @@ Run these from the repository root unless noted otherwise.
 
 ### Root commands
 
-| Command                                   | Purpose                                                             |
-| ----------------------------------------- | ------------------------------------------------------------------- |
-| `pnpm dev`                                | Start repo development tasks                                        |
-| `pnpm dev:preflight`                      | Validate local dev wiring and Prisma migration state before startup |
-| `pnpm build`                              | Build workspace packages that define a build script                 |
-| `pnpm test`                               | Run workspace tests                                                 |
-| `pnpm lint`                               | Run lint tasks where defined                                        |
-| `pnpm compile`                            | Run compile tasks where defined                                     |
-| `pnpm release:readiness:probe -- --help`  | Run a Phase 12 drill probe and optionally record evidence           |
-| `pnpm release:readiness:verify -- --help` | Run Phase 12 automated proof suites or manual review attestations   |
-| `pnpm dev:mobile`                         | Start the Expo mobile app                                           |
-| `pnpm mobile:ios`                         | Open the Expo app in an iOS simulator                               |
-| `pnpm mobile:android`                     | Open the Expo app in an Android emulator                            |
-| `pnpm mobile:typecheck`                   | Typecheck the React Native app                                      |
-| `pnpm mobile:test`                        | Run the mobile Jest suite                                           |
-| `pnpm mobile:export`                      | Export the Expo web bundle used as a CI bundle gate                 |
-| `pnpm mobile:verify`                      | Run the production mobile verification gate                         |
+| Command                                   | Purpose                                                              |
+| ----------------------------------------- | -------------------------------------------------------------------- |
+| `pnpm dev`                                | Start repo development tasks                                         |
+| `pnpm dev:preflight`                      | Validate local dev wiring and Prisma migration state before startup  |
+| `pnpm build`                              | Build workspace packages that define a build script                  |
+| `pnpm test`                               | Run workspace tests                                                  |
+| `pnpm lint`                               | Run lint tasks where defined                                         |
+| `pnpm compile`                            | Run compile tasks where defined                                      |
+| `pnpm release:readiness:probe -- --help`  | Run a Phase 12 drill probe and optionally record evidence            |
+| `pnpm release:readiness:verify -- --help` | Run Phase 12 automated proof suites or manual review attestations    |
+| `pnpm dev:mobile`                         | Start the Expo mobile app                                            |
+| `pnpm mobile:ios`                         | Open the Expo app in an iOS simulator                                |
+| `pnpm mobile:android`                     | Open the Expo app in an Android emulator                             |
+| `pnpm mobile:typecheck`                   | Typecheck the React Native app                                       |
+| `pnpm mobile:test`                        | Run the mobile Jest suite                                            |
+| `pnpm mobile:export`                      | Export the Expo web bundle used as a CI bundle gate                  |
+| `pnpm mobile:verify`                      | Run the production mobile verification gate                          |
 | `pnpm api:smoke:local`                    | Exercise the compiled API Vercel handler, health endpoints, and CORS |
-| `pnpm verify:push`                        | Run the mandatory local push gate                                   |
-| `pnpm push`                               | Run local verification, then push with hooks already satisfied      |
-| `pnpm safe-push`                          | Alias for `pnpm push`                                               |
-| `pnpm setup:hooks`                        | Reinstall the repo-managed Git hook path                            |
+| `pnpm verify:push`                        | Run the mandatory local push gate                                    |
+| `pnpm push`                               | Run local verification, then push with hooks already satisfied       |
+| `pnpm safe-push`                          | Alias for `pnpm push`                                                |
+| `pnpm setup:hooks`                        | Reinstall the repo-managed Git hook path                             |
 
 ### Package-scoped examples
 
