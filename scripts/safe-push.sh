@@ -4,4 +4,4 @@ set -eu
 repo_root="$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)"
 cd "$repo_root"
 
-node ./scripts/push.mjs --validate-before-push "$@"
+node ./scripts/push.mjs "$@"

@@ -1,13 +1,12 @@
 name: monorepo-ci
 
 on:
-  pull_request:
-    paths-ignore:
-      - "docs/**"
-      - "**/*.md"
   push:
     branches:
       - main
+  schedule:
+    - cron: "0 4 * * *"
+  workflow_dispatch:
 
 jobs:
   verify:
@@ -33,6 +32,9 @@ jobs:
 
       - name: Build
         run: pnpm build
+
+      - name: API bootstrap smoke
+        run: pnpm api:smoke:local
 
       - name: Lint
         run: pnpm lint

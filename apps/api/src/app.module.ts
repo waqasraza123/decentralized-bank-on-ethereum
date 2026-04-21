@@ -8,6 +8,7 @@ import { CustomerBalancesModule } from "./customer-balances/customer-balances.mo
 import { EthereumModule } from "./ethereum/ethereum.module";
 import { GovernanceManifestsModule } from "./governance-manifests/governance-manifests.module";
 import { GovernedExecutionModule } from "./governed-execution/governed-execution.module";
+import { HealthModule } from "./health/health.module";
 import { LedgerReconciliationModule } from "./ledger-reconciliation/ledger-reconciliation.module";
 import { LoansModule } from "./loans/loans.module";
 import { OperationsMonitoringModule } from "./operations-monitoring/operations-monitoring.module";
@@ -25,6 +26,7 @@ import { UserModule } from "./user/user.module";
 
 @Module({
   imports: [
+    HealthModule,
     AuditEventsModule,
     AuthModule,
     ClientObservabilityModule,

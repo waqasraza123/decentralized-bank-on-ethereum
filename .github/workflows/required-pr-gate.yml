@@ -1,0 +1,97 @@
+name: required-pr-gate
+
+on:
+  pull_request:
+    paths-ignore:
+      - "docs/**"
+      - "**/*.md"
+
+jobs:
+  required-pr-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect API deployment-relevant changes
+        id: detect_api_changes
+        run: |
+          git fetch origin "${{ github.base_ref }}" --depth=1
+          changed_files="$(git diff --name-only "origin/${{ github.base_ref }}"...${{ github.event.pull_request.head.sha }})"
+          printf '%s\n' "$changed_files"
+
+          if printf '%s\n' "$changed_files" | grep -Eq '^(apps/api/|packages/config/|packages/contracts-sdk/|packages/db/|packages/security/|packages/types/|package.json|pnpm-lock.yaml|turbo.json)'; then
+            echo "api_changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "api_changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm build
+
+      - name: API bootstrap smoke
+        run: pnpm api:smoke:local
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Unit tests
+        run: pnpm test:unit
+
+      - name: Integration tests
+        run: pnpm test:integration
+
+      - name: Validate preview smoke secrets
+        if: steps.detect_api_changes.outputs.api_changed == 'true'
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_API_PROJECT_ID: ${{ secrets.VERCEL_API_PROJECT_ID }}
+        run: |
+          test -n "$VERCEL_TOKEN"
+          test -n "$VERCEL_ORG_ID"
+          test -n "$VERCEL_API_PROJECT_ID"
+
+      - name: Resolve API preview deployment URL
+        if: steps.detect_api_changes.outputs.api_changed == 'true'
+        id: resolve_preview
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_API_PROJECT_ID: ${{ secrets.VERCEL_API_PROJECT_ID }}
+        run: |
+          preview_url="$(node ./scripts/resolve-vercel-deployment-url.mjs \
+            --project-id "$VERCEL_API_PROJECT_ID" \
+            --team-id "$VERCEL_ORG_ID" \
+            --sha "${{ github.event.pull_request.head.sha }}" \
+            --timeout-ms 600000 \
+            --poll-interval-ms 10000)"
+          echo "url=${preview_url}" >> "$GITHUB_OUTPUT"
+
+      - name: Preview deployment smoke
+        if: steps.detect_api_changes.outputs.api_changed == 'true'
+        env:
+          VERCEL_PROTECTION_BYPASS_SECRET: ${{ secrets.STEALTH_TRAILS_BANK_API_VERCEL_BYPASS_SECRET }}
+        run: |
+          pnpm api:smoke -- \
+            --base-url "${{ steps.resolve_preview.outputs.url }}" \
+            --origin "https://stealth-trails-bank-web.vercel.app" \
+            --retry-attempts 30 \
+            --retry-delay-ms 10000

@@ -92,24 +92,38 @@ function pathExists(filePath) {
   }
 }
 
-test("push wrapper skips validation by default and forwards git args", () => {
+test("push wrapper runs validation by default and forwards git args with --no-verify", () => {
   const { result, calls } = runWithStubs(["--force", "origin", "main"]);
-
-  assert.equal(result.status, 0);
-  assert.deepEqual(calls, [{ tool: "git", args: ["push", "--force", "origin", "main"] }]);
-});
-
-test("push wrapper runs validation before pushing when the flag is present", () => {
-  const { result, calls } = runWithStubs(["--validate-before-push", "--force", "origin", "main"]);
 
   assert.equal(result.status, 0);
   assert.deepEqual(calls, [
     { tool: "pnpm", args: ["verify:push"] },
-    { tool: "git", args: ["push", "--force", "origin", "main"] }
+    {
+      tool: "git",
+      args: ["push", "--no-verify", "--force", "origin", "main"]
+    }
   ]);
 });
 
-test("pre-push hook exits successfully without invoking validation", () => {
+test("push wrapper keeps the legacy validate flag as a no-op alias", () => {
+  const { result, calls } = runWithStubs([
+    "--validate-before-push",
+    "--force",
+    "origin",
+    "main"
+  ]);
+
+  assert.equal(result.status, 0);
+  assert.deepEqual(calls, [
+    { tool: "pnpm", args: ["verify:push"] },
+    {
+      tool: "git",
+      args: ["push", "--no-verify", "--force", "origin", "main"]
+    }
+  ]);
+});
+
+test("pre-push hook runs validation and propagates failures", () => {
   const tempDir = mkdtempSync(path.join(os.tmpdir(), "pre-push-hook-test-"));
   const binDir = path.join(tempDir, "bin");
   const logFile = path.join(tempDir, "calls.log");
@@ -117,15 +131,7 @@ test("pre-push hook exits successfully without invoking validation", () => {
   try {
     mkdirSync(binDir);
 
-    createExecutableStub(
-      binDir,
-      "pnpm",
-      `#!/usr/bin/env node
-const { appendFileSync } = require("node:fs");
-appendFileSync(process.env.LOG_FILE, "pnpm-called\\n");
-process.exit(99);
-`
-    );
+    createLogLineStub(binDir, "pnpm", "pnpm", 99);
 
     const result = spawnSync("sh", [hookScript], {
       cwd: repoRoot,
@@ -137,10 +143,10 @@ process.exit(99);
       }
     });
 
-    const log = pathExists(logFile) ? readFileSync(logFile, "utf8") : "";
+    const calls = readLogEntries(logFile);
 
-    assert.equal(result.status, 0);
-    assert.equal(log, "");
+    assert.equal(result.status, 99);
+    assert.deepEqual(calls, [{ tool: "pnpm", args: ["verify:push"] }]);
   } finally {
     rmSync(tempDir, { recursive: true, force: true });
   }
@@ -171,7 +177,10 @@ test("safe-push remains a validating alias for the new push wrapper", () => {
     assert.equal(result.status, 0);
     assert.deepEqual(calls, [
       { tool: "pnpm", args: ["verify:push"] },
-      { tool: "git", args: ["push", "--force", "origin", "main"] }
+      {
+        tool: "git",
+        args: ["push", "--no-verify", "--force", "origin", "main"]
+      }
     ]);
   } finally {
     rmSync(tempDir, { recursive: true, force: true });

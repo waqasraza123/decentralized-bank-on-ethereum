@@ -6,6 +6,7 @@
     "dev": "./scripts/dev.sh",
     "dev:mobile": "pnpm --filter @stealth-trails-bank/mobile dev",
     "dev:preflight": "node ./scripts/preflight-dev.mjs",
+    "prepare": "pnpm setup:hooks",
     "build:apps": "turbo build",
     "build": "turbo build",
     "serve:apps": "node ./scripts/serve-built.mjs",
@@ -17,7 +18,7 @@
     "test:integration": "pnpm --filter @stealth-trails-bank/api test:integration && pnpm --filter @stealth-trails-bank/contracts test",
     "test:e2e": "playwright test",
     "test:coverage": "pnpm --filter @stealth-trails-bank/api test:coverage && pnpm --filter @stealth-trails-bank/worker test:coverage && pnpm --filter @stealth-trails-bank/web test:coverage && pnpm --filter @stealth-trails-bank/admin test:coverage",
-    "test:ci": "pnpm test:push && pnpm build && pnpm test:unit && pnpm test:integration && pnpm test:coverage && pnpm test:e2e && pnpm mobile:verify",
+    "test:ci": "pnpm test:push && pnpm build && pnpm api:smoke:local && pnpm lint && pnpm test:unit && pnpm test:integration && pnpm test:coverage && pnpm test:e2e && pnpm mobile:verify",
     "compile": "turbo run compile",
     "release:readiness:probe": "pnpm --filter @stealth-trails-bank/api release-readiness:probe",
     "release:readiness:verify": "pnpm --filter @stealth-trails-bank/api release-readiness:verify",
@@ -33,10 +34,13 @@
     "db:supabase:dump-local": "node ./scripts/supabase-db-cutover.mjs dump-local",
     "db:supabase:import": "node ./scripts/supabase-db-cutover.mjs import-data",
     "db:supabase:compare-counts": "node ./scripts/supabase-db-cutover.mjs compare-counts",
+    "hooks:check": "node ./scripts/check-hooks.mjs",
+    "api:smoke": "node ./scripts/api-smoke.mjs",
+    "api:smoke:local": "node ./scripts/api-smoke.mjs --local",
     "verify:push": "./scripts/verify-push.sh",
     "push": "node ./scripts/push.mjs",
     "safe-push": "./scripts/safe-push.sh",
-    "setup:hooks": "git config core.hooksPath .githooks"
+    "setup:hooks": "node ./scripts/setup-hooks.mjs"
   },
   "devDependencies": {
     "@playwright/test": "^1.54.2",

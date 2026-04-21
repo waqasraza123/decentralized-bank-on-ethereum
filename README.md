@@ -157,6 +157,12 @@ pnpm dev
 
 `pnpm dev` now runs a repo-owned preflight first. It fails fast if the worker is pointed at the wrong local API URL or if your local API database is behind the checked-in Prisma migrations.
 
+Git hooks are also installed automatically on `pnpm install` through the repo `prepare` script. If the hooks drift or stop firing, run:
+
+```bash
+pnpm setup:hooks
+```
+
 If that preflight blocks startup, the usual recovery path is:
 
 ```bash
@@ -186,8 +192,11 @@ Run these from the repository root unless noted otherwise.
 | `pnpm mobile:test`                        | Run the mobile Jest suite                                           |
 | `pnpm mobile:export`                      | Export the Expo web bundle used as a CI bundle gate                 |
 | `pnpm mobile:verify`                      | Run the production mobile verification gate                         |
-| `pnpm push --validate-before-push`        | Run repo push validation and push only if it passes                 |
-| `pnpm safe-push`                          | Alias for `pnpm push --validate-before-push`                        |
+| `pnpm api:smoke:local`                    | Exercise the compiled API Vercel handler, health endpoints, and CORS |
+| `pnpm verify:push`                        | Run the mandatory local push gate                                   |
+| `pnpm push`                               | Run local verification, then push with hooks already satisfied      |
+| `pnpm safe-push`                          | Alias for `pnpm push`                                               |
+| `pnpm setup:hooks`                        | Reinstall the repo-managed Git hook path                            |
 
 ### Package-scoped examples
 

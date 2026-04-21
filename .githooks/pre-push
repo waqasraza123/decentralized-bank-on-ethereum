@@ -4,4 +4,4 @@ set -eu
 repo_root="$(git rev-parse --show-toplevel)"
 cd "$repo_root"
 
-exit 0
+exec pnpm verify:push

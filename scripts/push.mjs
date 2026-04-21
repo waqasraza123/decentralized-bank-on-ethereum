@@ -5,8 +5,6 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 import process from "node:process";
 
-const VALIDATE_BEFORE_PUSH_FLAG = "--validate-before-push";
-
 function repoRoot() {
   return path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 }
@@ -30,22 +28,18 @@ function runCommand(command, args) {
 
 function main() {
   const forwardedArgs = [];
-  let shouldValidate = false;
 
   for (const arg of process.argv.slice(2)) {
-    if (arg === VALIDATE_BEFORE_PUSH_FLAG) {
-      shouldValidate = true;
+    if (arg === "--validate-before-push") {
       continue;
     }
 
     forwardedArgs.push(arg);
   }
 
-  if (shouldValidate) {
-    runCommand("pnpm", ["verify:push"]);
-  }
+  runCommand("pnpm", ["verify:push"]);
 
-  runCommand("git", ["push", ...forwardedArgs]);
+  runCommand("git", ["push", "--no-verify", ...forwardedArgs]);
 }
 
 main();

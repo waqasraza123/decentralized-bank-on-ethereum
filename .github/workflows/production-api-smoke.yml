@@ -1,0 +1,77 @@
+name: production-api-smoke
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  production-api-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Validate production smoke secrets
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_API_PROJECT_ID: ${{ secrets.VERCEL_API_PROJECT_ID }}
+        run: |
+          test -n "$VERCEL_TOKEN"
+          test -n "$VERCEL_ORG_ID"
+          test -n "$VERCEL_API_PROJECT_ID"
+
+      - name: Wait for production deployment
+        id: resolve_production
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_API_PROJECT_ID: ${{ secrets.VERCEL_API_PROJECT_ID }}
+        run: |
+          deployment_url="$(node ./scripts/resolve-vercel-deployment-url.mjs \
+            --project-id "$VERCEL_API_PROJECT_ID" \
+            --team-id "$VERCEL_ORG_ID" \
+            --sha "${{ github.sha }}" \
+            --target production \
+            --timeout-ms 600000 \
+            --poll-interval-ms 10000)"
+          echo "deployment_url=${deployment_url}" >> "$GITHUB_OUTPUT"
+
+      - name: Production API smoke
+        env:
+          VERCEL_PROTECTION_BYPASS_SECRET: ${{ secrets.STEALTH_TRAILS_BANK_API_VERCEL_BYPASS_SECRET }}
+        run: |
+          node ./scripts/api-smoke.mjs \
+            --base-url "https://stealth-trails-bank-api.vercel.app" \
+            --origin "https://stealth-trails-bank-web.vercel.app" \
+            --retry-attempts 30 \
+            --retry-delay-ms 10000
+
+      - name: Open production smoke failure issue
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const title = `Production API smoke failed for ${context.sha.slice(0, 7)}`;
+            const body = [
+              "Production API smoke failed after a main deployment.",
+              "",
+              `Commit: \`${context.sha}\``,
+              `Deployment: ${{ steps.resolve_production.outputs.deployment_url }}`,
+              `Workflow run: https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`
+            ].join("\n");
+
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title,
+              body
+            });
