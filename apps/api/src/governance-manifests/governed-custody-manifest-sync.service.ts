@@ -59,7 +59,16 @@ export class GovernedCustodyManifestSyncService implements OnModuleInit {
   constructor(private readonly prismaService: PrismaService) {}
 
   async onModuleInit(): Promise<void> {
-    const manifest = loadGovernedCustodyRuntimeConfig();
+    let manifest;
+
+    try {
+      manifest = loadGovernedCustodyRuntimeConfig();
+    } catch (error) {
+      this.logger.warn(
+        `Governed custody manifest sync skipped during bootstrap: ${error instanceof Error ? error.message : "unknown error"}.`
+      );
+      return;
+    }
 
     if (!manifest) {
       this.logger.log(
