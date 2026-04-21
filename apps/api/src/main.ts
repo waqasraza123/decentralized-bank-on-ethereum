@@ -20,8 +20,10 @@ type NodeResponse = {
 type RequestHandler = (req: NodeRequest, res: NodeResponse) => void;
 
 async function createApiApp() {
-  const { port, corsOriginDelegate } = loadApiBootstrapRuntime();
-  const app = await NestFactory.create(AppModule);
+  const { port, corsOriginDelegate, environment } = loadApiBootstrapRuntime();
+  const app = await NestFactory.create(AppModule, {
+    logger: environment === "development" ? ["warn", "error"] : undefined
+  });
   const httpAdapterInstance = app.getHttpAdapter().getInstance?.();
 
   if (

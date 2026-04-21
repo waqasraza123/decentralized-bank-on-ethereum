@@ -128,12 +128,7 @@ function ensureApiMigrationsAreApplied() {
     [
       "--filter",
       "@stealth-trails-bank/api",
-      "exec",
-      "prisma",
-      "migrate",
-      "status",
-      "--schema",
-      "prisma/schema.prisma"
+      "prisma:status"
     ],
     {
       cwd: process.cwd(),
@@ -149,6 +144,33 @@ function ensureApiMigrationsAreApplied() {
     .filter(Boolean)
     .join("\n")
     .trim();
+
+  if (
+    /P1001|Can't reach database server|Circuit breaker open|Unable to establish connection to upstream database/i.test(
+      output
+    )
+  ) {
+    fail([
+      "Dev preflight failed: the API database is unreachable for Prisma migration checks.",
+      "For Supabase, keep DATABASE_URL as the app/runtime URL and set DIRECT_URL to either the direct Postgres URL or the session-mode pooler URL on port 5432.",
+      "Do not use the transaction-mode pooler on port 6543 for Prisma migrate/status.",
+      "After fixing the connection or waiting for the database/pooler to recover, rerun `pnpm --filter @stealth-trails-bank/api prisma:deploy` and then `pnpm dev`.",
+      output
+    ]);
+  }
+
+  if (
+    /Prisma migration connection is not configured|DIRECT_URL is not a valid database URL|DIRECT_URL is using the Supabase transaction pooler/i.test(
+      output
+    )
+  ) {
+    fail([
+      "Dev preflight failed: the API Prisma migration connection is misconfigured.",
+      "For Supabase, DIRECT_URL must use either the direct Postgres URL or the session-mode pooler URL on port 5432.",
+      "Do not use the transaction-mode pooler on port 6543 for Prisma migrate/status.",
+      output
+    ]);
+  }
 
   fail([
     "Dev preflight failed: the API database is behind the checked-in Prisma migrations.",

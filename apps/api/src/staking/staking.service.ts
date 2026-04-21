@@ -158,7 +158,8 @@ export class StakingService {
           );
         }
 
-        this.logger.warn(
+        this.logIntegrationDisabled(
+          runtimeConfig.environment,
           "Staking contract integration is disabled because STAKING_CONTRACT_ADDRESS is not configured."
         );
         return;
@@ -175,7 +176,8 @@ export class StakingService {
           );
 
       if (!runtimeConfig.ethereumPrivateKey) {
-        this.logger.warn(
+        this.logIntegrationDisabled(
+          runtimeConfig.environment,
           "Staking write operations are disabled because ETHEREUM_PRIVATE_KEY is not configured."
         );
         return;
@@ -195,10 +197,23 @@ export class StakingService {
             this.writeWallet
           );
     } catch (error) {
-      this.logger.warn(
+      this.logIntegrationDisabled(
+        process.env.NODE_ENV === "production" ? "production" : "development",
         `Staking contract integration is disabled during bootstrap: ${error instanceof Error ? error.message : "unknown error"}.`
       );
     }
+  }
+
+  private logIntegrationDisabled(
+    environment: "development" | "test" | "production",
+    message: string
+  ): void {
+    if (environment === "production") {
+      this.logger.warn(message);
+      return;
+    }
+
+    this.logger.log(message);
   }
 
   private isStakingV1Contract(): boolean {

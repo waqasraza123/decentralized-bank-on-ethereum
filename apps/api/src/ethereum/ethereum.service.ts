@@ -26,7 +26,8 @@ export class EthereumService implements OnModuleInit {
         }
 
         this.stakingContract = null;
-        this.logger.warn(
+        this.logIntegrationDisabled(
+          runtimeConfig.environment,
           "Ethereum staking event listeners are disabled because STAKING_CONTRACT_ADDRESS is not configured."
         );
         return;
@@ -39,10 +40,23 @@ export class EthereumService implements OnModuleInit {
     } catch (error) {
       this.provider = null;
       this.stakingContract = null;
-      this.logger.warn(
+      this.logIntegrationDisabled(
+        process.env.NODE_ENV === "production" ? "production" : "development",
         `Ethereum event listeners are disabled during bootstrap: ${error instanceof Error ? error.message : "unknown error"}.`
       );
     }
+  }
+
+  private logIntegrationDisabled(
+    environment: "development" | "test" | "production",
+    message: string
+  ): void {
+    if (environment === "production") {
+      this.logger.warn(message);
+      return;
+    }
+
+    this.logger.log(message);
   }
 
   onModuleInit(): void {

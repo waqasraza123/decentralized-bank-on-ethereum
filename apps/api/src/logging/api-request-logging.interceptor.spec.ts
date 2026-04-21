@@ -115,4 +115,39 @@ describe("ApiRequestLoggingInterceptor", () => {
       })
     );
   });
+
+  it("suppresses successful worker polling logs", async () => {
+    const interceptor = new ApiRequestLoggingInterceptor(
+      new ApiRequestMetricsService()
+    );
+    const request = {
+      requestId: "request-id_worker",
+      method: "GET",
+      originalUrl: "/transaction-intents/internal/worker/deposit-requests/queued?limit=20",
+      url: "/transaction-intents/internal/worker/deposit-requests/queued?limit=20",
+      route: {
+        path: "/transaction-intents/internal/worker/deposit-requests/queued"
+      },
+      ip: "127.0.0.1",
+      headers: {
+        "user-agent": "axios/1.14.0"
+      },
+      internalWorker: {
+        workerId: "worker-local-1"
+      }
+    } as ApiRequestContext;
+    const response = {
+      statusCode: 200,
+      getHeader: () => "request-id_worker"
+    };
+    const consoleSpy = jest.spyOn(console, "log").mockImplementation(() => {});
+
+    await lastValueFrom(
+      interceptor.intercept(createHttpExecutionContext(request, response), {
+        handle: () => of({ intents: [] })
+      })
+    );
+
+    expect(consoleSpy).not.toHaveBeenCalled();
+  });
 });
