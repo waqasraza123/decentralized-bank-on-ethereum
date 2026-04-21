@@ -202,7 +202,8 @@ export class LoansService {
       this.provider = createJsonRpcProvider(runtimeConfig.rpcUrl);
 
       if (!runtimeConfig.loanContractAddress) {
-        this.logger.warn(
+        this.logIntegrationDisabled(
+          runtimeConfig.environment,
           "Loan contract integration is disabled because LOAN_CONTRACT_ADDRESS is not configured."
         );
         return;
@@ -226,10 +227,23 @@ export class LoansService {
             )
         : null;
     } catch (error) {
-      this.logger.warn(
+      this.logIntegrationDisabled(
+        process.env.NODE_ENV === "production" ? "production" : "development",
         `Loan contract integration is disabled during bootstrap: ${error instanceof Error ? error.message : "unknown error"}.`
       );
     }
+  }
+
+  private logIntegrationDisabled(
+    environment: "development" | "test" | "production",
+    message: string
+  ): void {
+    if (environment === "production") {
+      this.logger.warn(message);
+      return;
+    }
+
+    this.logger.log(message);
   }
 
   private isLoanBookV1Contract(): boolean {

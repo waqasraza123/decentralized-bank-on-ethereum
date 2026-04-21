@@ -21,6 +21,29 @@ type LoggingResponse = ApiResponseLike & {
   getHeader?: (name: string) => unknown;
 };
 
+function shouldSuppressSuccessRequestLog(args: {
+  routePath: string | null;
+  path: string | undefined;
+  actorType: string | null;
+}): boolean {
+  const normalizedPath = args.path ?? "";
+  const normalizedRoutePath = args.routePath ?? "";
+
+  if (normalizedPath === "/healthz" || normalizedPath === "/readyz") {
+    return true;
+  }
+
+  if (
+    args.actorType === "worker" &&
+    (normalizedPath.includes("/internal/worker/") ||
+      normalizedRoutePath.includes("/internal/worker/"))
+  ) {
+    return true;
+  }
+
+  return false;
+}
+
 @Injectable()
 export class ApiRequestLoggingInterceptor implements NestInterceptor {
   constructor(
@@ -72,6 +95,17 @@ export class ApiRequestLoggingInterceptor implements NestInterceptor {
           actorType: actor.actorType,
           durationMs
         });
+
+        if (
+          shouldSuppressSuccessRequestLog({
+            routePath,
+            path: request.originalUrl ?? request.url,
+            actorType: actor.actorType
+          })
+        ) {
+          return;
+        }
+
         writeStructuredApiLog("info", "http_request_completed", {
           ...baseMetadata,
           statusCode: response.statusCode,

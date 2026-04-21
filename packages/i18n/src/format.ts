@@ -3,6 +3,7 @@ import { resolveIntlLocale, type SupportedLocale } from "./locales";
 type IntlFormatters = {
   readonly decimalSeparator: string;
   readonly digits: readonly string[];
+  readonly groupSeparator: string;
   readonly dateFormatter: Intl.DateTimeFormat;
   readonly dateTimeFormatter: Intl.DateTimeFormat;
   readonly countFormatter: Intl.NumberFormat;
@@ -17,12 +18,49 @@ function buildDigitMap(locale: SupportedLocale): readonly string[] {
 }
 
 function resolveDecimalSeparator(locale: SupportedLocale): string {
-  const parts = new Intl.NumberFormat(resolveIntlLocale(locale), {
+  const formatter = new Intl.NumberFormat(resolveIntlLocale(locale), {
     minimumFractionDigits: 1,
     maximumFractionDigits: 1
-  }).formatToParts(1.1);
+  });
+  const formatToParts = formatter.formatToParts;
 
-  return parts.find((part) => part.type === "decimal")?.value ?? ".";
+  if (typeof formatToParts === "function") {
+    const parts = formatToParts.call(formatter, 1.1);
+
+    return parts.find((part) => part.type === "decimal")?.value ?? ".";
+  }
+
+  const sample = formatter.format(1.1);
+  const parts = sample.match(/[^\p{Number}\p{Letter}\s]/u);
+
+  return parts?.[0] ?? ".";
+}
+
+function resolveGroupSeparator(locale: SupportedLocale): string {
+  const formatter = new Intl.NumberFormat(resolveIntlLocale(locale), {
+    useGrouping: true
+  });
+  const formatToParts = formatter.formatToParts;
+
+  if (typeof formatToParts === "function") {
+    const parts = formatToParts.call(formatter, 1000);
+
+    return parts.find((part) => part.type === "group")?.value ?? ",";
+  }
+
+  const sample = formatter.format(1000);
+  const parts = sample.match(/[^\p{Number}\p{Letter}\s]/u);
+
+  return parts?.[0] ?? ",";
+}
+
+function localizeWholeNumberString(
+  value: string,
+  digits: readonly string[],
+  groupSeparator: string
+): string {
+  const groupedValue = value.replace(/\B(?=(\d{3})+(?!\d))/g, groupSeparator);
+  return localizeDigits(groupedValue, digits);
 }
 
 function createIntlFormatters(locale: SupportedLocale): IntlFormatters {
@@ -31,6 +69,7 @@ function createIntlFormatters(locale: SupportedLocale): IntlFormatters {
   return {
     decimalSeparator: resolveDecimalSeparator(locale),
     digits: buildDigitMap(locale),
+    groupSeparator: resolveGroupSeparator(locale),
     dateFormatter: new Intl.DateTimeFormat(intlLocale, {
       year: "numeric",
       month: "short",
@@ -80,12 +119,16 @@ export function formatDecimalString(
     return localizeDigits("0", getCachedFormatters(locale).digits);
   }
 
-  const { digits, decimalSeparator, countFormatter } = getCachedFormatters(locale);
+  const { digits, decimalSeparator, groupSeparator } = getCachedFormatters(locale);
   const isNegative = normalizedValue.startsWith("-");
   const unsignedValue = isNegative ? normalizedValue.slice(1) : normalizedValue;
   const [wholePartText = "0", fractionPartText = ""] = unsignedValue.split(".");
   const wholePart = wholePartText.replace(/^0+(?=\d)/, "") || "0";
-  const localizedWholePart = countFormatter.format(BigInt(wholePart));
+  const localizedWholePart = localizeWholeNumberString(
+    wholePart,
+    digits,
+    groupSeparator
+  );
   const trimmedFractionPart = fractionPartText
     .slice(0, maxFractionDigits)
     .replace(/0+$/, "");

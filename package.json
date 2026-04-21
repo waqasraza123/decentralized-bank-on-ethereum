@@ -4,7 +4,7 @@
   "packageManager": "pnpm@9.15.0",
   "scripts": {
     "dev": "./scripts/dev.sh",
-    "dev:mobile": "pnpm --filter @stealth-trails-bank/mobile dev",
+    "dev:mobile": "node ./scripts/dev-mobile.mjs",
     "dev:preflight": "node ./scripts/preflight-dev.mjs",
     "prepare": "pnpm setup:hooks",
     "build:apps": "turbo build",
