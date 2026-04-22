@@ -274,6 +274,13 @@ type CustomerAssetContext = {
   accountStatus: AccountLifecycleStatus;
 };
 
+function isBlockedRetirementVaultStatus(status: RetirementVaultStatus): boolean {
+  return (
+    status === RetirementVaultStatus.restricted ||
+    status === RetirementVaultStatus.incident_locked
+  );
+}
+
 type RetirementVaultReviewCaseSummary = {
   id: string;
   type: ReviewCaseType;
@@ -682,6 +689,20 @@ export class RetirementVaultService {
     }
 
     return this.parseUnlockAt(unlockAt);
+  }
+
+  private resolveRestrictionTargetStatus(
+    reasonCode: string,
+    linkedOversightIncidentId: string | null
+  ): RetirementVaultStatus {
+    if (
+      linkedOversightIncidentId ||
+      reasonCode === "incident_protective_lock"
+    ) {
+      return RetirementVaultStatus.incident_locked;
+    }
+
+    return RetirementVaultStatus.restricted;
   }
 
   private assertSensitiveVaultRequestAllowed(
@@ -2742,7 +2763,7 @@ export class RetirementVaultService {
       );
     }
 
-    if (existingVault.status === RetirementVaultStatus.restricted) {
+    if (existingVault.status === RetirementVaultStatus.incident_locked) {
       return {
         vault: this.mapInternalRetirementVaultProjection(existingVault),
         stateReused: true,
@@ -2762,6 +2783,18 @@ export class RetirementVaultService {
       this.normalizeOptionalString(dto?.oversightIncidentId),
       existingVault.customerAccount.id
     );
+    const targetStatus = this.resolveRestrictionTargetStatus(
+      reasonCode,
+      linkedOversightIncidentId
+    );
+
+    if (existingVault.status === targetStatus) {
+      return {
+        vault: this.mapInternalRetirementVaultProjection(existingVault),
+        stateReused: true,
+      };
+    }
+
     const occurredAt = new Date();
 
     const updatedVault = await this.prismaService.$transaction(async (transaction) => {
@@ -2770,7 +2803,7 @@ export class RetirementVaultService {
           id: existingVault.id,
         },
         data: {
-          status: RetirementVaultStatus.restricted,
+          status: targetStatus,
           restrictedAt: occurredAt,
           restrictionReasonCode: reasonCode,
           restrictedByOperatorId: operatorId,
@@ -2794,6 +2827,7 @@ export class RetirementVaultService {
           metadata: {
             reasonCode,
             note,
+            status: targetStatus,
             operatorRole: normalizedOperatorRole,
             oversightIncidentId: linkedOversightIncidentId,
           },
@@ -2812,6 +2846,7 @@ export class RetirementVaultService {
             customerAccountId: restrictedVault.customerAccount.id,
             reasonCode,
             note,
+            status: targetStatus,
             operatorRole: normalizedOperatorRole,
             oversightIncidentId: linkedOversightIncidentId,
           },
@@ -2836,7 +2871,7 @@ export class RetirementVaultService {
     const normalizedOperatorRole = this.assertCanReleaseVaultRestriction(operatorRole);
     const existingVault = await this.loadInternalVaultById(vaultId);
 
-    if (existingVault.status !== RetirementVaultStatus.restricted) {
+    if (!isBlockedRetirementVaultStatus(existingVault.status)) {
       return {
         vault: this.mapInternalRetirementVaultProjection(existingVault),
         stateReused: true,
@@ -3772,7 +3807,12 @@ export class RetirementVaultService {
           OR: [
             {
               retirementVault: {
-                status: RetirementVaultStatus.restricted,
+                status: {
+                  in: [
+                    RetirementVaultStatus.restricted,
+                    RetirementVaultStatus.incident_locked,
+                  ],
+                },
               },
             },
             {
@@ -4158,7 +4198,12 @@ export class RetirementVaultService {
           OR: [
             {
               retirementVault: {
-                status: RetirementVaultStatus.restricted,
+                status: {
+                  in: [
+                    RetirementVaultStatus.restricted,
+                    RetirementVaultStatus.incident_locked,
+                  ],
+                },
               },
             },
             {

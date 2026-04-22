@@ -37,6 +37,7 @@ const vaultStatusOptions = [
   { value: "all", label: "All vaults" },
   { value: "active", label: "Active" },
   { value: "restricted", label: "Restricted" },
+  { value: "incident_locked", label: "Incident locked" },
   { value: "released", label: "Released" },
 ] as const;
 
@@ -54,6 +55,10 @@ const restrictionReasonOptions = [
   { value: "incident_protective_lock", label: "Incident protective lock" },
   { value: "operator_safety_lock", label: "Operator safety lock" },
 ] as const;
+
+function isVaultBlockedStatus(status: string) {
+  return status === "restricted" || status === "incident_locked";
+}
 
 function mapVaultEventsToTimeline(
   events: Awaited<ReturnType<typeof getRetirementVaultWorkspace>>["vaultEvents"],
@@ -307,6 +312,9 @@ export function VaultsPage() {
 
   const vaults = vaultsQuery.data!.vaults;
   const restrictedVaults = vaults.filter((vault) => vault.status === "restricted");
+  const incidentLockedVaults = vaults.filter(
+    (vault) => vault.status === "incident_locked",
+  );
   const pendingReviewVaults = vaults.filter((vault) =>
     vault.releaseRequests.some((request) => request.status === "review_required"),
   );
@@ -382,9 +390,9 @@ export function VaultsPage() {
             detail="Unlock review count versus rule-change review count."
           />
           <MetricCard
-            label="Cooldown / restricted"
-            value={`${cooldownVaults.length} / ${restrictedVaults.length}`}
-            detail="Vaults currently cooling down versus vaults under operator or incident protection."
+            label="Cooldown / restricted / incident"
+            value={`${cooldownVaults.length} / ${restrictedVaults.length} / ${incidentLockedVaults.length}`}
+            detail="Vaults cooling down, vaults under manual restriction, and vaults under incident-linked protection."
           />
         </div>
 
@@ -561,7 +569,16 @@ export function VaultsPage() {
                       },
                     ]}
                   />
-                  {selectedVault.status === "restricted" ? (
+                  {selectedVault.status === "incident_locked" ? (
+                    <InlineNotice
+                      title="Vault incident lock is active"
+                      description={
+                        selectedVault.restriction.restrictionNote ??
+                        "This vault is under incident-linked protection and will not progress through cooldown or release execution until operators clear the incident posture."
+                      }
+                      tone="critical"
+                    />
+                  ) : selectedVault.status === "restricted" ? (
                     <InlineNotice
                       title="Vault restriction is active"
                       description={
@@ -776,7 +793,11 @@ export function VaultsPage() {
                 <button
                   type="button"
                   className="admin-button admin-button--critical"
-                  disabled={!selectedVaultId || railPending || selectedVault?.status === "restricted"}
+                  disabled={
+                    !selectedVaultId ||
+                    railPending ||
+                    isVaultBlockedStatus(selectedVault?.status ?? "")
+                  }
                   onClick={() => void restrictMutation.mutate()}
                 >
                   Restrict vault
@@ -784,10 +805,14 @@ export function VaultsPage() {
                 <button
                   type="button"
                   className="admin-button admin-button--positive"
-                  disabled={!selectedVaultId || railPending || selectedVault?.status !== "restricted"}
+                  disabled={
+                    !selectedVaultId ||
+                    railPending ||
+                    !isVaultBlockedStatus(selectedVault?.status ?? "")
+                  }
                   onClick={() => void releaseRestrictionMutation.mutate()}
                 >
-                  Release restriction
+                  Release protection
                 </button>
               </div>
               <div className="admin-action-group">

@@ -77,6 +77,23 @@ function canCancelRuleChangeStatus(
   return ["review_required", "cooldown_active"].includes(status);
 }
 
+function isBlockedVaultStatus(status: string) {
+  return status === "restricted" || status === "incident_locked";
+}
+
+function getVaultStatusLabel(status: string, locale: string) {
+  switch (status) {
+    case "incident_locked":
+      return locale === "ar" ? "مغلق بسبب حادث" : "Incident locked";
+    case "restricted":
+      return locale === "ar" ? "مقيد" : "Restricted";
+    case "released":
+      return locale === "ar" ? "مفرج عنه" : "Released";
+    default:
+      return locale === "ar" ? "نشط" : "Active";
+  }
+}
+
 export function RetirementVaultScreen({
   initialFocus = "fund",
 }: RetirementVaultScreenProps) {
@@ -773,7 +790,17 @@ export function RetirementVaultScreen({
               <InlineNotice
                 message={
                   selectedReleaseVault &&
-                  new Date(selectedReleaseVault.unlockAt) > new Date()
+                  selectedReleaseVault.status === "incident_locked"
+                    ? locale === "ar"
+                      ? "هذا القبو تحت قفل حادثة. يبقى الإفراج والتهدئة متوقفين حتى يرفع المشغلون حماية الحادثة."
+                      : "This vault is incident locked. Release and cooldown remain blocked until operators clear the incident protection."
+                    : selectedReleaseVault &&
+                        selectedReleaseVault.status === "restricted"
+                      ? locale === "ar"
+                        ? "هذا القبو مقيد حالياً. لا يمكن بدء إفراج جديد حتى يرفع المشغلون التقييد."
+                        : "This vault is currently restricted. A new governed release cannot start until operators release the restriction."
+                      : selectedReleaseVault &&
+                          new Date(selectedReleaseVault.unlockAt) > new Date()
                     ? locale === "ar"
                       ? "هذا إفراج مبكر. سيدخل مسار مراجعة إلزامي ثم فترة تهدئة قبل التنفيذ."
                       : "This is an early unlock. It enters mandatory review and then a cooldown before execution."
@@ -781,12 +808,18 @@ export function RetirementVaultScreen({
                       ? "هذا إفراج طبيعي بعد تحقق تاريخ القفل. سيدخل مباشرة في نافذة تهدئة محكومة."
                       : "This is a normal unlock after the lock date. It moves directly into a governed cooldown window."
                 }
-                tone="warning"
+                tone={
+                  selectedReleaseVault && isBlockedVaultStatus(selectedReleaseVault.status)
+                    ? "critical"
+                    : "warning"
+                }
               />
               <AppButton
                 disabled={
                   requestRetirementVaultReleaseMutation.isPending ||
-                  vaults.length === 0
+                  vaults.length === 0 ||
+                  !selectedReleaseVault ||
+                  selectedReleaseVault.status !== "active"
                 }
                 label={
                   requestRetirementVaultReleaseMutation.isPending
@@ -866,16 +899,33 @@ export function RetirementVaultScreen({
               />
               <InlineNotice
                 message={
-                  locale === "ar"
-                    ? "تعديل القاعدة الذي يضعف الحماية لا يُطبق فوراً. يدخل مراجعة ثم تهدئة قبل التطبيق."
-                    : "A rule change that weakens protection does not apply immediately. It enters review and cooldown before application."
+                  selectedRuleChangeVault &&
+                  selectedRuleChangeVault.status === "incident_locked"
+                    ? locale === "ar"
+                      ? "هذا القبو تحت قفل حادثة. تبقى تعديلات القواعد متوقفة حتى يرفع المشغلون حماية الحادثة."
+                      : "This vault is incident locked. Rule changes remain blocked until operators clear the incident protection."
+                    : selectedRuleChangeVault &&
+                        selectedRuleChangeVault.status === "restricted"
+                      ? locale === "ar"
+                        ? "هذا القبو مقيد حالياً. تبقى تعديلات القواعد متوقفة حتى يرفع المشغلون التقييد."
+                        : "This vault is currently restricted. Rule changes remain blocked until operators release the restriction."
+                      : locale === "ar"
+                        ? "تعديل القاعدة الذي يضعف الحماية لا يُطبق فوراً. يدخل مراجعة ثم تهدئة قبل التطبيق."
+                        : "A rule change that weakens protection does not apply immediately. It enters review and cooldown before application."
                 }
-                tone="warning"
+                tone={
+                  selectedRuleChangeVault &&
+                  isBlockedVaultStatus(selectedRuleChangeVault.status)
+                    ? "critical"
+                    : "warning"
+                }
               />
               <AppButton
                 disabled={
                   requestRetirementVaultRuleChangeMutation.isPending ||
-                  vaults.length === 0
+                  vaults.length === 0 ||
+                  !selectedRuleChangeVault ||
+                  selectedRuleChangeVault.status !== "active"
                 }
                 label={
                   requestRetirementVaultRuleChangeMutation.isPending
@@ -1076,18 +1126,32 @@ export function RetirementVaultScreen({
                       {vault.asset.symbol}
                     </AppText>
                   </View>
-                  <View className="rounded-full bg-ink px-3 py-1">
+                  <View
+                    className={`rounded-full px-3 py-1 ${
+                      vault.status === "incident_locked"
+                        ? "bg-rose-700"
+                        : vault.status === "restricted"
+                          ? "bg-amber-700"
+                          : vault.status === "released"
+                            ? "bg-slate-500"
+                            : "bg-ink"
+                    }`}
+                  >
                     <AppText className="text-xs text-white" weight="semibold">
-                      {vault.strictMode
-                        ? locale === "ar"
-                          ? "صارم"
-                          : "Strict"
-                        : locale === "ar"
-                          ? "نشط"
-                          : "Active"}
+                      {getVaultStatusLabel(vault.status, locale)}
                     </AppText>
                   </View>
                 </View>
+                <AppText className="text-sm text-slate">
+                  {locale === "ar" ? "وضع الحماية:" : "Protection mode:"}{" "}
+                  {vault.strictMode
+                    ? locale === "ar"
+                      ? "صارم"
+                      : "Strict"
+                    : locale === "ar"
+                      ? "قياسي"
+                      : "Standard"}
+                </AppText>
                 <AppText className="text-sm text-slate">
                   {locale === "ar" ? "الإفراج:" : "Release:"}{" "}
                   {formatDateLabel(vault.unlockAt, locale)}
@@ -1097,6 +1161,25 @@ export function RetirementVaultScreen({
                     {locale === "ar" ? "آخر حالة:" : "Latest status:"}{" "}
                     {vault.releaseRequests[0].status.replaceAll("_", " ")}
                   </AppText>
+                ) : null}
+                {vault.status === "incident_locked" ? (
+                  <InlineNotice
+                    message={
+                      locale === "ar"
+                        ? "هذا القبو تحت حماية مرتبطة بحادثة ولن يتابع الإفراج أو تعديل القواعد حتى يرفع المشغلون القفل."
+                        : "This vault is under incident-linked protection and will not progress through release or rule changes until operators clear the lock."
+                    }
+                    tone="critical"
+                  />
+                ) : vault.status === "restricted" ? (
+                  <InlineNotice
+                    message={
+                      locale === "ar"
+                        ? "هذا القبو مقيد حالياً ولن يتابع الإفراج أو تعديل القواعد حتى يرفع المشغلون التقييد."
+                        : "This vault is currently restricted and will not progress through release or rule changes until operators release the restriction."
+                    }
+                    tone="warning"
+                  />
                 ) : null}
               </View>
             ))

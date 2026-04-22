@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import type {
+  CustomerTrustedContactProjection,
   CustomerNotificationPreferences,
   CustomerSecurityActivityProjection,
   CustomerSessionProjection,
@@ -33,8 +34,12 @@ import {
   useRevokeCustomerSession,
   useRevokeAllSessions,
   useStartCurrentSessionTrustChallenge,
+  useCreateTrustedContact,
+  useRemoveTrustedContact,
   useRotatePassword,
+  useUpdateCustomerAgeProfile,
   useUpdateNotificationPreferences,
+  useUpdateTrustedContact,
   useVerifyCurrentSessionTrust,
 } from "@/hooks/user/useProfileSettings";
 import {
@@ -62,6 +67,16 @@ const emptyPasswordForm = {
   currentPassword: "",
   newPassword: "",
   confirmPassword: "",
+};
+
+const emptyTrustedContactDraft = {
+  kind: "trusted_contact" as const,
+  firstName: "",
+  lastName: "",
+  relationshipLabel: "",
+  email: "",
+  phoneNumber: "",
+  note: "",
 };
 
 const recommendedAuthenticatorApps = [
@@ -154,6 +169,45 @@ function formatSecurityActivityDetail(
   return null;
 }
 
+function formatAgeVerificationStatusLabel(
+  status: "unverified" | "self_attested" | "verified" | "rejected",
+): string {
+  switch (status) {
+    case "verified":
+      return "Operator verified";
+    case "self_attested":
+      return "Self attested";
+    case "rejected":
+      return "Verification rejected";
+    case "unverified":
+      return "Not verified";
+  }
+}
+
+function formatTrustedContactKindLabel(
+  kind: "trusted_contact" | "beneficiary",
+): string {
+  return kind === "beneficiary" ? "Beneficiary" : "Trusted contact";
+}
+
+function toTrustedContactDraft(
+  contact?: CustomerTrustedContactProjection,
+): typeof emptyTrustedContactDraft {
+  if (!contact) {
+    return emptyTrustedContactDraft;
+  }
+
+  return {
+    kind: contact.kind,
+    firstName: contact.firstName,
+    lastName: contact.lastName,
+    relationshipLabel: contact.relationshipLabel,
+    email: contact.email ?? "",
+    phoneNumber: contact.phoneNumber ?? "",
+    note: contact.note ?? "",
+  };
+}
+
 const Profile = () => {
   const t = useT();
   const { locale } = useLocale();
@@ -171,6 +225,10 @@ const Profile = () => {
   const verifyCurrentSessionTrustMutation = useVerifyCurrentSessionTrust();
   const updateNotificationPreferencesMutation =
     useUpdateNotificationPreferences();
+  const updateCustomerAgeProfileMutation = useUpdateCustomerAgeProfile();
+  const createTrustedContactMutation = useCreateTrustedContact();
+  const updateTrustedContactMutation = useUpdateTrustedContact();
+  const removeTrustedContactMutation = useRemoveTrustedContact();
   useCustomerMfaStatus();
   const startTotpEnrollment = useStartTotpEnrollment();
   const verifyTotpEnrollment = useVerifyTotpEnrollment();
@@ -200,6 +258,21 @@ const Profile = () => {
   const [notificationError, setNotificationError] = useState<string | null>(
     null,
   );
+  const [ageDateOfBirthDraft, setAgeDateOfBirthDraft] = useState("");
+  const [ageNotice, setAgeNotice] = useState<string | null>(null);
+  const [ageError, setAgeError] = useState<string | null>(null);
+  const [trustedContactDraft, setTrustedContactDraft] = useState(
+    emptyTrustedContactDraft,
+  );
+  const [editingTrustedContactId, setEditingTrustedContactId] = useState<
+    string | null
+  >(null);
+  const [trustedContactNotice, setTrustedContactNotice] = useState<
+    string | null
+  >(null);
+  const [trustedContactError, setTrustedContactError] = useState<string | null>(
+    null,
+  );
   const [totpSecret, setTotpSecret] = useState<string | null>(null);
   const [totpOtpAuthUri, setTotpOtpAuthUri] = useState<string | null>(null);
   const [totpCode, setTotpCode] = useState("");
@@ -227,6 +300,10 @@ const Profile = () => {
   useEffect(() => {
     setNotificationDraft(profile?.notificationPreferences ?? null);
   }, [profile?.notificationPreferences]);
+
+  useEffect(() => {
+    setAgeDateOfBirthDraft(profile?.ageProfile?.dateOfBirth ?? "");
+  }, [profile?.ageProfile?.dateOfBirth]);
 
   const handleLogout = () => {
     clearUser();
@@ -263,6 +340,10 @@ const Profile = () => {
     notificationDraft,
     profile?.notificationPreferences ?? null,
   );
+  const ageProfile = profile?.ageProfile ?? null;
+  const ageProfileChanged =
+    ageDateOfBirthDraft !== (ageProfile?.dateOfBirth ?? "");
+  const trustedContacts = profile?.trustedContacts ?? [];
   const customerSessions = customerSessionsQuery.data?.sessions ?? [];
   const securityActivity = securityActivityQuery.data?.events ?? [];
 
@@ -319,6 +400,80 @@ const Profile = () => {
         error instanceof Error
           ? error.message
           : "Notification preference update failed.",
+      );
+    }
+  }
+
+  async function handleAgeProfileSubmit() {
+    setAgeNotice(null);
+    setAgeError(null);
+
+    try {
+      await updateCustomerAgeProfileMutation.mutateAsync({
+        dateOfBirth: ageDateOfBirthDraft.trim() || null,
+      });
+      setAgeNotice(
+        ageDateOfBirthDraft.trim()
+          ? "Date of birth saved as a self-attested age record."
+          : "Age record cleared.",
+      );
+    } catch (error) {
+      setAgeError(
+        error instanceof Error ? error.message : "Age profile update failed.",
+      );
+    }
+  }
+
+  async function handleTrustedContactSubmit() {
+    setTrustedContactNotice(null);
+    setTrustedContactError(null);
+
+    try {
+      if (editingTrustedContactId) {
+        await updateTrustedContactMutation.mutateAsync({
+          contactId: editingTrustedContactId,
+          ...trustedContactDraft,
+        });
+        setTrustedContactNotice("Trusted contact updated.");
+      } else {
+        await createTrustedContactMutation.mutateAsync(trustedContactDraft);
+        setTrustedContactNotice("Trusted contact added.");
+      }
+
+      setTrustedContactDraft(emptyTrustedContactDraft);
+      setEditingTrustedContactId(null);
+    } catch (error) {
+      setTrustedContactError(
+        error instanceof Error
+          ? error.message
+          : "Trusted contact update failed.",
+      );
+    }
+  }
+
+  function handleTrustedContactEdit(contact: CustomerTrustedContactProjection) {
+    setTrustedContactNotice(null);
+    setTrustedContactError(null);
+    setEditingTrustedContactId(contact.id);
+    setTrustedContactDraft(toTrustedContactDraft(contact));
+  }
+
+  async function handleTrustedContactRemove(contactId: string) {
+    setTrustedContactNotice(null);
+    setTrustedContactError(null);
+
+    try {
+      await removeTrustedContactMutation.mutateAsync(contactId);
+      if (editingTrustedContactId === contactId) {
+        setEditingTrustedContactId(null);
+        setTrustedContactDraft(emptyTrustedContactDraft);
+      }
+      setTrustedContactNotice("Trusted contact removed.");
+    } catch (error) {
+      setTrustedContactError(
+        error instanceof Error
+          ? error.message
+          : "Trusted contact removal failed.",
       );
     }
   }
@@ -1239,7 +1394,9 @@ const Profile = () => {
                         <Button
                           variant="outline"
                           onClick={handleStartSessionTrustChallenge}
-                          disabled={startSessionTrustChallengeMutation.isPending}
+                          disabled={
+                            startSessionTrustChallengeMutation.isPending
+                          }
                         >
                           {startSessionTrustChallengeMutation.isPending
                             ? "Sending code..."
@@ -1328,7 +1485,9 @@ const Profile = () => {
                                   ) : null}
                                   <Badge
                                     variant={
-                                      session.trusted ? "secondary" : "destructive"
+                                      session.trusted
+                                        ? "secondary"
+                                        : "destructive"
                                     }
                                   >
                                     {session.trusted ? "Trusted" : "Verify"}
@@ -1353,8 +1512,12 @@ const Profile = () => {
                               {!session.current ? (
                                 <Button
                                   variant="outline"
-                                  onClick={() => void handleRevokeSession(session.id)}
-                                  disabled={revokeCustomerSessionMutation.isPending}
+                                  onClick={() =>
+                                    void handleRevokeSession(session.id)
+                                  }
+                                  disabled={
+                                    revokeCustomerSessionMutation.isPending
+                                  }
                                 >
                                   {revokeCustomerSessionMutation.isPending
                                     ? "Revoking..."
@@ -1378,7 +1541,8 @@ const Profile = () => {
                         Recent security activity
                       </p>
                       <p className="mt-2 text-sm text-muted-foreground">
-                        Review recent sign-ins, MFA changes, and session actions.
+                        Review recent sign-ins, MFA changes, and session
+                        actions.
                       </p>
                     </div>
 
@@ -1547,6 +1711,429 @@ const Profile = () => {
                         This profile is currently read-only, so
                         customer-editable notification preferences are not
                         available from this portal yet.
+                      </p>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              <Card className="glass-card">
+                <CardHeader>
+                  <CardTitle>Age And Identity Foundation</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div
+                    className="stb-trust-note text-sm text-muted-foreground"
+                    data-tone="neutral"
+                  >
+                    <p className="text-sm font-medium text-foreground">
+                      Date of birth is foundational vault data
+                    </p>
+                    <p className="mt-2 text-sm text-muted-foreground">
+                      This profile record prepares age-based vault rules and
+                      operator verification. Customer edits are treated as
+                      self-attested until reviewed.
+                    </p>
+                  </div>
+
+                  {ageNotice ? (
+                    <Alert variant="success">
+                      <CheckCircle2 className="h-4 w-4" />
+                      <AlertTitle>Age profile saved</AlertTitle>
+                      <AlertDescription>{ageNotice}</AlertDescription>
+                    </Alert>
+                  ) : null}
+
+                  {ageError ? (
+                    <Alert variant="destructive">
+                      <ShieldAlert className="h-4 w-4" />
+                      <AlertTitle>Age profile update failed</AlertTitle>
+                      <AlertDescription>{ageError}</AlertDescription>
+                    </Alert>
+                  ) : null}
+
+                  {profile.customerId ? (
+                    <>
+                      <div className="grid gap-4 sm:grid-cols-3">
+                        <div className="stb-section-frame p-4">
+                          <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                            Verification status
+                          </p>
+                          <p className="mt-2 font-medium text-foreground">
+                            {formatAgeVerificationStatusLabel(
+                              ageProfile?.verificationStatus ?? "unverified",
+                            )}
+                          </p>
+                        </div>
+                        <div className="stb-section-frame p-4">
+                          <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                            Derived age
+                          </p>
+                          <p className="mt-2 font-medium text-foreground">
+                            {ageProfile?.ageYears ?? "Not recorded"}
+                          </p>
+                        </div>
+                        <div className="stb-section-frame p-4">
+                          <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                            Adult threshold
+                          </p>
+                          <p className="mt-2 font-medium text-foreground">
+                            {ageProfile?.legalAdult === null
+                              ? "Not yet determined"
+                              : ageProfile.legalAdult
+                                ? "18+ confirmed by DOB"
+                                : "Under 18 by DOB"}
+                          </p>
+                        </div>
+                      </div>
+
+                      {ageProfile?.verificationNote ? (
+                        <div className="stb-section-frame p-4">
+                          <p className="text-sm font-medium text-foreground">
+                            Verification note
+                          </p>
+                          <p className="mt-2 text-sm text-muted-foreground">
+                            {ageProfile.verificationNote}
+                          </p>
+                        </div>
+                      ) : null}
+
+                      <div className="space-y-2">
+                        <label
+                          htmlFor="date-of-birth"
+                          className="text-sm font-medium text-foreground"
+                        >
+                          Date of birth
+                        </label>
+                        <Input
+                          id="date-of-birth"
+                          type="date"
+                          value={ageDateOfBirthDraft}
+                          onChange={(event) =>
+                            setAgeDateOfBirthDraft(event.target.value)
+                          }
+                        />
+                      </div>
+                      <div className="flex flex-wrap gap-3">
+                        <Button
+                          onClick={handleAgeProfileSubmit}
+                          disabled={
+                            updateCustomerAgeProfileMutation.isPending ||
+                            !ageProfileChanged
+                          }
+                        >
+                          {updateCustomerAgeProfileMutation.isPending
+                            ? "Saving age profile..."
+                            : "Save date of birth"}
+                        </Button>
+                        <Button
+                          variant="outline"
+                          onClick={() => {
+                            setAgeDateOfBirthDraft("");
+                          }}
+                          disabled={
+                            updateCustomerAgeProfileMutation.isPending ||
+                            !ageDateOfBirthDraft
+                          }
+                        >
+                          Clear draft
+                        </Button>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="stb-section-frame p-4">
+                      <p className="text-sm font-medium text-foreground">
+                        Age profile unavailable
+                      </p>
+                      <p className="mt-2 text-sm text-muted-foreground">
+                        Legacy-only records do not yet expose managed customer
+                        age data from this portal.
+                      </p>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              <Card className="glass-card">
+                <CardHeader>
+                  <CardTitle>Trusted Contacts And Beneficiaries</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div
+                    className="stb-trust-note text-sm text-muted-foreground"
+                    data-tone="neutral"
+                  >
+                    <p className="text-sm font-medium text-foreground">
+                      Release governance foundation
+                    </p>
+                    <p className="mt-2 text-sm text-muted-foreground">
+                      These records prepare future dual-approval and
+                      beneficiary-aware vault workflows. They do not yet create
+                      release rights by themselves.
+                    </p>
+                  </div>
+
+                  {trustedContactNotice ? (
+                    <Alert variant="success">
+                      <CheckCircle2 className="h-4 w-4" />
+                      <AlertTitle>Trusted contact saved</AlertTitle>
+                      <AlertDescription>
+                        {trustedContactNotice}
+                      </AlertDescription>
+                    </Alert>
+                  ) : null}
+
+                  {trustedContactError ? (
+                    <Alert variant="destructive">
+                      <ShieldAlert className="h-4 w-4" />
+                      <AlertTitle>Trusted contact update failed</AlertTitle>
+                      <AlertDescription>{trustedContactError}</AlertDescription>
+                    </Alert>
+                  ) : null}
+
+                  {profile.customerId ? (
+                    <>
+                      {trustedContacts.length > 0 ? (
+                        <div className="space-y-3">
+                          {trustedContacts.map((contact) => (
+                            <div
+                              key={contact.id}
+                              className="stb-section-frame flex flex-col gap-3 p-4"
+                            >
+                              <div className="flex items-start justify-between gap-3">
+                                <div className="space-y-1">
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <p className="text-sm font-medium text-foreground">
+                                      {contact.firstName} {contact.lastName}
+                                    </p>
+                                    <Badge variant="secondary">
+                                      {formatTrustedContactKindLabel(
+                                        contact.kind,
+                                      )}
+                                    </Badge>
+                                  </div>
+                                  <p className="text-sm text-muted-foreground">
+                                    {contact.relationshipLabel}
+                                  </p>
+                                  {contact.email ? (
+                                    <p className="text-xs text-muted-foreground">
+                                      {contact.email}
+                                    </p>
+                                  ) : null}
+                                  {contact.phoneNumber ? (
+                                    <p className="text-xs text-muted-foreground">
+                                      {contact.phoneNumber}
+                                    </p>
+                                  ) : null}
+                                  {contact.note ? (
+                                    <p className="text-xs text-muted-foreground">
+                                      {contact.note}
+                                    </p>
+                                  ) : null}
+                                </div>
+                                <div className="flex flex-wrap gap-2">
+                                  <Button
+                                    variant="outline"
+                                    onClick={() =>
+                                      handleTrustedContactEdit(contact)
+                                    }
+                                  >
+                                    Edit
+                                  </Button>
+                                  <Button
+                                    variant="outline"
+                                    onClick={() =>
+                                      void handleTrustedContactRemove(
+                                        contact.id,
+                                      )
+                                    }
+                                    disabled={
+                                      removeTrustedContactMutation.isPending
+                                    }
+                                  >
+                                    Remove
+                                  </Button>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="stb-section-frame p-4 text-sm text-muted-foreground">
+                          No trusted contacts are recorded yet.
+                        </div>
+                      )}
+
+                      <div className="space-y-4 rounded-[1.5rem] border border-border bg-white/80 p-5">
+                        <div className="space-y-1">
+                          <p className="text-sm font-medium text-foreground">
+                            {editingTrustedContactId
+                              ? "Edit trusted contact"
+                              : "Add trusted contact"}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            At least one contact method is required.
+                          </p>
+                        </div>
+
+                        <div className="space-y-2">
+                          <label className="text-sm font-medium text-foreground">
+                            Contact role
+                          </label>
+                          <select
+                            className="h-11 w-full rounded-xl border border-border bg-background px-3 text-sm text-foreground"
+                            value={trustedContactDraft.kind}
+                            onChange={(event) =>
+                              setTrustedContactDraft((current) => ({
+                                ...current,
+                                kind: event.target.value as
+                                  | "trusted_contact"
+                                  | "beneficiary",
+                              }))
+                            }
+                          >
+                            <option value="trusted_contact">
+                              Trusted contact
+                            </option>
+                            <option value="beneficiary">Beneficiary</option>
+                          </select>
+                        </div>
+
+                        <div className="grid gap-4 sm:grid-cols-2">
+                          <div className="space-y-2">
+                            <label className="text-sm font-medium text-foreground">
+                              First name
+                            </label>
+                            <Input
+                              value={trustedContactDraft.firstName}
+                              onChange={(event) =>
+                                setTrustedContactDraft((current) => ({
+                                  ...current,
+                                  firstName: event.target.value,
+                                }))
+                              }
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <label className="text-sm font-medium text-foreground">
+                              Last name
+                            </label>
+                            <Input
+                              value={trustedContactDraft.lastName}
+                              onChange={(event) =>
+                                setTrustedContactDraft((current) => ({
+                                  ...current,
+                                  lastName: event.target.value,
+                                }))
+                              }
+                            />
+                          </div>
+                        </div>
+
+                        <div className="space-y-2">
+                          <label className="text-sm font-medium text-foreground">
+                            Relationship
+                          </label>
+                          <Input
+                            value={trustedContactDraft.relationshipLabel}
+                            onChange={(event) =>
+                              setTrustedContactDraft((current) => ({
+                                ...current,
+                                relationshipLabel: event.target.value,
+                              }))
+                            }
+                            placeholder="Sister, spouse, attorney, parent"
+                          />
+                        </div>
+
+                        <div className="grid gap-4 sm:grid-cols-2">
+                          <div className="space-y-2">
+                            <label className="text-sm font-medium text-foreground">
+                              Email
+                            </label>
+                            <Input
+                              value={trustedContactDraft.email}
+                              onChange={(event) =>
+                                setTrustedContactDraft((current) => ({
+                                  ...current,
+                                  email: event.target.value,
+                                }))
+                              }
+                              placeholder="name@example.com"
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <label className="text-sm font-medium text-foreground">
+                              Phone number
+                            </label>
+                            <Input
+                              value={trustedContactDraft.phoneNumber}
+                              onChange={(event) =>
+                                setTrustedContactDraft((current) => ({
+                                  ...current,
+                                  phoneNumber: event.target.value,
+                                }))
+                              }
+                              placeholder="+1 555 000 1111"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="space-y-2">
+                          <label className="text-sm font-medium text-foreground">
+                            Note
+                          </label>
+                          <Input
+                            value={trustedContactDraft.note}
+                            onChange={(event) =>
+                              setTrustedContactDraft((current) => ({
+                                ...current,
+                                note: event.target.value,
+                              }))
+                            }
+                            placeholder="Emergency-only contact, estate counsel, etc."
+                          />
+                        </div>
+
+                        <div className="flex flex-wrap gap-3">
+                          <Button
+                            onClick={handleTrustedContactSubmit}
+                            disabled={
+                              createTrustedContactMutation.isPending ||
+                              updateTrustedContactMutation.isPending
+                            }
+                          >
+                            {createTrustedContactMutation.isPending ||
+                            updateTrustedContactMutation.isPending
+                              ? "Saving trusted contact..."
+                              : editingTrustedContactId
+                                ? "Update trusted contact"
+                                : "Add trusted contact"}
+                          </Button>
+                          {editingTrustedContactId ? (
+                            <Button
+                              variant="outline"
+                              onClick={() => {
+                                setEditingTrustedContactId(null);
+                                setTrustedContactDraft(
+                                  emptyTrustedContactDraft,
+                                );
+                              }}
+                            >
+                              Cancel editing
+                            </Button>
+                          ) : null}
+                        </div>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="stb-section-frame p-4">
+                      <p className="text-sm font-medium text-foreground">
+                        Trusted contacts unavailable
+                      </p>
+                      <p className="mt-2 text-sm text-muted-foreground">
+                        Legacy-only records do not yet expose managed customer
+                        contact governance from this portal.
                       </p>
                     </div>
                   )}

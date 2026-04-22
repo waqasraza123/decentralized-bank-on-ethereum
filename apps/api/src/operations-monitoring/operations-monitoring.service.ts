@@ -2194,7 +2194,12 @@ export class OperationsMonitoringService {
       }),
       this.prismaService.retirementVault.count({
         where: {
-          status: RetirementVaultStatus.restricted,
+          status: {
+            in: [
+              RetirementVaultStatus.restricted,
+              RetirementVaultStatus.incident_locked,
+            ],
+          },
         },
       }),
       this.prismaService.retirementVaultReleaseRequest.count({
@@ -2229,7 +2234,12 @@ export class OperationsMonitoringService {
           OR: [
             {
               retirementVault: {
-                status: RetirementVaultStatus.restricted,
+                status: {
+                  in: [
+                    RetirementVaultStatus.restricted,
+                    RetirementVaultStatus.incident_locked,
+                  ],
+                },
               },
             },
             {
@@ -2308,7 +2318,12 @@ export class OperationsMonitoringService {
           OR: [
             {
               retirementVault: {
-                status: RetirementVaultStatus.restricted,
+                status: {
+                  in: [
+                    RetirementVaultStatus.restricted,
+                    RetirementVaultStatus.incident_locked,
+                  ],
+                },
               },
             },
             {

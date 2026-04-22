@@ -1,8 +1,15 @@
-import { Injectable, NotFoundException } from "@nestjs/common";
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from "@nestjs/common";
 import { loadCustomerMfaPolicyRuntimeConfig } from "@stealth-trails-bank/config/api";
 import type {
   AccountLifecycleStatusValue,
+  CustomerAgeProfile,
   CustomerNotificationPreferences,
+  CustomerTrustedContactKind,
+  CustomerTrustedContactProjection,
   UserProfileProjection,
 } from "@stealth-trails-bank/types";
 import {
@@ -21,9 +28,58 @@ type LegacyUserProfile = {
   ethereumAddress: string | null;
 };
 
+type CustomerProfileFoundation = {
+  id: string;
+  dateOfBirth: Date | null;
+  ageVerificationStatus:
+    | "unverified"
+    | "self_attested"
+    | "verified"
+    | "rejected";
+  ageVerifiedAt: Date | null;
+  ageVerifiedByOperatorId: string | null;
+  ageVerificationNote: string | null;
+  trustedContacts: Array<{
+    id: string;
+    kind: "trusted_contact" | "beneficiary";
+    status: "active" | "removed";
+    firstName: string;
+    lastName: string;
+    relationshipLabel: string;
+    email: string | null;
+    phoneNumber: string | null;
+    note: string | null;
+    createdAt: Date;
+    updatedAt: Date;
+    removedAt: Date | null;
+  }>;
+};
+
+type CreateTrustedContactInput = {
+  kind?: string;
+  firstName: string;
+  lastName: string;
+  relationshipLabel: string;
+  email?: string;
+  phoneNumber?: string;
+  note?: string;
+};
+
+type UpdateTrustedContactInput = {
+  kind?: string;
+  firstName?: string;
+  lastName?: string;
+  relationshipLabel?: string;
+  email?: string;
+  phoneNumber?: string;
+  note?: string;
+};
+
 @Injectable()
 export class UserService {
   private readonly stepUpFreshnessMs: number;
+  private readonly trustedContactKinds: readonly CustomerTrustedContactKind[] =
+    ["trusted_contact", "beneficiary"] as const;
 
   constructor(
     private readonly authService: AuthService,
@@ -35,6 +91,254 @@ export class UserService {
 
   private formatOptionalDate(value: Date | null): string | null {
     return value ? value.toISOString() : null;
+  }
+
+  private formatDateOnly(value: Date | null): string | null {
+    return value ? value.toISOString().slice(0, 10) : null;
+  }
+
+  private parseDateOnly(value: string): Date {
+    const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value.trim());
+
+    if (!match) {
+      throw new BadRequestException(
+        "Date of birth must use YYYY-MM-DD format.",
+      );
+    }
+
+    const [, yearValue, monthValue, dayValue] = match;
+    const year = Number(yearValue);
+    const month = Number(monthValue);
+    const day = Number(dayValue);
+    const parsed = new Date(Date.UTC(year, month - 1, day));
+
+    if (
+      Number.isNaN(parsed.getTime()) ||
+      parsed.getUTCFullYear() !== year ||
+      parsed.getUTCMonth() !== month - 1 ||
+      parsed.getUTCDate() !== day
+    ) {
+      throw new BadRequestException("Date of birth is invalid.");
+    }
+
+    const today = new Date();
+    const todayUtc = Date.UTC(
+      today.getUTCFullYear(),
+      today.getUTCMonth(),
+      today.getUTCDate(),
+    );
+
+    if (parsed.getTime() > todayUtc) {
+      throw new BadRequestException("Date of birth cannot be in the future.");
+    }
+
+    return parsed;
+  }
+
+  private calculateAgeYears(dateOfBirth: Date): number {
+    const today = new Date();
+    let age = today.getUTCFullYear() - dateOfBirth.getUTCFullYear();
+    const birthdayPassed =
+      today.getUTCMonth() > dateOfBirth.getUTCMonth() ||
+      (today.getUTCMonth() === dateOfBirth.getUTCMonth() &&
+        today.getUTCDate() >= dateOfBirth.getUTCDate());
+
+    if (!birthdayPassed) {
+      age -= 1;
+    }
+
+    return age;
+  }
+
+  private mapAgeProfile(
+    foundation: Pick<
+      CustomerProfileFoundation,
+      | "dateOfBirth"
+      | "ageVerificationStatus"
+      | "ageVerifiedAt"
+      | "ageVerifiedByOperatorId"
+      | "ageVerificationNote"
+    >,
+  ): CustomerAgeProfile {
+    const ageYears = foundation.dateOfBirth
+      ? this.calculateAgeYears(foundation.dateOfBirth)
+      : null;
+
+    return {
+      dateOfBirth: this.formatDateOnly(foundation.dateOfBirth),
+      ageYears,
+      legalAdult: ageYears === null ? null : ageYears >= 18,
+      verificationStatus: foundation.ageVerificationStatus,
+      verifiedAt: this.formatOptionalDate(foundation.ageVerifiedAt),
+      verifiedByOperatorId: foundation.ageVerifiedByOperatorId,
+      verificationNote: foundation.ageVerificationNote,
+    };
+  }
+
+  private mapTrustedContact(
+    contact: CustomerProfileFoundation["trustedContacts"][number],
+  ): CustomerTrustedContactProjection {
+    return {
+      id: contact.id,
+      kind: contact.kind,
+      status: contact.status,
+      firstName: contact.firstName,
+      lastName: contact.lastName,
+      relationshipLabel: contact.relationshipLabel,
+      email: contact.email,
+      phoneNumber: contact.phoneNumber,
+      note: contact.note,
+      createdAt: contact.createdAt.toISOString(),
+      updatedAt: contact.updatedAt.toISOString(),
+      removedAt: this.formatOptionalDate(contact.removedAt),
+    };
+  }
+
+  private mapTrustedContacts(
+    foundation: CustomerProfileFoundation,
+  ): CustomerTrustedContactProjection[] {
+    return foundation.trustedContacts
+      .map((contact) => this.mapTrustedContact(contact))
+      .sort((left, right) => right.createdAt.localeCompare(left.createdAt));
+  }
+
+  private normalizeRequiredText(value: string, fieldLabel: string): string {
+    const normalized = value.trim();
+
+    if (!normalized) {
+      throw new BadRequestException(`${fieldLabel} is required.`);
+    }
+
+    return normalized;
+  }
+
+  private normalizeOptionalText(value?: string | null): string | null {
+    const normalized = value?.trim();
+    return normalized ? normalized : null;
+  }
+
+  private normalizeTrustedContactKind(
+    value?: string,
+  ): CustomerTrustedContactKind {
+    const normalized = value?.trim().toLowerCase() ?? "trusted_contact";
+
+    if (
+      !this.trustedContactKinds.includes(
+        normalized as CustomerTrustedContactKind,
+      )
+    ) {
+      throw new BadRequestException("Trusted contact kind is invalid.");
+    }
+
+    return normalized as CustomerTrustedContactKind;
+  }
+
+  private buildTrustedContactData(input: CreateTrustedContactInput): {
+    kind: CustomerTrustedContactKind;
+    firstName: string;
+    lastName: string;
+    relationshipLabel: string;
+    email: string | null;
+    phoneNumber: string | null;
+    note: string | null;
+  } {
+    const email =
+      this.normalizeOptionalText(input.email)?.toLowerCase() ?? null;
+    const phoneNumber = this.normalizeOptionalText(input.phoneNumber);
+
+    if (!email && !phoneNumber) {
+      throw new BadRequestException(
+        "Provide at least one trusted contact method.",
+      );
+    }
+
+    return {
+      kind: this.normalizeTrustedContactKind(input.kind),
+      firstName: this.normalizeRequiredText(input.firstName, "First name"),
+      lastName: this.normalizeRequiredText(input.lastName, "Last name"),
+      relationshipLabel: this.normalizeRequiredText(
+        input.relationshipLabel,
+        "Relationship label",
+      ),
+      email,
+      phoneNumber,
+      note: this.normalizeOptionalText(input.note),
+    };
+  }
+
+  private async getCustomerFoundationById(
+    customerId: string,
+  ): Promise<CustomerProfileFoundation> {
+    const foundation = await this.prismaService.customer.findUnique({
+      where: { id: customerId },
+      select: {
+        id: true,
+        dateOfBirth: true,
+        ageVerificationStatus: true,
+        ageVerifiedAt: true,
+        ageVerifiedByOperatorId: true,
+        ageVerificationNote: true,
+        trustedContacts: {
+          where: {
+            status: "active",
+          },
+          orderBy: {
+            createdAt: "desc",
+          },
+          select: {
+            id: true,
+            kind: true,
+            status: true,
+            firstName: true,
+            lastName: true,
+            relationshipLabel: true,
+            email: true,
+            phoneNumber: true,
+            note: true,
+            createdAt: true,
+            updatedAt: true,
+            removedAt: true,
+          },
+        },
+      },
+    });
+
+    if (!foundation) {
+      throw new NotFoundException("Customer profile not found.");
+    }
+
+    return foundation;
+  }
+
+  private async findCustomerIdentityOrThrow(supabaseUserId: string): Promise<{
+    id: string;
+    dateOfBirth: Date | null;
+    ageVerificationStatus:
+      | "unverified"
+      | "self_attested"
+      | "verified"
+      | "rejected";
+    ageVerifiedAt: Date | null;
+    ageVerifiedByOperatorId: string | null;
+    ageVerificationNote: string | null;
+  }> {
+    const customer = await this.prismaService.customer.findUnique({
+      where: { supabaseUserId },
+      select: {
+        id: true,
+        dateOfBirth: true,
+        ageVerificationStatus: true,
+        ageVerifiedAt: true,
+        ageVerifiedByOperatorId: true,
+        ageVerificationNote: true,
+      },
+    });
+
+    if (!customer) {
+      throw new NotFoundException("Customer profile not found.");
+    }
+
+    return customer;
   }
 
   private mapLegacyUserProfile(
@@ -55,6 +359,8 @@ export class UserService {
       closedAt: null,
       passwordRotationAvailable: false,
       notificationPreferences: null,
+      ageProfile: null,
+      trustedContacts: [],
       mfa: {
         required: true,
         totpEnrolled: false,
@@ -98,6 +404,7 @@ export class UserService {
     legacyUser: LegacyUserProfile | null,
     currentSessionTrusted: boolean,
     currentSessionRequiresVerification: boolean,
+    foundation: CustomerProfileFoundation,
   ): UserProfileProjection {
     const accountStatus = projection.customerAccount
       .status as AccountLifecycleStatusValue;
@@ -124,6 +431,8 @@ export class UserService {
       closedAt: this.formatOptionalDate(projection.customerAccount.closedAt),
       passwordRotationAvailable: Boolean(projection.customer.passwordHash),
       notificationPreferences: this.mapNotificationPreferences(projection),
+      ageProfile: this.mapAgeProfile(foundation),
+      trustedContacts: this.mapTrustedContacts(foundation),
       mfa: {
         required: projection.customer.mfaRequired,
         totpEnrolled: projection.customer.mfaTotpEnrolled,
@@ -194,6 +503,9 @@ export class UserService {
           supabaseUserId,
           currentSessionId,
         );
+      const foundation = await this.getCustomerFoundationById(
+        customerProjection.customer.id,
+      );
 
       return this.mapCustomerProjectionWithWalletOverlay(
         customerProjection,
@@ -201,6 +513,7 @@ export class UserService {
         legacyUser,
         sessionSecurity.currentSessionTrusted,
         sessionSecurity.currentSessionRequiresVerification,
+        foundation,
       );
     } catch (error) {
       if (!(error instanceof NotFoundException)) {
@@ -253,5 +566,153 @@ export class UserService {
       productUpdateEmails:
         updatedCustomer.productUpdateEmailNotificationsEnabled,
     };
+  }
+
+  async updateAgeProfile(
+    supabaseUserId: string,
+    input: { dateOfBirth: string | null },
+  ): Promise<CustomerAgeProfile> {
+    const customer = await this.findCustomerIdentityOrThrow(supabaseUserId);
+
+    if (input.dateOfBirth === null) {
+      const clearedCustomer = await this.prismaService.customer.update({
+        where: { id: customer.id },
+        data: {
+          dateOfBirth: null,
+          ageVerificationStatus: "unverified",
+          ageVerifiedAt: null,
+          ageVerifiedByOperatorId: null,
+          ageVerificationNote: null,
+        },
+        select: {
+          dateOfBirth: true,
+          ageVerificationStatus: true,
+          ageVerifiedAt: true,
+          ageVerifiedByOperatorId: true,
+          ageVerificationNote: true,
+        },
+      });
+
+      return this.mapAgeProfile(clearedCustomer);
+    }
+
+    const nextDateOfBirth = this.parseDateOnly(input.dateOfBirth);
+    const currentDateOfBirth = this.formatDateOnly(customer.dateOfBirth);
+    const nextDateValue = this.formatDateOnly(nextDateOfBirth);
+    const dateChanged = currentDateOfBirth !== nextDateValue;
+
+    const updatedCustomer = await this.prismaService.customer.update({
+      where: { id: customer.id },
+      data: dateChanged
+        ? {
+            dateOfBirth: nextDateOfBirth,
+            ageVerificationStatus: "self_attested",
+            ageVerifiedAt: null,
+            ageVerifiedByOperatorId: null,
+            ageVerificationNote: null,
+          }
+        : {
+            dateOfBirth: nextDateOfBirth,
+          },
+      select: {
+        dateOfBirth: true,
+        ageVerificationStatus: true,
+        ageVerifiedAt: true,
+        ageVerifiedByOperatorId: true,
+        ageVerificationNote: true,
+      },
+    });
+
+    return this.mapAgeProfile(updatedCustomer);
+  }
+
+  async createTrustedContact(
+    supabaseUserId: string,
+    input: CreateTrustedContactInput,
+  ): Promise<CustomerTrustedContactProjection> {
+    const customer = await this.findCustomerIdentityOrThrow(supabaseUserId);
+    const data = this.buildTrustedContactData(input);
+
+    const trustedContact =
+      await this.prismaService.customerTrustedContact.create({
+        data: {
+          customerId: customer.id,
+          ...data,
+        },
+      });
+
+    return this.mapTrustedContact(trustedContact);
+  }
+
+  async updateTrustedContact(
+    supabaseUserId: string,
+    contactId: string,
+    input: UpdateTrustedContactInput,
+  ): Promise<CustomerTrustedContactProjection> {
+    const customer = await this.findCustomerIdentityOrThrow(supabaseUserId);
+    const existingContact =
+      await this.prismaService.customerTrustedContact.findFirst({
+        where: {
+          id: contactId,
+          customerId: customer.id,
+          status: "active",
+        },
+      });
+
+    if (!existingContact) {
+      throw new NotFoundException("Trusted contact not found.");
+    }
+
+    const mergedData = this.buildTrustedContactData({
+      kind: input.kind ?? existingContact.kind,
+      firstName: input.firstName ?? existingContact.firstName,
+      lastName: input.lastName ?? existingContact.lastName,
+      relationshipLabel:
+        input.relationshipLabel ?? existingContact.relationshipLabel,
+      email: input.email ?? existingContact.email ?? undefined,
+      phoneNumber:
+        input.phoneNumber ?? existingContact.phoneNumber ?? undefined,
+      note: input.note ?? existingContact.note ?? undefined,
+    });
+
+    const trustedContact =
+      await this.prismaService.customerTrustedContact.update({
+        where: { id: existingContact.id },
+        data: mergedData,
+      });
+
+    return this.mapTrustedContact(trustedContact);
+  }
+
+  async removeTrustedContact(
+    supabaseUserId: string,
+    contactId: string,
+  ): Promise<string> {
+    const customer = await this.findCustomerIdentityOrThrow(supabaseUserId);
+    const trustedContact =
+      await this.prismaService.customerTrustedContact.findFirst({
+        where: {
+          id: contactId,
+          customerId: customer.id,
+          status: "active",
+        },
+        select: {
+          id: true,
+        },
+      });
+
+    if (!trustedContact) {
+      throw new NotFoundException("Trusted contact not found.");
+    }
+
+    await this.prismaService.customerTrustedContact.update({
+      where: { id: trustedContact.id },
+      data: {
+        status: "removed",
+        removedAt: new Date(),
+      },
+    });
+
+    return trustedContact.id;
   }
 }

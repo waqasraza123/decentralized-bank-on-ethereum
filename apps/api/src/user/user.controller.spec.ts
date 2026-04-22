@@ -9,11 +9,15 @@ import { UserService } from "./user.service";
 describe("UserController", () => {
   let app: INestApplication;
   const authService = {
-    validateToken: jest.fn()
+    validateToken: jest.fn(),
   };
   const userService = {
     getUserById: jest.fn(),
-    updateNotificationPreferences: jest.fn()
+    updateNotificationPreferences: jest.fn(),
+    updateAgeProfile: jest.fn(),
+    createTrustedContact: jest.fn(),
+    updateTrustedContact: jest.fn(),
+    removeTrustedContact: jest.fn(),
   };
 
   beforeAll(async () => {
@@ -22,14 +26,14 @@ describe("UserController", () => {
       providers: [
         {
           provide: AuthService,
-          useValue: authService
+          useValue: authService,
         },
         {
           provide: UserService,
-          useValue: userService
+          useValue: userService,
         },
-        JwtAuthGuard
-      ]
+        JwtAuthGuard,
+      ],
     });
 
     app = result.app;
@@ -43,7 +47,7 @@ describe("UserController", () => {
     jest.clearAllMocks();
     authService.validateToken.mockResolvedValue({
       id: "supabase_1",
-      email: "amina@example.com"
+      email: "amina@example.com",
     });
   });
 
@@ -55,7 +59,7 @@ describe("UserController", () => {
         depositEmails: true,
         withdrawalEmails: true,
         loanEmails: true,
-        productUpdateEmails: false
+        productUpdateEmails: false,
       })
       .expect(401);
 
@@ -67,7 +71,7 @@ describe("UserController", () => {
       depositEmails: false,
       withdrawalEmails: true,
       loanEmails: false,
-      productUpdateEmails: true
+      productUpdateEmails: true,
     });
 
     const response = await request(app.getHttpServer())
@@ -77,7 +81,7 @@ describe("UserController", () => {
         depositEmails: false,
         withdrawalEmails: true,
         loanEmails: false,
-        productUpdateEmails: true
+        productUpdateEmails: true,
       })
       .expect(200);
 
@@ -87,8 +91,8 @@ describe("UserController", () => {
         depositEmails: false,
         withdrawalEmails: true,
         loanEmails: false,
-        productUpdateEmails: true
-      }
+        productUpdateEmails: true,
+      },
     );
     expect(response.body).toEqual({
       status: "success",
@@ -98,9 +102,93 @@ describe("UserController", () => {
           depositEmails: false,
           withdrawalEmails: true,
           loanEmails: false,
-          productUpdateEmails: true
-        }
-      }
+          productUpdateEmails: true,
+        },
+      },
+    });
+  });
+
+  it("passes age profile updates to the service", async () => {
+    userService.updateAgeProfile.mockResolvedValue({
+      dateOfBirth: "1991-05-12",
+      ageYears: 34,
+      legalAdult: true,
+      verificationStatus: "self_attested",
+      verifiedAt: null,
+      verifiedByOperatorId: null,
+      verificationNote: null,
+    });
+
+    const response = await request(app.getHttpServer())
+      .patch("/user/supabase_1/age-profile")
+      .set("Authorization", "Bearer test-token")
+      .send({
+        dateOfBirth: "1991-05-12",
+      })
+      .expect(200);
+
+    expect(userService.updateAgeProfile).toHaveBeenCalledWith("supabase_1", {
+      dateOfBirth: "1991-05-12",
+    });
+    expect(response.body.data.ageProfile.dateOfBirth).toBe("1991-05-12");
+  });
+
+  it("creates trusted contacts through the controller", async () => {
+    userService.createTrustedContact.mockResolvedValue({
+      id: "contact_1",
+      kind: "trusted_contact",
+      status: "active",
+      firstName: "Sara",
+      lastName: "Rahman",
+      relationshipLabel: "Sister",
+      email: "sara@example.com",
+      phoneNumber: null,
+      note: null,
+      createdAt: "2026-04-22T10:00:00.000Z",
+      updatedAt: "2026-04-22T10:00:00.000Z",
+      removedAt: null,
+    });
+
+    const response = await request(app.getHttpServer())
+      .post("/user/supabase_1/trusted-contacts")
+      .set("Authorization", "Bearer test-token")
+      .send({
+        kind: "trusted_contact",
+        firstName: "Sara",
+        lastName: "Rahman",
+        relationshipLabel: "Sister",
+        email: "sara@example.com",
+      })
+      .expect(201);
+
+    expect(userService.createTrustedContact).toHaveBeenCalledWith(
+      "supabase_1",
+      expect.objectContaining({
+        firstName: "Sara",
+        relationshipLabel: "Sister",
+      }),
+    );
+    expect(response.body.data.trustedContact.id).toBe("contact_1");
+  });
+
+  it("removes trusted contacts through the controller", async () => {
+    userService.removeTrustedContact.mockResolvedValue("contact_1");
+
+    const response = await request(app.getHttpServer())
+      .delete("/user/supabase_1/trusted-contacts/contact_1")
+      .set("Authorization", "Bearer test-token")
+      .expect(200);
+
+    expect(userService.removeTrustedContact).toHaveBeenCalledWith(
+      "supabase_1",
+      "contact_1",
+    );
+    expect(response.body).toEqual({
+      status: "success",
+      message: "Trusted contact removed successfully.",
+      data: {
+        removedTrustedContactId: "contact_1",
+      },
     });
   });
 });

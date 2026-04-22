@@ -1,18 +1,27 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   NotFoundException,
   Param,
   Patch,
+  Post,
   Req,
   UnauthorizedException,
   UseGuards,
-  ValidationPipe
+  ValidationPipe,
 } from "@nestjs/common";
-import type { CustomerNotificationPreferences } from "@stealth-trails-bank/types";
+import type {
+  CustomerAgeProfile,
+  CustomerNotificationPreferences,
+  CustomerTrustedContactProjection,
+} from "@stealth-trails-bank/types";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { CustomJsonResponse } from "../types/CustomJsonResponse";
+import { CreateCustomerTrustedContactDto } from "./dto/create-customer-trusted-contact.dto";
+import { UpdateCustomerAgeProfileDto } from "./dto/update-customer-age-profile.dto";
+import { UpdateCustomerTrustedContactDto } from "./dto/update-customer-trusted-contact.dto";
 import { UpdateNotificationPreferencesDto } from "./dto/update-notification-preferences.dto";
 import { UserService } from "./user.service";
 
@@ -24,13 +33,13 @@ export class UserController {
   @Get(":id")
   async getUserById(
     @Param("id") id: string,
-    @Req() req: { user: { id: string; sessionId?: string | null } }
+    @Req() req: { user: { id: string; sessionId?: string | null } },
   ): Promise<CustomJsonResponse> {
     const authenticatedUser = req.user;
 
     if (authenticatedUser.id !== id) {
       throw new UnauthorizedException(
-        "You are not authorized to access this user"
+        "You are not authorized to access this user",
       );
     }
 
@@ -44,7 +53,7 @@ export class UserController {
     return {
       status: "success",
       message: "User retreived.",
-      data: user
+      data: user,
     };
   }
 
@@ -53,15 +62,17 @@ export class UserController {
   async updateNotificationPreferences(
     @Param("id") id: string,
     @Body(new ValidationPipe()) dto: UpdateNotificationPreferencesDto,
-    @Req() req: { user: { id: string } }
+    @Req() req: { user: { id: string } },
   ): Promise<
-    CustomJsonResponse<{ notificationPreferences: CustomerNotificationPreferences }>
+    CustomJsonResponse<{
+      notificationPreferences: CustomerNotificationPreferences;
+    }>
   > {
     const authenticatedUser = req.user;
 
     if (authenticatedUser.id !== id) {
       throw new UnauthorizedException(
-        "You are not authorized to update this user"
+        "You are not authorized to update this user",
       );
     }
 
@@ -70,15 +81,133 @@ export class UserController {
         depositEmails: dto.depositEmails,
         withdrawalEmails: dto.withdrawalEmails,
         loanEmails: dto.loanEmails,
-        productUpdateEmails: dto.productUpdateEmails
+        productUpdateEmails: dto.productUpdateEmails,
       });
 
     return {
       status: "success",
       message: "Notification preferences updated successfully.",
       data: {
-        notificationPreferences
-      }
+        notificationPreferences,
+      },
+    };
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Patch(":id/age-profile")
+  async updateAgeProfile(
+    @Param("id") id: string,
+    @Body(new ValidationPipe()) dto: UpdateCustomerAgeProfileDto,
+    @Req() req: { user: { id: string } },
+  ): Promise<CustomJsonResponse<{ ageProfile: CustomerAgeProfile }>> {
+    const authenticatedUser = req.user;
+
+    if (authenticatedUser.id !== id) {
+      throw new UnauthorizedException(
+        "You are not authorized to update this user",
+      );
+    }
+
+    const ageProfile = await this.userService.updateAgeProfile(id, {
+      dateOfBirth: dto.dateOfBirth,
+    });
+
+    return {
+      status: "success",
+      message: "Age profile updated successfully.",
+      data: {
+        ageProfile,
+      },
+    };
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post(":id/trusted-contacts")
+  async createTrustedContact(
+    @Param("id") id: string,
+    @Body(new ValidationPipe()) dto: CreateCustomerTrustedContactDto,
+    @Req() req: { user: { id: string } },
+  ): Promise<
+    CustomJsonResponse<{ trustedContact: CustomerTrustedContactProjection }>
+  > {
+    const authenticatedUser = req.user;
+
+    if (authenticatedUser.id !== id) {
+      throw new UnauthorizedException(
+        "You are not authorized to update this user",
+      );
+    }
+
+    const trustedContact = await this.userService.createTrustedContact(id, dto);
+
+    return {
+      status: "success",
+      message: "Trusted contact created successfully.",
+      data: {
+        trustedContact,
+      },
+    };
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Patch(":id/trusted-contacts/:contactId")
+  async updateTrustedContact(
+    @Param("id") id: string,
+    @Param("contactId") contactId: string,
+    @Body(new ValidationPipe()) dto: UpdateCustomerTrustedContactDto,
+    @Req() req: { user: { id: string } },
+  ): Promise<
+    CustomJsonResponse<{ trustedContact: CustomerTrustedContactProjection }>
+  > {
+    const authenticatedUser = req.user;
+
+    if (authenticatedUser.id !== id) {
+      throw new UnauthorizedException(
+        "You are not authorized to update this user",
+      );
+    }
+
+    const trustedContact = await this.userService.updateTrustedContact(
+      id,
+      contactId,
+      dto,
+    );
+
+    return {
+      status: "success",
+      message: "Trusted contact updated successfully.",
+      data: {
+        trustedContact,
+      },
+    };
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Delete(":id/trusted-contacts/:contactId")
+  async removeTrustedContact(
+    @Param("id") id: string,
+    @Param("contactId") contactId: string,
+    @Req() req: { user: { id: string } },
+  ): Promise<CustomJsonResponse<{ removedTrustedContactId: string }>> {
+    const authenticatedUser = req.user;
+
+    if (authenticatedUser.id !== id) {
+      throw new UnauthorizedException(
+        "You are not authorized to update this user",
+      );
+    }
+
+    const removedTrustedContactId = await this.userService.removeTrustedContact(
+      id,
+      contactId,
+    );
+
+    return {
+      status: "success",
+      message: "Trusted contact removed successfully.",
+      data: {
+        removedTrustedContactId,
+      },
     };
   }
 }

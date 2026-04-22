@@ -31,10 +31,10 @@ Confirmed current repo evidence:
 
 Confirmed gaps:
 
-- no live `RetirementVault` or general vault product table in the current Prisma schema
-- customer history UI types only understand `deposit` and `withdrawal` in `apps/web/src/hooks/transactions/useMyTransactionHistory.ts` and `apps/web/src/lib/customer-finance.ts`
-- no existing customer contact, beneficiary, or DOB/KYC age model for age-based retirement rules
-- no current vault-specific admin page, worker slice, or ledger account types
+- no generalized `VaultProduct` platform model exists yet; the live build is still specifically `RetirementVault`
+- DOB/KYC age and trusted-contact profile foundation now exist, but vault age-based unlock, beneficiary release, and trusted-contact dual-approval flows are still deferred
+- release evidence is still text-and-metadata only; there is no customer-uploaded binary evidence pipeline yet
+- no on-chain vault contract or external custody rail is in scope for the live implementation
 
 ## Recommended Product Shape
 

@@ -18,7 +18,7 @@ export type RetirementVaultProjection = {
     decimals: number;
     chainId: number;
   };
-  status: "active" | "restricted" | "released";
+  status: "active" | "restricted" | "incident_locked" | "released";
   strictMode: boolean;
   unlockAt: string;
   lockedBalance: string;

@@ -17,13 +17,21 @@ describe("UserService.getUserById", () => {
     customerProjectionError?: Error;
     walletProjectionResult?: unknown;
     walletProjectionError?: Error;
+    customerFoundationResult?: unknown;
   }) {
     const prismaService = {
       user: {
         findFirst: jest.fn().mockResolvedValue(options.legacyUser),
       },
       customer: {
-        findUnique: jest.fn(),
+        findUnique: jest
+          .fn()
+          .mockResolvedValue(options.customerFoundationResult ?? null),
+        update: jest.fn(),
+      },
+      customerTrustedContact: {
+        create: jest.fn(),
+        findFirst: jest.fn(),
         update: jest.fn(),
       },
     };
@@ -31,12 +39,10 @@ describe("UserService.getUserById", () => {
     const authService = {
       getCustomerAccountProjectionBySupabaseUserId: jest.fn(),
       getCustomerWalletProjectionBySupabaseUserId: jest.fn(),
-      getCurrentCustomerSessionSecurityStatus: jest
-        .fn()
-        .mockResolvedValue({
-          currentSessionTrusted: true,
-          currentSessionRequiresVerification: false,
-        }),
+      getCurrentCustomerSessionSecurityStatus: jest.fn().mockResolvedValue({
+        currentSessionTrusted: true,
+        currentSessionRequiresVerification: false,
+      }),
     };
 
     if (options.customerProjectionError) {
@@ -127,11 +133,37 @@ describe("UserService.getUserById", () => {
     },
   };
 
+  const customerFoundation = {
+    id: "customer_1",
+    dateOfBirth: new Date("1990-04-11T00:00:00.000Z"),
+    ageVerificationStatus: "verified",
+    ageVerifiedAt: new Date("2026-04-01T00:00:00.000Z"),
+    ageVerifiedByOperatorId: "operator_1",
+    ageVerificationNote: "Verified during KYC refresh.",
+    trustedContacts: [
+      {
+        id: "contact_1",
+        kind: "trusted_contact",
+        status: "active",
+        firstName: "Sara",
+        lastName: "Rahman",
+        relationshipLabel: "Sister",
+        email: "sara@example.com",
+        phoneNumber: "+15550001111",
+        note: "Primary emergency contact",
+        createdAt: new Date("2026-04-10T00:00:00.000Z"),
+        updatedAt: new Date("2026-04-11T00:00:00.000Z"),
+        removedAt: null,
+      },
+    ],
+  };
+
   it("uses wallet projection address before legacy ethereumAddress", async () => {
     const { service } = createService({
       legacyUser,
       customerProjectionResult: customerProjection,
       walletProjectionResult: walletProjection,
+      customerFoundationResult: customerFoundation,
     });
 
     const result = await service.getUserById("supabase_1");
@@ -146,6 +178,31 @@ describe("UserService.getUserById", () => {
       loanEmails: true,
       productUpdateEmails: false,
     });
+    expect(result.ageProfile).toEqual({
+      dateOfBirth: "1990-04-11",
+      ageYears: expect.any(Number),
+      legalAdult: true,
+      verificationStatus: "verified",
+      verifiedAt: "2026-04-01T00:00:00.000Z",
+      verifiedByOperatorId: "operator_1",
+      verificationNote: "Verified during KYC refresh.",
+    });
+    expect(result.trustedContacts).toEqual([
+      {
+        id: "contact_1",
+        kind: "trusted_contact",
+        status: "active",
+        firstName: "Sara",
+        lastName: "Rahman",
+        relationshipLabel: "Sister",
+        email: "sara@example.com",
+        phoneNumber: "+15550001111",
+        note: "Primary emergency contact",
+        createdAt: "2026-04-10T00:00:00.000Z",
+        updatedAt: "2026-04-11T00:00:00.000Z",
+        removedAt: null,
+      },
+    ]);
     expect(result.sessionSecurity).toEqual({
       currentSessionTrusted: true,
       currentSessionRequiresVerification: false,
@@ -159,6 +216,7 @@ describe("UserService.getUserById", () => {
       walletProjectionError: new NotFoundException(
         "Customer wallet projection not found.",
       ),
+      customerFoundationResult: customerFoundation,
     });
 
     const result = await service.getUserById("supabase_1");
@@ -197,6 +255,8 @@ describe("UserService.getUserById", () => {
       closedAt: null,
       passwordRotationAvailable: false,
       notificationPreferences: null,
+      ageProfile: null,
+      trustedContacts: [],
       mfa: {
         required: true,
         totpEnrolled: false,
@@ -231,6 +291,7 @@ describe("UserService.getUserById", () => {
       legacyUser,
       customerProjectionResult: customerProjection,
       walletProjectionResult: walletProjection,
+      customerFoundationResult: customerFoundation,
     });
 
     prismaService.customer.findUnique.mockResolvedValue({
@@ -290,5 +351,129 @@ describe("UserService.getUserById", () => {
         productUpdateEmails: false,
       }),
     ).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it("updates the customer age profile and resets verification when the DOB changes", async () => {
+    const { service, prismaService } = createService({
+      legacyUser,
+      customerProjectionResult: customerProjection,
+      walletProjectionResult: walletProjection,
+      customerFoundationResult: customerFoundation,
+    });
+
+    prismaService.customer.findUnique.mockResolvedValue({
+      id: "customer_1",
+      dateOfBirth: new Date("1990-04-11T00:00:00.000Z"),
+      ageVerificationStatus: "verified",
+      ageVerifiedAt: new Date("2026-04-01T00:00:00.000Z"),
+      ageVerifiedByOperatorId: "operator_1",
+      ageVerificationNote: "Verified during KYC refresh.",
+    });
+    prismaService.customer.update.mockResolvedValue({
+      dateOfBirth: new Date("1991-05-12T00:00:00.000Z"),
+      ageVerificationStatus: "self_attested",
+      ageVerifiedAt: null,
+      ageVerifiedByOperatorId: null,
+      ageVerificationNote: null,
+    });
+
+    const result = await service.updateAgeProfile("supabase_1", {
+      dateOfBirth: "1991-05-12",
+    });
+
+    expect(prismaService.customer.update).toHaveBeenCalledWith({
+      where: { id: "customer_1" },
+      data: {
+        dateOfBirth: new Date("1991-05-12T00:00:00.000Z"),
+        ageVerificationStatus: "self_attested",
+        ageVerifiedAt: null,
+        ageVerifiedByOperatorId: null,
+        ageVerificationNote: null,
+      },
+      select: {
+        dateOfBirth: true,
+        ageVerificationStatus: true,
+        ageVerifiedAt: true,
+        ageVerifiedByOperatorId: true,
+        ageVerificationNote: true,
+      },
+    });
+    expect(result).toEqual({
+      dateOfBirth: "1991-05-12",
+      ageYears: expect.any(Number),
+      legalAdult: true,
+      verificationStatus: "self_attested",
+      verifiedAt: null,
+      verifiedByOperatorId: null,
+      verificationNote: null,
+    });
+  });
+
+  it("creates a trusted contact for the customer profile", async () => {
+    const { service, prismaService } = createService({
+      legacyUser,
+      customerProjectionResult: customerProjection,
+      walletProjectionResult: walletProjection,
+      customerFoundationResult: customerFoundation,
+    });
+
+    prismaService.customer.findUnique.mockResolvedValue({
+      id: "customer_1",
+      dateOfBirth: null,
+      ageVerificationStatus: "unverified",
+      ageVerifiedAt: null,
+      ageVerifiedByOperatorId: null,
+      ageVerificationNote: null,
+    });
+    prismaService.customerTrustedContact.create.mockResolvedValue({
+      id: "contact_2",
+      kind: "beneficiary",
+      status: "active",
+      firstName: "Omar",
+      lastName: "Rahman",
+      relationshipLabel: "Brother",
+      email: "omar@example.com",
+      phoneNumber: null,
+      note: null,
+      createdAt: new Date("2026-04-22T10:00:00.000Z"),
+      updatedAt: new Date("2026-04-22T10:00:00.000Z"),
+      removedAt: null,
+    });
+
+    const result = await service.createTrustedContact("supabase_1", {
+      kind: "beneficiary",
+      firstName: " Omar ",
+      lastName: "Rahman",
+      relationshipLabel: "Brother",
+      email: " omar@example.com ",
+      note: "",
+    });
+
+    expect(prismaService.customerTrustedContact.create).toHaveBeenCalledWith({
+      data: {
+        customerId: "customer_1",
+        kind: "beneficiary",
+        firstName: "Omar",
+        lastName: "Rahman",
+        relationshipLabel: "Brother",
+        email: "omar@example.com",
+        phoneNumber: null,
+        note: null,
+      },
+    });
+    expect(result).toEqual({
+      id: "contact_2",
+      kind: "beneficiary",
+      status: "active",
+      firstName: "Omar",
+      lastName: "Rahman",
+      relationshipLabel: "Brother",
+      email: "omar@example.com",
+      phoneNumber: null,
+      note: null,
+      createdAt: "2026-04-22T10:00:00.000Z",
+      updatedAt: "2026-04-22T10:00:00.000Z",
+      removedAt: null,
+    });
   });
 });

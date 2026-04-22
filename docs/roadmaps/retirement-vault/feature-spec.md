@@ -29,15 +29,15 @@ Core behavior:
 ## Non-Goals
 
 - no IRA, 401(k), pension, or regulated tax treatment claims
-- no age-based unlock logic in phase 1 because the live repo has no DOB/KYC age model
-- no beneficiary or trusted-contact release in phase 1 because the live repo has no customer contact model
+- no age-based unlock logic in the current live release, even though the customer DOB/KYC age foundation now exists
+- no beneficiary or trusted-contact release workflow in the current live release, even though the customer contact foundation now exists
 - no on-chain vault contract requirement in phase 1
 - no product-wide rebrand away from the current bank and governed-custody posture
 
 ## Confirmed Repo Constraints
 
 - live balances are currently modeled as `availableBalance` and `pendingBalance` in `CustomerAssetBalance`, so locked vault funds should not be stuffed into the same liquid read model without a clear distinction
-- transaction history backend can already emit generic `TransactionIntent` records, but the current web/mobile frontend types only understand `deposit` and `withdrawal`
+- transaction history backend and current web/mobile frontend already understand `vault_subscription` and `vault_redemption`, so vault activity can share the existing customer history surface
 - the current repo already has request/review/approve separation for sensitive release decisions
 - the current repo already blocks sensitive flows through solvency and governed execution checks
 
@@ -45,8 +45,14 @@ Core behavior:
 
 Confirmed repo evidence:
 
-- no live vault table exists yet
+- live `RetirementVault`, `RetirementVaultReleaseRequest`, `RetirementVaultRuleChangeRequest`, and `RetirementVaultEvent` tables already exist
 - live transaction intent types already reserve `vault_subscription` and `vault_redemption`
+- live `TransactionIntent` already includes a nullable `retirementVaultId`
+
+Current docs-only deltas:
+
+- the live `RetirementVault` model still uses `status`, `lockedBalance`, and request rows instead of a separate `releaseState` field or `pendingReleaseBalance`
+- proposed states such as `funding_pending` and `cancelled` are still design artifacts, not live enum members
 
 Proposed addition:
 
@@ -171,11 +177,11 @@ Keep the first production rules model narrow.
 ### Explicitly deferred rule types
 
 - age-based eligibility
-  - deferred because no live age or DOB data model exists
+  - deferred because the vault service does not yet evaluate the new customer DOB/age foundation
 - beneficiary release
-  - deferred because no live contact model exists
+  - deferred because beneficiary-aware release policy is not wired into the vault workflow yet
 - trusted-contact dual approval
-  - deferred for the same reason
+  - deferred because dual-approval release policy is not wired into the vault workflow yet
 
 ### Early unlock categories
 
@@ -440,6 +446,6 @@ Phase 1 recommendation:
 - allow only rule-tightening changes from the customer side
 - allow extending the unlock date or increasing cooldown, after MFA/session checks
 - do not allow customer-side rule weakening
-- any future rule weakening should use a dedicated operator-reviewed request flow in a later phase
+- protection-weakening requests now use a dedicated operator-reviewed vault rule-change workflow in the live service
 
-This keeps the first release narrow and honest while still meeting the requirement that rule changes be restricted.
+This keeps customer-side changes narrow while still preserving a governed escape hatch for reviewed exceptions.

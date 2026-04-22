@@ -2,13 +2,17 @@ import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  useCreateTrustedContact,
   useListCustomerSessions,
   useListCustomerSecurityActivity,
+  useRemoveTrustedContact,
   useRevokeCustomerSession,
   useRevokeAllSessions,
   useRotatePassword,
   useStartCurrentSessionTrustChallenge,
+  useUpdateCustomerAgeProfile,
   useUpdateNotificationPreferences,
+  useUpdateTrustedContact,
   useVerifyCurrentSessionTrust,
 } from "@/hooks/user/useProfileSettings";
 import { useGetUser } from "@/hooks/user/useGetUser";
@@ -27,9 +31,13 @@ const mockUseRevokeCustomerSession = vi.mocked(useRevokeCustomerSession);
 const mockUseStartCurrentSessionTrustChallenge = vi.mocked(
   useStartCurrentSessionTrustChallenge,
 );
+const mockUseUpdateCustomerAgeProfile = vi.mocked(useUpdateCustomerAgeProfile);
 const mockUseUpdateNotificationPreferences = vi.mocked(
   useUpdateNotificationPreferences,
 );
+const mockUseCreateTrustedContact = vi.mocked(useCreateTrustedContact);
+const mockUseUpdateTrustedContact = vi.mocked(useUpdateTrustedContact);
+const mockUseRemoveTrustedContact = vi.mocked(useRemoveTrustedContact);
 const mockUseVerifyCurrentSessionTrust = vi.mocked(
   useVerifyCurrentSessionTrust,
 );
@@ -43,9 +51,13 @@ vi.mock("@/hooks/user/useProfileSettings", () => ({
   useListCustomerSecurityActivity: vi.fn(),
   useRevokeCustomerSession: vi.fn(),
   useStartCurrentSessionTrustChallenge: vi.fn(),
+  useUpdateCustomerAgeProfile: vi.fn(),
   useRevokeAllSessions: vi.fn(),
   useRotatePassword: vi.fn(),
   useUpdateNotificationPreferences: vi.fn(),
+  useCreateTrustedContact: vi.fn(),
+  useUpdateTrustedContact: vi.fn(),
+  useRemoveTrustedContact: vi.fn(),
   useVerifyCurrentSessionTrust: vi.fn(),
 }));
 
@@ -54,7 +66,11 @@ describe("profile page", () => {
   const revokeAllSessions = vi.fn();
   const revokeCustomerSession = vi.fn();
   const startSessionTrustChallenge = vi.fn();
+  const updateCustomerAgeProfile = vi.fn();
   const updateNotificationPreferences = vi.fn();
+  const createTrustedContact = vi.fn();
+  const updateTrustedContact = vi.fn();
+  const removeTrustedContact = vi.fn();
   const verifyCurrentSessionTrust = vi.fn();
   const freshMfa = {
     required: true,
@@ -72,7 +88,11 @@ describe("profile page", () => {
     revokeAllSessions.mockReset();
     revokeCustomerSession.mockReset();
     startSessionTrustChallenge.mockReset();
+    updateCustomerAgeProfile.mockReset();
     updateNotificationPreferences.mockReset();
+    createTrustedContact.mockReset();
+    updateTrustedContact.mockReset();
+    removeTrustedContact.mockReset();
     verifyCurrentSessionTrust.mockReset();
 
     useUserStore.setState({
@@ -112,6 +132,31 @@ describe("profile page", () => {
           loanEmails: true,
           productUpdateEmails: false,
         },
+        ageProfile: {
+          dateOfBirth: "1990-04-11",
+          ageYears: 35,
+          legalAdult: true,
+          verificationStatus: "verified",
+          verifiedAt: "2026-04-01T00:00:00.000Z",
+          verifiedByOperatorId: "operator_1",
+          verificationNote: "Verified during KYC refresh.",
+        },
+        trustedContacts: [
+          {
+            id: "contact_1",
+            kind: "trusted_contact",
+            status: "active",
+            firstName: "Sara",
+            lastName: "Rahman",
+            relationshipLabel: "Sister",
+            email: "sara@example.com",
+            phoneNumber: null,
+            note: null,
+            createdAt: "2026-04-10T00:00:00.000Z",
+            updatedAt: "2026-04-11T00:00:00.000Z",
+            removedAt: null,
+          },
+        ],
         mfa: freshMfa,
         sessionSecurity: {
           currentSessionTrusted: true,
@@ -198,6 +243,22 @@ describe("profile page", () => {
       mutateAsync: updateNotificationPreferences,
       isPending: false,
     } as ReturnType<typeof useUpdateNotificationPreferences>);
+    mockUseUpdateCustomerAgeProfile.mockReturnValue({
+      mutateAsync: updateCustomerAgeProfile,
+      isPending: false,
+    } as ReturnType<typeof useUpdateCustomerAgeProfile>);
+    mockUseCreateTrustedContact.mockReturnValue({
+      mutateAsync: createTrustedContact,
+      isPending: false,
+    } as ReturnType<typeof useCreateTrustedContact>);
+    mockUseUpdateTrustedContact.mockReturnValue({
+      mutateAsync: updateTrustedContact,
+      isPending: false,
+    } as ReturnType<typeof useUpdateTrustedContact>);
+    mockUseRemoveTrustedContact.mockReturnValue({
+      mutateAsync: removeTrustedContact,
+      isPending: false,
+    } as ReturnType<typeof useRemoveTrustedContact>);
     mockUseVerifyCurrentSessionTrust.mockReturnValue({
       mutateAsync: verifyCurrentSessionTrust,
       isPending: false,
@@ -222,6 +283,12 @@ describe("profile page", () => {
     ).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: /save preferences/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /save date of birth/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/trusted contacts and beneficiaries/i),
     ).toBeInTheDocument();
     expect(
       screen.getByRole("switch", { name: /product updates/i }),
@@ -255,6 +322,16 @@ describe("profile page", () => {
           loanEmails: true,
           productUpdateEmails: false,
         },
+        ageProfile: {
+          dateOfBirth: "1990-04-11",
+          ageYears: 35,
+          legalAdult: true,
+          verificationStatus: "verified",
+          verifiedAt: "2026-04-01T00:00:00.000Z",
+          verifiedByOperatorId: "operator_1",
+          verificationNote: "Verified during KYC refresh.",
+        },
+        trustedContacts: [],
         mfa: {
           ...freshMfa,
           totpEnrolled: false,
@@ -372,6 +449,8 @@ describe("profile page", () => {
         closedAt: null,
         passwordRotationAvailable: false,
         notificationPreferences: null,
+        ageProfile: null,
+        trustedContacts: [],
         mfa: {
           ...freshMfa,
           requiresSetup: true,
@@ -395,6 +474,10 @@ describe("profile page", () => {
     ).toBeInTheDocument();
     expect(
       screen.getByText(/notification preferences unavailable/i),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/age profile unavailable/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/trusted contacts unavailable/i),
     ).toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: /update password/i }),

@@ -83,6 +83,41 @@ function canCancelRuleChangeStatus(status: string): boolean {
   return ["review_required", "cooldown_active"].includes(status);
 }
 
+function isBlockedVaultStatus(status: string): boolean {
+  return status === "restricted" || status === "incident_locked";
+}
+
+function getVaultStatusPresentation(
+  status: string,
+  locale: string
+): {
+  label: string;
+  tone: "neutral" | "positive" | "warning" | "critical" | "technical";
+} {
+  switch (status) {
+    case "incident_locked":
+      return {
+        label: locale === "ar" ? "مغلق بسبب حادث" : "Incident locked",
+        tone: "critical"
+      };
+    case "restricted":
+      return {
+        label: locale === "ar" ? "مقيد" : "Restricted",
+        tone: "warning"
+      };
+    case "released":
+      return {
+        label: locale === "ar" ? "مفرج عنه" : "Released",
+        tone: "neutral"
+      };
+    default:
+      return {
+        label: locale === "ar" ? "نشط" : "Active",
+        tone: "positive"
+      };
+  }
+}
+
 const RetirementVault = () => {
   const { locale } = useLocale();
   const balancesQuery = useMyBalances();
@@ -1003,15 +1038,35 @@ const RetirementVault = () => {
                   />
                 </label>
 
-                <div className="stb-trust-note text-sm text-amber-900" data-tone="warning">
-                  {selectedReleaseVault &&
-                  new Date(selectedReleaseVault.unlockAt) > new Date()
+                <div
+                  className={`stb-trust-note text-sm ${
+                    selectedReleaseVault && isBlockedVaultStatus(selectedReleaseVault.status)
+                      ? "text-red-700"
+                      : "text-amber-900"
+                  }`}
+                  data-tone={
+                    selectedReleaseVault && isBlockedVaultStatus(selectedReleaseVault.status)
+                      ? "critical"
+                      : "warning"
+                  }
+                >
+                  {selectedReleaseVault && selectedReleaseVault.status === "incident_locked"
                     ? locale === "ar"
-                      ? "هذا إفراج مبكر. سيحتاج إلى مراجعة إلزامية ثم فترة تهدئة قبل التنفيذ."
-                      : "This is an early unlock. It will require mandatory review and then a cooldown before execution."
-                    : locale === "ar"
-                      ? "هذا إفراج طبيعي بعد تحقق تاريخ القفل. سيبدأ مباشرة في نافذة تهدئة محكومة."
-                      : "This is a normal unlock after the lock date. It will move directly into a governed cooldown window."}
+                      ? "هذا القبو تحت قفل حادثة. لا يمكن بدء إفراج أو متابعة التهدئة حتى يرفع المشغلون حماية الحادثة."
+                      : "This vault is incident locked. Release requests and cooldown progression stay blocked until operators clear the incident protection."
+                    : selectedReleaseVault &&
+                        selectedReleaseVault.status === "restricted"
+                      ? locale === "ar"
+                        ? "هذا القبو مقيد حالياً. لا يمكن بدء إفراج جديد حتى يرفع المشغلون التقييد."
+                        : "This vault is currently restricted. A new governed release cannot start until operators release the restriction."
+                      : selectedReleaseVault &&
+                          new Date(selectedReleaseVault.unlockAt) > new Date()
+                        ? locale === "ar"
+                          ? "هذا إفراج مبكر. سيحتاج إلى مراجعة إلزامية ثم فترة تهدئة قبل التنفيذ."
+                          : "This is an early unlock. It will require mandatory review and then a cooldown before execution."
+                        : locale === "ar"
+                          ? "هذا إفراج طبيعي بعد تحقق تاريخ القفل. سيبدأ مباشرة في نافذة تهدئة محكومة."
+                          : "This is a normal unlock after the lock date. It will move directly into a governed cooldown window."}
                 </div>
 
                 {releaseError ? (
@@ -1022,7 +1077,11 @@ const RetirementVault = () => {
 
                 <LoadingButton
                   className="w-full rounded-[1rem]"
-                  disabled={vaults.length === 0}
+                  disabled={
+                    vaults.length === 0 ||
+                    !selectedReleaseVault ||
+                    selectedReleaseVault.status !== "active"
+                  }
                   isLoading={requestRetirementVaultRelease.isPending}
                   type="submit"
                 >
@@ -1239,10 +1298,33 @@ const RetirementVault = () => {
                   />
                 </label>
 
-                <div className="stb-trust-note text-sm text-amber-900" data-tone="warning">
-                  {locale === "ar"
-                    ? "أي تعديل يضعف الحماية أو يقرب تاريخ الإفراج لا يُطبق فوراً. يدخل مراجعة مشغّل ثم تهدئة محكومة."
-                    : "Any change that weakens protection or pulls the date forward does not apply instantly. It enters operator review and governed cooldown."}
+                <div
+                  className={`stb-trust-note text-sm ${
+                    selectedRuleChangeVault &&
+                    isBlockedVaultStatus(selectedRuleChangeVault.status)
+                      ? "text-red-700"
+                      : "text-amber-900"
+                  }`}
+                  data-tone={
+                    selectedRuleChangeVault &&
+                    isBlockedVaultStatus(selectedRuleChangeVault.status)
+                      ? "critical"
+                      : "warning"
+                  }
+                >
+                  {selectedRuleChangeVault &&
+                  selectedRuleChangeVault.status === "incident_locked"
+                    ? locale === "ar"
+                      ? "هذا القبو تحت قفل حادثة. لا يمكن تعديل القواعد حتى يزيل المشغلون حماية الحادثة."
+                      : "This vault is incident locked. Rule changes remain blocked until operators clear the incident protection."
+                    : selectedRuleChangeVault &&
+                        selectedRuleChangeVault.status === "restricted"
+                      ? locale === "ar"
+                        ? "هذا القبو مقيد حالياً. لا يمكن تعديل القواعد حتى يرفع المشغلون التقييد."
+                        : "This vault is currently restricted. Rule changes remain blocked until operators release the restriction."
+                      : locale === "ar"
+                        ? "أي تعديل يضعف الحماية أو يقرب تاريخ الإفراج لا يُطبق فوراً. يدخل مراجعة مشغّل ثم تهدئة محكومة."
+                        : "Any change that weakens protection or pulls the date forward does not apply instantly. It enters operator review and governed cooldown."}
                 </div>
 
                 {ruleChangeError ? (
@@ -1253,7 +1335,11 @@ const RetirementVault = () => {
 
                 <LoadingButton
                   className="w-full rounded-[1rem]"
-                  disabled={vaults.length === 0}
+                  disabled={
+                    vaults.length === 0 ||
+                    !selectedRuleChangeVault ||
+                    selectedRuleChangeVault.status !== "active"
+                  }
                   isLoading={requestRetirementVaultRuleChange.isPending}
                   type="submit"
                 >
@@ -1371,20 +1457,33 @@ const RetirementVault = () => {
                       <span className="text-base text-slate-500">{vault.asset.symbol}</span>
                     </p>
                   </div>
-                  <StatusBadge
-                    label={
-                      vault.strictMode
+                  {(() => {
+                    const statusPresentation = getVaultStatusPresentation(
+                      vault.status,
+                      locale
+                    );
+
+                    return (
+                      <StatusBadge
+                        label={statusPresentation.label}
+                        tone={statusPresentation.tone}
+                      />
+                    );
+                  })()}
+                </div>
+                <div className="mt-5 grid gap-3 rounded-[1.25rem] border border-slate-200/70 bg-white/75 p-4 text-sm text-slate-600">
+                  <div className="flex items-center justify-between gap-3">
+                    <span>{locale === "ar" ? "وضع الحماية" : "Protection mode"}</span>
+                    <span className="font-semibold text-slate-950">
+                      {vault.strictMode
                         ? locale === "ar"
                           ? "صارم"
                           : "Strict"
                         : locale === "ar"
-                          ? "نشط"
-                          : "Active"
-                    }
-                    tone={vault.strictMode ? "technical" : "positive"}
-                  />
-                </div>
-                <div className="mt-5 grid gap-3 rounded-[1.25rem] border border-slate-200/70 bg-white/75 p-4 text-sm text-slate-600">
+                          ? "قياسي"
+                          : "Standard"}
+                    </span>
+                  </div>
                   <div className="flex items-center justify-between gap-3">
                     <span>{locale === "ar" ? "الإفراج المحكوم" : "Governed release"}</span>
                     <span className="font-semibold text-slate-950">
@@ -1402,6 +1501,19 @@ const RetirementVault = () => {
                     </span>
                   </div>
                 </div>
+                {vault.status === "incident_locked" ? (
+                  <p className="mt-4 text-sm font-medium text-red-700">
+                    {locale === "ar"
+                      ? "الحماية المرتبطة بحادثة تمنع أي إفراج أو تعديل قواعد حتى يزيل المشغلون القفل."
+                      : "Incident-linked protection is blocking release and rule changes until operators clear the lock."}
+                  </p>
+                ) : vault.status === "restricted" ? (
+                  <p className="mt-4 text-sm font-medium text-amber-900">
+                    {locale === "ar"
+                      ? "هذا القبو مقيد حالياً ولن يتابع الإفراج أو تعديل القواعد حتى يرفع المشغلون التقييد."
+                      : "This vault is currently restricted and will not progress through release or rule changes until operators release the restriction."}
+                  </p>
+                ) : null}
               </Card>
             ))
           ) : (

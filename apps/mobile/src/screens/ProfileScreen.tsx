@@ -13,13 +13,16 @@ import { FieldInput } from "../components/ui/FieldInput";
 import { InlineNotice } from "../components/ui/InlineNotice";
 import { LanguageToggle } from "../components/ui/LanguageToggle";
 import { LtrValue } from "../components/ui/LtrValue";
+import { OptionChips } from "../components/ui/OptionChips";
 import { SectionCard } from "../components/ui/SectionCard";
 import { StatusChip } from "../components/ui/StatusChip";
 import {
+  useCreateTrustedContactMutation,
   useMfaStatusQuery,
   useCustomerSessionsQuery,
   useCustomerSecurityActivityQuery,
   useProfileQuery,
+  useRemoveTrustedContactMutation,
   useRevokeCustomerSessionMutation,
   useRotatePasswordMutation,
   useRevokeAllCustomerSessionsMutation,
@@ -28,7 +31,9 @@ import {
   useStartEmailRecoveryMutation,
   useStartMfaChallengeMutation,
   useStartTotpEnrollmentMutation,
+  useUpdateCustomerAgeProfileMutation,
   useUpdateNotificationPreferencesMutation,
+  useUpdateTrustedContactMutation,
   useVerifyEmailEnrollmentMutation,
   useVerifyEmailRecoveryMutation,
   useVerifyMfaChallengeMutation,
@@ -46,6 +51,26 @@ const emptyPasswordForm = {
   currentPassword: "",
   newPassword: "",
   confirmPassword: "",
+};
+
+type TrustedContactDraft = {
+  kind: "trusted_contact" | "beneficiary";
+  firstName: string;
+  lastName: string;
+  relationshipLabel: string;
+  email: string;
+  phoneNumber: string;
+  note: string;
+};
+
+const emptyTrustedContactDraft = {
+  kind: "trusted_contact" as const,
+  firstName: "",
+  lastName: "",
+  relationshipLabel: "",
+  email: "",
+  phoneNumber: "",
+  note: "",
 };
 
 const recommendedAuthenticatorApps = [
@@ -127,6 +152,27 @@ function formatSecurityActivityDetail(
   return null;
 }
 
+function formatAgeVerificationStatusLabel(
+  status: "unverified" | "self_attested" | "verified" | "rejected",
+) {
+  switch (status) {
+    case "verified":
+      return "Operator verified";
+    case "self_attested":
+      return "Self attested";
+    case "rejected":
+      return "Verification rejected";
+    case "unverified":
+      return "Not verified";
+  }
+}
+
+function formatTrustedContactKindLabel(
+  kind: "trusted_contact" | "beneficiary",
+) {
+  return kind === "beneficiary" ? "Beneficiary" : "Trusted contact";
+}
+
 export function ProfileScreen() {
   const t = useT();
   const { locale } = useLocale();
@@ -143,6 +189,10 @@ export function ProfileScreen() {
     useStartSessionTrustChallengeMutation();
   const verifySessionTrustMutation = useVerifySessionTrustMutation();
   const updatePreferencesMutation = useUpdateNotificationPreferencesMutation();
+  const updateAgeProfileMutation = useUpdateCustomerAgeProfileMutation();
+  const createTrustedContactMutation = useCreateTrustedContactMutation();
+  const updateTrustedContactMutation = useUpdateTrustedContactMutation();
+  const removeTrustedContactMutation = useRemoveTrustedContactMutation();
   const startTotpEnrollmentMutation = useStartTotpEnrollmentMutation();
   const verifyTotpEnrollmentMutation = useVerifyTotpEnrollmentMutation();
   const startEmailEnrollmentMutation = useStartEmailEnrollmentMutation();
@@ -185,14 +235,26 @@ export function ProfileScreen() {
   const [sessionTrustPreviewCode, setSessionTrustPreviewCode] = useState<
     string | null
   >(null);
+  const [ageDateOfBirthDraft, setAgeDateOfBirthDraft] = useState("");
+  const [trustedContactDraft, setTrustedContactDraft] =
+    useState<TrustedContactDraft>(emptyTrustedContactDraft);
+  const [editingTrustedContactId, setEditingTrustedContactId] = useState<
+    string | null
+  >(null);
 
   useEffect(() => {
     setNotificationDraft(profile?.notificationPreferences ?? null);
   }, [profile?.notificationPreferences]);
 
+  useEffect(() => {
+    setAgeDateOfBirthDraft(profile?.ageProfile?.dateOfBirth ?? "");
+  }, [profile?.ageProfile?.dateOfBirth]);
+
   const stepUpFresh =
     Boolean(mfa?.stepUpFreshUntil) &&
     Date.parse(mfa?.stepUpFreshUntil ?? "") > Date.now();
+  const ageProfile = profile?.ageProfile ?? null;
+  const trustedContacts = profile?.trustedContacts ?? [];
   const customerSessions = customerSessionsQuery.data?.sessions ?? [];
   const securityActivity = securityActivityQuery.data?.events ?? [];
 
@@ -306,10 +368,7 @@ export function ProfileScreen() {
   async function handleRevokeSession(sessionId: string) {
     try {
       await revokeCustomerSessionMutation.mutateAsync(sessionId);
-      Alert.alert(
-        t("profile.sessionSecurity"),
-        t("profile.sessionRevoked"),
-      );
+      Alert.alert(t("profile.sessionSecurity"), t("profile.sessionRevoked"));
     } catch (error) {
       Alert.alert(
         t("profile.sessionSecurity"),
@@ -331,6 +390,70 @@ export function ProfileScreen() {
     } catch (requestError) {
       Alert.alert(
         t("profile.notifications"),
+        requestError instanceof Error
+          ? requestError.message
+          : String(requestError),
+      );
+    }
+  }
+
+  async function handleAgeProfileSave() {
+    try {
+      await updateAgeProfileMutation.mutateAsync({
+        dateOfBirth: ageDateOfBirthDraft.trim() || null,
+      });
+      Alert.alert(
+        "Age foundation",
+        ageDateOfBirthDraft.trim()
+          ? "Date of birth saved as a self-attested age record."
+          : "Age record cleared.",
+      );
+    } catch (requestError) {
+      Alert.alert(
+        "Age foundation",
+        requestError instanceof Error
+          ? requestError.message
+          : String(requestError),
+      );
+    }
+  }
+
+  async function handleTrustedContactSave() {
+    try {
+      if (editingTrustedContactId) {
+        await updateTrustedContactMutation.mutateAsync({
+          contactId: editingTrustedContactId,
+          ...trustedContactDraft,
+        });
+        Alert.alert("Trusted contacts", "Trusted contact updated.");
+      } else {
+        await createTrustedContactMutation.mutateAsync(trustedContactDraft);
+        Alert.alert("Trusted contacts", "Trusted contact added.");
+      }
+
+      setTrustedContactDraft(emptyTrustedContactDraft);
+      setEditingTrustedContactId(null);
+    } catch (requestError) {
+      Alert.alert(
+        "Trusted contacts",
+        requestError instanceof Error
+          ? requestError.message
+          : String(requestError),
+      );
+    }
+  }
+
+  async function handleTrustedContactRemove(contactId: string) {
+    try {
+      await removeTrustedContactMutation.mutateAsync(contactId);
+      if (editingTrustedContactId === contactId) {
+        setEditingTrustedContactId(null);
+        setTrustedContactDraft(emptyTrustedContactDraft);
+      }
+      Alert.alert("Trusted contacts", "Trusted contact removed.");
+    } catch (requestError) {
+      Alert.alert(
+        "Trusted contacts",
         requestError instanceof Error
           ? requestError.message
           : String(requestError),
@@ -900,6 +1023,286 @@ export function ProfileScreen() {
 
           <SectionCard className="gap-4">
             <AppText className="text-xl text-ink" weight="bold">
+              Age foundation
+            </AppText>
+            <InlineNotice
+              message="This date-of-birth record prepares age-based vault rules and operator verification. Customer edits remain self-attested until reviewed."
+              tone="neutral"
+            />
+            {profile.customerId ? (
+              <>
+                <View className="flex-row flex-wrap gap-3">
+                  <SectionCard className="min-w-[45%] flex-1">
+                    <AppText className="text-xs text-slate">
+                      Verification status
+                    </AppText>
+                    <AppText
+                      className="mt-2 text-sm text-ink"
+                      weight="semibold"
+                    >
+                      {formatAgeVerificationStatusLabel(
+                        ageProfile?.verificationStatus ?? "unverified",
+                      )}
+                    </AppText>
+                  </SectionCard>
+                  <SectionCard className="min-w-[45%] flex-1">
+                    <AppText className="text-xs text-slate">
+                      Derived age
+                    </AppText>
+                    <AppText
+                      className="mt-2 text-sm text-ink"
+                      weight="semibold"
+                    >
+                      {ageProfile?.ageYears ?? "Not recorded"}
+                    </AppText>
+                  </SectionCard>
+                  <SectionCard className="min-w-[45%] flex-1">
+                    <AppText className="text-xs text-slate">
+                      Adult threshold
+                    </AppText>
+                    <AppText
+                      className="mt-2 text-sm text-ink"
+                      weight="semibold"
+                    >
+                      {ageProfile?.legalAdult == null
+                        ? "Not yet determined"
+                        : ageProfile.legalAdult
+                          ? "18+ from DOB"
+                          : "Under 18 from DOB"}
+                    </AppText>
+                  </SectionCard>
+                </View>
+                {ageProfile?.verificationNote ? (
+                  <InlineNotice
+                    message={ageProfile.verificationNote}
+                    tone="neutral"
+                  />
+                ) : null}
+                <FieldInput
+                  label="Date of birth"
+                  helper="Use YYYY-MM-DD."
+                  onChangeText={setAgeDateOfBirthDraft}
+                  value={ageDateOfBirthDraft}
+                />
+                <View className="gap-3">
+                  <AppButton
+                    disabled={updateAgeProfileMutation.isPending}
+                    label="Save date of birth"
+                    onPress={() => {
+                      void handleAgeProfileSave();
+                    }}
+                  />
+                  <AppButton
+                    disabled={
+                      updateAgeProfileMutation.isPending || !ageDateOfBirthDraft
+                    }
+                    label="Clear draft"
+                    onPress={() => {
+                      setAgeDateOfBirthDraft("");
+                    }}
+                    variant="secondary"
+                  />
+                </View>
+              </>
+            ) : (
+              <InlineNotice
+                message="Legacy-only records do not yet expose managed customer age data from this portal."
+                tone="warning"
+              />
+            )}
+          </SectionCard>
+
+          <SectionCard className="gap-4">
+            <AppText className="text-xl text-ink" weight="bold">
+              Trusted contacts
+            </AppText>
+            <InlineNotice
+              message="These records prepare future vault beneficiary and dual-approval flows. They do not create release rights on their own today."
+              tone="neutral"
+            />
+            {profile.customerId ? (
+              <>
+                {trustedContacts.length > 0 ? (
+                  trustedContacts.map((contact) => (
+                    <View
+                      key={contact.id}
+                      className="gap-3 rounded-2xl border border-border bg-white px-4 py-4"
+                    >
+                      <View className="gap-1">
+                        <AppText
+                          className="text-base text-ink"
+                          weight="semibold"
+                        >
+                          {contact.firstName} {contact.lastName}
+                        </AppText>
+                        <AppText className="text-sm text-slate">
+                          {formatTrustedContactKindLabel(contact.kind)} •{" "}
+                          {contact.relationshipLabel}
+                        </AppText>
+                        {contact.email ? (
+                          <LtrValue value={contact.email} />
+                        ) : null}
+                        {contact.phoneNumber ? (
+                          <LtrValue value={contact.phoneNumber} />
+                        ) : null}
+                        {contact.note ? (
+                          <AppText className="text-sm text-slate">
+                            {contact.note}
+                          </AppText>
+                        ) : null}
+                      </View>
+                      <View className="flex-row gap-3">
+                        <AppButton
+                          fullWidth={false}
+                          label="Edit"
+                          onPress={() => {
+                            setEditingTrustedContactId(contact.id);
+                            setTrustedContactDraft({
+                              kind: contact.kind,
+                              firstName: contact.firstName,
+                              lastName: contact.lastName,
+                              relationshipLabel: contact.relationshipLabel,
+                              email: contact.email ?? "",
+                              phoneNumber: contact.phoneNumber ?? "",
+                              note: contact.note ?? "",
+                            });
+                          }}
+                          variant="secondary"
+                        />
+                        <AppButton
+                          disabled={removeTrustedContactMutation.isPending}
+                          fullWidth={false}
+                          label="Remove"
+                          onPress={() => {
+                            void handleTrustedContactRemove(contact.id);
+                          }}
+                          variant="secondary"
+                        />
+                      </View>
+                    </View>
+                  ))
+                ) : (
+                  <InlineNotice
+                    message="No trusted contacts are recorded yet."
+                    tone="neutral"
+                  />
+                )}
+
+                <View className="gap-3 rounded-2xl border border-border bg-white px-4 py-4">
+                  <AppText className="text-base text-ink" weight="semibold">
+                    {editingTrustedContactId
+                      ? "Edit trusted contact"
+                      : "Add trusted contact"}
+                  </AppText>
+                  <OptionChips
+                    options={[
+                      { label: "Trusted contact", value: "trusted_contact" },
+                      { label: "Beneficiary", value: "beneficiary" },
+                    ]}
+                    value={trustedContactDraft.kind}
+                    onChange={(value) =>
+                      setTrustedContactDraft((current) => ({
+                        ...current,
+                        kind: value as "trusted_contact" | "beneficiary",
+                      }))
+                    }
+                  />
+                  <FieldInput
+                    label="First name"
+                    onChangeText={(value) =>
+                      setTrustedContactDraft((current) => ({
+                        ...current,
+                        firstName: value,
+                      }))
+                    }
+                    value={trustedContactDraft.firstName}
+                  />
+                  <FieldInput
+                    label="Last name"
+                    onChangeText={(value) =>
+                      setTrustedContactDraft((current) => ({
+                        ...current,
+                        lastName: value,
+                      }))
+                    }
+                    value={trustedContactDraft.lastName}
+                  />
+                  <FieldInput
+                    label="Relationship"
+                    onChangeText={(value) =>
+                      setTrustedContactDraft((current) => ({
+                        ...current,
+                        relationshipLabel: value,
+                      }))
+                    }
+                    value={trustedContactDraft.relationshipLabel}
+                  />
+                  <FieldInput
+                    label="Email"
+                    onChangeText={(value) =>
+                      setTrustedContactDraft((current) => ({
+                        ...current,
+                        email: value,
+                      }))
+                    }
+                    value={trustedContactDraft.email}
+                  />
+                  <FieldInput
+                    label="Phone number"
+                    onChangeText={(value) =>
+                      setTrustedContactDraft((current) => ({
+                        ...current,
+                        phoneNumber: value,
+                      }))
+                    }
+                    value={trustedContactDraft.phoneNumber}
+                  />
+                  <FieldInput
+                    label="Note"
+                    onChangeText={(value) =>
+                      setTrustedContactDraft((current) => ({
+                        ...current,
+                        note: value,
+                      }))
+                    }
+                    value={trustedContactDraft.note}
+                  />
+                  <AppButton
+                    disabled={
+                      createTrustedContactMutation.isPending ||
+                      updateTrustedContactMutation.isPending
+                    }
+                    label={
+                      editingTrustedContactId
+                        ? "Update trusted contact"
+                        : "Add trusted contact"
+                    }
+                    onPress={() => {
+                      void handleTrustedContactSave();
+                    }}
+                  />
+                  {editingTrustedContactId ? (
+                    <AppButton
+                      label="Cancel editing"
+                      onPress={() => {
+                        setEditingTrustedContactId(null);
+                        setTrustedContactDraft(emptyTrustedContactDraft);
+                      }}
+                      variant="secondary"
+                    />
+                  ) : null}
+                </View>
+              </>
+            ) : (
+              <InlineNotice
+                message="Legacy-only records do not yet expose managed customer contact governance from this portal."
+                tone="warning"
+              />
+            )}
+          </SectionCard>
+
+          <SectionCard className="gap-4">
+            <AppText className="text-xl text-ink" weight="bold">
               {t("profile.sessionSecurity")}
             </AppText>
             <InlineNotice
@@ -989,7 +1392,10 @@ export function ProfileScreen() {
                   >
                     <View className="flex-row items-center justify-between gap-3">
                       <View className="flex-1 gap-1">
-                        <AppText className="text-base text-ink" weight="semibold">
+                        <AppText
+                          className="text-base text-ink"
+                          weight="semibold"
+                        >
                           {formatSessionLabel(session, t)}
                         </AppText>
                         <AppText className="text-sm text-slate">

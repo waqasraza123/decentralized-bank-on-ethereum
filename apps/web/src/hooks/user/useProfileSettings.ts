@@ -1,10 +1,12 @@
 import axios from "axios";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type {
+  CustomerAgeProfile,
   CustomerNotificationPreferences,
   CustomerSecurityActivityProjection,
   CustomerSessionSecurityStatus,
   CustomerSessionProjection,
+  CustomerTrustedContactProjection,
 } from "@stealth-trails-bank/types";
 import { loadWebRuntimeConfig } from "@stealth-trails-bank/config/web";
 import { ApiResponse, readApiErrorMessage } from "@/lib/api";
@@ -29,6 +31,18 @@ type RotatePasswordResult = {
 
 type UpdateNotificationPreferencesResult = {
   notificationPreferences: CustomerNotificationPreferences;
+};
+
+type UpdateCustomerAgeProfileResult = {
+  ageProfile: CustomerAgeProfile;
+};
+
+type MutateTrustedContactResult = {
+  trustedContact: CustomerTrustedContactProjection;
+};
+
+type RemoveTrustedContactResult = {
+  removedTrustedContactId: string;
 };
 
 type RevokeCustomerSessionsResult = {
@@ -164,12 +178,11 @@ export function useListCustomerSessions() {
       }
 
       try {
-        const response = await axios.get<ApiResponse<ListCustomerSessionsResult>>(
-          `${webRuntimeConfig.serverUrl}/auth/sessions`,
-          {
-            headers: buildWebAuthHeaders(token),
-          },
-        );
+        const response = await axios.get<
+          ApiResponse<ListCustomerSessionsResult>
+        >(`${webRuntimeConfig.serverUrl}/auth/sessions`, {
+          headers: buildWebAuthHeaders(token),
+        });
 
         if (response.data.status !== "success" || !response.data.data) {
           throw new Error(response.data.message || "Failed to load sessions.");
@@ -179,7 +192,7 @@ export function useListCustomerSessions() {
       } catch (error) {
         throw new Error(readApiErrorMessage(error, "Failed to load sessions."));
       }
-    }
+    },
   });
 }
 
@@ -228,7 +241,9 @@ export function useRevokeCustomerSession() {
       }
 
       try {
-        const response = await axios.post<ApiResponse<RevokeCustomerSessionResult>>(
+        const response = await axios.post<
+          ApiResponse<RevokeCustomerSessionResult>
+        >(
           `${webRuntimeConfig.serverUrl}/auth/session/${sessionId}/revoke`,
           {},
           {
@@ -277,7 +292,8 @@ export function useStartCurrentSessionTrustChallenge() {
 
         if (response.data.status !== "success" || !response.data.data) {
           throw new Error(
-            response.data.message || "Failed to send session verification code.",
+            response.data.message ||
+              "Failed to send session verification code.",
           );
         }
 
@@ -291,7 +307,10 @@ export function useStartCurrentSessionTrustChallenge() {
         return response.data.data;
       } catch (error) {
         throw new Error(
-          readApiErrorMessage(error, "Failed to send session verification code."),
+          readApiErrorMessage(
+            error,
+            "Failed to send session verification code.",
+          ),
         );
       }
     },
@@ -311,7 +330,9 @@ export function useVerifyCurrentSessionTrust() {
       }
 
       try {
-        const response = await axios.post<ApiResponse<VerifySessionTrustResult>>(
+        const response = await axios.post<
+          ApiResponse<VerifySessionTrustResult>
+        >(
           `${webRuntimeConfig.serverUrl}/auth/session/trust/verify`,
           { code },
           {
@@ -391,6 +412,226 @@ export function useUpdateNotificationPreferences() {
             error,
             "Failed to update notification preferences.",
           ),
+        );
+      }
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: ["user-profile", user?.supabaseUserId],
+      });
+    },
+  });
+}
+
+export function useUpdateCustomerAgeProfile() {
+  const token = useUserStore((state) => state.token);
+  const user = useUserStore((state) => state.user);
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (input: { dateOfBirth: string | null }) => {
+      if (!token) {
+        throw new Error("Auth token is required.");
+      }
+
+      if (!user?.supabaseUserId) {
+        throw new Error("User profile is required.");
+      }
+
+      try {
+        const response = await axios.patch<
+          ApiResponse<UpdateCustomerAgeProfileResult>
+        >(
+          `${webRuntimeConfig.serverUrl}/user/${user.supabaseUserId}/age-profile`,
+          input,
+          {
+            headers: {
+              ...buildWebAuthHeaders(token),
+            },
+          },
+        );
+
+        if (response.data.status !== "success" || !response.data.data) {
+          throw new Error(
+            response.data.message || "Failed to update age profile.",
+          );
+        }
+
+        return response.data.data.ageProfile;
+      } catch (error) {
+        throw new Error(
+          readApiErrorMessage(error, "Failed to update age profile."),
+        );
+      }
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: ["user-profile", user?.supabaseUserId],
+      });
+    },
+  });
+}
+
+export function useCreateTrustedContact() {
+  const token = useUserStore((state) => state.token);
+  const user = useUserStore((state) => state.user);
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (input: {
+      kind: "trusted_contact" | "beneficiary";
+      firstName: string;
+      lastName: string;
+      relationshipLabel: string;
+      email?: string;
+      phoneNumber?: string;
+      note?: string;
+    }) => {
+      if (!token) {
+        throw new Error("Auth token is required.");
+      }
+
+      if (!user?.supabaseUserId) {
+        throw new Error("User profile is required.");
+      }
+
+      try {
+        const response = await axios.post<
+          ApiResponse<MutateTrustedContactResult>
+        >(
+          `${webRuntimeConfig.serverUrl}/user/${user.supabaseUserId}/trusted-contacts`,
+          input,
+          {
+            headers: {
+              ...buildWebAuthHeaders(token),
+            },
+          },
+        );
+
+        if (response.data.status !== "success" || !response.data.data) {
+          throw new Error(
+            response.data.message || "Failed to create trusted contact.",
+          );
+        }
+
+        return response.data.data.trustedContact;
+      } catch (error) {
+        throw new Error(
+          readApiErrorMessage(error, "Failed to create trusted contact."),
+        );
+      }
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: ["user-profile", user?.supabaseUserId],
+      });
+    },
+  });
+}
+
+export function useUpdateTrustedContact() {
+  const token = useUserStore((state) => state.token);
+  const user = useUserStore((state) => state.user);
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (input: {
+      contactId: string;
+      kind?: "trusted_contact" | "beneficiary";
+      firstName?: string;
+      lastName?: string;
+      relationshipLabel?: string;
+      email?: string;
+      phoneNumber?: string;
+      note?: string;
+    }) => {
+      if (!token) {
+        throw new Error("Auth token is required.");
+      }
+
+      if (!user?.supabaseUserId) {
+        throw new Error("User profile is required.");
+      }
+
+      try {
+        const response = await axios.patch<
+          ApiResponse<MutateTrustedContactResult>
+        >(
+          `${webRuntimeConfig.serverUrl}/user/${user.supabaseUserId}/trusted-contacts/${input.contactId}`,
+          {
+            kind: input.kind,
+            firstName: input.firstName,
+            lastName: input.lastName,
+            relationshipLabel: input.relationshipLabel,
+            email: input.email,
+            phoneNumber: input.phoneNumber,
+            note: input.note,
+          },
+          {
+            headers: {
+              ...buildWebAuthHeaders(token),
+            },
+          },
+        );
+
+        if (response.data.status !== "success" || !response.data.data) {
+          throw new Error(
+            response.data.message || "Failed to update trusted contact.",
+          );
+        }
+
+        return response.data.data.trustedContact;
+      } catch (error) {
+        throw new Error(
+          readApiErrorMessage(error, "Failed to update trusted contact."),
+        );
+      }
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: ["user-profile", user?.supabaseUserId],
+      });
+    },
+  });
+}
+
+export function useRemoveTrustedContact() {
+  const token = useUserStore((state) => state.token);
+  const user = useUserStore((state) => state.user);
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (contactId: string) => {
+      if (!token) {
+        throw new Error("Auth token is required.");
+      }
+
+      if (!user?.supabaseUserId) {
+        throw new Error("User profile is required.");
+      }
+
+      try {
+        const response = await axios.delete<
+          ApiResponse<RemoveTrustedContactResult>
+        >(
+          `${webRuntimeConfig.serverUrl}/user/${user.supabaseUserId}/trusted-contacts/${contactId}`,
+          {
+            headers: {
+              ...buildWebAuthHeaders(token),
+            },
+          },
+        );
+
+        if (response.data.status !== "success" || !response.data.data) {
+          throw new Error(
+            response.data.message || "Failed to remove trusted contact.",
+          );
+        }
+
+        return response.data.data.removedTrustedContactId;
+      } catch (error) {
+        throw new Error(
+          readApiErrorMessage(error, "Failed to remove trusted contact."),
         );
       }
     },

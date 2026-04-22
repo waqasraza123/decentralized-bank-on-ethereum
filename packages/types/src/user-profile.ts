@@ -14,6 +14,41 @@ export type CustomerNotificationPreferences = {
   productUpdateEmails: boolean;
 };
 
+export type CustomerAgeVerificationStatus =
+  | "unverified"
+  | "self_attested"
+  | "verified"
+  | "rejected";
+
+export type CustomerAgeProfile = {
+  dateOfBirth: string | null;
+  ageYears: number | null;
+  legalAdult: boolean | null;
+  verificationStatus: CustomerAgeVerificationStatus;
+  verifiedAt: string | null;
+  verifiedByOperatorId: string | null;
+  verificationNote: string | null;
+};
+
+export type CustomerTrustedContactKind = "trusted_contact" | "beneficiary";
+
+export type CustomerTrustedContactStatus = "active" | "removed";
+
+export type CustomerTrustedContactProjection = {
+  id: string;
+  kind: CustomerTrustedContactKind;
+  status: CustomerTrustedContactStatus;
+  firstName: string;
+  lastName: string;
+  relationshipLabel: string;
+  email: string | null;
+  phoneNumber: string | null;
+  note: string | null;
+  createdAt: string;
+  updatedAt: string;
+  removedAt: string | null;
+};
+
 export type CustomerMfaStatus = {
   required: boolean;
   totpEnrolled: boolean;
@@ -80,6 +115,8 @@ export type UserProfileProjection = {
   closedAt: string | null;
   passwordRotationAvailable: boolean;
   notificationPreferences: CustomerNotificationPreferences | null;
+  ageProfile: CustomerAgeProfile | null;
+  trustedContacts: CustomerTrustedContactProjection[];
   mfa: CustomerMfaStatus;
   sessionSecurity: CustomerSessionSecurityStatus;
 };

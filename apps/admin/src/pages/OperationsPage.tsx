@@ -191,7 +191,7 @@ export function OperationsPage() {
               Retirement vaults: {formatCount(operations.retirementVaultHealth.activeVaultCount)} active /{" "}
               {formatCount(operations.retirementVaultHealth.pendingReviewCount)} review required /{" "}
               {formatCount(operations.retirementVaultHealth.cooldownActiveCount)} cooling down /{" "}
-              {formatCount(operations.retirementVaultHealth.blockedReleaseCount)} blocked by restriction /{" "}
+              {formatCount(operations.retirementVaultHealth.blockedReleaseCount)} blocked by protection /{" "}
               {formatCount(operations.retirementVaultHealth.failedReleaseCount)} failed
             </p>
             <p className="admin-copy">

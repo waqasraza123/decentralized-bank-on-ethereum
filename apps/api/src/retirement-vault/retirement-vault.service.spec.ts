@@ -2,6 +2,7 @@ import { NotFoundException } from "@nestjs/common";
 import {
   AccountLifecycleStatus,
   AssetStatus,
+  OversightIncidentStatus,
   PolicyDecision,
   Prisma,
   RetirementVaultEventType,
@@ -665,6 +666,125 @@ describe("RetirementVaultService", () => {
     );
     expect(transactionClient.retirementVaultEvent.create).toHaveBeenCalledTimes(1);
     expect(transactionClient.auditEvent.create).toHaveBeenCalledTimes(1);
+  });
+
+  it("escalates a retirement vault into incident lock when linked oversight context is provided", async () => {
+    const { service, prismaService, transactionClient } = createService();
+
+    const activeVault = {
+      ...buildVaultRecord(),
+      customerAccount: {
+        id: "account_1",
+        status: AccountLifecycleStatus.active,
+        customer: {
+          id: "customer_1",
+          supabaseUserId: "supabase_1",
+          email: "vault@example.com",
+          firstName: "Ada",
+          lastName: "Vault",
+        },
+      },
+    };
+    const incidentLockedVault = {
+      ...activeVault,
+      status: RetirementVaultStatus.incident_locked,
+      restrictedAt: new Date("2026-04-20T13:05:00.000Z"),
+      restrictionReasonCode: "incident_protective_lock",
+      restrictedByOperatorId: "ops_1",
+      restrictedByOperatorRole: "risk_manager",
+      restrictedByOversightIncidentId: "incident_1",
+    };
+
+    prismaService.retirementVault.findUnique.mockResolvedValue(activeVault);
+    prismaService.oversightIncident.findUnique.mockResolvedValue({
+      id: "incident_1",
+      status: OversightIncidentStatus.open,
+      subjectCustomerAccountId: "account_1",
+    });
+    transactionClient.retirementVault.update.mockResolvedValue(incidentLockedVault);
+    transactionClient.retirementVaultEvent.create.mockResolvedValue({
+      id: "vault_event_incident_locked_1",
+      eventType: RetirementVaultEventType.restricted,
+    });
+    transactionClient.auditEvent.create.mockResolvedValue({ id: "audit_2" });
+
+    const result = await service.restrictInternalVault("vault_1", "ops_1", "risk_manager", {
+      reasonCode: "incident_protective_lock",
+      note: "Lock the vault under linked incident posture.",
+      oversightIncidentId: "incident_1",
+    });
+
+    expect(result.stateReused).toBe(false);
+    expect(result.vault.status).toBe(RetirementVaultStatus.incident_locked);
+    expect(transactionClient.retirementVault.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          status: RetirementVaultStatus.incident_locked,
+          restrictedByOversightIncidentId: "incident_1",
+        }),
+      }),
+    );
+  });
+
+  it("releases incident-locked protection back to active vault status", async () => {
+    const { service, prismaService, transactionClient } = createService();
+
+    const incidentLockedVault = {
+      ...buildVaultRecord({
+        status: RetirementVaultStatus.incident_locked,
+        restrictionReasonCode: "incident_protective_lock",
+        restrictedAt: new Date("2026-04-20T13:05:00.000Z"),
+        restrictedByOperatorId: "ops_1",
+        restrictedByOperatorRole: "risk_manager",
+        restrictedByOversightIncidentId: "incident_1",
+      }),
+      customerAccount: {
+        id: "account_1",
+        status: AccountLifecycleStatus.active,
+        customer: {
+          id: "customer_1",
+          supabaseUserId: "supabase_1",
+          email: "vault@example.com",
+          firstName: "Ada",
+          lastName: "Vault",
+        },
+      },
+    };
+    const activeVault = {
+      ...incidentLockedVault,
+      status: RetirementVaultStatus.active,
+      restrictionReleasedAt: new Date("2026-04-21T08:00:00.000Z"),
+      restrictionReleasedByOperatorId: "ops_2",
+      restrictionReleasedByOperatorRole: "risk_manager",
+      restrictionReleaseNote: "Incident posture cleared.",
+    };
+
+    prismaService.retirementVault.findUnique.mockResolvedValue(incidentLockedVault);
+    transactionClient.retirementVault.update.mockResolvedValue(activeVault);
+    transactionClient.retirementVaultEvent.create.mockResolvedValue({
+      id: "vault_event_released_1",
+      eventType: RetirementVaultEventType.restriction_released,
+    });
+    transactionClient.auditEvent.create.mockResolvedValue({ id: "audit_3" });
+
+    const result = await service.releaseInternalVaultRestriction(
+      "vault_1",
+      "ops_2",
+      "risk_manager",
+      {
+        note: "Incident posture resolved.",
+      },
+    );
+
+    expect(result.stateReused).toBe(false);
+    expect(result.vault.status).toBe(RetirementVaultStatus.active);
+    expect(transactionClient.retirementVault.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          status: RetirementVaultStatus.active,
+        }),
+      }),
+    );
   });
 
   it("sweeps ready retirement vault release requests into released state", async () => {
