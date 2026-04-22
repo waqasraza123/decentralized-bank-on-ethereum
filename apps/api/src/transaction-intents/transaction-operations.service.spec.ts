@@ -17,9 +17,14 @@ function buildIntentRecord(
     assetSymbol: string;
     txHash: string | null;
     customerAccountId: string;
+    recipientCustomerAccountId: string | null;
     email: string;
     supabaseUserId: string;
+    recipientEmail: string;
+    recipientSupabaseUserId: string;
     externalAddress: string | null;
+    recipientMaskedDisplay: string | null;
+    recipientMaskedEmail: string | null;
   }> = {}
 ) {
   const resolvedIntentType =
@@ -36,8 +41,20 @@ function buildIntentRecord(
     sourceWalletId: "wallet_1",
     destinationWalletId:
       resolvedIntentType === TransactionIntentType.deposit ? "wallet_2" : null,
+    recipientCustomerAccountId:
+      overrides.recipientCustomerAccountId === undefined
+        ? null
+        : overrides.recipientCustomerAccountId,
     externalAddress:
       overrides.externalAddress === undefined ? null : overrides.externalAddress,
+    recipientMaskedDisplay:
+      overrides.recipientMaskedDisplay === undefined
+        ? null
+        : overrides.recipientMaskedDisplay,
+    recipientMaskedEmail:
+      overrides.recipientMaskedEmail === undefined
+        ? null
+        : overrides.recipientMaskedEmail,
     chainId: 8453,
     intentType: resolvedIntentType,
     status: overrides.status ?? TransactionIntentStatus.settled,
@@ -78,6 +95,20 @@ function buildIntentRecord(
         lastName: "Raza"
       }
     },
+    recipientCustomerAccount:
+      overrides.recipientCustomerAccountId === null
+        ? null
+        : {
+            id: overrides.recipientCustomerAccountId ?? "account_2",
+            customerId: "customer_2",
+            customer: {
+              id: "customer_2",
+              supabaseUserId: overrides.recipientSupabaseUserId ?? "supabase_2",
+              email: overrides.recipientEmail ?? "recipient@example.com",
+              firstName: "Amina",
+              lastName: "Rahman"
+            }
+          },
     blockchainTransactions: txHash
       ? [
           {
@@ -151,6 +182,45 @@ describe("TransactionOperationsService", () => {
     expect(result.customerAccountId).toBe("account_1");
     expect(result.intents).toHaveLength(2);
     expect(result.intents[1].intentType).toBe(TransactionIntentType.withdrawal);
+  });
+
+  it("maps inbound internal transfers as received with masked sender details", async () => {
+    const { service, prismaService } = createService();
+
+    (prismaService.customerAccount.findFirst as jest.Mock).mockResolvedValue({
+      id: "account_2"
+    });
+
+    (prismaService.transactionIntent.findMany as jest.Mock).mockResolvedValue([
+      buildIntentRecord({
+        id: "intent_internal_1",
+        intentType: TransactionIntentType.internal_balance_transfer,
+        customerAccountId: "account_1",
+        recipientCustomerAccountId: "account_2",
+        supabaseUserId: "supabase_sender",
+        email: "sender@example.com",
+        recipientSupabaseUserId: "supabase_2",
+        recipientEmail: "recipient@example.com",
+        recipientMaskedDisplay: "A*** R***",
+        recipientMaskedEmail: "r*******t@e****.com",
+        txHash: null
+      })
+    ]);
+
+    const result = await service.listMyTransactionHistory("supabase_2", {
+      limit: 20
+    });
+
+    expect(result.customerAccountId).toBe("account_2");
+    expect(result.intents).toHaveLength(1);
+    expect(result.intents[0].intentType).toBe(
+      TransactionIntentType.internal_balance_transfer
+    );
+    expect(result.intents[0].transferDirection).toBe("received");
+    expect(result.intents[0].counterpartyMaskedDisplay).toBe("W*** R***");
+    expect(result.intents[0].counterpartyMaskedEmail).toBe(
+      "s****r@e****.com"
+    );
   });
 
   it("searches transaction operations by customer email and tx hash", async () => {

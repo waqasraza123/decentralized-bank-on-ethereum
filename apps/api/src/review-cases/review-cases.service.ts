@@ -52,6 +52,21 @@ const transactionIntentInclude = {
       address: true
     }
   },
+  recipientCustomerAccount: {
+    select: {
+      id: true,
+      customerId: true,
+      customer: {
+        select: {
+          id: true,
+          supabaseUserId: true,
+          email: true,
+          firstName: true,
+          lastName: true
+        }
+      }
+    }
+  },
   blockchainTransactions: {
     orderBy: {
       createdAt: "desc"
@@ -129,6 +144,9 @@ type TransactionIntentProjection = {
   manualResolvedByOperatorId: string | null;
   manualResolutionOperatorRole: string | null;
   manualResolutionReviewCaseId: string | null;
+  recipientCustomerAccountId: string | null;
+  recipientMaskedDisplay: string | null;
+  recipientMaskedEmail: string | null;
   sourceWalletId: string | null;
   sourceWalletAddress: string | null;
   destinationWalletId: string | null;
@@ -328,6 +346,9 @@ export class ReviewCasesService {
       manualResolvedByOperatorId: intent.manualResolvedByOperatorId,
       manualResolutionOperatorRole: intent.manualResolutionOperatorRole,
       manualResolutionReviewCaseId: intent.manualResolutionReviewCaseId,
+      recipientCustomerAccountId: intent.recipientCustomerAccountId,
+      recipientMaskedDisplay: intent.recipientMaskedDisplay ?? null,
+      recipientMaskedEmail: intent.recipientMaskedEmail ?? null,
       sourceWalletId: intent.sourceWalletId,
       sourceWalletAddress: intent.sourceWallet?.address ?? null,
       destinationWalletId: intent.destinationWalletId,

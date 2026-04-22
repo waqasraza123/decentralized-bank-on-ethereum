@@ -9,6 +9,7 @@ import { useMyBalances } from "@/hooks/balances/useMyBalances";
 import { useMyRetirementVaults } from "@/hooks/retirement-vault/useMyRetirementVaults";
 import { useSupportedAssets } from "@/hooks/assets/useSupportedAssets";
 import DepositCard from "./wallet/DepositCard";
+import InternalTransferCard from "./wallet/InternalTransferCard";
 import WithdrawCard from "./wallet/WithdrawCard";
 import { useUserStore } from "@/stores/userStore";
 import { formatDateLabel, formatTokenAmount } from "@/lib/customer-finance";
@@ -298,7 +299,7 @@ const Wallet = () => {
           </Card>
         </MotionSurface>
 
-        <div className="grid gap-6 xl:grid-cols-2">
+        <div className="grid gap-6 xl:grid-cols-3">
           <DepositCard
             walletAddress={user?.ethereumAddress ?? null}
             assets={supportedAssetsQuery.data?.assets ?? []}
@@ -313,6 +314,26 @@ const Wallet = () => {
           />
           <WithdrawCard
             walletAddress={user?.ethereumAddress ?? null}
+            assets={supportedAssetsQuery.data?.assets ?? []}
+            balances={balances}
+            isAssetsLoading={supportedAssetsQuery.isLoading}
+            isBalancesLoading={balancesQuery.isLoading}
+            assetsErrorMessage={
+              supportedAssetsQuery.isError
+                ? supportedAssetsQuery.error instanceof Error
+                  ? supportedAssetsQuery.error.message
+                  : t("wallet.supportedAssetsError")
+                : null
+            }
+            balancesErrorMessage={
+              balancesQuery.isError
+                ? balancesQuery.error instanceof Error
+                  ? balancesQuery.error.message
+                  : t("wallet.balancesError")
+                : null
+            }
+          />
+          <InternalTransferCard
             assets={supportedAssetsQuery.data?.assets ?? []}
             balances={balances}
             isAssetsLoading={supportedAssetsQuery.isLoading}

@@ -15,6 +15,8 @@ type ApiResponse<T> = {
 
 export type TransactionHistoryIntent = {
   id: string;
+  customerAccountId: string | null;
+  recipientCustomerAccountId: string | null;
   asset: {
     id: string;
     symbol: string;
@@ -28,6 +30,7 @@ export type TransactionHistoryIntent = {
   intentType:
     | "deposit"
     | "withdrawal"
+    | "internal_balance_transfer"
     | "vault_subscription"
     | "vault_redemption";
   status:
@@ -46,6 +49,11 @@ export type TransactionHistoryIntent = {
   settledAmount: string | null;
   failureCode: string | null;
   failureReason: string | null;
+  transferDirection: "sent" | "received" | null;
+  counterpartyMaskedDisplay: string | null;
+  counterpartyMaskedEmail: string | null;
+  recipientMaskedDisplay: string | null;
+  recipientMaskedEmail: string | null;
   createdAt: string;
   updatedAt: string;
   latestBlockchainTransaction: {

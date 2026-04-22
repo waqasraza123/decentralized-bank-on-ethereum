@@ -7,6 +7,7 @@ import type {
   AccountReleaseReviewList,
   AuditEventList,
   ApiResponseEnvelope,
+  BalanceTransferDecisionResult,
   ApplyManualResolutionResult,
   CriticalPlatformAlertRoutingResult,
   CustomerAccountOperationsTimeline,
@@ -71,6 +72,7 @@ import type {
   OversightNoteMutationResult,
   OversightRestrictionMutationResult,
   OversightWorkspace,
+  PendingBalanceTransferList,
   ReviewCaseList,
   ReviewCaseMutationResult,
   ReviewCaseNoteMutationResult,
@@ -126,6 +128,33 @@ export async function listReviewCases(
     method: "GET",
     url: "/review-cases/internal",
     params
+  });
+}
+
+export async function listPendingBalanceTransfers(
+  session: OperatorSession,
+  params: Record<string, string | number | undefined> = {}
+): Promise<PendingBalanceTransferList> {
+  return requestData(session, {
+    method: "GET",
+    url: "/balance-transfers/internal/pending",
+    params
+  });
+}
+
+export async function decideBalanceTransfer(
+  session: OperatorSession,
+  intentId: string,
+  payload: {
+    decision: "approved" | "denied";
+    note?: string;
+    denialReason?: string;
+  }
+): Promise<BalanceTransferDecisionResult> {
+  return requestData(session, {
+    method: "POST",
+    url: `/balance-transfers/internal/${intentId}/decision`,
+    data: payload
   });
 }
 

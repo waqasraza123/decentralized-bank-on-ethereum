@@ -134,14 +134,19 @@ export function TransactionsScreen() {
                   <View className="flex-row items-start justify-between gap-3">
                     <View className="flex-1 gap-1">
                       <AppText className="text-sm text-ink" weight="semibold">
-                        {normalizeIntentTypeLabel(intent.intentType, locale)}
+                        {normalizeIntentTypeLabel(
+                          intent.intentType,
+                          locale,
+                          intent.transferDirection
+                        )}
                       </AppText>
                       <AppText className="text-base text-ink" weight="bold">
                         {formatIntentAmount(
                           intent.settledAmount ?? intent.requestedAmount,
                           intent.asset.symbol,
                           intent.intentType,
-                          locale
+                          locale,
+                          intent.transferDirection
                         )}
                       </AppText>
                       <AppText className="text-xs text-slate">
@@ -177,14 +182,19 @@ export function TransactionsScreen() {
                 <View className="flex-row items-start justify-between gap-3">
                   <View className="flex-1 gap-1">
                     <AppText className="text-2xl text-ink" weight="bold">
-                      {normalizeIntentTypeLabel(selectedIntent.intentType, locale)}
+                      {normalizeIntentTypeLabel(
+                        selectedIntent.intentType,
+                        locale,
+                        selectedIntent.transferDirection
+                      )}
                     </AppText>
                     <AppText className="text-base text-slate">
                       {formatIntentAmount(
                         selectedIntent.settledAmount ?? selectedIntent.requestedAmount,
                         selectedIntent.asset.symbol,
                         selectedIntent.intentType,
-                        locale
+                        locale,
+                        selectedIntent.transferDirection
                       )}
                     </AppText>
                   </View>

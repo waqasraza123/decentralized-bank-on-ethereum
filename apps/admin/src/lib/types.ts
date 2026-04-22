@@ -106,6 +106,84 @@ export type TransactionIntent = {
   updatedAt: string;
 };
 
+export type PendingBalanceTransfer = {
+  id: string;
+  customerAccountId: string | null;
+  recipientCustomerAccountId: string | null;
+  intentType: string;
+  status: string;
+  policyDecision: string;
+  requestedAmount: string;
+  settledAmount: string | null;
+  idempotencyKey: string;
+  failureCode: string | null;
+  failureReason: string | null;
+  recipientMaskedDisplay: string | null;
+  recipientMaskedEmail: string | null;
+  createdAt: string;
+  updatedAt: string;
+  asset: {
+    id: string;
+    symbol: string;
+    displayName: string;
+    decimals: number;
+    chainId: number;
+  };
+  sender: {
+    customerId: string;
+    customerAccountId: string;
+    email: string;
+    firstName: string;
+    lastName: string;
+  };
+  recipient: {
+    customerId: string | null;
+    customerAccountId: string | null;
+    maskedDisplay: string | null;
+    maskedEmail: string | null;
+  };
+  reviewCase: {
+    id: string;
+    status: string;
+    reasonCode: string | null;
+    createdAt: string;
+    updatedAt: string;
+  } | null;
+};
+
+export type PendingBalanceTransferList = {
+  intents: PendingBalanceTransfer[];
+  limit: number;
+};
+
+export type BalanceTransferDecisionResult = {
+  intent: {
+    id: string;
+    customerAccountId: string | null;
+    recipientCustomerAccountId: string | null;
+    intentType: string;
+    status: string;
+    policyDecision: string;
+    requestedAmount: string;
+    settledAmount: string | null;
+    idempotencyKey: string;
+    failureCode: string | null;
+    failureReason: string | null;
+    recipientMaskedDisplay: string | null;
+    recipientMaskedEmail: string | null;
+    createdAt: string;
+    updatedAt: string;
+    asset: {
+      id: string;
+      symbol: string;
+      displayName: string;
+      decimals: number;
+      chainId: number;
+    };
+  };
+  decisionReused: boolean;
+};
+
 export type ReviewCase = {
   id: string;
   type: string;

@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type {
+  CustomerAgeProfile,
   CustomerMfaStatus,
   CustomerNotificationPreferences,
   CustomerSessionSecurityStatus,
@@ -8,6 +9,7 @@ import type {
 import { apiClient, readApiErrorMessage } from "../lib/api/client";
 import type {
   ApiEnvelope,
+  CreateBalanceTransferResult,
   CreateDepositIntentResult,
   CreateMyRetirementVaultResult,
   CreateWithdrawalIntentResult,
@@ -26,6 +28,7 @@ import type {
   LoanQuotePreview,
   MfaStatusResponseData,
   ProfileProjection,
+  RemoveTrustedContactResult,
   RequestMyRetirementVaultReleaseResult,
   RequestMyRetirementVaultRuleChangeResult,
   RotatePasswordResult,
@@ -37,7 +40,10 @@ import type {
   RevokeCustomerSessionResult,
   StartTotpEnrollmentResult,
   StakingMutationResult,
+  MutateTrustedContactResult,
+  PreviewBalanceTransferRecipientResult,
   UpdateNotificationPreferencesResult,
+  UpdateCustomerAgeProfileResult,
   VerifyMfaResult,
   VerifySessionTrustResult,
 } from "../lib/api/types";
@@ -133,10 +139,9 @@ export function useRetirementVaultsQuery() {
     queryKey: ["retirement-vaults"],
     enabled: Boolean(token),
     queryFn: async () => {
-      const response =
-        await apiClient.get<ApiEnvelope<ListMyRetirementVaultsResult>>(
-          "/retirement-vault/me",
-        );
+      const response = await apiClient.get<
+        ApiEnvelope<ListMyRetirementVaultsResult>
+      >("/retirement-vault/me");
 
       if (response.data.status !== "success" || !response.data.data) {
         throw new Error(
@@ -230,6 +235,59 @@ export function useCreateWithdrawalIntentMutation() {
   });
 }
 
+export function usePreviewBalanceTransferRecipientMutation() {
+  return useMutation({
+    mutationFn: async (input: {
+      email: string;
+      assetSymbol?: string;
+      amount?: string;
+    }) => {
+      const response = await apiClient.post<
+        ApiEnvelope<PreviewBalanceTransferRecipientResult>
+      >("/balance-transfers/me/recipient-preview", input);
+
+      if (response.data.status !== "success" || !response.data.data) {
+        throw new Error(
+          response.data.message ||
+            "Failed to preview internal transfer recipient."
+        );
+      }
+
+      return response.data.data;
+    },
+  });
+}
+
+export function useCreateBalanceTransferMutation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (input: {
+      idempotencyKey: string;
+      assetSymbol: string;
+      amount: string;
+      recipientEmail: string;
+    }) => {
+      const response = await apiClient.post<
+        ApiEnvelope<CreateBalanceTransferResult>
+      >("/balance-transfers/me", input);
+
+      if (response.data.status !== "success" || !response.data.data) {
+        throw new Error(
+          response.data.message ||
+            "Failed to create internal balance transfer."
+        );
+      }
+
+      return response.data.data;
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["transactions"] });
+      await queryClient.invalidateQueries({ queryKey: ["balances"] });
+    },
+  });
+}
+
 export function useCreateRetirementVaultMutation() {
   const queryClient = useQueryClient();
 
@@ -303,8 +361,7 @@ export function useRequestRetirementVaultReleaseMutation() {
 
       if (response.data.status !== "success" || !response.data.data) {
         throw new Error(
-          response.data.message ||
-            "Failed to request retirement vault unlock."
+          response.data.message || "Failed to request retirement vault unlock.",
         );
       }
 
@@ -328,7 +385,7 @@ export function useCancelRetirementVaultReleaseMutation() {
       if (response.data.status !== "success" || !response.data.data) {
         throw new Error(
           response.data.message ||
-            "Failed to cancel retirement vault unlock request."
+            "Failed to cancel retirement vault unlock request.",
         );
       }
 
@@ -358,7 +415,7 @@ export function useRequestRetirementVaultRuleChangeMutation() {
       if (response.data.status !== "success" || !response.data.data) {
         throw new Error(
           response.data.message ||
-            "Failed to request retirement vault rule change."
+            "Failed to request retirement vault rule change.",
         );
       }
 
@@ -377,12 +434,15 @@ export function useCancelRetirementVaultRuleChangeMutation() {
     mutationFn: async (ruleChangeRequestId: string) => {
       const response = await apiClient.post<
         ApiEnvelope<CancelMyRetirementVaultRuleChangeResult>
-      >(`/retirement-vault/me/rule-change-requests/${ruleChangeRequestId}/cancel`, {});
+      >(
+        `/retirement-vault/me/rule-change-requests/${ruleChangeRequestId}/cancel`,
+        {},
+      );
 
       if (response.data.status !== "success" || !response.data.data) {
         throw new Error(
           response.data.message ||
-            "Failed to cancel retirement vault rule change request."
+            "Failed to cancel retirement vault rule change request.",
         );
       }
 
@@ -814,10 +874,9 @@ export function useVerifySessionTrustMutation() {
 
   return useMutation({
     mutationFn: async (code: string) => {
-      const response = await apiClient.post<ApiEnvelope<VerifySessionTrustResult>>(
-        "/auth/session/trust/verify",
-        { code },
-      );
+      const response = await apiClient.post<
+        ApiEnvelope<VerifySessionTrustResult>
+      >("/auth/session/trust/verify", { code });
 
       if (response.data.status !== "success" || !response.data.data) {
         throw new Error(
@@ -845,12 +904,15 @@ export function useCustomerSessionsQuery() {
     queryKey: ["customer-sessions"],
     enabled: Boolean(token),
     queryFn: async () => {
-      const response = await apiClient.get<ApiEnvelope<ListCustomerSessionsResult>>(
-        "/auth/sessions",
-      );
+      const response =
+        await apiClient.get<ApiEnvelope<ListCustomerSessionsResult>>(
+          "/auth/sessions",
+        );
 
       if (response.data.status !== "success" || !response.data.data) {
-        throw new Error(response.data.message || "Failed to load customer sessions.");
+        throw new Error(
+          response.data.message || "Failed to load customer sessions.",
+        );
       }
 
       return response.data.data;
@@ -890,7 +952,9 @@ export function useRevokeCustomerSessionMutation() {
       >(`/auth/session/${sessionId}/revoke`);
 
       if (response.data.status !== "success" || !response.data.data) {
-        throw new Error(response.data.message || "Failed to revoke customer session.");
+        throw new Error(
+          response.data.message || "Failed to revoke customer session.",
+        );
       }
 
       return response.data.data;
@@ -918,6 +982,135 @@ export function useUpdateNotificationPreferencesMutation() {
       }
 
       return response.data.data.notificationPreferences;
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: ["profile", user?.supabaseUserId],
+      });
+    },
+  });
+}
+
+export function useUpdateCustomerAgeProfileMutation() {
+  const user = useSessionStore((state) => state.user);
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (input: { dateOfBirth: string | null }) => {
+      const response = await apiClient.patch<
+        ApiEnvelope<UpdateCustomerAgeProfileResult>
+      >(`/user/${user?.supabaseUserId}/age-profile`, input);
+
+      if (response.data.status !== "success" || !response.data.data) {
+        throw new Error(
+          response.data.message || "Failed to update age profile.",
+        );
+      }
+
+      return response.data.data.ageProfile;
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: ["profile", user?.supabaseUserId],
+      });
+    },
+  });
+}
+
+export function useCreateTrustedContactMutation() {
+  const user = useSessionStore((state) => state.user);
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (input: {
+      kind: "trusted_contact" | "beneficiary";
+      firstName: string;
+      lastName: string;
+      relationshipLabel: string;
+      email?: string;
+      phoneNumber?: string;
+      note?: string;
+    }) => {
+      const response = await apiClient.post<
+        ApiEnvelope<MutateTrustedContactResult>
+      >(`/user/${user?.supabaseUserId}/trusted-contacts`, input);
+
+      if (response.data.status !== "success" || !response.data.data) {
+        throw new Error(
+          response.data.message || "Failed to create trusted contact.",
+        );
+      }
+
+      return response.data.data.trustedContact;
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: ["profile", user?.supabaseUserId],
+      });
+    },
+  });
+}
+
+export function useUpdateTrustedContactMutation() {
+  const user = useSessionStore((state) => state.user);
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (input: {
+      contactId: string;
+      kind?: "trusted_contact" | "beneficiary";
+      firstName?: string;
+      lastName?: string;
+      relationshipLabel?: string;
+      email?: string;
+      phoneNumber?: string;
+      note?: string;
+    }) => {
+      const response = await apiClient.patch<
+        ApiEnvelope<MutateTrustedContactResult>
+      >(`/user/${user?.supabaseUserId}/trusted-contacts/${input.contactId}`, {
+        kind: input.kind,
+        firstName: input.firstName,
+        lastName: input.lastName,
+        relationshipLabel: input.relationshipLabel,
+        email: input.email,
+        phoneNumber: input.phoneNumber,
+        note: input.note,
+      });
+
+      if (response.data.status !== "success" || !response.data.data) {
+        throw new Error(
+          response.data.message || "Failed to update trusted contact.",
+        );
+      }
+
+      return response.data.data.trustedContact;
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: ["profile", user?.supabaseUserId],
+      });
+    },
+  });
+}
+
+export function useRemoveTrustedContactMutation() {
+  const user = useSessionStore((state) => state.user);
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (contactId: string) => {
+      const response = await apiClient.delete<
+        ApiEnvelope<RemoveTrustedContactResult>
+      >(`/user/${user?.supabaseUserId}/trusted-contacts/${contactId}`);
+
+      if (response.data.status !== "success" || !response.data.data) {
+        throw new Error(
+          response.data.message || "Failed to remove trusted contact.",
+        );
+      }
+
+      return response.data.data.removedTrustedContactId;
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({

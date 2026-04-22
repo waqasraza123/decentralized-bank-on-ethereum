@@ -363,14 +363,19 @@ export function DashboardScreen() {
                     <View className="flex-row items-start justify-between gap-3">
                       <View className="flex-1 gap-1">
                         <AppText className="text-sm text-ink" weight="semibold">
-                          {normalizeIntentTypeLabel(intent.intentType, locale)}
+                          {normalizeIntentTypeLabel(
+                            intent.intentType,
+                            locale,
+                            intent.transferDirection
+                          )}
                         </AppText>
                         <AppText className="text-base text-ink" weight="bold">
                           {formatIntentAmount(
                             intent.settledAmount ?? intent.requestedAmount,
                             intent.asset.symbol,
                             intent.intentType,
-                            locale
+                            locale,
+                            intent.transferDirection
                           )}
                         </AppText>
                         <AppText className="text-xs text-slate">

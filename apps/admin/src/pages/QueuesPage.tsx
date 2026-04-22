@@ -4,11 +4,13 @@ import { useSearchParams } from "react-router-dom";
 import {
   addReviewCaseNote,
   applyManualResolution,
+  decideBalanceTransfer,
   decideAccountRelease,
   dismissReviewCase,
   getManualResolutionSummary,
   getReviewCaseWorkspace,
   handoffReviewCase,
+  listPendingBalanceTransfers,
   listPendingAccountReleaseReviews,
   listReviewCases,
   requestAccountRelease,
@@ -60,6 +62,7 @@ export function QueuesPage() {
   const selectedReviewCaseId = searchParams.get("reviewCase");
   const [actionNote, setActionNote] = useState("");
   const [handoffOperatorId, setHandoffOperatorId] = useState("");
+  const [selectedTransferId, setSelectedTransferId] = useState<string | null>(null);
   const [manualResolutionReasonCode, setManualResolutionReasonCode] = useState(
     manualResolutionReasonOptions[0]!.value
   );
@@ -79,6 +82,12 @@ export function QueuesPage() {
   const accountReleaseReviewsQuery = useQuery({
     queryKey: ["account-release-reviews", session?.baseUrl],
     queryFn: () => listPendingAccountReleaseReviews(session!, { limit: 20 }),
+    enabled: Boolean(session)
+  });
+
+  const balanceTransfersQuery = useQuery({
+    queryKey: ["balance-transfer-reviews", session?.baseUrl],
+    queryFn: () => listPendingBalanceTransfers(session!, { limit: 20 }),
     enabled: Boolean(session)
   });
 
@@ -115,7 +124,7 @@ export function QueuesPage() {
     setFlash(null);
     setActionError(null);
     setReleaseDecisionSnapshot(null);
-  }, [selectedReviewCaseId]);
+  }, [selectedReviewCaseId, selectedTransferId]);
 
   async function refreshWorkspace() {
     await Promise.all([
@@ -125,6 +134,9 @@ export function QueuesPage() {
       }),
       queryClient.invalidateQueries({
         queryKey: ["account-release-reviews", session?.baseUrl]
+      }),
+      queryClient.invalidateQueries({
+        queryKey: ["balance-transfer-reviews", session?.baseUrl]
       }),
       queryClient.invalidateQueries({
         queryKey: ["manual-resolution-summary", session?.baseUrl]
@@ -266,6 +278,40 @@ export function QueuesPage() {
     }
   });
 
+  const approveTransferMutation = useMutation({
+    mutationFn: () =>
+      decideBalanceTransfer(session!, selectedTransferId!, {
+        decision: "approved",
+        ...(trimToUndefined(actionNote) ? { note: trimToUndefined(actionNote) } : {})
+      }),
+    onMutate: clearActionState,
+    onSuccess: async () => {
+      setFlash("Internal balance transfer approved.");
+      await refreshWorkspace();
+    },
+    onError: (error) => {
+      setActionError(readApiErrorMessage(error, "Failed to approve internal balance transfer."));
+    }
+  });
+
+  const denyTransferMutation = useMutation({
+    mutationFn: () =>
+      decideBalanceTransfer(session!, selectedTransferId!, {
+        decision: "denied",
+        denialReason:
+          trimToUndefined(actionNote) ?? "Operator denied internal balance transfer.",
+        ...(trimToUndefined(actionNote) ? { note: trimToUndefined(actionNote) } : {})
+      }),
+    onMutate: clearActionState,
+    onSuccess: async () => {
+      setFlash("Internal balance transfer denied.");
+      await refreshWorkspace();
+    },
+    onError: (error) => {
+      setActionError(readApiErrorMessage(error, "Failed to deny internal balance transfer."));
+    }
+  });
+
   const resolveCaseMutation = useMutation({
     mutationFn: () => resolveReviewCase(session!, selectedReviewCaseId!, trimToUndefined(actionNote)),
     onMutate: clearActionState,
@@ -298,6 +344,7 @@ export function QueuesPage() {
 
   if (
     reviewCasesQuery.isLoading ||
+    balanceTransfersQuery.isLoading ||
     accountReleaseReviewsQuery.isLoading ||
     manualResolutionSummaryQuery.isLoading
   ) {
@@ -311,6 +358,7 @@ export function QueuesPage() {
 
   if (
     reviewCasesQuery.isError ||
+    balanceTransfersQuery.isError ||
     accountReleaseReviewsQuery.isError ||
     manualResolutionSummaryQuery.isError
   ) {
@@ -339,6 +387,9 @@ export function QueuesPage() {
     (releaseDecisionSnapshot?.reviewCase.id === selectedReviewCaseId
       ? releaseDecisionSnapshot
       : null);
+  const selectedTransfer =
+    balanceTransfersQuery.data!.intents.find((intent) => intent.id === selectedTransferId) ??
+    null;
   const hasPendingReleaseReview =
     pendingReleaseReview?.restriction.releaseDecisionStatus === "pending";
   const pendingGovernedAction =
@@ -346,6 +397,8 @@ export function QueuesPage() {
     requestReleaseMutation.isPending ||
     approveReleaseMutation.isPending ||
     denyReleaseMutation.isPending ||
+    approveTransferMutation.isPending ||
+    denyTransferMutation.isPending ||
     resolveCaseMutation.isPending ||
     dismissCaseMutation.isPending;
 
@@ -367,15 +420,49 @@ export function QueuesPage() {
             detail="Restricted accounts waiting for a governed release decision."
           />
           <MetricCard
-            label="Manual resolutions"
-            value={`${manualResolutionSummaryQuery.data!.totalIntents}`}
-            detail="Intent resolutions reported across the last 30 days."
+            label="Pending transfers"
+            value={`${balanceTransfersQuery.data!.intents.length}`}
+            detail="Internal email transfers waiting on operator approval."
           />
         </div>
 
         <WorkspaceLayout
           sidebar={
             <>
+              <ListCard title="Pending internal transfers">
+                <div className="admin-list">
+                  {balanceTransfersQuery.data!.intents.length > 0 ? (
+                    balanceTransfersQuery.data!.intents.map((intent) => (
+                      <button
+                        key={intent.id}
+                        type="button"
+                        className={`admin-list-row selectable ${
+                          selectedTransferId === intent.id ? "selected" : ""
+                        }`}
+                        onClick={() => setSelectedTransferId(intent.id)}
+                      >
+                        <strong>{intent.sender.email}</strong>
+                        <span>
+                          {intent.requestedAmount} {intent.asset.symbol}
+                        </span>
+                        <span>
+                          {intent.recipient.maskedEmail ?? intent.recipient.maskedDisplay ?? "Masked recipient"}
+                        </span>
+                        <AdminStatusBadge
+                          label={toTitleCase(intent.status)}
+                          tone={mapStatusToTone(intent.status)}
+                        />
+                      </button>
+                    ))
+                  ) : (
+                    <EmptyState
+                      title="No pending internal transfers"
+                      description="Threshold-reviewed internal transfers will appear here when approval is required."
+                    />
+                  )}
+                </div>
+              </ListCard>
+
               <ListCard title="Review cases">
                 <div className="admin-list">
                   {reviewCasesQuery.data!.reviewCases.map((reviewCase) => (
@@ -436,7 +523,92 @@ export function QueuesPage() {
             </>
           }
           main={
-            workspace ? (
+            <>
+              {selectedTransfer ? (
+                <ListCard title="Internal transfer review">
+                  <DetailList
+                    items={[
+                      {
+                        label: "Transfer reference",
+                        value: selectedTransfer.id,
+                        mono: true
+                      },
+                      {
+                        label: "Sender",
+                        value: `${selectedTransfer.sender.email} (${formatName(
+                          selectedTransfer.sender.firstName,
+                          selectedTransfer.sender.lastName
+                        )})`
+                      },
+                      {
+                        label: "Recipient",
+                        value:
+                          selectedTransfer.recipient.maskedEmail ??
+                          selectedTransfer.recipient.maskedDisplay ??
+                          "Masked recipient"
+                      },
+                      {
+                        label: "Amount",
+                        value: `${selectedTransfer.requestedAmount} ${selectedTransfer.asset.symbol}`
+                      },
+                      {
+                        label: "Review case",
+                        value: selectedTransfer.reviewCase?.id ?? "Not linked"
+                      },
+                      {
+                        label: "Threshold outcome",
+                        value: "Reserved immediately and pending operator review"
+                      },
+                      {
+                        label: "Requested",
+                        value: formatDateTime(selectedTransfer.createdAt)
+                      }
+                    ]}
+                  />
+                  <InlineNotice
+                    tone="warning"
+                    title="Reserved sender balance"
+                    description="Approving this transfer settles the reserved balance to the recipient. Denying it releases the sender reservation back to available balance."
+                  />
+                  <div className="admin-field">
+                    <span>Transfer review note</span>
+                    <textarea
+                      aria-label="Transfer review note"
+                      placeholder="Optional note for approval or denial."
+                      value={actionNote}
+                      onChange={(event) => setActionNote(event.target.value)}
+                    />
+                  </div>
+                  {flash ? (
+                    <InlineNotice title="Last action" description={flash} tone="positive" />
+                  ) : null}
+                  {actionError ? (
+                    <InlineNotice title="Action failed" description={actionError} tone="critical" />
+                  ) : null}
+                  <div className="admin-action-buttons">
+                    <button
+                      type="button"
+                      className="admin-primary-button"
+                      disabled={pendingGovernedAction || !selectedTransferId}
+                      onClick={() => approveTransferMutation.mutate()}
+                    >
+                      {approveTransferMutation.isPending
+                        ? "Approving..."
+                        : "Approve transfer"}
+                    </button>
+                    <button
+                      type="button"
+                      className="admin-danger-button"
+                      disabled={pendingGovernedAction || !selectedTransferId}
+                      onClick={() => denyTransferMutation.mutate()}
+                    >
+                      {denyTransferMutation.isPending ? "Denying..." : "Deny transfer"}
+                    </button>
+                  </div>
+                </ListCard>
+              ) : null}
+
+            {workspace ? (
               <>
                 <ListCard title="Selected workspace">
                   <DetailList
@@ -612,12 +784,13 @@ export function QueuesPage() {
                   }}
                 />
               </>
-            ) : (
+            ) : selectedTransfer ? null : (
               <EmptyState
                 title="Select a review case"
                 description="Choose a queue item to inspect balances, release posture, and recent audit context."
               />
-            )
+            )}
+            </>
           }
           rail={
             <ActionRail

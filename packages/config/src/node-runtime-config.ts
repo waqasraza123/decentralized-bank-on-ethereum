@@ -296,6 +296,54 @@ function parseDepositRiskAutoApproveThresholds(
   });
 }
 
+function parseInternalBalanceTransferReviewThresholds(
+  value: string,
+  name: string,
+): InternalBalanceTransferReviewThresholdRuntimeConfig[] {
+  let parsedValue: unknown;
+
+  try {
+    parsedValue = JSON.parse(value);
+  } catch {
+    throw new Error(`${name} must be valid JSON.`);
+  }
+
+  if (!Array.isArray(parsedValue)) {
+    throw new Error(`${name} must be a JSON array.`);
+  }
+
+  return parsedValue.map((entry, index) => {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+      throw new Error(`${name}[${index}] must be an object.`);
+    }
+
+    const assetSymbol =
+      typeof entry["assetSymbol"] === "string"
+        ? entry["assetSymbol"].trim().toUpperCase()
+        : "";
+
+    if (!assetSymbol) {
+      throw new Error(
+        `${name}[${index}].assetSymbol must be a non-empty string.`,
+      );
+    }
+
+    if (typeof entry["maxImmediateSettlementAmount"] !== "string") {
+      throw new Error(
+        `${name}[${index}].maxImmediateSettlementAmount must be a string.`,
+      );
+    }
+
+    return {
+      assetSymbol,
+      maxImmediateSettlementAmount: parsePositiveDecimalString(
+        entry["maxImmediateSettlementAmount"],
+        `${name}[${index}].maxImmediateSettlementAmount`,
+      ),
+    };
+  });
+}
+
 function parseOperatorRuntimeEnvironment(
   value: string | undefined,
 ): OperatorAuthRuntimeEnvironment {
@@ -1127,6 +1175,15 @@ export type DepositRiskPolicyRuntimeConfig = {
   readonly autoApproveThresholds: readonly DepositRiskAutoApproveThresholdRuntimeConfig[];
 };
 
+export type InternalBalanceTransferReviewThresholdRuntimeConfig = {
+  readonly assetSymbol: string;
+  readonly maxImmediateSettlementAmount: string;
+};
+
+export type InternalBalanceTransferPolicyRuntimeConfig = {
+  readonly reviewThresholds: readonly InternalBalanceTransferReviewThresholdRuntimeConfig[];
+};
+
 export type CustomerMfaPolicyRuntimeConfig = {
   readonly emailOtpExpirySeconds: number;
   readonly totpEnrollmentExpirySeconds: number;
@@ -1156,6 +1213,17 @@ export type CustomerSecurityEmailDeliveryMode = "preview" | "webhook";
 
 export type CustomerSecurityEmailDeliveryRuntimeConfig = {
   readonly mode: CustomerSecurityEmailDeliveryMode;
+  readonly webhookUrl: string | null;
+  readonly bearerToken: string | null;
+  readonly requestTimeoutMs: number;
+  readonly fromEmail: string;
+  readonly fromName: string;
+};
+
+export type CustomerTransferEmailDeliveryMode = "preview" | "webhook";
+
+export type CustomerTransferEmailDeliveryRuntimeConfig = {
+  readonly mode: CustomerTransferEmailDeliveryMode;
   readonly webhookUrl: string | null;
   readonly bearerToken: string | null;
   readonly requestTimeoutMs: number;
@@ -2127,6 +2195,24 @@ export function loadDepositRiskPolicyRuntimeConfig(
   };
 }
 
+export function loadInternalBalanceTransferPolicyRuntimeConfig(
+  env: RuntimeEnvShape = getNodeRuntimeEnv(),
+): InternalBalanceTransferPolicyRuntimeConfig {
+  const configuredThresholds = readOptionalRuntimeEnv(
+    env,
+    "INTERNAL_BALANCE_TRANSFER_REVIEW_THRESHOLDS_JSON",
+  );
+
+  return {
+    reviewThresholds: configuredThresholds
+      ? parseInternalBalanceTransferReviewThresholds(
+          configuredThresholds,
+          "INTERNAL_BALANCE_TRANSFER_REVIEW_THRESHOLDS_JSON",
+        )
+      : [],
+  };
+}
+
 export function loadCustomerMfaPolicyRuntimeConfig(
   env: RuntimeEnvShape = getNodeRuntimeEnv(),
 ): CustomerMfaPolicyRuntimeConfig {
@@ -2313,6 +2399,58 @@ export function loadCustomerSecurityEmailDeliveryRuntimeConfig(
     fromName:
       readOptionalRuntimeEnv(env, "CUSTOMER_SECURITY_EMAIL_DELIVERY_FROM_NAME") ??
       "Stealth Trails Bank Security",
+  };
+}
+
+export function loadCustomerTransferEmailDeliveryRuntimeConfig(
+  env: RuntimeEnvShape = getNodeRuntimeEnv(),
+): CustomerTransferEmailDeliveryRuntimeConfig {
+  const mode =
+    readOptionalRuntimeEnv(env, "CUSTOMER_TRANSFER_EMAIL_DELIVERY_MODE") ??
+    "preview";
+
+  if (mode !== "preview" && mode !== "webhook") {
+    throw new Error(
+      "CUSTOMER_TRANSFER_EMAIL_DELIVERY_MODE must be one of: preview, webhook.",
+    );
+  }
+
+  const webhookUrl = readOptionalRuntimeEnv(
+    env,
+    "CUSTOMER_TRANSFER_EMAIL_DELIVERY_WEBHOOK_URL",
+  );
+
+  if (mode === "webhook" && !webhookUrl) {
+    throw new Error(
+      "CUSTOMER_TRANSFER_EMAIL_DELIVERY_WEBHOOK_URL is required when CUSTOMER_TRANSFER_EMAIL_DELIVERY_MODE=webhook.",
+    );
+  }
+
+  return {
+    mode,
+    webhookUrl: webhookUrl?.trim() ?? null,
+    bearerToken:
+      readOptionalRuntimeEnv(
+        env,
+        "CUSTOMER_TRANSFER_EMAIL_DELIVERY_BEARER_TOKEN",
+      ) ?? null,
+    requestTimeoutMs: parsePositiveInteger(
+      readOptionalRuntimeEnv(
+        env,
+        "CUSTOMER_TRANSFER_EMAIL_DELIVERY_REQUEST_TIMEOUT_MS",
+      ) ?? "5000",
+      "CUSTOMER_TRANSFER_EMAIL_DELIVERY_REQUEST_TIMEOUT_MS",
+    ),
+    fromEmail:
+      readOptionalRuntimeEnv(
+        env,
+        "CUSTOMER_TRANSFER_EMAIL_DELIVERY_FROM_EMAIL",
+      ) ?? "transfers@stealthtrailsbank.local",
+    fromName:
+      readOptionalRuntimeEnv(
+        env,
+        "CUSTOMER_TRANSFER_EMAIL_DELIVERY_FROM_NAME",
+      ) ?? "Stealth Trails Bank Transfers",
   };
 }
 

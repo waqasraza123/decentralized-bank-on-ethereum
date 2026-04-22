@@ -230,4 +230,188 @@ describe("LedgerService", () => {
       ]
     });
   });
+
+  it("reserves internal transfer balance into pending liability", async () => {
+    const service = new LedgerService();
+    const transaction = createTransactionClient();
+
+    transaction.ledgerJournal.findUnique.mockResolvedValue(null);
+    transaction.ledgerAccount.upsert
+      .mockResolvedValueOnce({
+        id: "ledger_account_customer"
+      })
+      .mockResolvedValueOnce({
+        id: "ledger_account_pending_internal"
+      });
+    transaction.customerAssetBalance.updateMany.mockResolvedValue({
+      count: 1
+    });
+    transaction.customerAssetBalance.findUnique.mockResolvedValue({
+      availableBalance: new Prisma.Decimal("70"),
+      pendingBalance: new Prisma.Decimal("30")
+    });
+    transaction.ledgerJournal.create.mockResolvedValue({
+      id: "ledger_journal_internal_reserve_1"
+    });
+    transaction.ledgerPosting.createMany.mockResolvedValue({
+      count: 2
+    });
+
+    const result = await service.reserveInternalBalanceTransferBalance(
+      transaction as never,
+      {
+        transactionIntentId: "intent_internal_1",
+        customerAccountId: "account_1",
+        assetId: "asset_1",
+        chainId: 8453,
+        amount: new Prisma.Decimal("30")
+      }
+    );
+
+    expect(result.ledgerJournalId).toBe("ledger_journal_internal_reserve_1");
+    expect(result.senderAvailableBalance).toBe("70");
+    expect(result.senderPendingBalance).toBe("30");
+    expect(transaction.ledgerPosting.createMany).toHaveBeenCalledWith({
+      data: [
+        {
+          ledgerJournalId: "ledger_journal_internal_reserve_1",
+          ledgerAccountId: "ledger_account_customer",
+          direction: LedgerPostingDirection.debit,
+          amount: new Prisma.Decimal("30")
+        },
+        {
+          ledgerJournalId: "ledger_journal_internal_reserve_1",
+          ledgerAccountId: "ledger_account_pending_internal",
+          direction: LedgerPostingDirection.credit,
+          amount: new Prisma.Decimal("30")
+        }
+      ]
+    });
+  });
+
+  it("releases a reserved internal transfer back to available balance", async () => {
+    const service = new LedgerService();
+    const transaction = createTransactionClient();
+
+    transaction.ledgerJournal.findUnique.mockResolvedValue(null);
+    transaction.ledgerAccount.upsert
+      .mockResolvedValueOnce({
+        id: "ledger_account_customer"
+      })
+      .mockResolvedValueOnce({
+        id: "ledger_account_pending_internal"
+      });
+    transaction.customerAssetBalance.updateMany.mockResolvedValue({
+      count: 1
+    });
+    transaction.customerAssetBalance.findUnique.mockResolvedValue({
+      availableBalance: new Prisma.Decimal("100"),
+      pendingBalance: new Prisma.Decimal("0")
+    });
+    transaction.ledgerJournal.create.mockResolvedValue({
+      id: "ledger_journal_internal_release_1"
+    });
+    transaction.ledgerPosting.createMany.mockResolvedValue({
+      count: 2
+    });
+
+    const result = await service.releaseInternalBalanceTransferReservation(
+      transaction as never,
+      {
+        transactionIntentId: "intent_internal_1",
+        customerAccountId: "account_1",
+        assetId: "asset_1",
+        chainId: 8453,
+        amount: new Prisma.Decimal("30")
+      }
+    );
+
+    expect(result.ledgerJournalId).toBe("ledger_journal_internal_release_1");
+    expect(result.senderAvailableBalance).toBe("100");
+    expect(result.senderPendingBalance).toBe("0");
+    expect(transaction.ledgerPosting.createMany).toHaveBeenCalledWith({
+      data: [
+        {
+          ledgerJournalId: "ledger_journal_internal_release_1",
+          ledgerAccountId: "ledger_account_pending_internal",
+          direction: LedgerPostingDirection.debit,
+          amount: new Prisma.Decimal("30")
+        },
+        {
+          ledgerJournalId: "ledger_journal_internal_release_1",
+          ledgerAccountId: "ledger_account_customer",
+          direction: LedgerPostingDirection.credit,
+          amount: new Prisma.Decimal("30")
+        }
+      ]
+    });
+  });
+
+  it("settles a pending internal transfer from sender reservation to recipient balance", async () => {
+    const service = new LedgerService();
+    const transaction = createTransactionClient();
+
+    transaction.ledgerJournal.findUnique.mockResolvedValue(null);
+    transaction.ledgerAccount.upsert
+      .mockResolvedValueOnce({
+        id: "ledger_account_pending_internal"
+      })
+      .mockResolvedValueOnce({
+        id: "ledger_account_recipient"
+      });
+    transaction.customerAssetBalance.updateMany.mockResolvedValue({
+      count: 1
+    });
+    transaction.customerAssetBalance.upsert.mockResolvedValue({
+      availableBalance: new Prisma.Decimal("55"),
+      pendingBalance: new Prisma.Decimal("0")
+    });
+    transaction.customerAssetBalance.findUnique.mockResolvedValue({
+      availableBalance: new Prisma.Decimal("70"),
+      pendingBalance: new Prisma.Decimal("0")
+    });
+    transaction.ledgerJournal.create.mockResolvedValue({
+      id: "ledger_journal_internal_settlement_1"
+    });
+    transaction.ledgerPosting.createMany.mockResolvedValue({
+      count: 2
+    });
+
+    const result = await service.settleInternalBalanceTransfer(
+      transaction as never,
+      {
+        transactionIntentId: "intent_internal_1",
+        senderCustomerAccountId: "account_1",
+        recipientCustomerAccountId: "account_2",
+        assetId: "asset_1",
+        chainId: 8453,
+        amount: new Prisma.Decimal("30"),
+        settleFromPending: true
+      }
+    );
+
+    expect(result.ledgerJournalId).toBe(
+      "ledger_journal_internal_settlement_1"
+    );
+    expect(result.senderAvailableBalance).toBe("70");
+    expect(result.senderPendingBalance).toBe("0");
+    expect(result.recipientAvailableBalance).toBe("55");
+    expect(result.recipientPendingBalance).toBe("0");
+    expect(transaction.ledgerPosting.createMany).toHaveBeenCalledWith({
+      data: [
+        {
+          ledgerJournalId: "ledger_journal_internal_settlement_1",
+          ledgerAccountId: "ledger_account_pending_internal",
+          direction: LedgerPostingDirection.debit,
+          amount: new Prisma.Decimal("30")
+        },
+        {
+          ledgerJournalId: "ledger_journal_internal_settlement_1",
+          ledgerAccountId: "ledger_account_recipient",
+          direction: LedgerPostingDirection.credit,
+          amount: new Prisma.Decimal("30")
+        }
+      ]
+    });
+  });
 });

@@ -70,12 +70,17 @@ function mapHistoryToRows(
 
     return {
       id: intent.id,
-      type: normalizeIntentTypeLabel(intent.intentType, locale),
+      type: normalizeIntentTypeLabel(
+        intent.intentType,
+        locale,
+        intent.transferDirection
+      ),
       amount: formatIntentAmount(
         intent.settledAmount ?? intent.requestedAmount,
         intent.asset.symbol,
         intent.intentType,
-        locale
+        locale,
+        intent.transferDirection
       ),
       date: formatDateLabel(intent.createdAt, locale),
       statusLabel: formatIntentStatusLabel(intent.status, locale),

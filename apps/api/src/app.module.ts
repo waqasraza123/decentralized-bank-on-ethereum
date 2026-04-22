@@ -1,6 +1,7 @@
 import { Module } from "@nestjs/common";
 import { AuditEventsModule } from "./audit-events/audit-events.module";
 import { AuthModule } from "./auth/auth.module";
+import { BalanceTransfersModule } from "./balance-transfers/balance-transfers.module";
 import { ClientObservabilityModule } from "./client-observability/client-observability.module";
 import { CustomerAccountIncidentPackageModule } from "./customer-account-incident-package/customer-account-incident-package.module";
 import { CustomerAccountOperationsModule } from "./customer-account-operations/customer-account-operations.module";
@@ -29,6 +30,7 @@ import { UserModule } from "./user/user.module";
     HealthModule,
     AuditEventsModule,
     AuthModule,
+    BalanceTransfersModule,
     ClientObservabilityModule,
     UserModule,
     PoolsModule,

@@ -40,6 +40,7 @@ The codebase is no longer a prototype shell. It already contains real customer a
 Current execution frontier:
 
 - Phase 11/12 boundary hardening
+- internal email transfer hardening is in place; dedicated end-to-end verification is deferred to a follow-up pass
 
 Immediate next step:
 
@@ -59,6 +60,7 @@ Immediate next step:
 - managed wallet ownership and customer profile projection
 - supported assets and ledger-backed customer balances
 - deposit and withdrawal intent request flows with review and execution state
+- internal email-to-email balance transfer with MFA, session trust, masked recipient preview, and operator review thresholds
 - transaction history, reference IDs, and status timelines
 - staking/yield snapshot and governed mutation paths
 - customer loan dashboard, quote preview, application submission, and autopay preferences
@@ -218,6 +220,7 @@ Use these docs first when working in the repo:
 - `docs/architecture/target-system.md`
 - `docs/architecture/production-roadmap.md`
 - `docs/architecture/critical-feature-e2e-plan.md`
+- `docs/roadmaps/email-balance-transfer/README.md`
 - `docs/architecture/data-model-target.md`
 - `docs/architecture/schema-transition-plan.md`
 - `docs/mobile/react-native-product-spec.md`

@@ -26,6 +26,11 @@ model Customer {
   email              String              @unique
   firstName          String?
   lastName           String?
+  dateOfBirth        DateTime?           @db.Date
+  ageVerificationStatus CustomerAgeVerificationStatus @default(unverified)
+  ageVerifiedAt      DateTime?
+  ageVerifiedByOperatorId String?
+  ageVerificationNote String?
   passwordHash       String?
   authTokenVersion   Int                 @default(0)
   mfaRequired        Boolean             @default(true)
@@ -50,8 +55,29 @@ model Customer {
   mfaRecoveryRequests CustomerMfaRecoveryRequest[]
   reviewCases        ReviewCase[]
   auditEvents        AuditEvent[]
+  trustedContacts    CustomerTrustedContact[]
   oversightIncidents OversightIncident[] @relation("OversightIncidentCustomer")
   ledgerReconciliationMismatches LedgerReconciliationMismatch[]
+}
+
+model CustomerTrustedContact {
+  id                String                       @id @default(cuid())
+  customerId        String
+  customer          Customer                     @relation(fields: [customerId], references: [id])
+  kind              CustomerTrustedContactKind   @default(trusted_contact)
+  status            CustomerTrustedContactStatus @default(active)
+  firstName         String
+  lastName          String
+  relationshipLabel String
+  email             String?
+  phoneNumber       String?
+  note              String?
+  createdAt         DateTime                     @default(now())
+  updatedAt         DateTime                     @updatedAt
+  removedAt         DateTime?
+
+  @@index([customerId, status, kind])
+  @@index([customerId, createdAt])
 }
 
 model CustomerAccount {
@@ -72,7 +98,8 @@ model CustomerAccount {
   createdAt                       DateTime                     @default(now())
   updatedAt                       DateTime                     @updatedAt
   wallets                         Wallet[]
-  transactionIntents              TransactionIntent[]
+  transactionIntents              TransactionIntent[]           @relation("SenderCustomerAccount")
+  receivedTransactionIntents      TransactionIntent[]           @relation("RecipientCustomerAccount")
   mfaRecoveryRequests             CustomerMfaRecoveryRequest[]
   reviewCases                     ReviewCase[]
   oversightIncidents              OversightIncident[]          @relation("OversightIncidentCustomerAccount")
@@ -172,7 +199,9 @@ model Asset {
 model TransactionIntent {
   id                           String                  @id @default(cuid())
   customerAccountId            String?
-  customerAccount              CustomerAccount?        @relation(fields: [customerAccountId], references: [id])
+  customerAccount              CustomerAccount?        @relation("SenderCustomerAccount", fields: [customerAccountId], references: [id])
+  recipientCustomerAccountId   String?
+  recipientCustomerAccount     CustomerAccount?        @relation("RecipientCustomerAccount", fields: [recipientCustomerAccountId], references: [id])
   retirementVaultId            String?
   retirementVault              RetirementVault?        @relation(fields: [retirementVaultId], references: [id])
   assetId                      String
@@ -182,6 +211,9 @@ model TransactionIntent {
   destinationWalletId          String?
   destinationWallet            Wallet?                 @relation("DestinationWallet", fields: [destinationWalletId], references: [id])
   externalAddress              String?
+  recipientEmailSnapshot       String?
+  recipientMaskedEmail         String?
+  recipientMaskedDisplay       String?
   chainId                      Int
   intentType                   TransactionIntentType
   status                       TransactionIntentStatus
@@ -214,6 +246,7 @@ model TransactionIntent {
   retirementVaultReleaseRequest RetirementVaultReleaseRequest? @relation("RetirementVaultReleaseTransactionIntent")
 
   @@index([customerAccountId])
+  @@index([recipientCustomerAccountId])
   @@index([assetId])
   @@index([sourceWalletId])
   @@index([destinationWalletId])
@@ -624,6 +657,7 @@ enum AssetStatus {
 enum TransactionIntentType {
   deposit
   withdrawal
+  internal_balance_transfer
   vault_subscription
   vault_redemption
   treasury_transfer
@@ -646,6 +680,7 @@ enum TransactionIntentStatus {
 enum RetirementVaultStatus {
   active
   restricted
+  incident_locked
   released
 }
 
@@ -765,6 +800,23 @@ enum CustomerAuthSessionRevocationReason {
   session_revoked
 }
 
+enum CustomerAgeVerificationStatus {
+  unverified
+  self_attested
+  verified
+  rejected
+}
+
+enum CustomerTrustedContactKind {
+  trusted_contact
+  beneficiary
+}
+
+enum CustomerTrustedContactStatus {
+  active
+  removed
+}
+
 enum CustomerMfaRecoveryRequestType {
   release_lockout
   reset_mfa
@@ -787,6 +839,7 @@ enum ReviewCaseStatus {
 enum ReviewCaseType {
   account_review
   withdrawal_review
+  internal_balance_transfer_review
   reconciliation_review
   manual_intervention
 }
@@ -1376,6 +1429,7 @@ enum LedgerAccountType {
   asset_outbound_clearing
   customer_asset_liability
   customer_asset_pending_withdrawal_liability
+  customer_asset_pending_internal_transfer_liability
   customer_retirement_vault_liability
   loan_principal_receivable
   loan_service_fee_receivable
@@ -1389,6 +1443,9 @@ enum LedgerJournalType {
   withdrawal_reservation
   withdrawal_reservation_release
   withdrawal_settlement
+  internal_balance_transfer_reservation
+  internal_balance_transfer_reservation_release
+  internal_balance_transfer_settlement
   retirement_vault_funding
   retirement_vault_release
   loan_disbursement

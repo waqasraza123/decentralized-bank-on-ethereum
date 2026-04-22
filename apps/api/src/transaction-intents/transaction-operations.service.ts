@@ -29,6 +29,7 @@ type LatestBlockchainTransactionProjection = {
 type TransactionHistoryProjection = {
   id: string;
   customerAccountId: string | null;
+  recipientCustomerAccountId: string | null;
   asset: {
     id: string;
     symbol: string;
@@ -50,6 +51,11 @@ type TransactionHistoryProjection = {
   idempotencyKey: string;
   failureCode: string | null;
   failureReason: string | null;
+  transferDirection: "sent" | "received" | null;
+  counterpartyMaskedDisplay: string | null;
+  counterpartyMaskedEmail: string | null;
+  recipientMaskedDisplay: string | null;
+  recipientMaskedEmail: string | null;
   createdAt: string;
   updatedAt: string;
   latestBlockchainTransaction: LatestBlockchainTransactionProjection | null;
@@ -156,6 +162,21 @@ type TransactionIntentRecord = Prisma.TransactionIntentGetPayload<{
         };
       };
     };
+    recipientCustomerAccount: {
+      select: {
+        id: true;
+        customerId: true;
+        customer: {
+          select: {
+            id: true;
+            supabaseUserId: true;
+            email: true;
+            firstName: true;
+            lastName: true;
+          };
+        };
+      };
+    };
     blockchainTransactions: {
       orderBy: {
         createdAt: "desc";
@@ -209,12 +230,64 @@ export class TransactionOperationsService {
     };
   }
 
+  private maskEmail(email: string): string {
+    const [localPart, domainPart = ""] = email.trim().toLowerCase().split("@");
+    const maskedLocal =
+      localPart.length <= 2
+        ? `${localPart.slice(0, 1)}*`
+        : `${localPart.slice(0, 1)}${"*".repeat(Math.min(localPart.length - 2, 4))}${localPart.slice(-1)}`;
+    const [domainName = "", ...domainTail] = domainPart.split(".");
+    const maskedDomain = domainName
+      ? `${domainName.slice(0, 1)}${"*".repeat(Math.max(Math.min(domainName.length - 1, 4), 1))}`
+      : "";
+    const domainSuffix = domainTail.length > 0 ? `.${domainTail.join(".")}` : "";
+    return `${maskedLocal}@${maskedDomain}${domainSuffix}`;
+  }
+
+  private maskDisplayName(input: {
+    firstName: string | null;
+    lastName: string | null;
+    fallbackEmail: string;
+  }): string {
+    const tokens = [input.firstName, input.lastName]
+      .map((value) => value?.trim() ?? "")
+      .filter(Boolean);
+
+    if (tokens.length === 0) {
+      const fallback = input.fallbackEmail.split("@")[0] ?? "Customer";
+      return `${fallback.slice(0, 1).toUpperCase()}***`;
+    }
+
+    return tokens
+      .map((token) => `${token.slice(0, 1).toUpperCase()}***`)
+      .join(" ");
+  }
+
   private mapTransactionHistoryProjection(
-    intent: TransactionIntentRecord
+    intent: TransactionIntentRecord,
+    viewerCustomerAccountId?: string | null
   ): TransactionHistoryProjection {
+    const isInternalTransfer =
+      intent.intentType === TransactionIntentType.internal_balance_transfer;
+    const isReceivedTransfer =
+      isInternalTransfer &&
+      Boolean(viewerCustomerAccountId) &&
+      intent.recipientCustomerAccountId === viewerCustomerAccountId;
+    const senderMaskedDisplay = intent.customerAccount
+      ? this.maskDisplayName({
+          firstName: intent.customerAccount.customer.firstName,
+          lastName: intent.customerAccount.customer.lastName,
+          fallbackEmail: intent.customerAccount.customer.email
+        })
+      : null;
+    const senderMaskedEmail = intent.customerAccount
+      ? this.maskEmail(intent.customerAccount.customer.email)
+      : null;
+
     return {
       id: intent.id,
       customerAccountId: intent.customerAccountId,
+      recipientCustomerAccountId: intent.recipientCustomerAccountId,
       asset: {
         id: intent.asset.id,
         symbol: intent.asset.symbol,
@@ -236,6 +309,23 @@ export class TransactionOperationsService {
       idempotencyKey: intent.idempotencyKey,
       failureCode: intent.failureCode,
       failureReason: intent.failureReason,
+      transferDirection: isInternalTransfer
+        ? isReceivedTransfer
+          ? "received"
+          : "sent"
+        : null,
+      counterpartyMaskedDisplay: isInternalTransfer
+        ? isReceivedTransfer
+          ? senderMaskedDisplay
+          : intent.recipientMaskedDisplay ?? null
+        : null,
+      counterpartyMaskedEmail: isInternalTransfer
+        ? isReceivedTransfer
+          ? senderMaskedEmail
+          : intent.recipientMaskedEmail ?? null
+        : null,
+      recipientMaskedDisplay: intent.recipientMaskedDisplay ?? null,
+      recipientMaskedEmail: intent.recipientMaskedEmail ?? null,
       createdAt: intent.createdAt.toISOString(),
       updatedAt: intent.updatedAt.toISOString(),
       latestBlockchainTransaction: this.mapLatestBlockchainTransaction(intent)
@@ -251,6 +341,7 @@ export class TransactionOperationsService {
 
     return {
       ...this.mapTransactionHistoryProjection(intent),
+      recipientCustomerAccountId: intent.recipientCustomerAccountId,
       customer: {
         customerId: intent.customerAccount.customer.id,
         customerAccountId: intent.customerAccount.id,
@@ -264,7 +355,12 @@ export class TransactionOperationsService {
 
   private buildIntentWhereInput(
     query: {
-      intentType?: "deposit" | "withdrawal";
+      intentType?:
+        | "deposit"
+        | "withdrawal"
+        | "internal_balance_transfer"
+        | "vault_subscription"
+        | "vault_redemption";
       status?:
         | "requested"
         | "review_required"
@@ -315,27 +411,56 @@ export class TransactionOperationsService {
 
     if (query.customerAccountId?.trim()) {
       conditions.push({
-        customerAccountId: query.customerAccountId.trim()
+        OR: [
+          {
+            customerAccountId: query.customerAccountId.trim()
+          },
+          {
+            recipientCustomerAccountId: query.customerAccountId.trim()
+          }
+        ]
       });
     }
 
     if (query.supabaseUserId?.trim()) {
       conditions.push({
-        customerAccount: {
-          customer: {
-            supabaseUserId: query.supabaseUserId.trim()
+        OR: [
+          {
+            customerAccount: {
+              customer: {
+                supabaseUserId: query.supabaseUserId.trim()
+              }
+            }
+          },
+          {
+            recipientCustomerAccount: {
+              customer: {
+                supabaseUserId: query.supabaseUserId.trim()
+              }
+            }
           }
-        }
+        ]
       });
     }
 
     if (query.email?.trim()) {
       conditions.push({
-        customerAccount: {
-          customer: {
-            email: query.email.trim().toLowerCase()
+        OR: [
+          {
+            customerAccount: {
+              customer: {
+                email: query.email.trim().toLowerCase()
+              }
+            }
+          },
+          {
+            recipientCustomerAccount: {
+              customer: {
+                email: query.email.trim().toLowerCase()
+              }
+            }
           }
-        }
+        ]
       });
     }
 
@@ -393,7 +518,14 @@ export class TransactionOperationsService {
         AND: [
           this.buildIntentWhereInput(query),
           {
-            customerAccountId
+            OR: [
+              {
+                customerAccountId
+              },
+              {
+                recipientCustomerAccountId: customerAccountId
+              }
+            ]
           }
         ]
       },
@@ -438,6 +570,21 @@ export class TransactionOperationsService {
             }
           }
         },
+        recipientCustomerAccount: {
+          select: {
+            id: true,
+            customerId: true,
+            customer: {
+              select: {
+                id: true,
+                supabaseUserId: true,
+                email: true,
+                firstName: true,
+                lastName: true
+              }
+            }
+          }
+        },
         blockchainTransactions: {
           orderBy: {
             createdAt: "desc"
@@ -459,7 +606,9 @@ export class TransactionOperationsService {
 
     return {
       customerAccountId,
-      intents: intents.map((intent) => this.mapTransactionHistoryProjection(intent)),
+      intents: intents.map((intent) =>
+        this.mapTransactionHistoryProjection(intent, customerAccountId)
+      ),
       limit
     };
   }
@@ -498,6 +647,21 @@ export class TransactionOperationsService {
           }
         },
         customerAccount: {
+          select: {
+            id: true,
+            customerId: true,
+            customer: {
+              select: {
+                id: true,
+                supabaseUserId: true,
+                email: true,
+                firstName: true,
+                lastName: true
+              }
+            }
+          }
+        },
+        recipientCustomerAccount: {
           select: {
             id: true,
             customerId: true,
@@ -643,7 +807,14 @@ export class TransactionOperationsService {
 
     const recentIntents = await this.prismaService.transactionIntent.findMany({
       where: {
-        customerAccountId: customerAccount.id,
+        OR: [
+          {
+            customerAccountId: customerAccount.id
+          },
+          {
+            recipientCustomerAccountId: customerAccount.id
+          }
+        ],
         chainId: this.productChainId
       },
       orderBy: {
@@ -673,6 +844,21 @@ export class TransactionOperationsService {
           }
         },
         customerAccount: {
+          select: {
+            id: true,
+            customerId: true,
+            customer: {
+              select: {
+                id: true,
+                supabaseUserId: true,
+                email: true,
+                firstName: true,
+                lastName: true
+              }
+            }
+          }
+        },
+        recipientCustomerAccount: {
           select: {
             id: true,
             customerId: true,
@@ -728,7 +914,7 @@ export class TransactionOperationsService {
         updatedAt: balance.updatedAt.toISOString()
       })),
       recentIntents: recentIntents.map((intent) =>
-        this.mapTransactionHistoryProjection(intent)
+        this.mapTransactionHistoryProjection(intent, customerAccount.id)
       ),
       recentLimit
     };

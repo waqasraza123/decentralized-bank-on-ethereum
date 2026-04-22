@@ -15,6 +15,7 @@ import {
 export type CustomerIntentType =
   | "deposit"
   | "withdrawal"
+  | "internal_balance_transfer"
   | "vault_subscription"
   | "vault_redemption";
 
@@ -123,7 +124,8 @@ export function formatShortAddress(
 
 export function normalizeIntentTypeLabel(
   intentType: CustomerIntentType,
-  locale: SupportedLocale = "en"
+  locale: SupportedLocale = "en",
+  transferDirection: "sent" | "received" | null = null
 ): string {
   if (locale === "ar") {
     if (intentType === "deposit") {
@@ -132,6 +134,12 @@ export function normalizeIntentTypeLabel(
 
     if (intentType === "withdrawal") {
       return "سحب";
+    }
+
+    if (intentType === "internal_balance_transfer") {
+      return transferDirection === "received"
+        ? "تحويل داخلي وارد"
+        : "تحويل داخلي مرسل";
     }
 
     return intentType === "vault_subscription"
@@ -147,6 +155,12 @@ export function normalizeIntentTypeLabel(
     return "Withdrawal";
   }
 
+  if (intentType === "internal_balance_transfer") {
+    return transferDirection === "received"
+      ? "Internal transfer received"
+      : "Internal transfer sent";
+  }
+
   return intentType === "vault_subscription"
     ? "Retirement Vault funding"
     : "Retirement Vault release";
@@ -156,10 +170,16 @@ export function formatIntentAmount(
   amount: string,
   assetSymbol: string,
   intentType: CustomerIntentType,
-  locale: SupportedLocale = "en"
+  locale: SupportedLocale = "en",
+  transferDirection: "sent" | "received" | null = null
 ): string {
   const prefix =
-    intentType === "deposit" || intentType === "vault_redemption" ? "+" : "-";
+    intentType === "deposit" ||
+    intentType === "vault_redemption" ||
+    (intentType === "internal_balance_transfer" &&
+      transferDirection === "received")
+      ? "+"
+      : "-";
   return `${prefix}${formatTokenAmount(amount, locale)} ${assetSymbol}`;
 }
 
@@ -174,6 +194,8 @@ export function resolveIntentAddress(input: {
         toAddress: string | null;
       }
     | null;
+  counterpartyMaskedDisplay?: string | null;
+  counterpartyMaskedEmail?: string | null;
 }): string {
   if (
     input.intentType === "vault_subscription" ||
@@ -188,6 +210,14 @@ export function resolveIntentAddress(input: {
       input.latestBlockchainTransaction?.toAddress ??
       input.sourceWalletAddress ??
       "N/A"
+    );
+  }
+
+  if (input.intentType === "internal_balance_transfer") {
+    return (
+      input.counterpartyMaskedEmail ??
+      input.counterpartyMaskedDisplay ??
+      "Internal customer"
     );
   }
 

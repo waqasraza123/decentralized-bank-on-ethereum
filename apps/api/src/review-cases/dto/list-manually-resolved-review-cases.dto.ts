@@ -29,12 +29,14 @@ export class ListManuallyResolvedReviewCasesDto {
   @IsIn([
     "account_review",
     "withdrawal_review",
+    "internal_balance_transfer_review",
     "reconciliation_review",
     "manual_intervention"
   ])
   type?:
     | "account_review"
     | "withdrawal_review"
+    | "internal_balance_transfer_review"
     | "reconciliation_review"
     | "manual_intervention";
 

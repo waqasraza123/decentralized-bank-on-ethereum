@@ -45,6 +45,50 @@ type WithdrawalBalanceTransitionResult = {
   pendingBalance: string;
 };
 
+type ReserveInternalBalanceTransferParams = {
+  transactionIntentId: string;
+  customerAccountId: string;
+  assetId: string;
+  chainId: number;
+  amount: Prisma.Decimal;
+};
+
+type ReleaseInternalBalanceTransferReservationParams = {
+  transactionIntentId: string;
+  customerAccountId: string;
+  assetId: string;
+  chainId: number;
+  amount: Prisma.Decimal;
+};
+
+type SettleInternalBalanceTransferParams = {
+  transactionIntentId: string;
+  senderCustomerAccountId: string;
+  recipientCustomerAccountId: string;
+  assetId: string;
+  chainId: number;
+  amount: Prisma.Decimal;
+  settleFromPending: boolean;
+};
+
+type InternalBalanceTransferReservationResult = {
+  ledgerJournalId: string;
+  debitLedgerAccountId: string;
+  creditLedgerAccountId: string;
+  senderAvailableBalance: string;
+  senderPendingBalance: string;
+};
+
+type InternalBalanceTransferSettlementResult = {
+  ledgerJournalId: string;
+  debitLedgerAccountId: string;
+  creditLedgerAccountId: string;
+  senderAvailableBalance: string;
+  senderPendingBalance: string;
+  recipientAvailableBalance: string;
+  recipientPendingBalance: string;
+};
+
 type SettleConfirmedWithdrawalParams = {
   transactionIntentId: string;
   customerAccountId: string;
@@ -147,6 +191,13 @@ export class LedgerService {
     assetId: string
   ): string {
     return `customer_asset_pending_withdrawal_liability:${customerAccountId}:${assetId}`;
+  }
+
+  private buildPendingInternalTransferLiabilityLedgerKey(
+    customerAccountId: string,
+    assetId: string
+  ): string {
+    return `customer_asset_pending_internal_transfer_liability:${customerAccountId}:${assetId}`;
   }
 
   private buildRetirementVaultLiabilityLedgerKey(
@@ -469,6 +520,468 @@ export class LedgerService {
       creditLedgerAccountId: customerPendingLiabilityAccount.id,
       availableBalance: updatedBalance.availableBalance.toString(),
       pendingBalance: updatedBalance.pendingBalance.toString()
+    };
+  }
+
+  async reserveInternalBalanceTransferBalance(
+    transaction: Prisma.TransactionClient,
+    params: ReserveInternalBalanceTransferParams
+  ): Promise<InternalBalanceTransferReservationResult> {
+    const existingJournal = await this.findLedgerJournalByIntentAndType(
+      transaction,
+      params.transactionIntentId,
+      LedgerJournalType.internal_balance_transfer_reservation
+    );
+
+    if (existingJournal) {
+      throw new ConflictException(
+        "Internal balance transfer reservation ledger journal already exists for this transaction intent."
+      );
+    }
+
+    const customerAvailableLiabilityAccount = await transaction.ledgerAccount.upsert({
+      where: {
+        ledgerKey: this.buildCustomerLiabilityLedgerKey(
+          params.customerAccountId,
+          params.assetId
+        )
+      },
+      update: {},
+      create: {
+        ledgerKey: this.buildCustomerLiabilityLedgerKey(
+          params.customerAccountId,
+          params.assetId
+        ),
+        accountType: LedgerAccountType.customer_asset_liability,
+        chainId: params.chainId,
+        assetId: params.assetId,
+        customerAccountId: params.customerAccountId
+      }
+    });
+
+    const customerPendingLiabilityAccount = await transaction.ledgerAccount.upsert({
+      where: {
+        ledgerKey: this.buildPendingInternalTransferLiabilityLedgerKey(
+          params.customerAccountId,
+          params.assetId
+        )
+      },
+      update: {},
+      create: {
+        ledgerKey: this.buildPendingInternalTransferLiabilityLedgerKey(
+          params.customerAccountId,
+          params.assetId
+        ),
+        accountType:
+          LedgerAccountType.customer_asset_pending_internal_transfer_liability,
+        chainId: params.chainId,
+        assetId: params.assetId,
+        customerAccountId: params.customerAccountId
+      }
+    });
+
+    const updatedBalanceCount = await transaction.customerAssetBalance.updateMany({
+      where: {
+        customerAccountId: params.customerAccountId,
+        assetId: params.assetId,
+        availableBalance: {
+          gte: params.amount
+        }
+      },
+      data: {
+        availableBalance: {
+          decrement: params.amount
+        },
+        pendingBalance: {
+          increment: params.amount
+        }
+      }
+    });
+
+    if (updatedBalanceCount.count !== 1) {
+      throw new ConflictException(
+        "Insufficient available balance for internal transfer request."
+      );
+    }
+
+    const updatedBalance = await transaction.customerAssetBalance.findUnique({
+      where: {
+        customerAccountId_assetId: {
+          customerAccountId: params.customerAccountId,
+          assetId: params.assetId
+        }
+      },
+      select: {
+        availableBalance: true,
+        pendingBalance: true
+      }
+    });
+
+    if (!updatedBalance) {
+      throw new ConflictException("Customer balance row not found.");
+    }
+
+    const ledgerJournal = await transaction.ledgerJournal.create({
+      data: {
+        transactionIntentId: params.transactionIntentId,
+        journalType: LedgerJournalType.internal_balance_transfer_reservation,
+        chainId: params.chainId,
+        assetId: params.assetId
+      }
+    });
+
+    await transaction.ledgerPosting.createMany({
+      data: [
+        {
+          ledgerJournalId: ledgerJournal.id,
+          ledgerAccountId: customerAvailableLiabilityAccount.id,
+          direction: LedgerPostingDirection.debit,
+          amount: params.amount
+        },
+        {
+          ledgerJournalId: ledgerJournal.id,
+          ledgerAccountId: customerPendingLiabilityAccount.id,
+          direction: LedgerPostingDirection.credit,
+          amount: params.amount
+        }
+      ]
+    });
+
+    return {
+      ledgerJournalId: ledgerJournal.id,
+      debitLedgerAccountId: customerAvailableLiabilityAccount.id,
+      creditLedgerAccountId: customerPendingLiabilityAccount.id,
+      senderAvailableBalance: updatedBalance.availableBalance.toString(),
+      senderPendingBalance: updatedBalance.pendingBalance.toString()
+    };
+  }
+
+  async releaseInternalBalanceTransferReservation(
+    transaction: Prisma.TransactionClient,
+    params: ReleaseInternalBalanceTransferReservationParams
+  ): Promise<InternalBalanceTransferReservationResult> {
+    const existingJournal = await this.findLedgerJournalByIntentAndType(
+      transaction,
+      params.transactionIntentId,
+      LedgerJournalType.internal_balance_transfer_reservation_release
+    );
+
+    if (existingJournal) {
+      throw new ConflictException(
+        "Internal balance transfer reservation release ledger journal already exists for this transaction intent."
+      );
+    }
+
+    const customerAvailableLiabilityAccount = await transaction.ledgerAccount.upsert({
+      where: {
+        ledgerKey: this.buildCustomerLiabilityLedgerKey(
+          params.customerAccountId,
+          params.assetId
+        )
+      },
+      update: {},
+      create: {
+        ledgerKey: this.buildCustomerLiabilityLedgerKey(
+          params.customerAccountId,
+          params.assetId
+        ),
+        accountType: LedgerAccountType.customer_asset_liability,
+        chainId: params.chainId,
+        assetId: params.assetId,
+        customerAccountId: params.customerAccountId
+      }
+    });
+
+    const customerPendingLiabilityAccount = await transaction.ledgerAccount.upsert({
+      where: {
+        ledgerKey: this.buildPendingInternalTransferLiabilityLedgerKey(
+          params.customerAccountId,
+          params.assetId
+        )
+      },
+      update: {},
+      create: {
+        ledgerKey: this.buildPendingInternalTransferLiabilityLedgerKey(
+          params.customerAccountId,
+          params.assetId
+        ),
+        accountType:
+          LedgerAccountType.customer_asset_pending_internal_transfer_liability,
+        chainId: params.chainId,
+        assetId: params.assetId,
+        customerAccountId: params.customerAccountId
+      }
+    });
+
+    const updatedBalanceCount = await transaction.customerAssetBalance.updateMany({
+      where: {
+        customerAccountId: params.customerAccountId,
+        assetId: params.assetId,
+        pendingBalance: {
+          gte: params.amount
+        }
+      },
+      data: {
+        availableBalance: {
+          increment: params.amount
+        },
+        pendingBalance: {
+          decrement: params.amount
+        }
+      }
+    });
+
+    if (updatedBalanceCount.count !== 1) {
+      throw new ConflictException(
+        "Internal transfer reservation is not available to release."
+      );
+    }
+
+    const updatedBalance = await transaction.customerAssetBalance.findUnique({
+      where: {
+        customerAccountId_assetId: {
+          customerAccountId: params.customerAccountId,
+          assetId: params.assetId
+        }
+      },
+      select: {
+        availableBalance: true,
+        pendingBalance: true
+      }
+    });
+
+    if (!updatedBalance) {
+      throw new ConflictException("Customer balance row not found.");
+    }
+
+    const ledgerJournal = await transaction.ledgerJournal.create({
+      data: {
+        transactionIntentId: params.transactionIntentId,
+        journalType:
+          LedgerJournalType.internal_balance_transfer_reservation_release,
+        chainId: params.chainId,
+        assetId: params.assetId
+      }
+    });
+
+    await transaction.ledgerPosting.createMany({
+      data: [
+        {
+          ledgerJournalId: ledgerJournal.id,
+          ledgerAccountId: customerPendingLiabilityAccount.id,
+          direction: LedgerPostingDirection.debit,
+          amount: params.amount
+        },
+        {
+          ledgerJournalId: ledgerJournal.id,
+          ledgerAccountId: customerAvailableLiabilityAccount.id,
+          direction: LedgerPostingDirection.credit,
+          amount: params.amount
+        }
+      ]
+    });
+
+    return {
+      ledgerJournalId: ledgerJournal.id,
+      debitLedgerAccountId: customerPendingLiabilityAccount.id,
+      creditLedgerAccountId: customerAvailableLiabilityAccount.id,
+      senderAvailableBalance: updatedBalance.availableBalance.toString(),
+      senderPendingBalance: updatedBalance.pendingBalance.toString()
+    };
+  }
+
+  async settleInternalBalanceTransfer(
+    transaction: Prisma.TransactionClient,
+    params: SettleInternalBalanceTransferParams
+  ): Promise<InternalBalanceTransferSettlementResult> {
+    const existingJournal = await this.findLedgerJournalByIntentAndType(
+      transaction,
+      params.transactionIntentId,
+      LedgerJournalType.internal_balance_transfer_settlement
+    );
+
+    if (existingJournal) {
+      throw new ConflictException(
+        "Internal balance transfer settlement already exists for this transaction intent."
+      );
+    }
+
+    const senderDebitAccount = params.settleFromPending
+      ? await transaction.ledgerAccount.upsert({
+          where: {
+            ledgerKey: this.buildPendingInternalTransferLiabilityLedgerKey(
+              params.senderCustomerAccountId,
+              params.assetId
+            )
+          },
+          update: {},
+          create: {
+            ledgerKey: this.buildPendingInternalTransferLiabilityLedgerKey(
+              params.senderCustomerAccountId,
+              params.assetId
+            ),
+            accountType:
+              LedgerAccountType.customer_asset_pending_internal_transfer_liability,
+            chainId: params.chainId,
+            assetId: params.assetId,
+            customerAccountId: params.senderCustomerAccountId
+          }
+        })
+      : await transaction.ledgerAccount.upsert({
+          where: {
+            ledgerKey: this.buildCustomerLiabilityLedgerKey(
+              params.senderCustomerAccountId,
+              params.assetId
+            )
+          },
+          update: {},
+          create: {
+            ledgerKey: this.buildCustomerLiabilityLedgerKey(
+              params.senderCustomerAccountId,
+              params.assetId
+            ),
+            accountType: LedgerAccountType.customer_asset_liability,
+            chainId: params.chainId,
+            assetId: params.assetId,
+            customerAccountId: params.senderCustomerAccountId
+          }
+        });
+
+    const recipientLiabilityAccount = await transaction.ledgerAccount.upsert({
+      where: {
+        ledgerKey: this.buildCustomerLiabilityLedgerKey(
+          params.recipientCustomerAccountId,
+          params.assetId
+        )
+      },
+      update: {},
+      create: {
+        ledgerKey: this.buildCustomerLiabilityLedgerKey(
+          params.recipientCustomerAccountId,
+          params.assetId
+        ),
+        accountType: LedgerAccountType.customer_asset_liability,
+        chainId: params.chainId,
+        assetId: params.assetId,
+        customerAccountId: params.recipientCustomerAccountId
+      }
+    });
+
+    if (params.settleFromPending) {
+      const updatedSenderCount = await transaction.customerAssetBalance.updateMany({
+        where: {
+          customerAccountId: params.senderCustomerAccountId,
+          assetId: params.assetId,
+          pendingBalance: {
+            gte: params.amount
+          }
+        },
+        data: {
+          pendingBalance: {
+            decrement: params.amount
+          }
+        }
+      });
+
+      if (updatedSenderCount.count !== 1) {
+        throw new ConflictException(
+          "Reserved internal transfer balance is not available to settle."
+        );
+      }
+    } else {
+      const updatedSenderCount = await transaction.customerAssetBalance.updateMany({
+        where: {
+          customerAccountId: params.senderCustomerAccountId,
+          assetId: params.assetId,
+          availableBalance: {
+            gte: params.amount
+          }
+        },
+        data: {
+          availableBalance: {
+            decrement: params.amount
+          }
+        }
+      });
+
+      if (updatedSenderCount.count !== 1) {
+        throw new ConflictException(
+          "Insufficient available balance for internal transfer settlement."
+        );
+      }
+    }
+
+    const recipientBalance = await transaction.customerAssetBalance.upsert({
+      where: {
+        customerAccountId_assetId: {
+          customerAccountId: params.recipientCustomerAccountId,
+          assetId: params.assetId
+        }
+      },
+      create: {
+        customerAccountId: params.recipientCustomerAccountId,
+        assetId: params.assetId,
+        availableBalance: params.amount,
+        pendingBalance: new Prisma.Decimal(0)
+      },
+      update: {
+        availableBalance: {
+          increment: params.amount
+        }
+      }
+    });
+
+    const senderBalance = await transaction.customerAssetBalance.findUnique({
+      where: {
+        customerAccountId_assetId: {
+          customerAccountId: params.senderCustomerAccountId,
+          assetId: params.assetId
+        }
+      },
+      select: {
+        availableBalance: true,
+        pendingBalance: true
+      }
+    });
+
+    if (!senderBalance) {
+      throw new ConflictException("Sender balance row not found.");
+    }
+
+    const ledgerJournal = await transaction.ledgerJournal.create({
+      data: {
+        transactionIntentId: params.transactionIntentId,
+        journalType: LedgerJournalType.internal_balance_transfer_settlement,
+        chainId: params.chainId,
+        assetId: params.assetId
+      }
+    });
+
+    await transaction.ledgerPosting.createMany({
+      data: [
+        {
+          ledgerJournalId: ledgerJournal.id,
+          ledgerAccountId: senderDebitAccount.id,
+          direction: LedgerPostingDirection.debit,
+          amount: params.amount
+        },
+        {
+          ledgerJournalId: ledgerJournal.id,
+          ledgerAccountId: recipientLiabilityAccount.id,
+          direction: LedgerPostingDirection.credit,
+          amount: params.amount
+        }
+      ]
+    });
+
+    return {
+      ledgerJournalId: ledgerJournal.id,
+      debitLedgerAccountId: senderDebitAccount.id,
+      creditLedgerAccountId: recipientLiabilityAccount.id,
+      senderAvailableBalance: senderBalance.availableBalance.toString(),
+      senderPendingBalance: senderBalance.pendingBalance.toString(),
+      recipientAvailableBalance: recipientBalance.availableBalance.toString(),
+      recipientPendingBalance: recipientBalance.pendingBalance.toString()
     };
   }
 

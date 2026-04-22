@@ -5,7 +5,9 @@ import { useNavigation } from "@react-navigation/native";
 import QRCode from "react-native-qrcode-svg";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import type {
+  CreateBalanceTransferResult,
   CreateDepositIntentResult,
+  PreviewBalanceTransferRecipientResult,
   CreateWithdrawalIntentResult,
 } from "../lib/api/types";
 import { useSessionStore } from "../stores/session-store";
@@ -25,7 +27,9 @@ import { AnimatedSection } from "../components/ui/AnimatedSection";
 import {
   useBalancesQuery,
   useCreateRetirementVaultMutation,
+  useCreateBalanceTransferMutation,
   useCreateDepositIntentMutation,
+  usePreviewBalanceTransferRecipientMutation,
   useCreateWithdrawalIntentMutation,
   useFundRetirementVaultMutation,
   useRetirementVaultsQuery,
@@ -69,6 +73,8 @@ export function WalletScreen({ initialFocus }: WalletScreenProps = {}) {
   const balancesQuery = useBalancesQuery();
   const retirementVaultsQuery = useRetirementVaultsQuery();
   const depositMutation = useCreateDepositIntentMutation();
+  const sendMutation = useCreateBalanceTransferMutation();
+  const previewSendRecipientMutation = usePreviewBalanceTransferRecipientMutation();
   const withdrawalMutation = useCreateWithdrawalIntentMutation();
   const createRetirementVaultMutation = useCreateRetirementVaultMutation();
   const fundRetirementVaultMutation = useFundRetirementVaultMutation();
@@ -80,8 +86,11 @@ export function WalletScreen({ initialFocus }: WalletScreenProps = {}) {
   const [showQr, setShowQr] = useState(false);
   const [depositAsset, setDepositAsset] = useState("");
   const [withdrawAsset, setWithdrawAsset] = useState("");
+  const [sendAsset, setSendAsset] = useState("");
   const [depositAmount, setDepositAmount] = useState("");
+  const [sendAmount, setSendAmount] = useState("");
   const [withdrawAmount, setWithdrawAmount] = useState("");
+  const [sendEmail, setSendEmail] = useState("");
   const [withdrawAddress, setWithdrawAddress] = useState("");
   const [vaultCreateAsset, setVaultCreateAsset] = useState("");
   const [vaultFundAsset, setVaultFundAsset] = useState("");
@@ -95,6 +104,10 @@ export function WalletScreen({ initialFocus }: WalletScreenProps = {}) {
     useState<CreateDepositIntentResult | null>(null);
   const [latestWithdrawal, setLatestWithdrawal] =
     useState<CreateWithdrawalIntentResult | null>(null);
+  const [latestInternalTransfer, setLatestInternalTransfer] =
+    useState<CreateBalanceTransferResult | null>(null);
+  const [sendPreview, setSendPreview] =
+    useState<PreviewBalanceTransferRecipientResult | null>(null);
   const [withdrawalChallengeId, setWithdrawalChallengeId] = useState<
     string | null
   >(null);
@@ -110,10 +123,13 @@ export function WalletScreen({ initialFocus }: WalletScreenProps = {}) {
     value: asset.symbol,
   }));
   const activeDepositAsset = depositAsset || assets[0]?.symbol || "";
+  const activeSendAsset = sendAsset || assets[0]?.symbol || "";
   const activeWithdrawAsset = withdrawAsset || assets[0]?.symbol || "";
   const activeVaultCreateAsset = vaultCreateAsset || assets[0]?.symbol || "";
   const activeVaultFundAsset =
     vaultFundAsset || vaults[0]?.asset.symbol || "";
+  const selectedSendBalance =
+    balances.find((balance) => balance.asset.symbol === activeSendAsset) ?? null;
   const selectedBalance =
     balances.find((balance) => balance.asset.symbol === activeWithdrawAsset) ??
     null;
@@ -167,6 +183,28 @@ export function WalletScreen({ initialFocus }: WalletScreenProps = {}) {
   const nextVaultUnlock = vaults
     .map((vault) => vault.unlockAt)
     .sort((left, right) => Date.parse(left) - Date.parse(right))[0];
+  const normalizedSendEmail = sendEmail.trim().toLowerCase();
+  const normalizedSendAmount = sendAmount.trim();
+  const sendAvailableBalance = selectedSendBalance?.availableBalance ?? "0";
+  const sendAmountValid = isPositiveDecimalString(normalizedSendAmount);
+  const sendAmountExceedsAvailable =
+    sendAmountValid &&
+    compareDecimalStrings(normalizedSendAmount, sendAvailableBalance) === 1;
+  const sendPreviewMatchesCurrentInput =
+    sendPreview?.available === true &&
+    sendPreview.normalizedEmail === normalizedSendEmail &&
+    sendAmountValid;
+  const canUseMaxSendAmount =
+    compareDecimalStrings(sendAvailableBalance, "0") === 1;
+  const sendSubmitDisabled =
+    sendMutation.isPending ||
+    moneyMovementBlocked ||
+    sessionRequiresVerification ||
+    !stepUpFresh ||
+    !normalizedSendEmail ||
+    !sendAmountValid ||
+    sendAmountExceedsAvailable ||
+    !sendPreviewMatchesCurrentInput;
 
   function getIdempotencyKey(signature: string, prefix: string) {
     const existing = consumeRequestKey(signature);
@@ -178,6 +216,15 @@ export function WalletScreen({ initialFocus }: WalletScreenProps = {}) {
     const nextKey = buildRequestIdempotencyKey(prefix);
     rememberRequestKey(signature, nextKey);
     return nextKey;
+  }
+
+  function handleUseMaxSendAmount() {
+    if (!canUseMaxSendAmount) {
+      return;
+    }
+
+    setSendAmount(sendAvailableBalance);
+    setSendPreview(null);
   }
 
   async function handleCopyAddress() {
@@ -308,6 +355,142 @@ export function WalletScreen({ initialFocus }: WalletScreenProps = {}) {
         requestError instanceof Error
           ? requestError.message
           : String(requestError),
+      );
+    }
+  }
+
+  async function handlePreviewSendRecipient() {
+    if (moneyMovementBlocked) {
+      Alert.alert(t("wallet.send"), t("wallet.mfaSetupRequired"));
+      return;
+    }
+
+    if (sessionRequiresVerification) {
+      Alert.alert(t("wallet.send"), t("wallet.sessionVerificationRequired"));
+      return;
+    }
+
+    if (!sendEmail.trim()) {
+      Alert.alert(t("wallet.send"), locale === "ar" ? "أدخل بريد المستلم." : "Enter the recipient email.");
+      return;
+    }
+
+    try {
+      const result = await previewSendRecipientMutation.mutateAsync({
+        email: sendEmail.trim(),
+        assetSymbol: activeSendAsset || undefined,
+        amount: sendAmount.trim() || undefined,
+      });
+      setSendPreview(result);
+
+      if (!result.available) {
+        Alert.alert(
+          t("wallet.send"),
+          locale === "ar"
+            ? "هذا البريد غير متاح كعميل نشط للتحويل الداخلي."
+            : "That email is not available as an active internal recipient."
+        );
+        return;
+      }
+
+      Alert.alert(
+        t("wallet.send"),
+        locale === "ar"
+          ? `تم التحقق من المستلم: ${result.maskedDisplay ?? result.maskedEmail ?? "عميل داخلي"}`
+          : `Recipient verified: ${result.maskedDisplay ?? result.maskedEmail ?? "Internal customer"}`
+      );
+    } catch (requestError) {
+      Alert.alert(
+        t("wallet.send"),
+        requestError instanceof Error ? requestError.message : String(requestError)
+      );
+    }
+  }
+
+  async function handleInternalTransfer() {
+    if (moneyMovementBlocked) {
+      Alert.alert(t("wallet.send"), t("wallet.mfaSetupRequired"));
+      return;
+    }
+
+    if (sessionRequiresVerification) {
+      Alert.alert(t("wallet.send"), t("wallet.sessionVerificationRequired"));
+      return;
+    }
+
+    if (!stepUpFresh) {
+      Alert.alert(t("wallet.send"), t("wallet.mfaStepUpRequired"));
+      return;
+    }
+
+    if (!activeSendAsset) {
+      Alert.alert(t("wallet.send"), t("wallet.selectAsset"));
+      return;
+    }
+
+    if (!sendEmail.trim()) {
+      Alert.alert(
+        t("wallet.send"),
+        locale === "ar" ? "أدخل بريد المستلم." : "Enter the recipient email."
+      );
+      return;
+    }
+
+    if (!isPositiveDecimalString(sendAmount)) {
+      Alert.alert(t("wallet.send"), t("wallet.amountInvalid"));
+      return;
+    }
+
+    if (
+      selectedSendBalance &&
+      compareDecimalStrings(sendAmount.trim(), selectedSendBalance.availableBalance) === 1
+    ) {
+      Alert.alert(t("wallet.send"), t("wallet.insufficientBalance"));
+      return;
+    }
+
+    if (!sendPreviewMatchesCurrentInput) {
+      Alert.alert(
+        t("wallet.send"),
+        locale === "ar"
+          ? "تحقق من المستلم لهذا البريد والمبلغ أولاً."
+          : "Verify the recipient for this email and amount first."
+      );
+      return;
+    }
+
+    const signature = JSON.stringify({
+      assetSymbol: activeSendAsset,
+      amount: sendAmount.trim(),
+      recipientEmail: sendEmail.trim().toLowerCase(),
+    });
+
+    try {
+      const result = await sendMutation.mutateAsync({
+        idempotencyKey: getIdempotencyKey(signature, "internal_transfer_req"),
+        assetSymbol: activeSendAsset,
+        amount: sendAmount.trim(),
+        recipientEmail: sendEmail.trim(),
+      });
+      clearRequestKey(signature);
+      setLatestInternalTransfer(result);
+      setSendAmount("");
+      setSendEmail("");
+      setSendPreview(null);
+      Alert.alert(
+        t("wallet.send"),
+        result.thresholdOutcome === "review_required"
+          ? locale === "ar"
+            ? "تم حجز الرصيد وإرسال التحويل إلى مراجعة تشغيلية."
+            : "The balance was reserved and the transfer was sent to operator review."
+          : locale === "ar"
+            ? "تمت تسوية التحويل داخلياً فوراً."
+            : "The transfer settled internally immediately."
+      );
+    } catch (requestError) {
+      Alert.alert(
+        t("wallet.send"),
+        requestError instanceof Error ? requestError.message : String(requestError)
       );
     }
   }
@@ -836,20 +1019,20 @@ export function WalletScreen({ initialFocus }: WalletScreenProps = {}) {
                 </AnimatedSection>
               ) : null}
             </>
-          ) : (
+          ) : activeAction === "send" ? (
             <>
-                {moneyMovementBlocked ? (
-                  <InlineNotice
-                    message={t("wallet.mfaSetupRequired")}
-                    tone="warning"
-                  />
-                ) : sessionRequiresVerification ? (
-                  <InlineNotice
-                    message={t("wallet.sessionVerificationRequired")}
-                    tone="warning"
-                  />
-                ) : !stepUpFresh ? (
-                  <View className="gap-3">
+              {moneyMovementBlocked ? (
+                <InlineNotice
+                  message={t("wallet.mfaSetupRequired")}
+                  tone="warning"
+                />
+              ) : sessionRequiresVerification ? (
+                <InlineNotice
+                  message={t("wallet.sessionVerificationRequired")}
+                  tone="warning"
+                />
+              ) : !stepUpFresh ? (
+                <View className="gap-3">
                   <InlineNotice
                     message={t("wallet.mfaStepUpRequired")}
                     tone="warning"
@@ -899,11 +1082,238 @@ export function WalletScreen({ initialFocus }: WalletScreenProps = {}) {
                 </View>
               ) : null}
               <InlineNotice
+                message={t("wallet.sendRoutingNote")}
+                tone="warning"
+              />
+              <OptionChips
+                onChange={(value) => {
+                  setSendAsset(value);
+                  setSendPreview(null);
+                }}
+                options={assetOptions}
+                value={activeSendAsset}
+              />
+              <AppText className="text-sm text-slate">
+                {selectedSendBalance
+                  ? `${formatTokenAmount(
+                      selectedSendBalance.availableBalance,
+                      locale,
+                    )} available / ${formatTokenAmount(
+                      selectedSendBalance.pendingBalance,
+                      locale,
+                    )} pending`
+                  : t("common.notAvailable")}
+              </AppText>
+              <AppButton
+                disabled={!canUseMaxSendAmount}
+                fullWidth={false}
+                label={locale === "ar" ? "استخدم الحد الأقصى" : "Use max"}
+                onPress={handleUseMaxSendAmount}
+                variant="ghost"
+              />
+              <FieldInput
+                autoCapitalize="none"
+                keyboardType="email-address"
+                label={locale === "ar" ? "بريد المستلم" : "Recipient email"}
+                onChangeText={(value) => {
+                  setSendEmail(value);
+                  setSendPreview(null);
+                }}
+                value={sendEmail}
+              />
+              <FieldInput
+                keyboardType="decimal-pad"
+                label={t("wallet.amount")}
+                onChangeText={(value) => {
+                  setSendAmount(value);
+                  setSendPreview(null);
+                }}
+                value={sendAmount}
+              />
+              <AppButton
+                disabled={previewSendRecipientMutation.isPending || !sendEmail.trim()}
+                label={locale === "ar" ? "تحقق من المستلم" : "Verify recipient"}
+                onPress={() => {
+                  void handlePreviewSendRecipient();
+                }}
+                variant="secondary"
+              />
+              <InlineNotice
                 message={
-                  activeAction === "send"
-                    ? t("wallet.sendRoutingNote")
-                    : t("wallet.reservationNote")
+                  sendPreviewMatchesCurrentInput
+                    ? sendPreview?.thresholdOutcome === "review_required"
+                      ? locale === "ar"
+                        ? "التحويل جاهز. سيُحجز الرصيد فور الإرسال ثم ينتظر المراجعة التشغيلية."
+                        : "Transfer ready. The balance will be reserved immediately on submit and wait for operator review."
+                      : locale === "ar"
+                        ? "التحويل جاهز. سيُسوّى الرصيد داخلياً فور الإرسال."
+                        : "Transfer ready. The balance will settle internally immediately on submit."
+                    : !normalizedSendEmail || !normalizedSendAmount
+                      ? locale === "ar"
+                        ? "أدخل بريد المستلم والمبلغ ثم تحقّق من المستلم قبل الإرسال."
+                        : "Enter the recipient email and amount, then verify the recipient before sending."
+                      : sendAmountExceedsAvailable
+                        ? locale === "ar"
+                          ? "عدّل المبلغ ليبقى ضمن الرصيد المتاح ثم أعد التحقق."
+                          : "Reduce the amount to stay within the available balance, then verify again."
+                        : locale === "ar"
+                          ? "تحتاج إلى التحقق من المستلم لهذا البريد والمبلغ قبل الإرسال."
+                          : "You need to verify the recipient for this email and amount before sending."
                 }
+                tone={
+                  sendPreviewMatchesCurrentInput
+                    ? sendPreview?.thresholdOutcome === "review_required"
+                      ? "warning"
+                      : "positive"
+                    : "neutral"
+                }
+              />
+              {sendPreview?.available ? (
+                <InlineNotice
+                  message={
+                    sendPreview.thresholdOutcome === "review_required"
+                      ? locale === "ar"
+                        ? `المستلم: ${sendPreview.maskedDisplay ?? sendPreview.maskedEmail ?? "عميل داخلي"} · سيتم حجز المبلغ ثم إرساله إلى مراجعة تشغيلية.`
+                        : `Recipient: ${sendPreview.maskedDisplay ?? sendPreview.maskedEmail ?? "Internal customer"} · the amount will be reserved and sent to operator review.`
+                      : locale === "ar"
+                        ? `المستلم: ${sendPreview.maskedDisplay ?? sendPreview.maskedEmail ?? "عميل داخلي"} · سيتم إرسال الرصيد وتسويته داخلياً فوراً.`
+                        : `Recipient: ${sendPreview.maskedDisplay ?? sendPreview.maskedEmail ?? "Internal customer"} · the balance will settle internally immediately.`
+                  }
+                  tone={
+                    sendPreview.thresholdOutcome === "review_required"
+                      ? "warning"
+                      : "positive"
+                  }
+                />
+              ) : null}
+              <AppButton
+                disabled={sendSubmitDisabled}
+                label={t("wallet.createSendRequest")}
+                onPress={() => {
+                  void handleInternalTransfer();
+                }}
+              />
+              {moneyMovementBlocked ? (
+                <AppButton
+                  label={t("wallet.openSecuritySetup")}
+                  onPress={() => {
+                    navigation.navigate("Profile");
+                  }}
+                  variant="secondary"
+                />
+              ) : null}
+              {latestInternalTransfer ? (
+                <AnimatedSection delayOrder={1}>
+                  <View className="gap-3 rounded-2xl border border-border bg-white px-4 py-4">
+                    <View className="flex-row items-center justify-between gap-3">
+                      <View className="flex-1 gap-1">
+                        <AppText
+                          className="text-base text-ink"
+                          weight="semibold"
+                        >
+                          {t("wallet.latestSendRequest")}
+                        </AppText>
+                        <AppText className="text-sm text-slate">
+                          {t("wallet.reference")}: {latestInternalTransfer.intent.id}
+                        </AppText>
+                      </View>
+                      <StatusChip
+                        label={formatIntentStatusLabel(
+                          latestInternalTransfer.intent.status,
+                          locale,
+                        )}
+                        tone={getIntentStatusTone(
+                          latestInternalTransfer.intent.status,
+                        )}
+                      />
+                    </View>
+                    <InlineNotice
+                      message={
+                        latestInternalTransfer.thresholdOutcome === "review_required"
+                          ? locale === "ar"
+                            ? "تم حجز الرصيد وما زال التحويل بانتظار قرار الفريق التشغيلي."
+                            : "The balance is reserved and the transfer is waiting on operator review."
+                          : locale === "ar"
+                            ? "تمت تسوية التحويل داخل البنك مباشرة."
+                            : "The transfer settled directly inside the bank."
+                      }
+                      tone={
+                        latestInternalTransfer.thresholdOutcome === "review_required"
+                          ? "warning"
+                          : "positive"
+                      }
+                    />
+                    <TimelineList
+                      events={buildIntentTimeline(latestInternalTransfer.intent)}
+                    />
+                  </View>
+                </AnimatedSection>
+              ) : null}
+            </>
+          ) : (
+            <>
+              {moneyMovementBlocked ? (
+                <InlineNotice
+                  message={t("wallet.mfaSetupRequired")}
+                  tone="warning"
+                />
+              ) : sessionRequiresVerification ? (
+                <InlineNotice
+                  message={t("wallet.sessionVerificationRequired")}
+                  tone="warning"
+                />
+              ) : !stepUpFresh ? (
+                <View className="gap-3">
+                  <InlineNotice
+                    message={t("wallet.mfaStepUpRequired")}
+                    tone="warning"
+                  />
+                  <View className="flex-row gap-3">
+                    <AppButton
+                      fullWidth={false}
+                      label={t("wallet.mfaUseAuthenticator")}
+                      onPress={() => {
+                        void startWithdrawalStepUp("totp");
+                      }}
+                      variant="secondary"
+                    />
+                    {user?.mfa?.emailOtpEnrolled ? (
+                      <AppButton
+                        fullWidth={false}
+                        label={t("wallet.mfaUseEmail")}
+                        onPress={() => {
+                          void startWithdrawalStepUp("email_otp");
+                        }}
+                        variant="secondary"
+                      />
+                    ) : null}
+                  </View>
+                  {withdrawalChallengeId ? (
+                    <View className="gap-3 rounded-2xl border border-border bg-white px-4 py-4">
+                      {withdrawalPreviewCode ? (
+                        <LtrValue
+                          value={`${t("wallet.mfaPreviewCode")}: ${withdrawalPreviewCode}`}
+                        />
+                      ) : null}
+                      <FieldInput
+                        keyboardType="number-pad"
+                        label={t("wallet.mfaCodeLabel")}
+                        onChangeText={setWithdrawalChallengeCode}
+                        value={withdrawalChallengeCode}
+                      />
+                      <AppButton
+                        disabled={verifyMfaChallengeMutation.isPending}
+                        label={t("wallet.mfaVerifyStepUp")}
+                        onPress={() => {
+                          void verifyWithdrawalStepUp();
+                        }}
+                      />
+                    </View>
+                  ) : null}
+                </View>
+              ) : null}
+              <InlineNotice
+                message={t("wallet.reservationNote")}
                 tone="warning"
               />
               <OptionChips
@@ -940,11 +1350,7 @@ export function WalletScreen({ initialFocus }: WalletScreenProps = {}) {
                   moneyMovementBlocked ||
                   !stepUpFresh
                 }
-                label={
-                  activeAction === "send"
-                    ? t("wallet.createSendRequest")
-                    : t("wallet.createWithdrawalRequest")
-                }
+                label={t("wallet.createWithdrawalRequest")}
                 onPress={() => {
                   void handleWithdrawal();
                 }}
@@ -967,9 +1373,7 @@ export function WalletScreen({ initialFocus }: WalletScreenProps = {}) {
                           className="text-base text-ink"
                           weight="semibold"
                         >
-                          {activeAction === "send"
-                            ? t("wallet.latestSendRequest")
-                            : t("wallet.latestWithdrawalRequest")}
+                          {t("wallet.latestWithdrawalRequest")}
                         </AppText>
                         <AppText className="text-sm text-slate">
                           {t("wallet.reference")}: {latestWithdrawal.intent.id}

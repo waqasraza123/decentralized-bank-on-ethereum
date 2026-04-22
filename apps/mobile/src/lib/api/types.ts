@@ -1,9 +1,11 @@
 import type {
+  CustomerAgeProfile,
   CustomerMfaStatus,
   CustomerNotificationPreferences,
   CustomerSecurityActivityProjection,
   CustomerSessionSecurityStatus,
   CustomerSessionProjection,
+  CustomerTrustedContactProjection,
   UserProfileProjection,
 } from "@stealth-trails-bank/types";
 
@@ -119,7 +121,7 @@ export type RetirementVaultProjection = {
     decimals: number;
     chainId: number;
   };
-  status: "active" | "restricted" | "released";
+  status: "active" | "restricted" | "incident_locked" | "released";
   strictMode: boolean;
   unlockAt: string;
   lockedBalance: string;
@@ -324,6 +326,8 @@ export type CancelMyRetirementVaultRuleChangeResult = {
 
 export type TransactionHistoryIntent = {
   id: string;
+  customerAccountId: string | null;
+  recipientCustomerAccountId: string | null;
   asset: {
     id: string;
     symbol: string;
@@ -337,6 +341,7 @@ export type TransactionHistoryIntent = {
   intentType:
     | "deposit"
     | "withdrawal"
+    | "internal_balance_transfer"
     | "vault_subscription"
     | "vault_redemption";
   status:
@@ -355,6 +360,11 @@ export type TransactionHistoryIntent = {
   settledAmount: string | null;
   failureCode: string | null;
   failureReason: string | null;
+  transferDirection: "sent" | "received" | null;
+  counterpartyMaskedDisplay: string | null;
+  counterpartyMaskedEmail: string | null;
+  recipientMaskedDisplay: string | null;
+  recipientMaskedEmail: string | null;
   createdAt: string;
   updatedAt: string;
   latestBlockchainTransaction: {
@@ -421,6 +431,45 @@ export type CreateDepositIntentResult = {
 export type CreateWithdrawalIntentResult = {
   intent: WithdrawalIntentProjection;
   idempotencyReused: boolean;
+};
+
+export type PreviewBalanceTransferRecipientResult = {
+  normalizedEmail: string;
+  available: boolean;
+  maskedEmail: string | null;
+  maskedDisplay: string | null;
+  thresholdOutcome: "settled_immediately" | "review_required" | null;
+};
+
+export type BalanceTransferIntentProjection = {
+  id: string;
+  customerAccountId: string | null;
+  recipientCustomerAccountId: string | null;
+  asset: {
+    id: string;
+    symbol: string;
+    displayName: string;
+    decimals: number;
+    chainId: number;
+  };
+  intentType: "internal_balance_transfer";
+  status: string;
+  policyDecision: string;
+  requestedAmount: string;
+  settledAmount: string | null;
+  idempotencyKey: string;
+  failureCode: string | null;
+  failureReason: string | null;
+  recipientMaskedDisplay: string | null;
+  recipientMaskedEmail: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type CreateBalanceTransferResult = {
+  intent: BalanceTransferIntentProjection;
+  idempotencyReused: boolean;
+  thresholdOutcome: "settled_immediately" | "review_required";
 };
 
 export type StakingExecutionCapability = {
@@ -697,6 +746,18 @@ export type ListCustomerSecurityActivityResult = {
 
 export type UpdateNotificationPreferencesResult = {
   notificationPreferences: CustomerNotificationPreferences;
+};
+
+export type UpdateCustomerAgeProfileResult = {
+  ageProfile: CustomerAgeProfile;
+};
+
+export type MutateTrustedContactResult = {
+  trustedContact: CustomerTrustedContactProjection;
+};
+
+export type RemoveTrustedContactResult = {
+  removedTrustedContactId: string;
 };
 
 export type ProfileProjection = UserProfileProjection;

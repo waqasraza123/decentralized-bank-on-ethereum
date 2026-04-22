@@ -193,14 +193,19 @@ const Index = () => {
                         <div className="flex items-start justify-between gap-3">
                           <div>
                             <p className="text-sm font-semibold text-white">
-                              {normalizeIntentTypeLabel(intent.intentType, locale)}
+                              {normalizeIntentTypeLabel(
+                                intent.intentType,
+                                locale,
+                                intent.transferDirection
+                              )}
                             </p>
                             <p className="mt-1 text-sm text-white/68">
                               {formatIntentAmount(
                                 intent.settledAmount ?? intent.requestedAmount,
                                 intent.asset.symbol,
                                 intent.intentType,
-                                locale
+                                locale,
+                                intent.transferDirection
                               )}
                             </p>
                           </div>
@@ -433,14 +438,19 @@ const Index = () => {
                       <div className="flex flex-wrap items-start justify-between gap-3">
                         <div>
                           <p className="text-sm font-semibold text-slate-950">
-                            {normalizeIntentTypeLabel(intent.intentType, locale)}
+                            {normalizeIntentTypeLabel(
+                              intent.intentType,
+                              locale,
+                              intent.transferDirection
+                            )}
                           </p>
                           <p className="mt-1 text-sm text-slate-600">
                             {formatIntentAmount(
                               intent.settledAmount ?? intent.requestedAmount,
                               intent.asset.symbol,
                               intent.intentType,
-                              locale
+                              locale,
+                              intent.transferDirection
                             )}
                           </p>
                         </div>

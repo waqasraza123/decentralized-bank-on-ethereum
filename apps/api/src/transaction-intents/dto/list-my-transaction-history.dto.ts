@@ -10,8 +10,19 @@ export class ListMyTransactionHistoryDto {
   limit?: number;
 
   @IsOptional()
-  @IsIn(["deposit", "withdrawal"])
-  intentType?: "deposit" | "withdrawal";
+  @IsIn([
+    "deposit",
+    "withdrawal",
+    "internal_balance_transfer",
+    "vault_subscription",
+    "vault_redemption"
+  ])
+  intentType?:
+    | "deposit"
+    | "withdrawal"
+    | "internal_balance_transfer"
+    | "vault_subscription"
+    | "vault_redemption";
 
   @IsOptional()
   @IsIn([
