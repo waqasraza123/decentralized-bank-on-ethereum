@@ -5,6 +5,7 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  Optional,
   ServiceUnavailableException
 } from "@nestjs/common";
 import {
@@ -39,6 +40,7 @@ import {
   assertOperatorRoleAuthorized,
   normalizeOperatorRole
 } from "../auth/internal-operator-role-policy";
+import { NotificationsService } from "../notifications/notifications.service";
 import { PrismaService } from "../prisma/prisma.service";
 import type { PrismaJsonValue } from "../prisma/prisma-json";
 import { ReviewCasesService } from "../review-cases/review-cases.service";
@@ -459,7 +461,12 @@ export class SolvencyService {
 
   constructor(
     private readonly prismaService: PrismaService,
-    private readonly reviewCasesService: ReviewCasesService
+    private readonly reviewCasesService: ReviewCasesService,
+    @Optional()
+    private readonly notificationsService?: Pick<
+      NotificationsService,
+      "publishAuditEventRecord"
+    >
   ) {
     this.productChainId = loadProductChainRuntimeConfig().productChainId;
     this.environment = WorkerRuntimeEnvironment.production;
@@ -496,6 +503,24 @@ export class SolvencyService {
         `Solvency bootstrap is running in read-only degraded mode: ${this.infrastructureDisabledReason}.`
       );
     }
+  }
+
+  private async appendAuditEvent(
+    client: Prisma.TransactionClient | PrismaService,
+    args: Prisma.AuditEventCreateArgs
+  ) {
+    const auditEvent = await client.auditEvent.create(args);
+
+    if (this.notificationsService) {
+      await this.notificationsService.publishAuditEventRecord(
+        auditEvent,
+        client === this.prismaService
+          ? undefined
+          : (client as Prisma.TransactionClient)
+      );
+    }
+
+    return auditEvent;
   }
 
   async getWorkspace(
@@ -949,7 +974,7 @@ export class SolvencyService {
             }
           });
 
-          await transaction.auditEvent.create({
+          await this.appendAuditEvent(transaction, {
             data: {
               customerId: null,
               actorType: actor.actorType,
@@ -980,7 +1005,7 @@ export class SolvencyService {
           for (const issue of allIssues.filter(
             (item) => item.severity === SolvencyIssueSeverity.critical
           )) {
-            await transaction.auditEvent.create({
+            await this.appendAuditEvent(transaction, {
               data: {
                 customerId: null,
                 actorType: actor.actorType,
@@ -1041,7 +1066,7 @@ export class SolvencyService {
         }
       });
 
-      await this.prismaService.auditEvent.create({
+      await this.appendAuditEvent(this.prismaService, {
         data: {
           customerId: null,
           actorType: actor.actorType,
@@ -1420,7 +1445,7 @@ export class SolvencyService {
           }
         });
 
-        await transaction.auditEvent.create({
+        await this.appendAuditEvent(transaction, {
           data: {
             customerId: null,
             actorType: "operator",
@@ -1585,7 +1610,7 @@ export class SolvencyService {
           }
         });
 
-        await transaction.auditEvent.create({
+        await this.appendAuditEvent(transaction, {
           data: {
             customerId: null,
             actorType: "operator",
@@ -1650,7 +1675,7 @@ export class SolvencyService {
           }
         });
 
-        await transaction.auditEvent.create({
+        await this.appendAuditEvent(transaction, {
           data: {
             customerId: null,
             actorType: "operator",
@@ -3090,7 +3115,7 @@ export class SolvencyService {
       });
     }
 
-    await transaction.auditEvent.create({
+    await this.appendAuditEvent(transaction, {
       data: {
         customerId: null,
         actorType: actor.actorType,
@@ -3142,7 +3167,7 @@ export class SolvencyService {
         }
       );
 
-      await transaction.auditEvent.create({
+      await this.appendAuditEvent(transaction, {
         data: {
           customerId: null,
           actorType: actor.actorType,

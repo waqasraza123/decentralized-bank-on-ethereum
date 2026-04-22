@@ -2,7 +2,8 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
-  NotFoundException
+  NotFoundException,
+  Optional
 } from "@nestjs/common";
 import {
   loadManualResolutionPolicyRuntimeConfig,
@@ -18,6 +19,7 @@ import {
   TransactionIntentStatus,
   TransactionIntentType
 } from "@prisma/client";
+import { NotificationsService } from "../notifications/notifications.service";
 import { PrismaService } from "../prisma/prisma.service";
 import type { PrismaJsonValue } from "../prisma/prisma-json";
 import { AddReviewCaseNoteDto } from "./dto/add-review-case-note.dto";
@@ -299,12 +301,37 @@ export class ReviewCasesService {
   private readonly productChainId: number;
   private readonly manualResolutionAllowedOperatorRoles: string[];
 
-  constructor(private readonly prismaService: PrismaService) {
+  constructor(
+    private readonly prismaService: PrismaService,
+    @Optional()
+    private readonly notificationsService?: Pick<
+      NotificationsService,
+      "publishAuditEventRecord"
+    >
+  ) {
     this.productChainId = loadProductChainRuntimeConfig().productChainId;
     this.manualResolutionAllowedOperatorRoles = [
       ...loadManualResolutionPolicyRuntimeConfig()
         .manualResolutionAllowedOperatorRoles
     ];
+  }
+
+  private async appendAuditEvent(
+    client: ReviewCaseMutationClient,
+    args: Prisma.AuditEventCreateArgs
+  ) {
+    const auditEvent = await client.auditEvent.create(args);
+
+    if (this.notificationsService) {
+      await this.notificationsService.publishAuditEventRecord(
+        auditEvent,
+        client === this.prismaService
+          ? undefined
+          : (client as Prisma.TransactionClient)
+      );
+    }
+
+    return auditEvent;
   }
 
   private mapLatestBlockchainTransaction(
@@ -682,7 +709,7 @@ export class ReviewCasesService {
       } as PrismaJsonValue
     );
 
-    await client.auditEvent.create({
+    await this.appendAuditEvent(client, {
       data: {
         customerId: params.customerId,
         actorType: params.actorType,
@@ -938,7 +965,7 @@ export class ReviewCasesService {
           } as PrismaJsonValue
         );
 
-        await transaction.auditEvent.create({
+        await this.appendAuditEvent(transaction, {
           data: {
             customerId: existingReviewCase.customerId,
             actorType: "operator",
@@ -1008,7 +1035,7 @@ export class ReviewCasesService {
         } as PrismaJsonValue
       );
 
-      await transaction.auditEvent.create({
+      await this.appendAuditEvent(transaction, {
         data: {
           customerId: existingReviewCase.customerId,
           actorType: "operator",
@@ -1094,7 +1121,7 @@ export class ReviewCasesService {
           } as PrismaJsonValue
         );
 
-        await transaction.auditEvent.create({
+        await this.appendAuditEvent(transaction, {
           data: {
             customerId: existingReviewCase.customerId,
             actorType: "operator",
@@ -1176,7 +1203,7 @@ export class ReviewCasesService {
           } as PrismaJsonValue
         );
 
-        await transaction.auditEvent.create({
+        await this.appendAuditEvent(transaction, {
           data: {
             customerId: existingReviewCase.customerId,
             actorType: "operator",
@@ -1257,7 +1284,7 @@ export class ReviewCasesService {
           } as PrismaJsonValue
         );
 
-        await transaction.auditEvent.create({
+        await this.appendAuditEvent(transaction, {
           data: {
             customerId: existingReviewCase.customerId,
             actorType: "operator",
@@ -1400,7 +1427,7 @@ export class ReviewCasesService {
         } as PrismaJsonValue
       );
 
-      await transaction.auditEvent.create({
+      await this.appendAuditEvent(transaction, {
         data: {
           customerId: existingReviewCase.customerId,
           actorType: "operator",
@@ -1424,7 +1451,7 @@ export class ReviewCasesService {
         }
       });
 
-      await transaction.auditEvent.create({
+      await this.appendAuditEvent(transaction, {
         data: {
           customerId: existingReviewCase.customerId,
           actorType: "operator",

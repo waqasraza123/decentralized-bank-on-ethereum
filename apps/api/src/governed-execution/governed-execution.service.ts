@@ -4,6 +4,7 @@ import {
   ForbiddenException,
   Injectable,
   Logger,
+  Optional,
   ServiceUnavailableException
 } from "@nestjs/common";
 import {
@@ -34,6 +35,7 @@ import {
 } from "@prisma/client";
 import { ethers } from "ethers";
 import { assertOperatorRoleAuthorized } from "../auth/internal-operator-role-policy";
+import { NotificationsService } from "../notifications/notifications.service";
 import { PrismaService } from "../prisma/prisma.service";
 import type { PrismaJsonValue } from "../prisma/prisma-json";
 import {
@@ -313,7 +315,14 @@ export class GovernedExecutionService {
   private readonly executorAllowedSignerAddresses: Set<string>;
   private readonly provider: ethers.providers.JsonRpcProvider | null;
 
-  constructor(private readonly prismaService: PrismaService) {
+  constructor(
+    private readonly prismaService: PrismaService,
+    @Optional()
+    private readonly notificationsService?: Pick<
+      NotificationsService,
+      "publishAuditEventRecord" | "publishLoanEventRecord"
+    >
+  ) {
     this.config = {
       environment: "production",
       governedExecutionRequiredInProduction: true,
@@ -363,6 +372,66 @@ export class GovernedExecutionService {
         `Governed execution bootstrap is running in safe disabled mode: ${error instanceof Error ? error.message : "unknown error"}.`
       );
     }
+  }
+
+  private async appendAuditEvent(
+    client: Prisma.TransactionClient | PrismaService,
+    args: Prisma.AuditEventCreateArgs
+  ) {
+    const auditEvent = await client.auditEvent.create(args);
+
+    if (this.notificationsService) {
+      await this.notificationsService.publishAuditEventRecord(
+        auditEvent,
+        client === this.prismaService
+          ? undefined
+          : (client as Prisma.TransactionClient)
+      );
+    }
+
+    return auditEvent;
+  }
+
+  private async appendLoanEvent(
+    client: Prisma.TransactionClient | PrismaService,
+    args: Prisma.LoanEventCreateArgs
+  ) {
+    const loanEvent = await client.loanEvent.create({
+      ...args,
+      include: {
+        loanApplication: {
+          select: {
+            id: true,
+            customerAccount: {
+              select: {
+                customerId: true
+              }
+            }
+          }
+        },
+        loanAgreement: {
+          select: {
+            id: true,
+            customerAccount: {
+              select: {
+                customerId: true
+              }
+            }
+          }
+        }
+      }
+    });
+
+    if (this.notificationsService) {
+      await this.notificationsService.publishLoanEventRecord(
+        loanEvent,
+        client === this.prismaService
+          ? undefined
+          : (client as Prisma.TransactionClient)
+      );
+    }
+
+    return loanEvent;
   }
 
   private normalizeEnvironment(
@@ -860,7 +929,7 @@ export class GovernedExecutionService {
     });
 
     if (expired.count > 0) {
-      await this.prismaService.auditEvent.create({
+      await this.appendAuditEvent(this.prismaService, {
         data: {
           customerId: null,
           actorType: "system",
@@ -1310,7 +1379,7 @@ export class GovernedExecutionService {
         include: executionRequestInclude
       });
 
-      await transaction.auditEvent.create({
+      await this.appendAuditEvent(transaction, {
         data: {
           customerId: null,
           actorType: "operator",
@@ -1481,7 +1550,7 @@ export class GovernedExecutionService {
         include: executionRequestInclude
       });
 
-      await transaction.auditEvent.create({
+      await this.appendAuditEvent(transaction, {
         data: {
           customerId: null,
           actorType: "worker",
@@ -1647,7 +1716,7 @@ export class GovernedExecutionService {
         include: executionRequestInclude
       });
 
-      await transaction.auditEvent.create({
+      await this.appendAuditEvent(transaction, {
         data: {
           customerId: null,
           actorType: "worker",
@@ -1798,7 +1867,7 @@ export class GovernedExecutionService {
         include: executionRequestInclude
       });
 
-      await transaction.auditEvent.create({
+      await this.appendAuditEvent(transaction, {
         data: {
           customerId: null,
           actorType: "worker",
@@ -1908,7 +1977,7 @@ export class GovernedExecutionService {
         include: executionRequestInclude
       });
 
-      await transaction.auditEvent.create({
+      await this.appendAuditEvent(transaction, {
         data: {
           customerId: null,
           actorType: "worker",
@@ -2078,7 +2147,7 @@ export class GovernedExecutionService {
         include: executionRequestInclude
       });
 
-      await transaction.auditEvent.create({
+      await this.appendAuditEvent(transaction, {
         data: {
           customerId: null,
           actorType: "system",
@@ -2340,7 +2409,7 @@ export class GovernedExecutionService {
           }
         });
 
-        await transaction.loanEvent.create({
+        await this.appendLoanEvent(transaction, {
           data: {
             loanAgreementId: next.loanAgreementId,
             actorType: "system",
@@ -2378,7 +2447,7 @@ export class GovernedExecutionService {
         });
       }
 
-      await transaction.auditEvent.create({
+      await this.appendAuditEvent(transaction, {
         data: {
           customerId: null,
           actorType: "system",
@@ -2545,7 +2614,7 @@ export class GovernedExecutionService {
       });
 
       if (next.loanAgreementId) {
-        await transaction.loanEvent.create({
+        await this.appendLoanEvent(transaction, {
           data: {
             loanAgreementId: next.loanAgreementId,
             actorType: "system",
@@ -2566,7 +2635,7 @@ export class GovernedExecutionService {
         });
       }
 
-      await transaction.auditEvent.create({
+      await this.appendAuditEvent(transaction, {
         data: {
           customerId: null,
           actorType: "system",
@@ -2732,7 +2801,7 @@ export class GovernedExecutionService {
         include: executionRequestInclude
       });
 
-      await transaction.loanEvent.create({
+      await this.appendLoanEvent(transaction, {
         data: {
           loanAgreementId: input.loanAgreementId,
           actorType: input.requestedByActorType,
@@ -2752,7 +2821,7 @@ export class GovernedExecutionService {
         }
       });
 
-      await transaction.auditEvent.create({
+      await this.appendAuditEvent(transaction, {
         data: {
           customerId: null,
           actorType: input.requestedByActorType,
@@ -2869,7 +2938,7 @@ export class GovernedExecutionService {
         include: executionRequestInclude
       });
 
-      await transaction.auditEvent.create({
+      await this.appendAuditEvent(transaction, {
         data: {
           customerId: null,
           actorType: input.requestedByActorType,
@@ -3018,7 +3087,7 @@ export class GovernedExecutionService {
           }
         });
 
-        await transaction.loanEvent.create({
+        await this.appendLoanEvent(transaction, {
           data: {
             loanAgreementId: next.loanAgreementId,
             actorType: "operator",
@@ -3055,7 +3124,7 @@ export class GovernedExecutionService {
         });
       }
 
-      await transaction.auditEvent.create({
+      await this.appendAuditEvent(transaction, {
         data: {
           customerId: null,
           actorType: "operator",
@@ -3169,7 +3238,7 @@ export class GovernedExecutionService {
       });
 
       if (next.loanAgreementId) {
-        await transaction.loanEvent.create({
+        await this.appendLoanEvent(transaction, {
           data: {
             loanAgreementId: next.loanAgreementId,
             actorType: "operator",
@@ -3203,7 +3272,7 @@ export class GovernedExecutionService {
         });
       }
 
-      await transaction.auditEvent.create({
+      await this.appendAuditEvent(transaction, {
         data: {
           customerId: null,
           actorType: "operator",
@@ -3313,7 +3382,7 @@ export class GovernedExecutionService {
           }
         });
 
-      await transaction.auditEvent.create({
+      await this.appendAuditEvent(transaction, {
         data: {
           customerId: null,
           actorType: "operator",
@@ -3410,7 +3479,7 @@ export class GovernedExecutionService {
         }
       });
 
-      await transaction.auditEvent.create({
+      await this.appendAuditEvent(transaction, {
         data: {
           customerId: null,
           actorType: "operator",
@@ -3489,7 +3558,7 @@ export class GovernedExecutionService {
         }
       });
 
-      await transaction.auditEvent.create({
+      await this.appendAuditEvent(transaction, {
         data: {
           customerId: null,
           actorType: "operator",
