@@ -2,7 +2,8 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
-  NotFoundException
+  NotFoundException,
+  Optional
 } from "@nestjs/common";
 import {
   loadProductChainRuntimeConfig,
@@ -19,6 +20,7 @@ import {
   WithdrawalSettlementReplayApprovalRequestStatus
 } from "@prisma/client";
 import { assertOperatorRoleAuthorized } from "../auth/internal-operator-role-policy";
+import { NotificationsService } from "../notifications/notifications.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { OpenReconciliationReviewCaseDto } from "../review-cases/dto/open-reconciliation-review-case.dto";
 import { ReviewCasesService } from "../review-cases/review-cases.service";
@@ -285,13 +287,36 @@ export class WithdrawalSettlementReconciliationService {
   constructor(
     private readonly prismaService: PrismaService,
     private readonly withdrawalIntentsService: WithdrawalIntentsService,
-    private readonly reviewCasesService: ReviewCasesService
+    private readonly reviewCasesService: ReviewCasesService,
+    @Optional()
+    private readonly notificationsService?: Pick<
+      NotificationsService,
+      "publishAuditEventRecord"
+    >
   ) {
     this.productChainId = loadProductChainRuntimeConfig().productChainId;
     this.custodyOperationAllowedOperatorRoles = [
       ...loadSensitiveOperatorActionPolicyRuntimeConfig()
         .custodyOperationAllowedOperatorRoles
     ];
+  }
+
+  private async appendAuditEvent(
+    client: Prisma.TransactionClient | PrismaService,
+    args: Prisma.AuditEventCreateArgs
+  ) {
+    const auditEvent = await client.auditEvent.create(args);
+
+    if (this.notificationsService) {
+      await this.notificationsService.publishAuditEventRecord(
+        auditEvent,
+        client === this.prismaService
+          ? undefined
+          : (client as Prisma.TransactionClient)
+      );
+    }
+
+    return auditEvent;
   }
 
   private assertCanOperateCustody(operatorRole?: string | null): string {
@@ -811,7 +836,7 @@ export class WithdrawalSettlementReconciliationService {
             }
           });
 
-        await transaction.auditEvent.create({
+        await this.appendAuditEvent(transaction, {
           data: {
             actorType: "operator",
             actorId: operatorId,
@@ -913,7 +938,7 @@ export class WithdrawalSettlementReconciliationService {
             }
           });
 
-        await transaction.auditEvent.create({
+        await this.appendAuditEvent(transaction, {
           data: {
             actorType: "operator",
             actorId: operatorId,
@@ -1059,7 +1084,7 @@ export class WithdrawalSettlementReconciliationService {
             }
           });
 
-        await transaction.auditEvent.create({
+        await this.appendAuditEvent(transaction, {
           data: {
             customerId: item.intent.customer.customerId,
             actorType: "operator",
@@ -1179,7 +1204,7 @@ export class WithdrawalSettlementReconciliationService {
             }
           });
 
-        await transaction.auditEvent.create({
+        await this.appendAuditEvent(transaction, {
           data: {
             customerId: item.intent.customer.customerId,
             actorType: "operator",
@@ -1307,7 +1332,7 @@ export class WithdrawalSettlementReconciliationService {
             }
           });
 
-        await transaction.auditEvent.create({
+        await this.appendAuditEvent(transaction, {
           data: {
             customerId: item.intent.customer.customerId,
             actorType: "operator",

@@ -3,6 +3,7 @@ import {
   ConflictException,
   Injectable,
   NotFoundException,
+  Optional,
 } from "@nestjs/common";
 import {
   loadPlatformAlertAutomationRuntimeConfig,
@@ -47,6 +48,7 @@ import {
   WorkerRuntimeIterationStatus,
 } from "@prisma/client";
 import { ApiRequestMetricsService } from "../logging/api-request-metrics.service";
+import { NotificationsService } from "../notifications/notifications.service";
 import { PrismaService } from "../prisma/prisma.service";
 import type { PrismaJsonValue } from "../prisma/prisma-json";
 import { ReviewCasesService } from "../review-cases/review-cases.service";
@@ -492,6 +494,11 @@ export class OperationsMonitoringService {
     private readonly prismaService: PrismaService,
     private readonly reviewCasesService: ReviewCasesService,
     private readonly platformAlertDeliveryService: PlatformAlertDeliveryService,
+    @Optional()
+    private readonly notificationsService?: Pick<
+      NotificationsService,
+      "publishAuditEventRecord" | "publishPlatformAlertRecord"
+    >,
   ) {
     this.productChainId = loadProductChainRuntimeConfig().productChainId;
     this.platformAlertAutomationPolicies =
@@ -502,6 +509,34 @@ export class OperationsMonitoringService {
       loadPlatformAlertDeliveryHealthSloRuntimeConfig();
     this.platformAlertReEscalationRuntimeConfig =
       loadPlatformAlertReEscalationRuntimeConfig();
+  }
+
+  private async appendAuditEvent(
+    client: Prisma.TransactionClient | PrismaService,
+    args: Prisma.AuditEventCreateArgs,
+  ) {
+    const auditEvent = await client.auditEvent.create(args);
+
+    if (this.notificationsService) {
+      await this.notificationsService.publishAuditEventRecord(
+        auditEvent,
+        client === this.prismaService
+          ? undefined
+          : (client as Prisma.TransactionClient),
+      );
+    }
+
+    return auditEvent;
+  }
+
+  private async appendPlatformAlert(args: Prisma.PlatformAlertCreateArgs) {
+    const alert = await this.prismaService.platformAlert.create(args);
+
+    if (this.notificationsService) {
+      await this.notificationsService.publishPlatformAlertRecord(alert);
+    }
+
+    return alert;
   }
 
   private resolveHealthStatus(
@@ -1333,7 +1368,7 @@ export class OperationsMonitoringService {
       },
     );
 
-    await this.prismaService.auditEvent.create({
+    await this.appendAuditEvent(this.prismaService, {
       data: {
         customerId: null,
         actorType: "system",
@@ -1733,7 +1768,7 @@ export class OperationsMonitoringService {
 
       if (!existingAlert) {
         try {
-          const createdAlert = await this.prismaService.platformAlert.create({
+          const createdAlert = await this.appendPlatformAlert({
             data: {
               dedupeKey: candidate.dedupeKey,
               category: candidate.category,
@@ -2961,7 +2996,7 @@ export class OperationsMonitoringService {
           },
         });
 
-      await this.prismaService.auditEvent.create({
+      await this.appendAuditEvent(this.prismaService, {
         data: {
           customerId: null,
           actorType: actor.actorType,
@@ -3074,7 +3109,7 @@ export class OperationsMonitoringService {
       },
     });
 
-    await this.prismaService.auditEvent.create({
+    await this.appendAuditEvent(this.prismaService, {
       data: {
         customerId: null,
         actorType: "operator",
@@ -3137,7 +3172,7 @@ export class OperationsMonitoringService {
       },
     });
 
-    await this.prismaService.auditEvent.create({
+    await this.appendAuditEvent(this.prismaService, {
       data: {
         customerId: null,
         actorType: "operator",
@@ -3205,7 +3240,7 @@ export class OperationsMonitoringService {
       },
     });
 
-    await this.prismaService.auditEvent.create({
+    await this.appendAuditEvent(this.prismaService, {
       data: {
         customerId: null,
         actorType: "operator",
@@ -3271,7 +3306,7 @@ export class OperationsMonitoringService {
       },
     });
 
-    await this.prismaService.auditEvent.create({
+    await this.appendAuditEvent(this.prismaService, {
       data: {
         customerId: null,
         actorType: "operator",
@@ -3322,7 +3357,7 @@ export class OperationsMonitoringService {
       );
 
     if (retriedDeliveryCount > 0) {
-      await this.prismaService.auditEvent.create({
+      await this.appendAuditEvent(this.prismaService, {
         data: {
           customerId: null,
           actorType: "operator",
@@ -3409,7 +3444,7 @@ export class OperationsMonitoringService {
           },
         });
 
-        await transaction.auditEvent.create({
+        await this.appendAuditEvent(transaction, {
           data: {
             customerId: null,
             actorType: actor.actorType,

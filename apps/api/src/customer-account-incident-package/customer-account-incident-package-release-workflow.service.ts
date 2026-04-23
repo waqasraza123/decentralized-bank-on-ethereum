@@ -2,7 +2,8 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
-  NotFoundException
+  NotFoundException,
+  Optional,
 } from "@nestjs/common";
 import { loadIncidentPackageReleaseGovernanceRuntimeConfig } from "@stealth-trails-bank/config/api";
 import {
@@ -11,6 +12,7 @@ import {
   IncidentPackageReleaseTarget,
   Prisma
 } from "@prisma/client";
+import { NotificationsService } from "../notifications/notifications.service";
 import { PrismaService } from "../prisma/prisma.service";
 import type { PrismaJsonValue } from "../prisma/prisma-json";
 import { CustomerAccountIncidentPackageExportGovernanceService } from "./customer-account-incident-package-export-governance.service";
@@ -109,7 +111,12 @@ export class CustomerAccountIncidentPackageReleaseWorkflowService {
 
   constructor(
     private readonly prismaService: PrismaService,
-    private readonly customerAccountIncidentPackageExportGovernanceService: CustomerAccountIncidentPackageExportGovernanceService
+    private readonly customerAccountIncidentPackageExportGovernanceService: CustomerAccountIncidentPackageExportGovernanceService,
+    @Optional()
+    private readonly notificationsService?: Pick<
+      NotificationsService,
+      "publishAuditEventRecord"
+    >
   ) {
     const config = loadIncidentPackageReleaseGovernanceRuntimeConfig();
 
@@ -117,6 +124,16 @@ export class CustomerAccountIncidentPackageReleaseWorkflowService {
       ...config.incidentPackageReleaseApproverAllowedOperatorRoles
     ];
     this.approvalExpiryHours = config.incidentPackageReleaseApprovalExpiryHours;
+  }
+
+  private async appendAuditEvent(args: Prisma.AuditEventCreateArgs) {
+    const auditEvent = await this.prismaService.auditEvent.create(args);
+
+    if (this.notificationsService) {
+      await this.notificationsService.publishAuditEventRecord(auditEvent);
+    }
+
+    return auditEvent;
   }
 
   private normalizeOperatorRole(operatorRole?: string): string | null {
@@ -263,7 +280,7 @@ export class CustomerAccountIncidentPackageReleaseWorkflowService {
         include: incidentPackageReleaseInclude
       });
 
-    await this.prismaService.auditEvent.create({
+    await this.appendAuditEvent({
       data: {
         customerId: release.customerAccount.customer.id,
         actorType: "system",
@@ -331,7 +348,7 @@ export class CustomerAccountIncidentPackageReleaseWorkflowService {
         include: incidentPackageReleaseInclude
       });
 
-    await this.prismaService.auditEvent.create({
+    await this.appendAuditEvent({
       data: {
         customerId: createdRelease.customerAccount.customer.id,
         actorType: "operator",
@@ -507,7 +524,7 @@ export class CustomerAccountIncidentPackageReleaseWorkflowService {
         include: incidentPackageReleaseInclude
       });
 
-    await this.prismaService.auditEvent.create({
+    await this.appendAuditEvent({
       data: {
         customerId: updatedRelease.customerAccount.customer.id,
         actorType: "operator",
@@ -591,7 +608,7 @@ export class CustomerAccountIncidentPackageReleaseWorkflowService {
         include: incidentPackageReleaseInclude
       });
 
-    await this.prismaService.auditEvent.create({
+    await this.appendAuditEvent({
       data: {
         customerId: updatedRelease.customerAccount.customer.id,
         actorType: "operator",
@@ -671,7 +688,7 @@ export class CustomerAccountIncidentPackageReleaseWorkflowService {
         include: incidentPackageReleaseInclude
       });
 
-    await this.prismaService.auditEvent.create({
+    await this.appendAuditEvent({
       data: {
         customerId: updatedRelease.customerAccount.customer.id,
         actorType: "operator",

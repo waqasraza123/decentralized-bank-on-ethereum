@@ -12,6 +12,7 @@ import {
 } from "@prisma/client";
 import { assertOperatorRoleAuthorized } from "../auth/internal-operator-role-policy";
 import { GovernedExecutionService } from "../governed-execution/governed-execution.service";
+import { NotificationsService } from "../notifications/notifications.service";
 import { PrismaService } from "../prisma/prisma.service";
 import type { PrismaJsonValue } from "../prisma/prisma-json";
 import { StakingService } from "./staking.service";
@@ -98,6 +99,11 @@ export class StakingPoolGovernanceService {
     private readonly governedExecutionService?: Pick<
       GovernedExecutionService,
       "isStakingWriteGovernedExternalEnabled" | "requestStakingPoolCreation"
+    >,
+    @Optional()
+    private readonly notificationsService?: Pick<
+      NotificationsService,
+      "publishAuditEventRecord"
     >
   ) {
     const config = loadStakingPoolGovernanceRuntimeConfig();
@@ -111,6 +117,24 @@ export class StakingPoolGovernanceService {
     this.executorAllowedRoles = [
       ...config.stakingPoolGovernanceExecutorAllowedOperatorRoles
     ];
+  }
+
+  private async appendAuditEvent(
+    client: Prisma.TransactionClient | PrismaService,
+    args: Prisma.AuditEventCreateArgs
+  ) {
+    const auditEvent = await client.auditEvent.create(args);
+
+    if (this.notificationsService) {
+      await this.notificationsService.publishAuditEventRecord(
+        auditEvent,
+        client === this.prismaService
+          ? undefined
+          : (client as Prisma.TransactionClient)
+      );
+    }
+
+    return auditEvent;
   }
 
   private normalizeOptionalString(value?: string): string | null {
@@ -213,7 +237,7 @@ export class StakingPoolGovernanceService {
         include: stakingPoolGovernanceRequestInclude
       });
 
-      await transaction.auditEvent.create({
+      await this.appendAuditEvent(transaction, {
         data: {
           customerId: null,
           actorType: "operator",
@@ -319,7 +343,7 @@ export class StakingPoolGovernanceService {
           include: stakingPoolGovernanceRequestInclude
         });
 
-        await transaction.auditEvent.create({
+        await this.appendAuditEvent(transaction, {
           data: {
             customerId: null,
             actorType: "operator",
@@ -382,7 +406,7 @@ export class StakingPoolGovernanceService {
           include: stakingPoolGovernanceRequestInclude
         });
 
-        await transaction.auditEvent.create({
+        await this.appendAuditEvent(transaction, {
           data: {
             customerId: null,
             actorType: "operator",
@@ -473,7 +497,7 @@ export class StakingPoolGovernanceService {
             include: stakingPoolGovernanceRequestInclude
           });
 
-          await transaction.auditEvent.create({
+          await this.appendAuditEvent(transaction, {
             data: {
               customerId: null,
               actorType: "operator",
@@ -529,7 +553,7 @@ export class StakingPoolGovernanceService {
             include: stakingPoolGovernanceRequestInclude
           });
 
-          await transaction.auditEvent.create({
+          await this.appendAuditEvent(transaction, {
             data: {
               customerId: null,
               actorType: "operator",
@@ -581,7 +605,7 @@ export class StakingPoolGovernanceService {
           include: stakingPoolGovernanceRequestInclude
         });
 
-        await transaction.auditEvent.create({
+        await this.appendAuditEvent(transaction, {
           data: {
             customerId: null,
             actorType: "operator",

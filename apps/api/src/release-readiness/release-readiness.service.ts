@@ -3,7 +3,8 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
-  NotFoundException
+  NotFoundException,
+  Optional
 } from "@nestjs/common";
 import { createHash } from "node:crypto";
 import { loadReleaseReadinessApprovalRuntimeConfig } from "@stealth-trails-bank/config/api";
@@ -18,6 +19,7 @@ import {
   assertOperatorRoleAuthorized,
   normalizeOperatorRole
 } from "../auth/internal-operator-role-policy";
+import { NotificationsService } from "../notifications/notifications.service";
 import { PrismaService } from "../prisma/prisma.service";
 import type { PrismaJsonValue } from "../prisma/prisma-json";
 import { CreateReleaseReadinessApprovalDto } from "./dto/create-release-readiness-approval.dto";
@@ -367,7 +369,14 @@ export class ReleaseReadinessService {
   private readonly approvalAllowedOperatorRoles: string[];
   private readonly maxEvidenceAgeHours: number;
 
-  constructor(private readonly prismaService: PrismaService) {
+  constructor(
+    private readonly prismaService: PrismaService,
+    @Optional()
+    private readonly notificationsService?: Pick<
+      NotificationsService,
+      "publishAuditEventRecord"
+    >
+  ) {
     const config = loadReleaseReadinessApprovalRuntimeConfig();
     this.requestAllowedOperatorRoles = [
       ...config.releaseReadinessApprovalRequestAllowedOperatorRoles
@@ -376,6 +385,24 @@ export class ReleaseReadinessService {
       ...config.releaseReadinessApprovalApproverAllowedOperatorRoles
     ];
     this.maxEvidenceAgeHours = config.releaseReadinessApprovalMaxEvidenceAgeHours;
+  }
+
+  private async appendAuditEvent(
+    client: Prisma.TransactionClient | PrismaService,
+    args: Prisma.AuditEventCreateArgs
+  ) {
+    const auditEvent = await client.auditEvent.create(args);
+
+    if (this.notificationsService) {
+      await this.notificationsService.publishAuditEventRecord(
+        auditEvent,
+        client === this.prismaService
+          ? undefined
+          : (client as Prisma.TransactionClient)
+      );
+    }
+
+    return auditEvent;
   }
 
   private normalizeOptionalString(value?: string | null): string | null {
@@ -1517,7 +1544,7 @@ export class ReleaseReadinessService {
         }
       });
 
-      await transaction.auditEvent.create({
+      await this.appendAuditEvent(transaction, {
         data: {
           actorType: "operator",
           actorId: operatorId,
@@ -1900,7 +1927,7 @@ export class ReleaseReadinessService {
         }
       });
 
-      await transaction.auditEvent.create({
+      await this.appendAuditEvent(transaction, {
         data: {
           actorType: "operator",
           actorId: operatorId,
@@ -2068,7 +2095,7 @@ export class ReleaseReadinessService {
         }
       });
 
-      await transaction.auditEvent.create({
+      await this.appendAuditEvent(transaction, {
         data: {
           actorType: "operator",
           actorId: operatorId,
@@ -2217,7 +2244,7 @@ export class ReleaseReadinessService {
           }
         });
 
-        await transaction.auditEvent.create({
+        await this.appendAuditEvent(transaction, {
           data: {
             actorType: "operator",
             actorId: operatorId,
@@ -2414,7 +2441,7 @@ export class ReleaseReadinessService {
           }
         });
 
-        await transaction.auditEvent.create({
+        await this.appendAuditEvent(transaction, {
           data: {
             actorType: "operator",
             actorId: operatorId,
@@ -2560,7 +2587,7 @@ export class ReleaseReadinessService {
           }
         });
 
-        await transaction.auditEvent.create({
+        await this.appendAuditEvent(transaction, {
           data: {
             actorType: "operator",
             actorId: operatorId,

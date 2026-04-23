@@ -2,7 +2,8 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
-  NotFoundException
+  NotFoundException,
+  Optional
 } from "@nestjs/common";
 import { loadAccountHoldPolicyRuntimeConfig } from "@stealth-trails-bank/config/api";
 import {
@@ -17,6 +18,7 @@ import {
   ReviewCaseStatus,
   ReviewCaseType
 } from "@prisma/client";
+import { NotificationsService } from "../notifications/notifications.service";
 import { PrismaService } from "../prisma/prisma.service";
 import type { PrismaJsonValue } from "../prisma/prisma-json";
 import { DecideAccountReleaseDto } from "./dto/decide-account-release.dto";
@@ -164,11 +166,36 @@ type ListPendingAccountReleaseReviewsResult = {
 export class AccountRestrictionReleaseReviewService {
   private readonly accountHoldReleaseAllowedOperatorRoles: string[];
 
-  constructor(private readonly prismaService: PrismaService) {
+  constructor(
+    private readonly prismaService: PrismaService,
+    @Optional()
+    private readonly notificationsService?: Pick<
+      NotificationsService,
+      "publishAuditEventRecord"
+    >
+  ) {
     this.accountHoldReleaseAllowedOperatorRoles = [
       ...loadAccountHoldPolicyRuntimeConfig()
         .accountHoldReleaseAllowedOperatorRoles
     ];
+  }
+
+  private async appendAuditEvent(
+    client: Prisma.TransactionClient | PrismaService,
+    args: Prisma.AuditEventCreateArgs
+  ) {
+    const auditEvent = await client.auditEvent.create(args);
+
+    if (this.notificationsService) {
+      await this.notificationsService.publishAuditEventRecord(
+        auditEvent,
+        client === this.prismaService
+          ? undefined
+          : (client as Prisma.TransactionClient)
+      );
+    }
+
+    return auditEvent;
   }
 
   private normalizeOperatorRole(operatorRole?: string): string | null {
@@ -504,7 +531,7 @@ export class AccountRestrictionReleaseReviewService {
           } as PrismaJsonValue
         );
 
-        await transaction.auditEvent.create({
+        await this.appendAuditEvent(transaction, {
           data: {
             customerId: reviewCase.customerId,
             actorType: "operator",
@@ -748,7 +775,7 @@ export class AccountRestrictionReleaseReviewService {
             }
           });
 
-          await transaction.auditEvent.create({
+          await this.appendAuditEvent(transaction, {
             data: {
               customerId: reviewCase.customerId,
               actorType: "operator",
@@ -772,7 +799,7 @@ export class AccountRestrictionReleaseReviewService {
             }
           });
 
-          await transaction.auditEvent.create({
+          await this.appendAuditEvent(transaction, {
             data: {
               customerId: reviewCase.customerId,
               actorType: "operator",
@@ -861,7 +888,7 @@ export class AccountRestrictionReleaseReviewService {
           } as PrismaJsonValue
         );
 
-        await transaction.auditEvent.create({
+        await this.appendAuditEvent(transaction, {
           data: {
             customerId: reviewCase.customerId,
             actorType: "operator",

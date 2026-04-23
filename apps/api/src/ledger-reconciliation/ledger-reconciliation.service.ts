@@ -2,7 +2,8 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
-  NotFoundException
+  NotFoundException,
+  Optional
 } from "@nestjs/common";
 import { loadProductChainRuntimeConfig } from "@stealth-trails-bank/config/api";
 import {
@@ -29,6 +30,7 @@ import {
   WithdrawalSettlementReplayApprovalRequestStatus,
   WithdrawalSettlementReplayAction
 } from "@prisma/client";
+import { NotificationsService } from "../notifications/notifications.service";
 import { PrismaService } from "../prisma/prisma.service";
 import type { PrismaJsonValue } from "../prisma/prisma-json";
 import { ReviewCasesService } from "../review-cases/review-cases.service";
@@ -580,9 +582,32 @@ export class LedgerReconciliationService {
     private readonly withdrawalIntentsService: WithdrawalIntentsService,
     private readonly depositSettlementReconciliationService: DepositSettlementReconciliationService,
     private readonly withdrawalSettlementReconciliationService: WithdrawalSettlementReconciliationService,
-    private readonly reviewCasesService: ReviewCasesService
+    private readonly reviewCasesService: ReviewCasesService,
+    @Optional()
+    private readonly notificationsService?: Pick<
+      NotificationsService,
+      "publishAuditEventRecord"
+    >
   ) {
     this.productChainId = loadProductChainRuntimeConfig().productChainId;
+  }
+
+  private async appendAuditEvent(
+    client: Prisma.TransactionClient | PrismaService,
+    args: Prisma.AuditEventCreateArgs
+  ) {
+    const auditEvent = await client.auditEvent.create(args);
+
+    if (this.notificationsService) {
+      await this.notificationsService.publishAuditEventRecord(
+        auditEvent,
+        client === this.prismaService
+          ? undefined
+          : (client as Prisma.TransactionClient)
+      );
+    }
+
+    return auditEvent;
   }
 
   private createZeroDecimal(): Prisma.Decimal {
@@ -1028,7 +1053,7 @@ export class LedgerReconciliationService {
     },
     metadata: Record<string, unknown> | null
   ): Promise<void> {
-    await this.prismaService.auditEvent.create({
+    await this.appendAuditEvent(this.prismaService, {
       data: {
         customerId: mismatch.customerId,
         actorType,
@@ -1099,7 +1124,7 @@ export class LedgerReconciliationService {
       }
     });
 
-    await transaction.auditEvent.create({
+    await this.appendAuditEvent(transaction, {
       data: {
         customerId: mismatch.customerId,
         actorType: actor.actorType,
@@ -2161,7 +2186,7 @@ export class LedgerReconciliationService {
         }
       });
 
-      await this.prismaService.auditEvent.create({
+      await this.appendAuditEvent(this.prismaService, {
         data: {
           actorType:
             trigger.triggerSource === "worker"
@@ -2967,7 +2992,7 @@ export class LedgerReconciliationService {
         }
       });
 
-      await transaction.auditEvent.create({
+      await this.appendAuditEvent(transaction, {
         data: {
           customerId: mismatch.customer?.id ?? null,
           actorType: "operator",

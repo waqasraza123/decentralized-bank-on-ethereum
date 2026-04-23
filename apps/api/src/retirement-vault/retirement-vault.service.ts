@@ -3,6 +3,7 @@ import {
   ConflictException,
   Injectable,
   NotFoundException,
+  Optional,
 } from "@nestjs/common";
 import {
   loadAccountHoldPolicyRuntimeConfig,
@@ -31,6 +32,7 @@ import {
 } from "../auth/internal-operator-role-policy";
 import { CustomerAccountOperationsService } from "../customer-account-operations/customer-account-operations.service";
 import { LedgerService } from "../ledger/ledger.service";
+import { NotificationsService } from "../notifications/notifications.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { ReviewCasesService } from "../review-cases/review-cases.service";
 import { CreateRetirementVaultDto } from "./dto/create-retirement-vault.dto";
@@ -622,7 +624,12 @@ export class RetirementVaultService {
     private readonly prismaService: PrismaService,
     private readonly ledgerService: LedgerService,
     private readonly reviewCasesService: ReviewCasesService,
-    private readonly customerAccountOperationsService: CustomerAccountOperationsService
+    private readonly customerAccountOperationsService: CustomerAccountOperationsService,
+    @Optional()
+    private readonly notificationsService?: Pick<
+      NotificationsService,
+      "publishAuditEventRecord"
+    >,
   ) {
     this.productChainId = loadProductChainRuntimeConfig().productChainId;
     const accountHoldPolicy = loadAccountHoldPolicyRuntimeConfig();
@@ -638,6 +645,24 @@ export class RetirementVaultService {
         ...RESTRICTED_VAULT_OPERATOR_ROLES,
       ]),
     ];
+  }
+
+  private async appendAuditEvent(
+    client: Prisma.TransactionClient | PrismaService,
+    args: Prisma.AuditEventCreateArgs,
+  ) {
+    const auditEvent = await client.auditEvent.create(args);
+
+    if (this.notificationsService) {
+      await this.notificationsService.publishAuditEventRecord(
+        auditEvent,
+        client === this.prismaService
+          ? undefined
+          : (client as Prisma.TransactionClient),
+      );
+    }
+
+    return auditEvent;
   }
 
   private normalizeAssetSymbol(assetSymbol: string): string {
@@ -1546,7 +1571,7 @@ export class RetirementVaultService {
       },
     });
 
-    await params.transaction.auditEvent.create({
+    await this.appendAuditEvent(params.transaction, {
       data: {
         customerId: params.customerId,
         actorType: params.actorType,
@@ -1645,7 +1670,7 @@ export class RetirementVaultService {
       },
     });
 
-    await params.transaction.auditEvent.create({
+    await this.appendAuditEvent(params.transaction, {
       data: {
         customerId: params.customerId,
         actorType: params.actorType,
@@ -1762,7 +1787,7 @@ export class RetirementVaultService {
         },
       });
 
-      await transaction.auditEvent.create({
+      await this.appendAuditEvent(transaction, {
         data: {
           customerId: context.customerId,
           actorType: "customer",
@@ -1890,7 +1915,7 @@ export class RetirementVaultService {
         },
       });
 
-      await transaction.auditEvent.create({
+      await this.appendAuditEvent(transaction, {
         data: {
           customerId: context.customerId,
           actorType: "customer",
@@ -2095,7 +2120,7 @@ export class RetirementVaultService {
         },
       });
 
-      await transaction.auditEvent.create({
+      await this.appendAuditEvent(transaction, {
         data: {
           customerId: context.customerId,
           actorType: "customer",
@@ -2218,7 +2243,7 @@ export class RetirementVaultService {
         },
       });
 
-      await transaction.auditEvent.create({
+      await this.appendAuditEvent(transaction, {
         data: {
           customerId:
             cancelledRequest.retirementVault.customerAccount.customer.id ?? null,
@@ -2435,7 +2460,7 @@ export class RetirementVaultService {
         data: eventData,
       });
 
-      await transaction.auditEvent.create({
+      await this.appendAuditEvent(transaction, {
         data: {
           customerId: context.customerId,
           actorType: "customer",
@@ -2579,7 +2604,7 @@ export class RetirementVaultService {
         },
       });
 
-      await transaction.auditEvent.create({
+      await this.appendAuditEvent(transaction, {
         data: {
           customerId: customer?.customerAccount.customer.id ?? null,
           actorType: "customer",
@@ -2834,7 +2859,7 @@ export class RetirementVaultService {
         },
       });
 
-      await transaction.auditEvent.create({
+      await this.appendAuditEvent(transaction, {
         data: {
           customerId: restrictedVault.customerAccount.customer.id,
           actorType: "operator",
@@ -2911,7 +2936,7 @@ export class RetirementVaultService {
         },
       });
 
-      await transaction.auditEvent.create({
+      await this.appendAuditEvent(transaction, {
         data: {
           customerId: unrestrictedVault.customerAccount.customer.id,
           actorType: "operator",
@@ -3138,7 +3163,7 @@ export class RetirementVaultService {
           ],
         });
 
-        await transaction.auditEvent.create({
+        await this.appendAuditEvent(transaction, {
           data: {
             customerId:
               approvedRequest.retirementVault.customerAccount.customer.id ?? null,
@@ -3245,7 +3270,7 @@ export class RetirementVaultService {
           },
         });
 
-        await transaction.auditEvent.create({
+        await this.appendAuditEvent(transaction, {
           data: {
             customerId:
               rejectedRequest.retirementVault.customerAccount.customer.id ?? null,
@@ -3381,7 +3406,7 @@ export class RetirementVaultService {
           ],
         });
 
-        await transaction.auditEvent.create({
+        await this.appendAuditEvent(transaction, {
           data: {
             customerId: existingRequest.retirementVault.customerAccount.customer.id,
             actorType: "operator",
@@ -3489,7 +3514,7 @@ export class RetirementVaultService {
           },
         });
 
-        await transaction.auditEvent.create({
+        await this.appendAuditEvent(transaction, {
           data: {
             customerId: existingRequest.retirementVault.customerAccount.customer.id,
             actorType: "operator",
@@ -3590,7 +3615,7 @@ export class RetirementVaultService {
             },
           });
 
-          await transaction.auditEvent.create({
+          await this.appendAuditEvent(transaction, {
             data: {
               actorType: "worker",
               actorId: workerId,
@@ -3713,7 +3738,7 @@ export class RetirementVaultService {
             },
           });
 
-          await transaction.auditEvent.create({
+          await this.appendAuditEvent(transaction, {
             data: {
               customerId: currentRequest.retirementVault.customerAccount.customer.id,
               actorType: "worker",
@@ -3766,7 +3791,7 @@ export class RetirementVaultService {
             },
           });
 
-          await transaction.auditEvent.create({
+          await this.appendAuditEvent(transaction, {
             data: {
               customerId: request.retirementVault.customerAccount.customer.id,
               actorType: "worker",
@@ -3947,7 +3972,7 @@ export class RetirementVaultService {
           },
         });
 
-        await transaction.auditEvent.create({
+        await this.appendAuditEvent(transaction, {
           data: {
             actorType: "worker",
             actorId: workerId,
@@ -4102,7 +4127,7 @@ export class RetirementVaultService {
             },
           });
 
-          await transaction.auditEvent.create({
+          await this.appendAuditEvent(transaction, {
             data: {
               customerId:
                 currentRequest.retirementVault.customerAccount.customer.id,
@@ -4157,7 +4182,7 @@ export class RetirementVaultService {
             },
           });
 
-          await transaction.auditEvent.create({
+          await this.appendAuditEvent(transaction, {
             data: {
               customerId: request.retirementVault.customerAccount.customer.id,
               actorType: "worker",

@@ -1,7 +1,8 @@
-import { Injectable, NotFoundException } from "@nestjs/common";
+import { Injectable, NotFoundException, Optional } from "@nestjs/common";
 import { createHash } from "node:crypto";
 import { loadIncidentPackageExportGovernanceRuntimeConfig } from "@stealth-trails-bank/config/api";
 import { Prisma } from "@prisma/client";
+import { NotificationsService } from "../notifications/notifications.service";
 import { PrismaService } from "../prisma/prisma.service";
 import type { PrismaJsonValue } from "../prisma/prisma-json";
 import { CustomerAccountIncidentPackageService } from "./customer-account-incident-package.service";
@@ -76,7 +77,12 @@ export class CustomerAccountIncidentPackageExportGovernanceService {
 
   constructor(
     private readonly customerAccountIncidentPackageService: CustomerAccountIncidentPackageService,
-    private readonly prismaService: PrismaService
+    private readonly prismaService: PrismaService,
+    @Optional()
+    private readonly notificationsService?: Pick<
+      NotificationsService,
+      "publishAuditEventRecord"
+    >
   ) {
     const config = loadIncidentPackageExportGovernanceRuntimeConfig();
     this.incidentPackageExportMaxRecentLimit =
@@ -85,6 +91,16 @@ export class CustomerAccountIncidentPackageExportGovernanceService {
       config.incidentPackageExportMaxTimelineLimit;
     this.incidentPackageExportMaxSinceDays =
       config.incidentPackageExportMaxSinceDays;
+  }
+
+  private async appendAuditEvent(args: Prisma.AuditEventCreateArgs) {
+    const auditEvent = await this.prismaService.auditEvent.create(args);
+
+    if (this.notificationsService) {
+      await this.notificationsService.publishAuditEventRecord(auditEvent);
+    }
+
+    return auditEvent;
   }
 
   private resolveMode(
@@ -580,7 +596,7 @@ export class CustomerAccountIncidentPackageExportGovernanceService {
     pkg: BaseIncidentPackageProjection,
     exportMetadata: GovernedExportMetadata
   ): Promise<void> {
-    await this.prismaService.auditEvent.create({
+    await this.appendAuditEvent({
       data: {
         customerId: pkg.customer.customerId,
         actorType: "operator",
