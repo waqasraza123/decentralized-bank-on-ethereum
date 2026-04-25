@@ -1,28 +1,23 @@
-import {
-  Body,
-  Controller,
-  HttpCode,
-  Post,
-  Req
-} from "@nestjs/common";
+import { Body, Controller, HttpCode, Post, Req } from "@nestjs/common";
 import { CustomJsonResponse } from "../types/CustomJsonResponse";
 import { ClientObservabilityService } from "./client-observability.service";
 import { RecordClientTelemetryDto } from "./dto/record-client-telemetry.dto";
 
-@Controller("client-observability")
+@Controller()
 export class ClientObservabilityController {
   constructor(
-    private readonly clientObservabilityService: ClientObservabilityService
+    private readonly clientObservabilityService: ClientObservabilityService,
   ) {}
 
-  @Post("events")
+  @Post(["client-observability/events", "client-events/events"])
   @HttpCode(202)
   async recordTelemetry(
     @Body() body: RecordClientTelemetryDto,
-    @Req() request: {
+    @Req()
+    request: {
       headers?: Record<string, string | string[] | undefined>;
       ip?: string;
-    }
+    },
   ): Promise<CustomJsonResponse> {
     const result = await this.clientObservabilityService.recordTelemetry(body, {
       requestId:
@@ -41,13 +36,13 @@ export class ClientObservabilityController {
         typeof request.headers?.["user-agent"] === "string"
           ? request.headers["user-agent"]
           : null,
-      remoteAddress: request.ip ?? null
+      remoteAddress: request.ip ?? null,
     });
 
     return {
       status: "success",
       message: "Client telemetry recorded successfully.",
-      data: result
+      data: result,
     };
   }
 }

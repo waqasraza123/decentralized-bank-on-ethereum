@@ -153,12 +153,16 @@ describe("AuthService", () => {
     const reviewCasesService = {
       openOrReuseReviewCase: jest.fn(),
     };
+    const notificationsService = {
+      publishAuditEventRecord: jest.fn().mockResolvedValue(undefined),
+    };
 
     const service = new AuthService(
       prismaService as never,
       customerMfaEmailDeliveryService as never,
       customerSecurityEmailDeliveryService as never,
       reviewCasesService as never,
+      notificationsService as never,
     );
 
     transaction.customerAuthSession.create.mockResolvedValue({
@@ -179,6 +183,17 @@ describe("AuthService", () => {
     prismaService.reviewCase.findMany.mockResolvedValue([]);
     prismaService.auditEvent.findMany.mockResolvedValue([]);
     prismaService.auditEvent.count.mockResolvedValue(0);
+    prismaService.auditEvent.create.mockResolvedValue({
+      id: "audit_1",
+      customerId: "customer_1",
+      actorType: "customer",
+      actorId: "supabase_1",
+      action: "customer_account.session_created",
+      targetType: "Customer",
+      targetId: "customer_1",
+      metadata: {},
+      createdAt: new Date("2026-04-20T12:00:00.000Z"),
+    });
     prismaService.customerAuthSession.updateMany.mockResolvedValue({
       count: 1,
     });
@@ -197,6 +212,7 @@ describe("AuthService", () => {
       customerMfaEmailDeliveryService,
       customerSecurityEmailDeliveryService,
       reviewCasesService,
+      notificationsService,
     };
   }
 
@@ -434,6 +450,99 @@ describe("AuthService", () => {
       customerSecurityEmailDeliveryService.sendSessionAlert,
     ).not.toHaveBeenCalled();
     expect(customerMfaEmailDeliveryService.sendCode).not.toHaveBeenCalled();
+  });
+
+  it("does not fail login when customer session persistence is unavailable during schema rollout", async () => {
+    const {
+      service,
+      prismaService,
+      customerMfaEmailDeliveryService,
+      customerSecurityEmailDeliveryService,
+    } = createService();
+    const passwordHash = await bcrypt.hash("s3cret-pass", 4);
+
+    prismaService.customer.findUnique.mockResolvedValue({
+      id: "customer_1",
+      supabaseUserId: "supabase_1",
+      email: "ada@example.com",
+      passwordHash,
+      authTokenVersion: 0,
+      mfaRequired: true,
+      mfaTotpEnrolled: false,
+      mfaEmailOtpEnrolled: false,
+      mfaLastVerifiedAt: null,
+      mfaLockedUntil: null,
+    });
+    prismaService.user.findFirst.mockResolvedValue({
+      id: 42,
+      firstName: "Ada",
+      lastName: "Lovelace",
+      email: "ada@example.com",
+      supabaseUserId: "supabase_1",
+      ethereumAddress: "0xgenerated",
+    });
+    prismaService.customerAuthSession.findFirst.mockRejectedValueOnce(
+      new Error('relation "CustomerAuthSession" does not exist'),
+    );
+
+    const result = await service.login("ada@example.com", "s3cret-pass", {
+      clientPlatform: "web",
+      userAgent: "Mozilla/5.0",
+      ipAddress: "203.0.113.10",
+    });
+
+    expect(result.status).toBe("success");
+    expect(result.data?.token).toEqual(expect.any(String));
+    expect(result.data?.user.sessionSecurity).toEqual({
+      currentSessionTrusted: true,
+      currentSessionRequiresVerification: false,
+    });
+    expect(prismaService.customerAuthSession.create).not.toHaveBeenCalled();
+    expect(
+      customerSecurityEmailDeliveryService.sendSessionAlert,
+    ).not.toHaveBeenCalled();
+    expect(customerMfaEmailDeliveryService.sendCode).not.toHaveBeenCalled();
+  });
+
+  it("does not fail login when audit notification projection fails", async () => {
+    const { service, prismaService, notificationsService } = createService();
+    const passwordHash = await bcrypt.hash("s3cret-pass", 4);
+
+    prismaService.customer.findUnique.mockResolvedValue({
+      id: "customer_1",
+      supabaseUserId: "supabase_1",
+      email: "ada@example.com",
+      passwordHash,
+      authTokenVersion: 0,
+      mfaRequired: true,
+      mfaTotpEnrolled: false,
+      mfaEmailOtpEnrolled: false,
+      mfaLastVerifiedAt: null,
+      mfaLockedUntil: null,
+    });
+    prismaService.user.findFirst.mockResolvedValue({
+      id: 42,
+      firstName: "Ada",
+      lastName: "Lovelace",
+      email: "ada@example.com",
+      supabaseUserId: "supabase_1",
+      ethereumAddress: "0xgenerated",
+    });
+    prismaService.customerAuthSession.findFirst.mockResolvedValue({
+      id: "session_existing",
+    });
+    notificationsService.publishAuditEventRecord.mockRejectedValueOnce(
+      new Error('relation "NotificationEvent" does not exist'),
+    );
+
+    const result = await service.login("ada@example.com", "s3cret-pass", {
+      clientPlatform: "web",
+      userAgent: "Mozilla/5.0",
+      ipAddress: "203.0.113.10",
+    });
+
+    expect(result.status).toBe("success");
+    expect(notificationsService.publishAuditEventRecord).toHaveBeenCalled();
   });
 
   it("starts an email trust challenge for the current unfamiliar session", async () => {

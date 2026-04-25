@@ -7,7 +7,7 @@ import { ClientObservabilityService } from "./client-observability.service";
 describe("ClientObservabilityController", () => {
   let app: INestApplication;
   const clientObservabilityService = {
-    recordTelemetry: jest.fn()
+    recordTelemetry: jest.fn(),
   };
 
   beforeAll(async () => {
@@ -16,9 +16,9 @@ describe("ClientObservabilityController", () => {
       providers: [
         {
           provide: ClientObservabilityService,
-          useValue: clientObservabilityService
-        }
-      ]
+          useValue: clientObservabilityService,
+        },
+      ],
     }).compile();
 
     app = moduleRef.createNestApplication();
@@ -26,8 +26,8 @@ describe("ClientObservabilityController", () => {
       new ValidationPipe({
         whitelist: true,
         forbidNonWhitelisted: true,
-        transform: true
-      })
+        transform: true,
+      }),
     );
     await app.init();
   });
@@ -50,7 +50,7 @@ describe("ClientObservabilityController", () => {
         timestamp: "not-a-date",
         kind: "bad_kind",
         level: "error",
-        message: "broken"
+        message: "broken",
       })
       .expect(400);
 
@@ -60,7 +60,7 @@ describe("ClientObservabilityController", () => {
   it("records validated telemetry payloads", async () => {
     clientObservabilityService.recordTelemetry.mockResolvedValue({
       auditEventId: "audit_1",
-      platformAlertId: "alert_1"
+      platformAlertId: "alert_1",
     });
 
     const response = await request(app.getHttpServer())
@@ -78,7 +78,7 @@ describe("ClientObservabilityController", () => {
         kind: "exception",
         level: "error",
         message: "Runtime crashed",
-        errorName: "TypeError"
+        errorName: "TypeError",
       })
       .expect(202);
 
@@ -92,22 +92,52 @@ describe("ClientObservabilityController", () => {
         kind: "exception",
         level: "error",
         message: "Runtime crashed",
-        errorName: "TypeError"
+        errorName: "TypeError",
       },
       expect.objectContaining({
         requestId: "req_1",
         origin: "https://app.example.com",
         referer: "https://app.example.com/wallet",
-        userAgent: "Mozilla/5.0"
-      })
+        userAgent: "Mozilla/5.0",
+      }),
     );
     expect(response.body).toEqual({
       status: "success",
       message: "Client telemetry recorded successfully.",
       data: {
         auditEventId: "audit_1",
-        platformAlertId: "alert_1"
-      }
+        platformAlertId: "alert_1",
+      },
     });
+  });
+
+  it("records telemetry through the client-events alias", async () => {
+    clientObservabilityService.recordTelemetry.mockResolvedValue({
+      auditEventId: "audit_2",
+      platformAlertId: null,
+    });
+
+    await request(app.getHttpServer())
+      .post("/client-events/events")
+      .send({
+        app: "customer-web",
+        environment: "production",
+        release: "2026.04.19",
+        sessionId: "sess_2",
+        timestamp: "2026-04-19T12:00:00.000Z",
+        kind: "exception",
+        level: "error",
+        message: "Runtime crashed",
+        errorName: "TypeError",
+      })
+      .expect(202);
+
+    expect(clientObservabilityService.recordTelemetry).toHaveBeenCalledWith(
+      expect.objectContaining({
+        app: "customer-web",
+        sessionId: "sess_2",
+      }),
+      expect.any(Object),
+    );
   });
 });
