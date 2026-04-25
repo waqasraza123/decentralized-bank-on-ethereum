@@ -3,6 +3,7 @@ import {
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
+import { Prisma } from "@prisma/client";
 import { loadCustomerMfaPolicyRuntimeConfig } from "@stealth-trails-bank/config/api";
 import type {
   AccountLifecycleStatusValue,
@@ -19,6 +20,7 @@ import {
 } from "../auth/auth.service";
 import { NotificationsService } from "../notifications/notifications.service";
 import { PrismaService } from "../prisma/prisma.service";
+import { writeStructuredApiLog } from "../logging/structured-api-logger";
 
 type LegacyUserProfile = {
   id: number;
@@ -268,42 +270,85 @@ export class UserService {
     };
   }
 
+  private isSchemaCompatibilityError(error: unknown): boolean {
+    if (error instanceof Prisma.PrismaClientKnownRequestError) {
+      return error.code === "P2021" || error.code === "P2022";
+    }
+
+    if (error instanceof Error) {
+      return /does not exist|column .* does not exist|relation .* does not exist/i.test(
+        error.message,
+      );
+    }
+
+    return false;
+  }
+
+  private buildDefaultCustomerFoundation(
+    customerId: string,
+  ): CustomerProfileFoundation {
+    return {
+      id: customerId,
+      dateOfBirth: null,
+      ageVerificationStatus: "unverified",
+      ageVerifiedAt: null,
+      ageVerifiedByOperatorId: null,
+      ageVerificationNote: null,
+      trustedContacts: [],
+    };
+  }
+
   private async getCustomerFoundationById(
     customerId: string,
   ): Promise<CustomerProfileFoundation> {
-    const foundation = await this.prismaService.customer.findUnique({
-      where: { id: customerId },
-      select: {
-        id: true,
-        dateOfBirth: true,
-        ageVerificationStatus: true,
-        ageVerifiedAt: true,
-        ageVerifiedByOperatorId: true,
-        ageVerificationNote: true,
-        trustedContacts: {
-          where: {
-            status: "active",
-          },
-          orderBy: {
-            createdAt: "desc",
-          },
-          select: {
-            id: true,
-            kind: true,
-            status: true,
-            firstName: true,
-            lastName: true,
-            relationshipLabel: true,
-            email: true,
-            phoneNumber: true,
-            note: true,
-            createdAt: true,
-            updatedAt: true,
-            removedAt: true,
+    let foundation: CustomerProfileFoundation | null;
+
+    try {
+      foundation = await this.prismaService.customer.findUnique({
+        where: { id: customerId },
+        select: {
+          id: true,
+          dateOfBirth: true,
+          ageVerificationStatus: true,
+          ageVerifiedAt: true,
+          ageVerifiedByOperatorId: true,
+          ageVerificationNote: true,
+          trustedContacts: {
+            where: {
+              status: "active",
+            },
+            orderBy: {
+              createdAt: "desc",
+            },
+            select: {
+              id: true,
+              kind: true,
+              status: true,
+              firstName: true,
+              lastName: true,
+              relationshipLabel: true,
+              email: true,
+              phoneNumber: true,
+              note: true,
+              createdAt: true,
+              updatedAt: true,
+              removedAt: true,
+            },
           },
         },
-      },
-    });
+      });
+    } catch (error) {
+      if (!this.isSchemaCompatibilityError(error)) {
+        throw error;
+      }
+
+      writeStructuredApiLog("warn", "customer_profile_foundation_unavailable", {
+        customerId,
+        error,
+      });
+
+      return this.buildDefaultCustomerFoundation(customerId);
+    }
 
     if (!foundation) {
       throw new NotFoundException("Customer profile not found.");

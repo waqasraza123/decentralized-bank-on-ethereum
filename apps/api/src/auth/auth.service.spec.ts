@@ -504,6 +504,27 @@ describe("AuthService", () => {
     expect(customerMfaEmailDeliveryService.sendCode).not.toHaveBeenCalled();
   });
 
+  it("returns trusted session status when customer session lookup is unavailable during schema rollout", async () => {
+    const { service, prismaService } = createService();
+
+    prismaService.customer.findUnique.mockResolvedValue({
+      id: "customer_1",
+    });
+    prismaService.customerAuthSession.findUnique.mockRejectedValueOnce(
+      new Error('relation "CustomerAuthSession" does not exist'),
+    );
+
+    await expect(
+      service.getCurrentCustomerSessionSecurityStatus(
+        "supabase_1",
+        "session_1",
+      ),
+    ).resolves.toEqual({
+      currentSessionTrusted: true,
+      currentSessionRequiresVerification: false,
+    });
+  });
+
   it("does not fail login when audit notification projection fails", async () => {
     const { service, prismaService, notificationsService } = createService();
     const passwordHash = await bcrypt.hash("s3cret-pass", 4);

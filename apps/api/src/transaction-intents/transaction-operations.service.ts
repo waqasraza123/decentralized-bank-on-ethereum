@@ -1,16 +1,17 @@
 import {
   BadRequestException,
   Injectable,
-  NotFoundException
+  NotFoundException,
 } from "@nestjs/common";
 import { loadProductChainRuntimeConfig } from "@stealth-trails-bank/config/api";
 import {
   BlockchainTransactionStatus,
   Prisma,
   TransactionIntentStatus,
-  TransactionIntentType
+  TransactionIntentType,
 } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
+import { writeStructuredApiLog } from "../logging/structured-api-logger";
 import { GetCustomerOperationsSnapshotDto } from "./dto/get-customer-operations-snapshot.dto";
 import { ListMyTransactionHistoryDto } from "./dto/list-my-transaction-history.dto";
 import { SearchTransactionOperationsDto } from "./dto/search-transaction-operations.dto";
@@ -209,8 +210,22 @@ export class TransactionOperationsService {
     return normalizedValue ? normalizedValue : null;
   }
 
+  private isSchemaCompatibilityError(error: unknown): boolean {
+    if (error instanceof Prisma.PrismaClientKnownRequestError) {
+      return error.code === "P2021" || error.code === "P2022";
+    }
+
+    if (error instanceof Error) {
+      return /does not exist|column .* does not exist|relation .* does not exist/i.test(
+        error.message,
+      );
+    }
+
+    return false;
+  }
+
   private mapLatestBlockchainTransaction(
-    intent: TransactionIntentRecord
+    intent: TransactionIntentRecord,
   ): LatestBlockchainTransactionProjection | null {
     const latestBlockchainTransaction = intent.blockchainTransactions[0];
 
@@ -226,7 +241,8 @@ export class TransactionOperationsService {
       toAddress: latestBlockchainTransaction.toAddress,
       createdAt: latestBlockchainTransaction.createdAt.toISOString(),
       updatedAt: latestBlockchainTransaction.updatedAt.toISOString(),
-      confirmedAt: latestBlockchainTransaction.confirmedAt?.toISOString() ?? null
+      confirmedAt:
+        latestBlockchainTransaction.confirmedAt?.toISOString() ?? null,
     };
   }
 
@@ -240,7 +256,8 @@ export class TransactionOperationsService {
     const maskedDomain = domainName
       ? `${domainName.slice(0, 1)}${"*".repeat(Math.max(Math.min(domainName.length - 1, 4), 1))}`
       : "";
-    const domainSuffix = domainTail.length > 0 ? `.${domainTail.join(".")}` : "";
+    const domainSuffix =
+      domainTail.length > 0 ? `.${domainTail.join(".")}` : "";
     return `${maskedLocal}@${maskedDomain}${domainSuffix}`;
   }
 
@@ -265,7 +282,7 @@ export class TransactionOperationsService {
 
   private mapTransactionHistoryProjection(
     intent: TransactionIntentRecord,
-    viewerCustomerAccountId?: string | null
+    viewerCustomerAccountId?: string | null,
   ): TransactionHistoryProjection {
     const isInternalTransfer =
       intent.intentType === TransactionIntentType.internal_balance_transfer;
@@ -277,7 +294,7 @@ export class TransactionOperationsService {
       ? this.maskDisplayName({
           firstName: intent.customerAccount.customer.firstName,
           lastName: intent.customerAccount.customer.lastName,
-          fallbackEmail: intent.customerAccount.customer.email
+          fallbackEmail: intent.customerAccount.customer.email,
         })
       : null;
     const senderMaskedEmail = intent.customerAccount
@@ -293,7 +310,7 @@ export class TransactionOperationsService {
         symbol: intent.asset.symbol,
         displayName: intent.asset.displayName,
         decimals: intent.asset.decimals,
-        chainId: intent.asset.chainId
+        chainId: intent.asset.chainId,
       },
       sourceWalletId: intent.sourceWalletId,
       sourceWalletAddress: intent.sourceWallet?.address ?? null,
@@ -317,23 +334,23 @@ export class TransactionOperationsService {
       counterpartyMaskedDisplay: isInternalTransfer
         ? isReceivedTransfer
           ? senderMaskedDisplay
-          : intent.recipientMaskedDisplay ?? null
+          : (intent.recipientMaskedDisplay ?? null)
         : null,
       counterpartyMaskedEmail: isInternalTransfer
         ? isReceivedTransfer
           ? senderMaskedEmail
-          : intent.recipientMaskedEmail ?? null
+          : (intent.recipientMaskedEmail ?? null)
         : null,
       recipientMaskedDisplay: intent.recipientMaskedDisplay ?? null,
       recipientMaskedEmail: intent.recipientMaskedEmail ?? null,
       createdAt: intent.createdAt.toISOString(),
       updatedAt: intent.updatedAt.toISOString(),
-      latestBlockchainTransaction: this.mapLatestBlockchainTransaction(intent)
+      latestBlockchainTransaction: this.mapLatestBlockchainTransaction(intent),
     };
   }
 
   private mapInternalTransactionOperationsProjection(
-    intent: TransactionIntentRecord
+    intent: TransactionIntentRecord,
   ): InternalTransactionOperationsProjection {
     if (!intent.customerAccount) {
       throw new NotFoundException("Customer account projection not found.");
@@ -348,64 +365,62 @@ export class TransactionOperationsService {
         supabaseUserId: intent.customerAccount.customer.supabaseUserId,
         email: intent.customerAccount.customer.email,
         firstName: intent.customerAccount.customer.firstName ?? "",
-        lastName: intent.customerAccount.customer.lastName ?? ""
-      }
+        lastName: intent.customerAccount.customer.lastName ?? "",
+      },
     };
   }
 
-  private buildIntentWhereInput(
-    query: {
-      intentType?:
-        | "deposit"
-        | "withdrawal"
-        | "internal_balance_transfer"
-        | "vault_subscription"
-        | "vault_redemption";
-      status?:
-        | "requested"
-        | "review_required"
-        | "approved"
-        | "queued"
-        | "broadcast"
-        | "confirmed"
-        | "settled"
-        | "failed"
-        | "cancelled"
-        | "manually_resolved";
-      assetSymbol?: string;
-      customerAccountId?: string;
-      supabaseUserId?: string;
-      email?: string;
-      txHash?: string;
-      idempotencyKey?: string;
-    }
-  ): Prisma.TransactionIntentWhereInput {
+  private buildIntentWhereInput(query: {
+    intentType?:
+      | "deposit"
+      | "withdrawal"
+      | "internal_balance_transfer"
+      | "vault_subscription"
+      | "vault_redemption";
+    status?:
+      | "requested"
+      | "review_required"
+      | "approved"
+      | "queued"
+      | "broadcast"
+      | "confirmed"
+      | "settled"
+      | "failed"
+      | "cancelled"
+      | "manually_resolved";
+    assetSymbol?: string;
+    customerAccountId?: string;
+    supabaseUserId?: string;
+    email?: string;
+    txHash?: string;
+    idempotencyKey?: string;
+  }): Prisma.TransactionIntentWhereInput {
     const normalizedAssetSymbol = this.normalizeOptionalAssetSymbol(
-      query.assetSymbol
+      query.assetSymbol,
     );
     const conditions: Prisma.TransactionIntentWhereInput[] = [
       {
-        chainId: this.productChainId
-      }
+        chainId: this.productChainId,
+      },
     ];
 
     if (query.intentType) {
       conditions.push({
-        intentType: query.intentType as TransactionIntentType
+        intentType: query.intentType as TransactionIntentType,
       });
     }
 
     if (query.status) {
       conditions.push({
-        status: query.status as TransactionIntentStatus
+        status: query.status as TransactionIntentStatus,
       });
     }
 
     if (normalizedAssetSymbol) {
       conditions.push({
         asset: {
-          symbol: normalizedAssetSymbol
-        }
+          symbol: normalizedAssetSymbol,
+        },
       });
     }
 
@@ -413,12 +428,12 @@ export class TransactionOperationsService {
       conditions.push({
         OR: [
           {
-            customerAccountId: query.customerAccountId.trim()
+            customerAccountId: query.customerAccountId.trim(),
           },
           {
-            recipientCustomerAccountId: query.customerAccountId.trim()
-          }
-        ]
+            recipientCustomerAccountId: query.customerAccountId.trim(),
+          },
+        ],
       });
     }
 
@@ -428,18 +443,18 @@ export class TransactionOperationsService {
           {
             customerAccount: {
               customer: {
-                supabaseUserId: query.supabaseUserId.trim()
-              }
-            }
+                supabaseUserId: query.supabaseUserId.trim(),
+              },
+            },
           },
           {
             recipientCustomerAccount: {
               customer: {
-                supabaseUserId: query.supabaseUserId.trim()
-              }
-            }
-          }
-        ]
+                supabaseUserId: query.supabaseUserId.trim(),
+              },
+            },
+          },
+        ],
       });
     }
 
@@ -449,18 +464,18 @@ export class TransactionOperationsService {
           {
             customerAccount: {
               customer: {
-                email: query.email.trim().toLowerCase()
-              }
-            }
+                email: query.email.trim().toLowerCase(),
+              },
+            },
           },
           {
             recipientCustomerAccount: {
               customer: {
-                email: query.email.trim().toLowerCase()
-              }
-            }
-          }
-        ]
+                email: query.email.trim().toLowerCase(),
+              },
+            },
+          },
+        ],
       });
     }
 
@@ -468,35 +483,35 @@ export class TransactionOperationsService {
       conditions.push({
         blockchainTransactions: {
           some: {
-            txHash: query.txHash.trim()
-          }
-        }
+            txHash: query.txHash.trim(),
+          },
+        },
       });
     }
 
     if (query.idempotencyKey?.trim()) {
       conditions.push({
-        idempotencyKey: query.idempotencyKey.trim()
+        idempotencyKey: query.idempotencyKey.trim(),
       });
     }
 
     return {
-      AND: conditions
+      AND: conditions,
     };
   }
 
   private async requireCustomerAccountId(
-    supabaseUserId: string
+    supabaseUserId: string,
   ): Promise<string> {
     const customerAccount = await this.prismaService.customerAccount.findFirst({
       where: {
         customer: {
-          supabaseUserId
-        }
+          supabaseUserId,
+        },
       },
       select: {
-        id: true
-      }
+        id: true,
+      },
     });
 
     if (!customerAccount) {
@@ -508,120 +523,136 @@ export class TransactionOperationsService {
 
   async listMyTransactionHistory(
     supabaseUserId: string,
-    query: ListMyTransactionHistoryDto
+    query: ListMyTransactionHistoryDto,
   ): Promise<ListMyTransactionHistoryResult> {
     const limit = query.limit ?? 20;
-    const customerAccountId = await this.requireCustomerAccountId(supabaseUserId);
+    const customerAccountId =
+      await this.requireCustomerAccountId(supabaseUserId);
 
-    const intents = await this.prismaService.transactionIntent.findMany({
-      where: {
-        AND: [
-          this.buildIntentWhereInput(query),
-          {
-            OR: [
-              {
-                customerAccountId
-              },
-              {
-                recipientCustomerAccountId: customerAccountId
-              }
-            ]
-          }
-        ]
-      },
-      orderBy: {
-        createdAt: "desc"
-      },
-      take: limit,
-      include: {
-        asset: {
-          select: {
-            id: true,
-            symbol: true,
-            displayName: true,
-            decimals: true,
-            chainId: true
-          }
+    let intents: TransactionIntentRecord[];
+
+    try {
+      intents = await this.prismaService.transactionIntent.findMany({
+        where: {
+          AND: [
+            this.buildIntentWhereInput(query),
+            {
+              OR: [
+                {
+                  customerAccountId,
+                },
+                {
+                  recipientCustomerAccountId: customerAccountId,
+                },
+              ],
+            },
+          ],
         },
-        sourceWallet: {
-          select: {
-            id: true,
-            address: true
-          }
+        orderBy: {
+          createdAt: "desc",
         },
-        destinationWallet: {
-          select: {
-            id: true,
-            address: true
-          }
-        },
-        customerAccount: {
-          select: {
-            id: true,
-            customerId: true,
-            customer: {
-              select: {
-                id: true,
-                supabaseUserId: true,
-                email: true,
-                firstName: true,
-                lastName: true
-              }
-            }
-          }
-        },
-        recipientCustomerAccount: {
-          select: {
-            id: true,
-            customerId: true,
-            customer: {
-              select: {
-                id: true,
-                supabaseUserId: true,
-                email: true,
-                firstName: true,
-                lastName: true
-              }
-            }
-          }
-        },
-        blockchainTransactions: {
-          orderBy: {
-            createdAt: "desc"
+        take: limit,
+        include: {
+          asset: {
+            select: {
+              id: true,
+              symbol: true,
+              displayName: true,
+              decimals: true,
+              chainId: true,
+            },
           },
-          take: 1,
-          select: {
-            id: true,
-            txHash: true,
-            status: true,
-            fromAddress: true,
-            toAddress: true,
-            createdAt: true,
-            updatedAt: true,
-            confirmedAt: true
-          }
-        }
+          sourceWallet: {
+            select: {
+              id: true,
+              address: true,
+            },
+          },
+          destinationWallet: {
+            select: {
+              id: true,
+              address: true,
+            },
+          },
+          customerAccount: {
+            select: {
+              id: true,
+              customerId: true,
+              customer: {
+                select: {
+                  id: true,
+                  supabaseUserId: true,
+                  email: true,
+                  firstName: true,
+                  lastName: true,
+                },
+              },
+            },
+          },
+          recipientCustomerAccount: {
+            select: {
+              id: true,
+              customerId: true,
+              customer: {
+                select: {
+                  id: true,
+                  supabaseUserId: true,
+                  email: true,
+                  firstName: true,
+                  lastName: true,
+                },
+              },
+            },
+          },
+          blockchainTransactions: {
+            orderBy: {
+              createdAt: "desc",
+            },
+            take: 1,
+            select: {
+              id: true,
+              txHash: true,
+              status: true,
+              fromAddress: true,
+              toAddress: true,
+              createdAt: true,
+              updatedAt: true,
+              confirmedAt: true,
+            },
+          },
+        },
+      });
+    } catch (error) {
+      if (!this.isSchemaCompatibilityError(error)) {
+        throw error;
       }
-    });
+
+      writeStructuredApiLog("warn", "transaction_history_storage_unavailable", {
+        customerAccountId,
+        error,
+      });
+
+      intents = [];
+    }
 
     return {
       customerAccountId,
       intents: intents.map((intent) =>
-        this.mapTransactionHistoryProjection(intent, customerAccountId)
+        this.mapTransactionHistoryProjection(intent, customerAccountId),
       ),
-      limit
+      limit,
     };
   }
 
   async searchTransactionOperations(
-    query: SearchTransactionOperationsDto
+    query: SearchTransactionOperationsDto,
   ): Promise<SearchTransactionOperationsResult> {
     const limit = query.limit ?? 20;
 
     const intents = await this.prismaService.transactionIntent.findMany({
       where: this.buildIntentWhereInput(query),
       orderBy: {
-        createdAt: "desc"
+        createdAt: "desc",
       },
       take: limit,
       include: {
@@ -631,20 +662,20 @@ export class TransactionOperationsService {
             symbol: true,
             displayName: true,
             decimals: true,
-            chainId: true
-          }
+            chainId: true,
+          },
         },
         sourceWallet: {
           select: {
             id: true,
-            address: true
-          }
+            address: true,
+          },
         },
         destinationWallet: {
           select: {
             id: true,
-            address: true
-          }
+            address: true,
+          },
         },
         customerAccount: {
           select: {
@@ -656,10 +687,10 @@ export class TransactionOperationsService {
                 supabaseUserId: true,
                 email: true,
                 firstName: true,
-                lastName: true
-              }
-            }
-          }
+                lastName: true,
+              },
+            },
+          },
         },
         recipientCustomerAccount: {
           select: {
@@ -671,14 +702,14 @@ export class TransactionOperationsService {
                 supabaseUserId: true,
                 email: true,
                 firstName: true,
-                lastName: true
-              }
-            }
-          }
+                lastName: true,
+              },
+            },
+          },
         },
         blockchainTransactions: {
           orderBy: {
-            createdAt: "desc"
+            createdAt: "desc",
           },
           take: 1,
           select: {
@@ -689,31 +720,31 @@ export class TransactionOperationsService {
             toAddress: true,
             createdAt: true,
             updatedAt: true,
-            confirmedAt: true
-          }
-        }
-      }
+            confirmedAt: true,
+          },
+        },
+      },
     });
 
     return {
       intents: intents.map((intent) =>
-        this.mapInternalTransactionOperationsProjection(intent)
+        this.mapInternalTransactionOperationsProjection(intent),
       ),
-      limit
+      limit,
     };
   }
 
   async getTransactionIntentAuditTimeline(
-    intentId: string
+    intentId: string,
   ): Promise<TransactionIntentAuditTimelineResult> {
     const intent = await this.prismaService.transactionIntent.findFirst({
       where: {
         id: intentId,
-        chainId: this.productChainId
+        chainId: this.productChainId,
       },
       select: {
-        id: true
-      }
+        id: true,
+      },
     });
 
     if (!intent) {
@@ -723,11 +754,11 @@ export class TransactionOperationsService {
     const auditEvents = await this.prismaService.auditEvent.findMany({
       where: {
         targetType: "TransactionIntent",
-        targetId: intentId
+        targetId: intentId,
       },
       orderBy: {
-        createdAt: "asc"
-      }
+        createdAt: "asc",
+      },
     });
 
     return {
@@ -740,31 +771,31 @@ export class TransactionOperationsService {
         targetType: event.targetType,
         targetId: event.targetId,
         metadata: event.metadata,
-        createdAt: event.createdAt.toISOString()
-      }))
+        createdAt: event.createdAt.toISOString(),
+      })),
     };
   }
 
   async getCustomerOperationsSnapshot(
-    query: GetCustomerOperationsSnapshotDto
+    query: GetCustomerOperationsSnapshotDto,
   ): Promise<CustomerOperationsSnapshotResult> {
     const recentLimit = query.recentLimit ?? 20;
 
     if (!query.customerAccountId?.trim() && !query.supabaseUserId?.trim()) {
       throw new BadRequestException(
-        "customerAccountId or supabaseUserId is required."
+        "customerAccountId or supabaseUserId is required.",
       );
     }
 
     const customerAccount = await this.prismaService.customerAccount.findFirst({
       where: query.customerAccountId?.trim()
         ? {
-            id: query.customerAccountId.trim()
+            id: query.customerAccountId.trim(),
           }
         : {
             customer: {
-              supabaseUserId: query.supabaseUserId!.trim()
-            }
+              supabaseUserId: query.supabaseUserId!.trim(),
+            },
           },
       select: {
         id: true,
@@ -775,10 +806,10 @@ export class TransactionOperationsService {
             supabaseUserId: true,
             email: true,
             firstName: true,
-            lastName: true
-          }
-        }
-      }
+            lastName: true,
+          },
+        },
+      },
     });
 
     if (!customerAccount) {
@@ -787,10 +818,10 @@ export class TransactionOperationsService {
 
     const balances = await this.prismaService.customerAssetBalance.findMany({
       where: {
-        customerAccountId: customerAccount.id
+        customerAccountId: customerAccount.id,
       },
       orderBy: {
-        updatedAt: "desc"
+        updatedAt: "desc",
       },
       include: {
         asset: {
@@ -799,26 +830,26 @@ export class TransactionOperationsService {
             symbol: true,
             displayName: true,
             decimals: true,
-            chainId: true
-          }
-        }
-      }
+            chainId: true,
+          },
+        },
+      },
     });
 
     const recentIntents = await this.prismaService.transactionIntent.findMany({
       where: {
         OR: [
           {
-            customerAccountId: customerAccount.id
+            customerAccountId: customerAccount.id,
           },
           {
-            recipientCustomerAccountId: customerAccount.id
-          }
+            recipientCustomerAccountId: customerAccount.id,
+          },
         ],
-        chainId: this.productChainId
+        chainId: this.productChainId,
       },
       orderBy: {
-        createdAt: "desc"
+        createdAt: "desc",
       },
       take: recentLimit,
       include: {
@@ -828,20 +859,20 @@ export class TransactionOperationsService {
             symbol: true,
             displayName: true,
             decimals: true,
-            chainId: true
-          }
+            chainId: true,
+          },
         },
         sourceWallet: {
           select: {
             id: true,
-            address: true
-          }
+            address: true,
+          },
         },
         destinationWallet: {
           select: {
             id: true,
-            address: true
-          }
+            address: true,
+          },
         },
         customerAccount: {
           select: {
@@ -853,10 +884,10 @@ export class TransactionOperationsService {
                 supabaseUserId: true,
                 email: true,
                 firstName: true,
-                lastName: true
-              }
-            }
-          }
+                lastName: true,
+              },
+            },
+          },
         },
         recipientCustomerAccount: {
           select: {
@@ -868,14 +899,14 @@ export class TransactionOperationsService {
                 supabaseUserId: true,
                 email: true,
                 firstName: true,
-                lastName: true
-              }
-            }
-          }
+                lastName: true,
+              },
+            },
+          },
         },
         blockchainTransactions: {
           orderBy: {
-            createdAt: "desc"
+            createdAt: "desc",
           },
           take: 1,
           select: {
@@ -886,10 +917,10 @@ export class TransactionOperationsService {
             toAddress: true,
             createdAt: true,
             updatedAt: true,
-            confirmedAt: true
-          }
-        }
-      }
+            confirmedAt: true,
+          },
+        },
+      },
     });
 
     return {
@@ -899,7 +930,7 @@ export class TransactionOperationsService {
         supabaseUserId: customerAccount.customer.supabaseUserId,
         email: customerAccount.customer.email,
         firstName: customerAccount.customer.firstName ?? "",
-        lastName: customerAccount.customer.lastName ?? ""
+        lastName: customerAccount.customer.lastName ?? "",
       },
       balances: balances.map((balance) => ({
         asset: {
@@ -907,16 +938,16 @@ export class TransactionOperationsService {
           symbol: balance.asset.symbol,
           displayName: balance.asset.displayName,
           decimals: balance.asset.decimals,
-          chainId: balance.asset.chainId
+          chainId: balance.asset.chainId,
         },
         availableBalance: balance.availableBalance.toString(),
         pendingBalance: balance.pendingBalance.toString(),
-        updatedAt: balance.updatedAt.toISOString()
+        updatedAt: balance.updatedAt.toISOString(),
       })),
       recentIntents: recentIntents.map((intent) =>
-        this.mapTransactionHistoryProjection(intent, customerAccount.id)
+        this.mapTransactionHistoryProjection(intent, customerAccount.id),
       ),
-      recentLimit
+      recentLimit,
     };
   }
 }

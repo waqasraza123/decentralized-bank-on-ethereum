@@ -18,15 +18,16 @@ describe("UserService.getUserById", () => {
     walletProjectionResult?: unknown;
     walletProjectionError?: Error;
     customerFoundationResult?: unknown;
+    customerFoundationError?: Error;
+    notificationPreferencesResult?: unknown;
+    notificationPreferencesError?: Error;
   }) {
     const prismaService = {
       user: {
         findFirst: jest.fn().mockResolvedValue(options.legacyUser),
       },
       customer: {
-        findUnique: jest
-          .fn()
-          .mockResolvedValue(options.customerFoundationResult ?? null),
+        findUnique: jest.fn(),
         update: jest.fn(),
       },
       customerTrustedContact: {
@@ -35,6 +36,16 @@ describe("UserService.getUserById", () => {
         update: jest.fn(),
       },
     };
+
+    if (options.customerFoundationError) {
+      prismaService.customer.findUnique.mockRejectedValue(
+        options.customerFoundationError,
+      );
+    } else {
+      prismaService.customer.findUnique.mockResolvedValue(
+        options.customerFoundationResult ?? null,
+      );
+    }
 
     const authService = {
       getCustomerAccountProjectionBySupabaseUserId: jest.fn(),
@@ -65,15 +76,36 @@ describe("UserService.getUserById", () => {
       );
     }
 
+    const notificationsService = {
+      getCustomerPreferences: jest.fn(),
+    };
+
+    if (options.notificationPreferencesError) {
+      notificationsService.getCustomerPreferences.mockRejectedValue(
+        options.notificationPreferencesError,
+      );
+    } else {
+      notificationsService.getCustomerPreferences.mockResolvedValue(
+        options.notificationPreferencesResult ?? {
+          audience: "customer",
+          supportedChannels: ["in_app", "email"],
+          updatedAt: null,
+          entries: [],
+        },
+      );
+    }
+
     const service = new UserService(
       authService as never,
       prismaService as never,
+      notificationsService as never,
     );
 
     return {
       service,
       authService,
       prismaService,
+      notificationsService,
     };
   }
 
@@ -173,10 +205,10 @@ describe("UserService.getUserById", () => {
     expect(result.id).toBe(7);
     expect(result.passwordRotationAvailable).toBe(true);
     expect(result.notificationPreferences).toEqual({
-      depositEmails: true,
-      withdrawalEmails: true,
-      loanEmails: true,
-      productUpdateEmails: false,
+      audience: "customer",
+      supportedChannels: ["in_app", "email"],
+      updatedAt: null,
+      entries: [],
     });
     expect(result.ageProfile).toEqual({
       dateOfBirth: "1990-04-11",
@@ -207,6 +239,29 @@ describe("UserService.getUserById", () => {
       currentSessionTrusted: true,
       currentSessionRequiresVerification: false,
     });
+  });
+
+  it("returns the customer profile when optional foundation storage is unavailable", async () => {
+    const { service } = createService({
+      legacyUser,
+      customerProjectionResult: customerProjection,
+      walletProjectionResult: walletProjection,
+      customerFoundationError: new Error('column "dateOfBirth" does not exist'),
+    });
+
+    const result = await service.getUserById("supabase_1");
+
+    expect(result.customerId).toBe("customer_1");
+    expect(result.ageProfile).toEqual({
+      dateOfBirth: null,
+      ageYears: null,
+      legalAdult: null,
+      verificationStatus: "unverified",
+      verifiedAt: null,
+      verifiedByOperatorId: null,
+      verificationNote: null,
+    });
+    expect(result.trustedContacts).toEqual([]);
   });
 
   it("falls back to legacy ethereumAddress when wallet projection is missing", async () => {
@@ -284,73 +339,6 @@ describe("UserService.getUserById", () => {
     await expect(service.getUserById("missing_user")).rejects.toBeInstanceOf(
       NotFoundException,
     );
-  });
-
-  it("updates customer notification preferences", async () => {
-    const { service, prismaService } = createService({
-      legacyUser,
-      customerProjectionResult: customerProjection,
-      walletProjectionResult: walletProjection,
-      customerFoundationResult: customerFoundation,
-    });
-
-    prismaService.customer.findUnique.mockResolvedValue({
-      id: "customer_1",
-    });
-    prismaService.customer.update.mockResolvedValue({
-      depositEmailNotificationsEnabled: false,
-      withdrawalEmailNotificationsEnabled: true,
-      loanEmailNotificationsEnabled: false,
-      productUpdateEmailNotificationsEnabled: true,
-    });
-
-    const result = await service.updateNotificationPreferences("supabase_1", {
-      depositEmails: false,
-      withdrawalEmails: true,
-      loanEmails: false,
-      productUpdateEmails: true,
-    });
-
-    expect(prismaService.customer.update).toHaveBeenCalledWith({
-      where: { id: "customer_1" },
-      data: {
-        depositEmailNotificationsEnabled: false,
-        withdrawalEmailNotificationsEnabled: true,
-        loanEmailNotificationsEnabled: false,
-        productUpdateEmailNotificationsEnabled: true,
-      },
-      select: {
-        depositEmailNotificationsEnabled: true,
-        withdrawalEmailNotificationsEnabled: true,
-        loanEmailNotificationsEnabled: true,
-        productUpdateEmailNotificationsEnabled: true,
-      },
-    });
-    expect(result).toEqual({
-      depositEmails: false,
-      withdrawalEmails: true,
-      loanEmails: false,
-      productUpdateEmails: true,
-    });
-  });
-
-  it("throws when notification preferences are updated for a missing customer", async () => {
-    const { service, prismaService } = createService({
-      legacyUser,
-      customerProjectionResult: customerProjection,
-      walletProjectionResult: walletProjection,
-    });
-
-    prismaService.customer.findUnique.mockResolvedValue(null);
-
-    await expect(
-      service.updateNotificationPreferences("missing_user", {
-        depositEmails: true,
-        withdrawalEmails: true,
-        loanEmails: true,
-        productUpdateEmails: false,
-      }),
-    ).rejects.toBeInstanceOf(NotFoundException);
   });
 
   it("updates the customer age profile and resets verification when the DOB changes", async () => {

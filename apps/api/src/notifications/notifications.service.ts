@@ -24,6 +24,7 @@ import type {
   NotificationUnreadSummary,
 } from "@stealth-trails-bank/types";
 import { PrismaService } from "../prisma/prisma.service";
+import { writeStructuredApiLog } from "../logging/structured-api-logger";
 import {
   buildNotificationPreferenceMatrix,
   buildNotificationRecipientKey,
@@ -95,25 +96,121 @@ export class NotificationsService {
     private readonly realtimeService: NotificationsRealtimeService,
   ) {}
 
+  private isNotificationStorageUnavailable(error: unknown): boolean {
+    if (error instanceof Prisma.PrismaClientKnownRequestError) {
+      return error.code === "P2021" || error.code === "P2022";
+    }
+
+    if (error instanceof Error) {
+      return /does not exist|column .* does not exist|relation .* does not exist/i.test(
+        error.message,
+      );
+    }
+
+    return false;
+  }
+
+  private logNotificationStorageUnavailable(
+    operation: string,
+    error: unknown,
+    metadata: Record<string, unknown> = {},
+  ): void {
+    writeStructuredApiLog("warn", "notification_storage_unavailable", {
+      operation,
+      ...metadata,
+      error,
+    });
+  }
+
+  private buildEmptyFeed(
+    query: Partial<ListNotificationsDto>,
+  ): NotificationFeedResult {
+    return {
+      items: [],
+      unreadCount: 0,
+      limit: query.limit ?? 25,
+    };
+  }
+
+  private buildEmptyUnreadSummary(): NotificationUnreadSummary {
+    return {
+      unreadCount: 0,
+      criticalCount: 0,
+      highCount: 0,
+    };
+  }
+
+  private buildDefaultCustomerPreferences(): NotificationPreferenceMatrix {
+    return buildNotificationPreferenceMatrix({
+      audience: NotificationAudience.customer,
+      rows: [],
+    });
+  }
+
+  private buildDisabledCustomerSocketSession(
+    customerId: string,
+  ): NotificationSocketSession {
+    return {
+      audience: "customer",
+      recipientKey: buildNotificationRecipientKey("customer", customerId),
+      socketToken: "",
+      expiresAt: new Date().toISOString(),
+      latestSequence: 0,
+      heartbeatIntervalMs: this.heartbeatIntervalMs,
+      supportedChannels: [],
+    };
+  }
+
   async listCustomerNotifications(
     supabaseUserId: string,
     query: ListNotificationsDto,
   ): Promise<NotificationFeedResult> {
     const customer = await this.resolveCustomerOrThrow(supabaseUserId);
-    return this.listNotificationsForRecipient(
-      "customer",
-      customer.id,
-      query,
-      customer.id,
-      null,
-    );
+    try {
+      return await this.listNotificationsForRecipient(
+        "customer",
+        customer.id,
+        query,
+        customer.id,
+        null,
+      );
+    } catch (error) {
+      if (!this.isNotificationStorageUnavailable(error)) {
+        throw error;
+      }
+
+      this.logNotificationStorageUnavailable(
+        "list_customer_notifications",
+        error,
+        { customerId: customer.id },
+      );
+      return this.buildEmptyFeed(query);
+    }
   }
 
   async getCustomerUnreadSummary(
     supabaseUserId: string,
   ): Promise<NotificationUnreadSummary> {
     const customer = await this.resolveCustomerOrThrow(supabaseUserId);
-    return this.buildUnreadSummary("customer", customer.id, customer.id, null);
+    try {
+      return await this.buildUnreadSummary(
+        "customer",
+        customer.id,
+        customer.id,
+        null,
+      );
+    } catch (error) {
+      if (!this.isNotificationStorageUnavailable(error)) {
+        throw error;
+      }
+
+      this.logNotificationStorageUnavailable(
+        "get_customer_unread_summary",
+        error,
+        { customerId: customer.id },
+      );
+      return this.buildEmptyUnreadSummary();
+    }
   }
 
   async markCustomerNotificationsRead(
@@ -121,7 +218,13 @@ export class NotificationsService {
     ids: string[],
   ): Promise<NotificationFeedResult> {
     const customer = await this.resolveCustomerOrThrow(supabaseUserId);
-    await this.markNotificationsRead("customer", customer.id, ids, customer.id, null);
+    await this.markNotificationsRead(
+      "customer",
+      customer.id,
+      ids,
+      customer.id,
+      null,
+    );
     return this.listNotificationsForRecipient(
       "customer",
       customer.id,
@@ -187,7 +290,13 @@ export class NotificationsService {
     ids: string[],
   ): Promise<NotificationFeedResult> {
     const customer = await this.resolveCustomerOrThrow(supabaseUserId);
-    await this.archiveNotifications("customer", customer.id, ids, customer.id, null);
+    await this.archiveNotifications(
+      "customer",
+      customer.id,
+      ids,
+      customer.id,
+      null,
+    );
     return this.listNotificationsForRecipient(
       "customer",
       customer.id,
@@ -201,15 +310,36 @@ export class NotificationsService {
     supabaseUserId: string,
   ): Promise<NotificationPreferenceMatrix> {
     const customer = await this.resolveCustomerOrThrow(supabaseUserId);
-    const rows = await this.prismaService.notificationPreference.findMany({
-      where: {
-        audience: NotificationAudience.customer,
-        recipientKey: buildNotificationRecipientKey("customer", customer.id),
-      },
-      orderBy: {
-        updatedAt: "desc",
-      },
-    });
+    let rows: Array<{
+      category: NotificationCategory;
+      channel: NotificationChannel;
+      enabled: boolean;
+      mandatory: boolean;
+      updatedAt: Date;
+    }>;
+
+    try {
+      rows = await this.prismaService.notificationPreference.findMany({
+        where: {
+          audience: NotificationAudience.customer,
+          recipientKey: buildNotificationRecipientKey("customer", customer.id),
+        },
+        orderBy: {
+          updatedAt: "desc",
+        },
+      });
+    } catch (error) {
+      if (!this.isNotificationStorageUnavailable(error)) {
+        throw error;
+      }
+
+      this.logNotificationStorageUnavailable(
+        "get_customer_preferences",
+        error,
+        { customerId: customer.id },
+      );
+      return this.buildDefaultCustomerPreferences();
+    }
 
     return buildNotificationPreferenceMatrix({
       audience: "customer",
@@ -228,7 +358,10 @@ export class NotificationsService {
     matrix: NotificationPreferenceMatrix,
   ): Promise<NotificationPreferenceMatrix> {
     const customer = await this.resolveCustomerOrThrow(supabaseUserId);
-    const normalized = normalizeNotificationPreferenceMatrix(matrix, "customer");
+    const normalized = normalizeNotificationPreferenceMatrix(
+      matrix,
+      "customer",
+    );
     const recipientKey = buildNotificationRecipientKey("customer", customer.id);
 
     await this.persistPreferences({
@@ -247,12 +380,25 @@ export class NotificationsService {
   ): Promise<NotificationSocketSession> {
     const customer = await this.resolveCustomerOrThrow(supabaseUserId);
     const recipientKey = buildNotificationRecipientKey("customer", customer.id);
-    return this.issueSocketSession(
-      NotificationAudience.customer,
-      recipientKey,
-      customer.id,
-      null,
-    );
+    try {
+      return await this.issueSocketSession(
+        NotificationAudience.customer,
+        recipientKey,
+        customer.id,
+        null,
+      );
+    } catch (error) {
+      if (!this.isNotificationStorageUnavailable(error)) {
+        throw error;
+      }
+
+      this.logNotificationStorageUnavailable(
+        "create_customer_socket_session",
+        error,
+        { customerId: customer.id },
+      );
+      return this.buildDisabledCustomerSocketSession(customer.id);
+    }
   }
 
   async listOperatorNotifications(
@@ -281,7 +427,13 @@ export class NotificationsService {
     ids: string[],
   ): Promise<NotificationFeedResult> {
     const operator = await this.resolveOperatorOrThrow(operatorId);
-    await this.markNotificationsRead("operator", operator.id, ids, null, operator.id);
+    await this.markNotificationsRead(
+      "operator",
+      operator.id,
+      ids,
+      null,
+      operator.id,
+    );
     return this.listNotificationsForRecipient(
       "operator",
       operator.id,
@@ -315,7 +467,13 @@ export class NotificationsService {
     ids: string[],
   ): Promise<NotificationFeedResult> {
     const operator = await this.resolveOperatorOrThrow(operatorId);
-    await this.archiveNotifications("operator", operator.id, ids, null, operator.id);
+    await this.archiveNotifications(
+      "operator",
+      operator.id,
+      ids,
+      null,
+      operator.id,
+    );
     return this.listNotificationsForRecipient(
       "operator",
       operator.id,
@@ -356,7 +514,10 @@ export class NotificationsService {
     matrix: NotificationPreferenceMatrix,
   ): Promise<NotificationPreferenceMatrix> {
     const operator = await this.resolveOperatorOrThrow(operatorId);
-    const normalized = normalizeNotificationPreferenceMatrix(matrix, "operator");
+    const normalized = normalizeNotificationPreferenceMatrix(
+      matrix,
+      "operator",
+    );
 
     await this.persistPreferences({
       audience: NotificationAudience.operator,
@@ -391,11 +552,12 @@ export class NotificationsService {
     heartbeatIntervalMs: number;
   } | null> {
     const tokenHash = this.hashSocketToken(token);
-    const session = await this.prismaService.notificationSocketSession.findUnique({
-      where: {
-        tokenHash,
-      },
-    });
+    const session =
+      await this.prismaService.notificationSocketSession.findUnique({
+        where: {
+          tokenHash,
+        },
+      });
 
     if (!session || session.expiresAt.getTime() <= Date.now()) {
       return null;
@@ -403,7 +565,9 @@ export class NotificationsService {
 
     return {
       audience:
-        session.audience === NotificationAudience.customer ? "customer" : "operator",
+        session.audience === NotificationAudience.customer
+          ? "customer"
+          : "operator",
       recipientKey: session.recipientKey,
       customerId: session.customerId,
       operatorId: session.operatorId,
@@ -415,10 +579,12 @@ export class NotificationsService {
   async listRealtimeEventsAfterSequence(
     recipientKey: string,
     afterSequence: number,
-  ): Promise<Array<{
-    item: NotificationFeedItem;
-    unreadSummary: NotificationUnreadSummary;
-  }>> {
+  ): Promise<
+    Array<{
+      item: NotificationFeedItem;
+      unreadSummary: NotificationUnreadSummary;
+    }>
+  > {
     const rows = await this.prismaService.notificationFeedItem.findMany({
       where: {
         recipientKey,
@@ -438,7 +604,8 @@ export class NotificationsService {
     return Promise.all(
       rows.map(async (row) => ({
         item: this.mapFeedItem(row),
-        unreadSummary: await this.buildUnreadSummaryForRecipientKey(recipientKey),
+        unreadSummary:
+          await this.buildUnreadSummaryForRecipientKey(recipientKey),
       })),
     );
   }
@@ -498,29 +665,29 @@ export class NotificationsService {
               (
                 channel: NotificationPreferenceMatrix["entries"][number]["channels"][number],
               ) => ({
-              audience: input.audience,
-              recipientKey: input.recipientKey,
-              customerId: input.customerId,
-              operatorId: input.operatorId,
-              category: entry.category as unknown as NotificationCategory,
-            channel: channel.channel as unknown as NotificationChannel,
-            enabled:
-              channel.mandatory ||
-              isMandatoryNotificationPreference(
-                input.audience as unknown as "customer" | "operator",
-                entry.category,
-                channel.channel,
-              )
-                ? true
-                : channel.enabled,
-            mandatory:
-              channel.mandatory ||
-              isMandatoryNotificationPreference(
-                input.audience as unknown as "customer" | "operator",
-                entry.category,
-                channel.channel,
-              ),
-            }),
+                audience: input.audience,
+                recipientKey: input.recipientKey,
+                customerId: input.customerId,
+                operatorId: input.operatorId,
+                category: entry.category as unknown as NotificationCategory,
+                channel: channel.channel as unknown as NotificationChannel,
+                enabled:
+                  channel.mandatory ||
+                  isMandatoryNotificationPreference(
+                    input.audience as unknown as "customer" | "operator",
+                    entry.category,
+                    channel.channel,
+                  )
+                    ? true
+                    : channel.enabled,
+                mandatory:
+                  channel.mandatory ||
+                  isMandatoryNotificationPreference(
+                    input.audience as unknown as "customer" | "operator",
+                    entry.category,
+                    channel.channel,
+                  ),
+              }),
             ),
         ),
       });
@@ -567,7 +734,8 @@ export class NotificationsService {
     });
 
     return {
-      audience: audience === NotificationAudience.customer ? "customer" : "operator",
+      audience:
+        audience === NotificationAudience.customer ? "customer" : "operator",
       recipientKey,
       socketToken,
       expiresAt: expiresAt.toISOString(),
@@ -594,7 +762,8 @@ export class NotificationsService {
     return {
       unreadCount: rows.length,
       criticalCount: rows.filter(
-        (row) => row.notificationEvent.priority === NotificationPriority.critical,
+        (row) =>
+          row.notificationEvent.priority === NotificationPriority.critical,
       ).length,
       highCount: rows.filter(
         (row) => row.notificationEvent.priority === NotificationPriority.high,
@@ -688,7 +857,8 @@ export class NotificationsService {
     return {
       unreadCount: rows.length,
       criticalCount: rows.filter(
-        (row) => row.notificationEvent.priority === NotificationPriority.critical,
+        (row) =>
+          row.notificationEvent.priority === NotificationPriority.critical,
       ).length,
       highCount: rows.filter(
         (row) => row.notificationEvent.priority === NotificationPriority.high,
@@ -714,10 +884,11 @@ export class NotificationsService {
       createdAt: row.createdAt.toISOString(),
       updatedAt: row.updatedAt.toISOString(),
       eventCreatedAt: row.notificationEvent.sourceCreatedAt.toISOString(),
-      deepLink: (row.notificationEvent.deepLink as NotificationDeepLink | null) ?? null,
+      deepLink:
+        (row.notificationEvent.deepLink as NotificationDeepLink | null) ?? null,
       metadata:
-        (row.notificationEvent.metadata as unknown as NotificationFeedItem["metadata"]) ??
-        null,
+        (row.notificationEvent
+          .metadata as unknown as NotificationFeedItem["metadata"]) ?? null,
     };
   }
 
@@ -729,7 +900,9 @@ export class NotificationsService {
     operatorDbId: string | null,
   ): Promise<void> {
     if (ids.length === 0) {
-      throw new BadRequestException("At least one notification id is required.");
+      throw new BadRequestException(
+        "At least one notification id is required.",
+      );
     }
 
     const rows = await this.prismaService.notificationFeedItem.findMany({
@@ -800,7 +973,9 @@ export class NotificationsService {
     operatorDbId: string | null,
   ): Promise<void> {
     if (ids.length === 0) {
-      throw new BadRequestException("At least one notification id is required.");
+      throw new BadRequestException(
+        "At least one notification id is required.",
+      );
     }
 
     const rows = await this.prismaService.notificationFeedItem.findMany({
@@ -908,18 +1083,17 @@ export class NotificationsService {
         input.audience as unknown as "customer" | "operator",
         recipientId,
       );
-      const existingFeedItem =
-        await client.notificationFeedItem.findUnique({
-          where: {
-            notificationEventId_recipientKey: {
-              notificationEventId: event.id,
-              recipientKey,
-            },
+      const existingFeedItem = await client.notificationFeedItem.findUnique({
+        where: {
+          notificationEventId_recipientKey: {
+            notificationEventId: event.id,
+            recipientKey,
           },
-          include: {
-            notificationEvent: true,
-          },
-        });
+        },
+        include: {
+          notificationEvent: true,
+        },
+      });
 
       if (existingFeedItem) {
         continue;
@@ -934,17 +1108,25 @@ export class NotificationsService {
             increment: 1,
           },
           customerId:
-            input.audience === NotificationAudience.customer ? recipientId : null,
+            input.audience === NotificationAudience.customer
+              ? recipientId
+              : null,
           operatorId:
-            input.audience === NotificationAudience.operator ? recipientId : null,
+            input.audience === NotificationAudience.operator
+              ? recipientId
+              : null,
         },
         create: {
           audience: input.audience,
           recipientKey,
           customerId:
-            input.audience === NotificationAudience.customer ? recipientId : null,
+            input.audience === NotificationAudience.customer
+              ? recipientId
+              : null,
           operatorId:
-            input.audience === NotificationAudience.operator ? recipientId : null,
+            input.audience === NotificationAudience.operator
+              ? recipientId
+              : null,
           latestDeliverySequence: 1,
         },
       });
@@ -955,9 +1137,13 @@ export class NotificationsService {
           audience: input.audience,
           recipientKey,
           customerId:
-            input.audience === NotificationAudience.customer ? recipientId : null,
+            input.audience === NotificationAudience.customer
+              ? recipientId
+              : null,
           operatorId:
-            input.audience === NotificationAudience.operator ? recipientId : null,
+            input.audience === NotificationAudience.operator
+              ? recipientId
+              : null,
           deliverySequence: recipientState.latestDeliverySequence,
         },
         include: {
@@ -965,7 +1151,8 @@ export class NotificationsService {
         },
       });
 
-      const unreadSummary = await this.buildUnreadSummaryForRecipientKey(recipientKey);
+      const unreadSummary =
+        await this.buildUnreadSummaryForRecipientKey(recipientKey);
 
       this.realtimeService.broadcastCreated(
         recipientKey,
@@ -1126,7 +1313,10 @@ export class NotificationsService {
     return normalized.replace(/\b\w/g, (token: string) => token.toUpperCase());
   }
 
-  private buildCustomerDeepLink(action: string, targetId: string | null): NotificationDeepLink {
+  private buildCustomerDeepLink(
+    action: string,
+    targetId: string | null,
+  ): NotificationDeepLink {
     if (action.startsWith("customer_account.")) {
       return {
         label: "Open profile",
@@ -1150,7 +1340,8 @@ export class NotificationsService {
     if (action.startsWith("staking.")) {
       const focus = action.includes("reward_claim")
         ? "claim"
-        : action.includes("withdrawal") || action.includes("emergency_withdrawal")
+        : action.includes("withdrawal") ||
+            action.includes("emergency_withdrawal")
           ? "withdraw"
           : "stake";
 
@@ -1332,18 +1523,21 @@ export class NotificationsService {
           typeof (event.metadata as Record<string, unknown> | null)?.[
             "recipientCustomerAccountId"
           ] === "string"
-            ? ((event.metadata as Record<string, unknown>)["recipientCustomerAccountId"] as string)
+            ? ((event.metadata as Record<string, unknown>)[
+                "recipientCustomerAccountId"
+              ] as string)
             : null;
 
         if (recipientCustomerAccountId) {
-          const recipientAccount = await this.prismaService.customerAccount.findUnique({
-            where: {
-              id: recipientCustomerAccountId,
-            },
-            select: {
-              customerId: true,
-            },
-          });
+          const recipientAccount =
+            await this.prismaService.customerAccount.findUnique({
+              where: {
+                id: recipientCustomerAccountId,
+              },
+              select: {
+                customerId: true,
+              },
+            });
 
           if (recipientAccount?.customerId) {
             customerRecipientIds.push(recipientAccount.customerId);
@@ -1357,18 +1551,19 @@ export class NotificationsService {
         category: this.deriveCategoryFromAction(action),
         priority: this.derivePriorityFromAction(action),
         title: this.humanizeAction(action),
-        summary:
-          action.startsWith("transaction_intent.")
-            ? "Your money movement status changed."
-            : action.startsWith("customer_account.")
-              ? "Your account security or profile state changed."
-              : action.startsWith("retirement_vault.")
-                ? "Your retirement vault status changed."
-                : action.startsWith("staking.")
-                  ? "Your yield activity changed."
-                  : "Your notification feed has a new event.",
+        summary: action.startsWith("transaction_intent.")
+          ? "Your money movement status changed."
+          : action.startsWith("customer_account.")
+            ? "Your account security or profile state changed."
+            : action.startsWith("retirement_vault.")
+              ? "Your retirement vault status changed."
+              : action.startsWith("staking.")
+                ? "Your yield activity changed."
+                : "Your notification feed has a new event.",
         body:
-          typeof (event.metadata as Record<string, unknown> | null)?.["note"] === "string"
+          typeof (event.metadata as Record<string, unknown> | null)?.[
+            "note"
+          ] === "string"
             ? ((event.metadata as Record<string, unknown>)["note"] as string)
             : null,
         deepLink: this.buildCustomerDeepLink(action, event.targetId),
@@ -1408,10 +1603,16 @@ export class NotificationsService {
           title: this.humanizeAction(action),
           summary: "A governed or operational workflow needs attention.",
           body:
-            typeof (event.metadata as Record<string, unknown> | null)?.["note"] === "string"
+            typeof (event.metadata as Record<string, unknown> | null)?.[
+              "note"
+            ] === "string"
               ? ((event.metadata as Record<string, unknown>)["note"] as string)
               : null,
-          deepLink: this.buildOperatorDeepLink(action, event.id, event.metadata),
+          deepLink: this.buildOperatorDeepLink(
+            action,
+            event.id,
+            event.metadata,
+          ),
           metadata: event.metadata,
           sourceType: NotificationSourceType.audit_event,
           sourceId: event.id,
