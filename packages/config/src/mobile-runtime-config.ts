@@ -1,7 +1,4 @@
-import {
-  readOptionalRuntimeEnv,
-  type RuntimeEnvShape
-} from "./runtime-env";
+import { readOptionalRuntimeEnv, type RuntimeEnvShape } from "./runtime-env";
 
 export type MobileRuntimeConfig = {
   readonly apiBaseUrl: string;
@@ -25,7 +22,7 @@ function readLocalWebDevApiBaseUrl(): string | undefined {
 }
 
 export function loadMobileRuntimeConfig(
-  env: RuntimeEnvShape
+  env: RuntimeEnvShape,
 ): MobileRuntimeConfig {
   const apiBaseUrl =
     readOptionalRuntimeEnv(env, "EXPO_PUBLIC_API_BASE_URL") ??
@@ -35,7 +32,7 @@ export function loadMobileRuntimeConfig(
     throw new Error(
       "Missing required environment variable: EXPO_PUBLIC_API_BASE_URL. " +
         "Create apps/mobile/.env from apps/mobile/.env.example, or set " +
-        "EXPO_PUBLIC_API_BASE_URL before starting Expo."
+        "EXPO_PUBLIC_API_BASE_URL before starting Expo.",
     );
   }
 
@@ -43,11 +40,11 @@ export function loadMobileRuntimeConfig(
     apiBaseUrl,
     telemetryEndpoint:
       readOptionalRuntimeEnv(env, "EXPO_PUBLIC_TELEMETRY_ENDPOINT") ??
-      `${apiBaseUrl.replace(/\/+$/, "")}/client-observability/events`,
+      `${apiBaseUrl.replace(/\/+$/, "")}/client-events/events`,
     telemetryEnvironment:
       readOptionalRuntimeEnv(env, "EXPO_PUBLIC_TELEMETRY_ENVIRONMENT") ??
       "development",
     telemetryRelease:
-      readOptionalRuntimeEnv(env, "EXPO_PUBLIC_TELEMETRY_RELEASE") ?? null
+      readOptionalRuntimeEnv(env, "EXPO_PUBLIC_TELEMETRY_RELEASE") ?? null,
   };
 }

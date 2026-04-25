@@ -34,6 +34,7 @@ import type { PrismaJsonValue } from "../prisma/prisma-json";
 import { NotificationsService } from "../notifications/notifications.service";
 import { ReviewCasesService } from "../review-cases/review-cases.service";
 import { CustomJsonResponse } from "../types/CustomJsonResponse";
+import { writeStructuredApiLog } from "../logging/structured-api-logger";
 import {
   buildOtpAuthUri,
   createOtpHash,
@@ -770,15 +771,16 @@ export class AuthService {
     });
 
     try {
-      const deliveryResult = await this.customerMfaEmailDeliveryService.sendCode({
-        customerId: input.customerId,
-        actorId: input.actorId,
-        email: input.email,
-        challengeId: input.sessionId,
-        purpose: "session_trust_verification",
-        code,
-        expiresAt: expiresAt.toISOString(),
-      });
+      const deliveryResult =
+        await this.customerMfaEmailDeliveryService.sendCode({
+          customerId: input.customerId,
+          actorId: input.actorId,
+          email: input.email,
+          challengeId: input.sessionId,
+          purpose: "session_trust_verification",
+          code,
+          expiresAt: expiresAt.toISOString(),
+        });
 
       await this.appendAuditEvent({
         customerId: input.customerId,
@@ -837,7 +839,7 @@ export class AuthService {
         metadata: input.metadata,
       },
     });
-    await this.notificationsService.publishAuditEventRecord(auditEvent);
+    await this.publishAuditEventNotification(auditEvent);
   }
 
   private async appendOperatorAuditEvent(input: {
@@ -859,7 +861,21 @@ export class AuthService {
         metadata: input.metadata,
       },
     });
-    await this.notificationsService.publishAuditEventRecord(auditEvent);
+    await this.publishAuditEventNotification(auditEvent);
+  }
+
+  private async publishAuditEventNotification(
+    auditEvent: Prisma.AuditEventGetPayload<{}>,
+  ): Promise<void> {
+    try {
+      await this.notificationsService.publishAuditEventRecord(auditEvent);
+    } catch (error) {
+      writeStructuredApiLog("warn", "audit_notification_projection_failed", {
+        auditEventId: auditEvent.id,
+        action: auditEvent.action,
+        error,
+      });
+    }
   }
 
   private normalizeSessionPlatform(
@@ -901,7 +917,9 @@ export class AuthService {
     customerId: string,
     context?: CustomerSessionContext,
   ): Promise<boolean> {
-    const clientPlatform = this.normalizeSessionPlatform(context?.clientPlatform);
+    const clientPlatform = this.normalizeSessionPlatform(
+      context?.clientPlatform,
+    );
     const userAgent = this.normalizeOptionalText(context?.userAgent);
     const ipAddress = this.normalizeOptionalText(context?.ipAddress);
 
@@ -913,18 +931,78 @@ export class AuthService {
       return true;
     }
 
-    const matchingSession = await this.prismaService.customerAuthSession.findFirst({
-      where: {
-        customerId,
-        clientPlatform,
-        ...(userAgent ? { userAgent } : { userAgent: null }),
-      },
-      select: {
-        id: true,
-      },
-    });
+    const matchingSession =
+      await this.prismaService.customerAuthSession.findFirst({
+        where: {
+          customerId,
+          clientPlatform,
+          ...(userAgent ? { userAgent } : { userAgent: null }),
+        },
+        select: {
+          id: true,
+        },
+      });
 
     return Boolean(matchingSession);
+  }
+
+  private isSchemaCompatibilityError(error: unknown): boolean {
+    if (error instanceof Prisma.PrismaClientKnownRequestError) {
+      return error.code === "P2021" || error.code === "P2022";
+    }
+
+    if (error instanceof Error) {
+      return /does not exist|column .* does not exist|relation .* does not exist/i.test(
+        error.message,
+      );
+    }
+
+    return false;
+  }
+
+  private async createLoginSession(input: {
+    customerId: string;
+    tokenVersion: number;
+    context?: CustomerSessionContext;
+  }): Promise<{
+    recognizedSessionSignature: boolean;
+    sessionId: string | null;
+  }> {
+    try {
+      const recognizedSessionSignature =
+        await this.hasRecognizedCustomerSessionSignature(
+          input.customerId,
+          input.context,
+        );
+      const sessionId = await this.createCustomerAuthSession(
+        this.prismaService,
+        {
+          customerId: input.customerId,
+          tokenVersion: input.tokenVersion,
+          context: input.context,
+          trusted: recognizedSessionSignature,
+        },
+      );
+
+      return {
+        recognizedSessionSignature,
+        sessionId,
+      };
+    } catch (error) {
+      if (!this.isSchemaCompatibilityError(error)) {
+        throw error;
+      }
+
+      writeStructuredApiLog("warn", "customer_auth_session_unavailable", {
+        customerId: input.customerId,
+        error,
+      });
+
+      return {
+        recognizedSessionSignature: true,
+        sessionId: null,
+      };
+    }
   }
 
   private mapCustomerSession(
@@ -1029,7 +1107,9 @@ export class AuthService {
   }): CustomerSessionRiskAssessment {
     const reasons: string[] = [];
     let riskScore = 0;
-    const challengeState = this.resolveCustomerSessionRiskChallengeState(input.session);
+    const challengeState = this.resolveCustomerSessionRiskChallengeState(
+      input.session,
+    );
     const now = Date.now();
     const lastSeenAgeMs = Math.max(0, now - input.session.lastSeenAt.getTime());
 
@@ -1091,7 +1171,9 @@ export class AuthService {
     event: CustomerSecurityAuditEventRecord,
   ): CustomerSecurityActivityProjection | null {
     const metadata =
-      event.metadata && typeof event.metadata === "object" && !Array.isArray(event.metadata)
+      event.metadata &&
+      typeof event.metadata === "object" &&
+      !Array.isArray(event.metadata)
         ? (event.metadata as Record<string, unknown>)
         : {};
     const clientPlatformValue = metadata["clientPlatform"];
@@ -1108,9 +1190,13 @@ export class AuthService {
           ? clientPlatformValue
           : null,
       ipAddress:
-        typeof metadata["ipAddress"] === "string" ? metadata["ipAddress"] : null,
+        typeof metadata["ipAddress"] === "string"
+          ? metadata["ipAddress"]
+          : null,
       userAgent:
-        typeof metadata["userAgent"] === "string" ? metadata["userAgent"] : null,
+        typeof metadata["userAgent"] === "string"
+          ? metadata["userAgent"]
+          : null,
       purpose:
         purposeValue === "withdrawal_step_up" ||
         purposeValue === "password_step_up" ||
@@ -1192,8 +1278,10 @@ export class AuthService {
         clientPlatform: this.normalizeSessionPlatform(
           input.context?.clientPlatform,
         ),
-        userAgent: this.normalizeOptionalText(input.context?.userAgent) ?? undefined,
-        ipAddress: this.normalizeOptionalText(input.context?.ipAddress) ?? undefined,
+        userAgent:
+          this.normalizeOptionalText(input.context?.userAgent) ?? undefined,
+        ipAddress:
+          this.normalizeOptionalText(input.context?.ipAddress) ?? undefined,
       },
       select: {
         id: true,
@@ -2226,7 +2314,10 @@ export class AuthService {
     const customer =
       await this.getCustomerMfaRecordBySupabaseUserId(supabaseUserId);
     const sessionSecurity = this.buildCustomerSessionSecurityStatus(
-      await this.getCurrentCustomerSessionRecord(supabaseUserId, currentSessionId),
+      await this.getCurrentCustomerSessionRecord(
+        supabaseUserId,
+        currentSessionId,
+      ),
     );
     this.assertCurrentSessionTrusted(sessionSecurity);
     this.assertMoneyMovementEnabled(this.buildCustomerMfaStatus(customer));
@@ -2239,7 +2330,10 @@ export class AuthService {
     const customer =
       await this.getCustomerMfaRecordBySupabaseUserId(supabaseUserId);
     const sessionSecurity = this.buildCustomerSessionSecurityStatus(
-      await this.getCurrentCustomerSessionRecord(supabaseUserId, currentSessionId),
+      await this.getCurrentCustomerSessionRecord(
+        supabaseUserId,
+        currentSessionId,
+      ),
     );
     this.assertCurrentSessionTrusted(sessionSecurity);
     this.assertStepUpFresh(this.buildCustomerMfaStatus(customer));
@@ -2705,7 +2799,10 @@ export class AuthService {
     currentSessionId?: string | null,
   ): Promise<CustomerSessionSecurityStatus> {
     return this.buildCustomerSessionSecurityStatus(
-      await this.getCurrentCustomerSessionRecord(supabaseUserId, currentSessionId),
+      await this.getCurrentCustomerSessionRecord(
+        supabaseUserId,
+        currentSessionId,
+      ),
     );
   }
 
@@ -2846,7 +2943,8 @@ export class AuthService {
       status: "success",
       message: "Current session verified successfully.",
       data: {
-        sessionSecurity: this.buildCustomerSessionSecurityStatus(updatedSession),
+        sessionSecurity:
+          this.buildCustomerSessionSecurityStatus(updatedSession),
       },
     };
   }
@@ -3112,7 +3210,8 @@ export class AuthService {
         events: events
           .map((event) => this.mapCustomerSecurityActivity(event))
           .filter(
-            (event): event is CustomerSecurityActivityProjection => event !== null,
+            (event): event is CustomerSecurityActivityProjection =>
+              event !== null,
           ),
         limit,
         totalCount,
@@ -3149,14 +3248,15 @@ export class AuthService {
       throw new NotFoundException("Customer session profile not found.");
     }
 
-    const targetSession = await this.prismaService.customerAuthSession.findUnique({
-      where: { id: targetSessionId },
-      select: {
-        id: true,
-        customerId: true,
-        revokedAt: true,
-      },
-    });
+    const targetSession =
+      await this.prismaService.customerAuthSession.findUnique({
+        where: { id: targetSessionId },
+        select: {
+          id: true,
+          customerId: true,
+          revokedAt: true,
+        },
+      });
 
     if (!targetSession || targetSession.customerId !== customer.id) {
       throw new NotFoundException("Customer session was not found.");
@@ -3168,12 +3268,13 @@ export class AuthService {
         message: "Customer session revoked successfully.",
         data: {
           revokedSessionId: targetSession.id,
-          activeSessionCount: await this.prismaService.customerAuthSession.count({
-            where: {
-              customerId: customer.id,
-              revokedAt: null,
-            },
-          }),
+          activeSessionCount:
+            await this.prismaService.customerAuthSession.count({
+              where: {
+                customerId: customer.id,
+                revokedAt: null,
+              },
+            }),
         },
       };
     }
@@ -3203,12 +3304,13 @@ export class AuthService {
       });
     });
 
-    const activeSessionCount = await this.prismaService.customerAuthSession.count({
-      where: {
-        customerId: customer.id,
-        revokedAt: null,
-      },
-    });
+    const activeSessionCount =
+      await this.prismaService.customerAuthSession.count({
+        where: {
+          customerId: customer.id,
+          revokedAt: null,
+        },
+      });
 
     return {
       status: "success",
@@ -3239,9 +3341,7 @@ export class AuthService {
     const where: Prisma.CustomerAuthSessionWhereInput = {
       revokedAt: null,
       trustedAt: null,
-      ...(query.clientPlatform
-        ? { clientPlatform: query.clientPlatform }
-        : {}),
+      ...(query.clientPlatform ? { clientPlatform: query.clientPlatform } : {}),
     };
 
     if (query.challengeState === "pending") {
@@ -3279,109 +3379,108 @@ export class AuthService {
       unknownCount,
       activeSessionCounts,
       activeUntrustedSessionCounts,
-    ] =
-      await Promise.all([
-        this.prismaService.customerAuthSession.findMany({
-          where,
-          select: {
-            id: true,
-            clientPlatform: true,
-            trustedAt: true,
-            trustChallengeCodeHash: true,
-            trustChallengeExpiresAt: true,
-            trustChallengeSentAt: true,
-            userAgent: true,
-            ipAddress: true,
-            createdAt: true,
-            lastSeenAt: true,
-            revokedAt: true,
-            customerId: true,
-            customer: {
-              select: {
-                id: true,
-                supabaseUserId: true,
-                email: true,
-                firstName: true,
-                lastName: true,
-                accounts: {
-                  select: {
-                    id: true,
-                    status: true,
-                  },
-                  orderBy: {
-                    createdAt: "asc",
-                  },
-                  take: 1,
+    ] = await Promise.all([
+      this.prismaService.customerAuthSession.findMany({
+        where,
+        select: {
+          id: true,
+          clientPlatform: true,
+          trustedAt: true,
+          trustChallengeCodeHash: true,
+          trustChallengeExpiresAt: true,
+          trustChallengeSentAt: true,
+          userAgent: true,
+          ipAddress: true,
+          createdAt: true,
+          lastSeenAt: true,
+          revokedAt: true,
+          customerId: true,
+          customer: {
+            select: {
+              id: true,
+              supabaseUserId: true,
+              email: true,
+              firstName: true,
+              lastName: true,
+              accounts: {
+                select: {
+                  id: true,
+                  status: true,
                 },
+                orderBy: {
+                  createdAt: "asc",
+                },
+                take: 1,
               },
             },
           },
-          orderBy: [{ lastSeenAt: "desc" }, { createdAt: "desc" }],
-          take: limit,
-        }),
-        this.prismaService.customerAuthSession.count({
-          where,
-        }),
-        this.prismaService.customerAuthSession.count({
-          where: {
-            ...where,
-            trustChallengeCodeHash: {
-              not: null,
-            },
-            trustChallengeExpiresAt: {
-              gt: now,
-            },
+        },
+        orderBy: [{ lastSeenAt: "desc" }, { createdAt: "desc" }],
+        take: limit,
+      }),
+      this.prismaService.customerAuthSession.count({
+        where,
+      }),
+      this.prismaService.customerAuthSession.count({
+        where: {
+          ...where,
+          trustChallengeCodeHash: {
+            not: null,
           },
-        }),
-        this.prismaService.customerAuthSession.count({
-          where: {
-            ...where,
-            trustChallengeCodeHash: {
-              not: null,
-            },
-            trustChallengeExpiresAt: {
-              lte: now,
-            },
+          trustChallengeExpiresAt: {
+            gt: now,
           },
-        }),
-        this.prismaService.customerAuthSession.count({
-          where: {
-            ...where,
-            clientPlatform: CustomerAuthSessionPlatform.web,
+        },
+      }),
+      this.prismaService.customerAuthSession.count({
+        where: {
+          ...where,
+          trustChallengeCodeHash: {
+            not: null,
           },
-        }),
-        this.prismaService.customerAuthSession.count({
-          where: {
-            ...where,
-            clientPlatform: CustomerAuthSessionPlatform.mobile,
+          trustChallengeExpiresAt: {
+            lte: now,
           },
-        }),
-        this.prismaService.customerAuthSession.count({
-          where: {
-            ...where,
-            clientPlatform: CustomerAuthSessionPlatform.unknown,
-          },
-        }),
-        this.prismaService.customerAuthSession.groupBy({
-          by: ["customerId"],
-          where: {
-            revokedAt: null,
-          },
-          _count: {
-            _all: true,
-          },
-        }),
-        this.prismaService.customerAuthSession.groupBy({
-          by: ["customerId"],
-          where: {
-            revokedAt: null,
-            trustedAt: null,
-          },
-          _count: {
-            _all: true,
-          },
-        }),
-      ]);
+        },
+      }),
+      this.prismaService.customerAuthSession.count({
+        where: {
+          ...where,
+          clientPlatform: CustomerAuthSessionPlatform.web,
+        },
+      }),
+      this.prismaService.customerAuthSession.count({
+        where: {
+          ...where,
+          clientPlatform: CustomerAuthSessionPlatform.mobile,
+        },
+      }),
+      this.prismaService.customerAuthSession.count({
+        where: {
+          ...where,
+          clientPlatform: CustomerAuthSessionPlatform.unknown,
+        },
+      }),
+      this.prismaService.customerAuthSession.groupBy({
+        by: ["customerId"],
+        where: {
+          revokedAt: null,
+        },
+        _count: {
+          _all: true,
+        },
+      }),
+      this.prismaService.customerAuthSession.groupBy({
+        by: ["customerId"],
+        where: {
+          revokedAt: null,
+          trustedAt: null,
+        },
+        _count: {
+          _all: true,
+        },
+      }),
+    ]);
 
     const customerAccountIds = sessions
       .map((session) => session.customer.accounts[0]?.id ?? null)
@@ -3411,22 +3510,28 @@ export class AuthService {
           },
         })
       : [];
-    const linkedReviewCaseByAccountId = linkedReviewCases.reduce((map, reviewCase) => {
-      if (!reviewCase.customerAccountId) {
+    const linkedReviewCaseByAccountId = linkedReviewCases.reduce(
+      (map, reviewCase) => {
+        if (!reviewCase.customerAccountId) {
+          return map;
+        }
+
+        if (!map.has(reviewCase.customerAccountId)) {
+          map.set(reviewCase.customerAccountId, reviewCase);
+        }
+
         return map;
-      }
-
-      if (!map.has(reviewCase.customerAccountId)) {
-        map.set(reviewCase.customerAccountId, reviewCase);
-      }
-
-      return map;
-    }, new Map<string, (typeof linkedReviewCases)[number]>());
+      },
+      new Map<string, (typeof linkedReviewCases)[number]>(),
+    );
     const activeSessionCountByCustomerId = new Map(
       activeSessionCounts.map((entry) => [entry.customerId, entry._count._all]),
     );
     const activeUntrustedSessionCountByCustomerId = new Map(
-      activeUntrustedSessionCounts.map((entry) => [entry.customerId, entry._count._all]),
+      activeUntrustedSessionCounts.map((entry) => [
+        entry.customerId,
+        entry._count._all,
+      ]),
     );
     const scoredSessions = sessions.map((session) => {
       const assessment = this.assessCustomerSessionRisk({
@@ -3440,7 +3545,9 @@ export class AuthService {
       return this.mapCustomerSessionRisk(
         session,
         assessment,
-        linkedReviewCaseByAccountId.get(session.customer.accounts[0]?.id ?? "") ?? null,
+        linkedReviewCaseByAccountId.get(
+          session.customer.accounts[0]?.id ?? "",
+        ) ?? null,
       );
     });
     const criticalCount = scoredSessions.filter(
@@ -3506,42 +3613,43 @@ export class AuthService {
       "You are not authorized to revoke risky customer sessions.",
     );
 
-    const targetSession = await this.prismaService.customerAuthSession.findUnique({
-      where: { id: sessionId },
-      select: {
-        id: true,
-        clientPlatform: true,
-        trustedAt: true,
-        trustChallengeCodeHash: true,
-        trustChallengeExpiresAt: true,
-        trustChallengeSentAt: true,
-        userAgent: true,
-        ipAddress: true,
-        createdAt: true,
-        lastSeenAt: true,
-        revokedAt: true,
-        customerId: true,
-        customer: {
-          select: {
-            id: true,
-            supabaseUserId: true,
-            email: true,
-            firstName: true,
-            lastName: true,
-            accounts: {
-              select: {
-                id: true,
-                status: true,
+    const targetSession =
+      await this.prismaService.customerAuthSession.findUnique({
+        where: { id: sessionId },
+        select: {
+          id: true,
+          clientPlatform: true,
+          trustedAt: true,
+          trustChallengeCodeHash: true,
+          trustChallengeExpiresAt: true,
+          trustChallengeSentAt: true,
+          userAgent: true,
+          ipAddress: true,
+          createdAt: true,
+          lastSeenAt: true,
+          revokedAt: true,
+          customerId: true,
+          customer: {
+            select: {
+              id: true,
+              supabaseUserId: true,
+              email: true,
+              firstName: true,
+              lastName: true,
+              accounts: {
+                select: {
+                  id: true,
+                  status: true,
+                },
+                orderBy: {
+                  createdAt: "asc",
+                },
+                take: 1,
               },
-              orderBy: {
-                createdAt: "asc",
-              },
-              take: 1,
             },
           },
         },
-      },
-    });
+      });
 
     if (!targetSession) {
       throw new NotFoundException("Customer risky session was not found.");
@@ -3660,42 +3768,43 @@ export class AuthService {
       "You are not authorized to escalate risky customer sessions.",
     );
 
-    const targetSession = await this.prismaService.customerAuthSession.findUnique({
-      where: { id: sessionId },
-      select: {
-        id: true,
-        clientPlatform: true,
-        trustedAt: true,
-        trustChallengeCodeHash: true,
-        trustChallengeExpiresAt: true,
-        trustChallengeSentAt: true,
-        userAgent: true,
-        ipAddress: true,
-        createdAt: true,
-        lastSeenAt: true,
-        revokedAt: true,
-        customerId: true,
-        customer: {
-          select: {
-            id: true,
-            supabaseUserId: true,
-            email: true,
-            firstName: true,
-            lastName: true,
-            accounts: {
-              select: {
-                id: true,
-                status: true,
+    const targetSession =
+      await this.prismaService.customerAuthSession.findUnique({
+        where: { id: sessionId },
+        select: {
+          id: true,
+          clientPlatform: true,
+          trustedAt: true,
+          trustChallengeCodeHash: true,
+          trustChallengeExpiresAt: true,
+          trustChallengeSentAt: true,
+          userAgent: true,
+          ipAddress: true,
+          createdAt: true,
+          lastSeenAt: true,
+          revokedAt: true,
+          customerId: true,
+          customer: {
+            select: {
+              id: true,
+              supabaseUserId: true,
+              email: true,
+              firstName: true,
+              lastName: true,
+              accounts: {
+                select: {
+                  id: true,
+                  status: true,
+                },
+                orderBy: {
+                  createdAt: "asc",
+                },
+                take: 1,
               },
-              orderBy: {
-                createdAt: "asc",
-              },
-              take: 1,
             },
           },
         },
-      },
-    });
+      });
 
     if (!targetSession) {
       throw new NotFoundException("Customer risky session was not found.");
@@ -3715,22 +3824,24 @@ export class AuthService {
       );
     }
 
-    const [activeSessionCountForCustomer, activeUntrustedSessionCountForCustomer] =
-      await Promise.all([
-        this.prismaService.customerAuthSession.count({
-          where: {
-            customerId: targetSession.customerId,
-            revokedAt: null,
-          },
-        }),
-        this.prismaService.customerAuthSession.count({
-          where: {
-            customerId: targetSession.customerId,
-            revokedAt: null,
-            trustedAt: null,
-          },
-        }),
-      ]);
+    const [
+      activeSessionCountForCustomer,
+      activeUntrustedSessionCountForCustomer,
+    ] = await Promise.all([
+      this.prismaService.customerAuthSession.count({
+        where: {
+          customerId: targetSession.customerId,
+          revokedAt: null,
+        },
+      }),
+      this.prismaService.customerAuthSession.count({
+        where: {
+          customerId: targetSession.customerId,
+          revokedAt: null,
+          trustedAt: null,
+        },
+      }),
+    ]);
 
     const assessment = this.assessCustomerSessionRisk({
       session: targetSession,
@@ -3738,9 +3849,8 @@ export class AuthService {
       activeUntrustedSessionCountForCustomer,
     });
     const normalizedNote = this.normalizeOptionalText(note);
-    const reviewCaseResult = await this.reviewCasesService.openOrReuseReviewCase(
-      this.prismaService,
-      {
+    const reviewCaseResult =
+      await this.reviewCasesService.openOrReuseReviewCase(this.prismaService, {
         customerId: targetSession.customer.id,
         customerAccountId: customerAccount.id,
         transactionIntentId: null,
@@ -3765,10 +3875,10 @@ export class AuthService {
           clientPlatform: targetSession.clientPlatform,
           ipAddress: targetSession.ipAddress,
           userAgent: targetSession.userAgent,
-          challengeState: this.resolveCustomerSessionRiskChallengeState(targetSession),
+          challengeState:
+            this.resolveCustomerSessionRiskChallengeState(targetSession),
         },
-      },
-    );
+      });
 
     await this.appendOperatorAuditEvent({
       customerId: targetSession.customer.id,
@@ -4449,16 +4559,14 @@ export class AuthService {
       throw new InternalServerErrorException("User profile not found.");
     }
 
-    const recognizedSessionSignature =
-      await this.hasRecognizedCustomerSessionSignature(customer.id, context);
-    const sessionId = await this.createCustomerAuthSession(this.prismaService, {
-      customerId: customer.id,
-      tokenVersion: customer.authTokenVersion,
-      context,
-      trusted: recognizedSessionSignature,
-    });
+    const { recognizedSessionSignature, sessionId } =
+      await this.createLoginSession({
+        customerId: customer.id,
+        tokenVersion: customer.authTokenVersion,
+        context,
+      });
     const sessionSecurity = this.buildCustomerSessionSecurityStatus({
-      trustedAt: recognizedSessionSignature ? new Date() : null,
+      trustedAt: recognizedSessionSignature || !sessionId ? new Date() : null,
     });
     const token = this.signToken(
       customer.supabaseUserId,
@@ -4479,14 +4587,16 @@ export class AuthService {
       } as PrismaJsonValue,
     });
 
-    if (!recognizedSessionSignature) {
+    if (!recognizedSessionSignature && sessionId) {
       void this.customerSecurityEmailDeliveryService
         .sendSessionAlert({
           customerId: customer.id,
           actorId: customer.supabaseUserId,
           email: customer.email,
           purpose: "new_session_login",
-          clientPlatform: this.normalizeSessionPlatform(context?.clientPlatform),
+          clientPlatform: this.normalizeSessionPlatform(
+            context?.clientPlatform,
+          ),
           userAgent: this.normalizeOptionalText(context?.userAgent),
           ipAddress: this.normalizeOptionalText(context?.ipAddress),
           occurredAt: new Date().toISOString(),
