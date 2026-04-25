@@ -18,15 +18,16 @@ describe("UserService.getUserById", () => {
     walletProjectionResult?: unknown;
     walletProjectionError?: Error;
     customerFoundationResult?: unknown;
+    customerFoundationError?: Error;
+    notificationPreferencesResult?: unknown;
+    notificationPreferencesError?: Error;
   }) {
     const prismaService = {
       user: {
         findFirst: jest.fn().mockResolvedValue(options.legacyUser),
       },
       customer: {
-        findUnique: jest
-          .fn()
-          .mockResolvedValue(options.customerFoundationResult ?? null),
+        findUnique: jest.fn(),
         update: jest.fn(),
       },
       customerTrustedContact: {
@@ -36,6 +37,16 @@ describe("UserService.getUserById", () => {
       },
     };
 
+    if (options.customerFoundationError) {
+      prismaService.customer.findUnique.mockRejectedValue(
+        options.customerFoundationError,
+      );
+    } else {
+      prismaService.customer.findUnique.mockResolvedValue(
+        options.customerFoundationResult ?? null,
+      );
+    }
+
     const authService = {
       getCustomerAccountProjectionBySupabaseUserId: jest.fn(),
       getCustomerWalletProjectionBySupabaseUserId: jest.fn(),
@@ -44,86 +55,6 @@ describe("UserService.getUserById", () => {
         currentSessionRequiresVerification: false,
       }),
     };
-    const notificationsService = {
-      getCustomerPreferences: jest.fn().mockResolvedValue({
-        audience: "customer",
-        supportedChannels: ["in_app", "email"],
-        updatedAt: null,
-        entries: [
-          {
-            category: "security",
-            channels: [
-              { channel: "in_app", enabled: true, mandatory: true },
-              { channel: "email", enabled: true, mandatory: true },
-            ],
-          },
-          {
-            category: "money_movement",
-            channels: [
-              { channel: "in_app", enabled: true, mandatory: false },
-              { channel: "email", enabled: true, mandatory: false },
-            ],
-          },
-          {
-            category: "yield",
-            channels: [
-              { channel: "in_app", enabled: true, mandatory: false },
-              { channel: "email", enabled: true, mandatory: false },
-            ],
-          },
-          {
-            category: "vault",
-            channels: [
-              { channel: "in_app", enabled: true, mandatory: false },
-              { channel: "email", enabled: true, mandatory: false },
-            ],
-          },
-          {
-            category: "loans",
-            channels: [
-              { channel: "in_app", enabled: true, mandatory: false },
-              { channel: "email", enabled: true, mandatory: false },
-            ],
-          },
-          {
-            category: "account",
-            channels: [
-              { channel: "in_app", enabled: true, mandatory: false },
-              { channel: "email", enabled: true, mandatory: false },
-            ],
-          },
-          {
-            category: "governance",
-            channels: [
-              { channel: "in_app", enabled: true, mandatory: false },
-              { channel: "email", enabled: false, mandatory: false },
-            ],
-          },
-          {
-            category: "operations",
-            channels: [
-              { channel: "in_app", enabled: true, mandatory: false },
-              { channel: "email", enabled: false, mandatory: false },
-            ],
-          },
-          {
-            category: "incident",
-            channels: [
-              { channel: "in_app", enabled: true, mandatory: false },
-              { channel: "email", enabled: false, mandatory: false },
-            ],
-          },
-          {
-            category: "product",
-            channels: [
-              { channel: "in_app", enabled: true, mandatory: false },
-              { channel: "email", enabled: false, mandatory: false },
-            ],
-          },
-        ],
-      }),
-    };
-
     if (options.customerProjectionError) {
       authService.getCustomerAccountProjectionBySupabaseUserId.mockRejectedValue(
         options.customerProjectionError,
@@ -141,6 +72,25 @@ describe("UserService.getUserById", () => {
     } else {
       authService.getCustomerWalletProjectionBySupabaseUserId.mockResolvedValue(
         options.walletProjectionResult,
+      );
+    }
+
+    const notificationsService = {
+      getCustomerPreferences: jest.fn(),
+    };
+
+    if (options.notificationPreferencesError) {
+      notificationsService.getCustomerPreferences.mockRejectedValue(
+        options.notificationPreferencesError,
+      );
+    } else {
+      notificationsService.getCustomerPreferences.mockResolvedValue(
+        options.notificationPreferencesResult ?? {
+          audience: "customer",
+          supportedChannels: ["in_app", "email"],
+          updatedAt: null,
+          entries: [],
+        },
       );
     }
 
@@ -289,6 +239,29 @@ describe("UserService.getUserById", () => {
       currentSessionTrusted: true,
       currentSessionRequiresVerification: false,
     });
+  });
+
+  it("returns the customer profile when optional foundation storage is unavailable", async () => {
+    const { service } = createService({
+      legacyUser,
+      customerProjectionResult: customerProjection,
+      walletProjectionResult: walletProjection,
+      customerFoundationError: new Error('column "dateOfBirth" does not exist'),
+    });
+
+    const result = await service.getUserById("supabase_1");
+
+    expect(result.customerId).toBe("customer_1");
+    expect(result.ageProfile).toEqual({
+      dateOfBirth: null,
+      ageYears: null,
+      legalAdult: null,
+      verificationStatus: "unverified",
+      verifiedAt: null,
+      verifiedByOperatorId: null,
+      verificationNote: null,
+    });
+    expect(result.trustedContacts).toEqual([]);
   });
 
   it("falls back to legacy ethereumAddress when wallet projection is missing", async () => {

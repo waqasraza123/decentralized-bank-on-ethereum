@@ -4,7 +4,7 @@ import {
   PolicyDecision,
   Prisma,
   TransactionIntentStatus,
-  TransactionIntentType
+  TransactionIntentType,
 } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
 import { TransactionOperationsService } from "./transaction-operations.service";
@@ -25,7 +25,7 @@ function buildIntentRecord(
     externalAddress: string | null;
     recipientMaskedDisplay: string | null;
     recipientMaskedEmail: string | null;
-  }> = {}
+  }> = {},
 ) {
   const resolvedIntentType =
     overrides.intentType ?? TransactionIntentType.deposit;
@@ -46,7 +46,9 @@ function buildIntentRecord(
         ? null
         : overrides.recipientCustomerAccountId,
     externalAddress:
-      overrides.externalAddress === undefined ? null : overrides.externalAddress,
+      overrides.externalAddress === undefined
+        ? null
+        : overrides.externalAddress,
     recipientMaskedDisplay:
       overrides.recipientMaskedDisplay === undefined
         ? null
@@ -71,17 +73,17 @@ function buildIntentRecord(
       symbol: overrides.assetSymbol ?? "USDC",
       displayName: "USD Coin",
       decimals: 6,
-      chainId: 8453
+      chainId: 8453,
     },
     sourceWallet: {
       id: "wallet_1",
-      address: "0x0000000000000000000000000000000000000def"
+      address: "0x0000000000000000000000000000000000000def",
     },
     destinationWallet:
       resolvedIntentType === TransactionIntentType.deposit
         ? {
             id: "wallet_2",
-            address: "0x0000000000000000000000000000000000000fed"
+            address: "0x0000000000000000000000000000000000000fed",
           }
         : null,
     customerAccount: {
@@ -92,8 +94,8 @@ function buildIntentRecord(
         supabaseUserId: overrides.supabaseUserId ?? "supabase_1",
         email: overrides.email ?? "user@example.com",
         firstName: "Waqas",
-        lastName: "Raza"
-      }
+        lastName: "Raza",
+      },
     },
     recipientCustomerAccount:
       overrides.recipientCustomerAccountId === null
@@ -106,8 +108,8 @@ function buildIntentRecord(
               supabaseUserId: overrides.recipientSupabaseUserId ?? "supabase_2",
               email: overrides.recipientEmail ?? "recipient@example.com",
               firstName: "Amina",
-              lastName: "Rahman"
-            }
+              lastName: "Rahman",
+            },
           },
     blockchainTransactions: txHash
       ? [
@@ -119,35 +121,35 @@ function buildIntentRecord(
             toAddress: "0x0000000000000000000000000000000000000abc",
             createdAt: new Date("2026-04-01T00:01:00.000Z"),
             updatedAt: new Date("2026-04-01T00:05:00.000Z"),
-            confirmedAt: new Date("2026-04-01T00:05:00.000Z")
-          }
+            confirmedAt: new Date("2026-04-01T00:05:00.000Z"),
+          },
         ]
-      : []
+      : [],
   };
 }
 
 function createService() {
   const prismaService = {
     customerAccount: {
-      findFirst: jest.fn()
+      findFirst: jest.fn(),
     },
     transactionIntent: {
       findMany: jest.fn(),
-      findFirst: jest.fn()
+      findFirst: jest.fn(),
     },
     auditEvent: {
-      findMany: jest.fn()
+      findMany: jest.fn(),
     },
     customerAssetBalance: {
-      findMany: jest.fn()
-    }
+      findMany: jest.fn(),
+    },
   } as unknown as PrismaService;
 
   const service = new TransactionOperationsService(prismaService);
 
   return {
     service,
-    prismaService
+    prismaService,
   };
 }
 
@@ -161,22 +163,22 @@ describe("TransactionOperationsService", () => {
     const { service, prismaService } = createService();
 
     (prismaService.customerAccount.findFirst as jest.Mock).mockResolvedValue({
-      id: "account_1"
+      id: "account_1",
     });
 
     (prismaService.transactionIntent.findMany as jest.Mock).mockResolvedValue([
       buildIntentRecord({
-        intentType: TransactionIntentType.deposit
+        intentType: TransactionIntentType.deposit,
       }),
       buildIntentRecord({
         id: "intent_2",
         intentType: TransactionIntentType.withdrawal,
-        externalAddress: "0x0000000000000000000000000000000000000abc"
-      })
+        externalAddress: "0x0000000000000000000000000000000000000abc",
+      }),
     ]);
 
     const result = await service.listMyTransactionHistory("supabase_1", {
-      limit: 20
+      limit: 20,
     });
 
     expect(result.customerAccountId).toBe("account_1");
@@ -184,11 +186,32 @@ describe("TransactionOperationsService", () => {
     expect(result.intents[1].intentType).toBe(TransactionIntentType.withdrawal);
   });
 
+  it("returns an empty transaction history when history storage is unavailable", async () => {
+    const { service, prismaService } = createService();
+
+    (prismaService.customerAccount.findFirst as jest.Mock).mockResolvedValue({
+      id: "account_1",
+    });
+    (prismaService.transactionIntent.findMany as jest.Mock).mockRejectedValue(
+      new Error('relation "TransactionIntent" does not exist'),
+    );
+
+    const result = await service.listMyTransactionHistory("supabase_1", {
+      limit: 5,
+    });
+
+    expect(result).toEqual({
+      customerAccountId: "account_1",
+      intents: [],
+      limit: 5,
+    });
+  });
+
   it("maps inbound internal transfers as received with masked sender details", async () => {
     const { service, prismaService } = createService();
 
     (prismaService.customerAccount.findFirst as jest.Mock).mockResolvedValue({
-      id: "account_2"
+      id: "account_2",
     });
 
     (prismaService.transactionIntent.findMany as jest.Mock).mockResolvedValue([
@@ -203,24 +226,22 @@ describe("TransactionOperationsService", () => {
         recipientEmail: "recipient@example.com",
         recipientMaskedDisplay: "A*** R***",
         recipientMaskedEmail: "r*******t@e****.com",
-        txHash: null
-      })
+        txHash: null,
+      }),
     ]);
 
     const result = await service.listMyTransactionHistory("supabase_2", {
-      limit: 20
+      limit: 20,
     });
 
     expect(result.customerAccountId).toBe("account_2");
     expect(result.intents).toHaveLength(1);
     expect(result.intents[0].intentType).toBe(
-      TransactionIntentType.internal_balance_transfer
+      TransactionIntentType.internal_balance_transfer,
     );
     expect(result.intents[0].transferDirection).toBe("received");
     expect(result.intents[0].counterpartyMaskedDisplay).toBe("W*** R***");
-    expect(result.intents[0].counterpartyMaskedEmail).toBe(
-      "s****r@e****.com"
-    );
+    expect(result.intents[0].counterpartyMaskedEmail).toBe("s****r@e****.com");
   });
 
   it("searches transaction operations by customer email and tx hash", async () => {
@@ -229,20 +250,20 @@ describe("TransactionOperationsService", () => {
     (prismaService.transactionIntent.findMany as jest.Mock).mockResolvedValue([
       buildIntentRecord({
         intentType: TransactionIntentType.withdrawal,
-        externalAddress: "0x0000000000000000000000000000000000000abc"
-      })
+        externalAddress: "0x0000000000000000000000000000000000000abc",
+      }),
     ]);
 
     const result = await service.searchTransactionOperations({
       email: "user@example.com",
       txHash:
-        "0x1111111111111111111111111111111111111111111111111111111111111111"
+        "0x1111111111111111111111111111111111111111111111111111111111111111",
     });
 
     expect(result.intents).toHaveLength(1);
     expect(result.intents[0].customer.email).toBe("user@example.com");
     expect(result.intents[0].latestBlockchainTransaction?.txHash).toBe(
-      "0x1111111111111111111111111111111111111111111111111111111111111111"
+      "0x1111111111111111111111111111111111111111111111111111111111111111",
     );
   });
 
@@ -250,7 +271,7 @@ describe("TransactionOperationsService", () => {
     const { service, prismaService } = createService();
 
     (prismaService.transactionIntent.findFirst as jest.Mock).mockResolvedValue({
-      id: "intent_1"
+      id: "intent_1",
     });
 
     (prismaService.auditEvent.findMany as jest.Mock).mockResolvedValue([
@@ -262,9 +283,9 @@ describe("TransactionOperationsService", () => {
         targetType: "TransactionIntent",
         targetId: "intent_1",
         metadata: {
-          requestedAmount: "25"
+          requestedAmount: "25",
         },
-        createdAt: new Date("2026-04-01T00:00:00.000Z")
+        createdAt: new Date("2026-04-01T00:00:00.000Z"),
       },
       {
         id: "audit_2",
@@ -274,10 +295,10 @@ describe("TransactionOperationsService", () => {
         targetType: "TransactionIntent",
         targetId: "intent_1",
         metadata: {
-          settledAmount: "25"
+          settledAmount: "25",
         },
-        createdAt: new Date("2026-04-01T00:10:00.000Z")
-      }
+        createdAt: new Date("2026-04-01T00:10:00.000Z"),
+      },
     ]);
 
     const result = await service.getTransactionIntentAuditTimeline("intent_1");
@@ -285,10 +306,10 @@ describe("TransactionOperationsService", () => {
     expect(result.intentId).toBe("intent_1");
     expect(result.auditEvents).toHaveLength(2);
     expect(result.auditEvents[0].action).toBe(
-      "transaction_intent.deposit.requested"
+      "transaction_intent.deposit.requested",
     );
     expect(result.auditEvents[1].action).toBe(
-      "transaction_intent.deposit.settled"
+      "transaction_intent.deposit.settled",
     );
   });
 
@@ -303,39 +324,41 @@ describe("TransactionOperationsService", () => {
         supabaseUserId: "supabase_1",
         email: "user@example.com",
         firstName: "Waqas",
-        lastName: "Raza"
-      }
+        lastName: "Raza",
+      },
     });
 
-    (prismaService.customerAssetBalance.findMany as jest.Mock).mockResolvedValue([
+    (
+      prismaService.customerAssetBalance.findMany as jest.Mock
+    ).mockResolvedValue([
       {
         asset: {
           id: "asset_1",
           symbol: "USDC",
           displayName: "USD Coin",
           decimals: 6,
-          chainId: 8453
+          chainId: 8453,
         },
         availableBalance: new Prisma.Decimal("70"),
         pendingBalance: new Prisma.Decimal("5"),
-        updatedAt: new Date("2026-04-01T00:20:00.000Z")
-      }
+        updatedAt: new Date("2026-04-01T00:20:00.000Z"),
+      },
     ]);
 
     (prismaService.transactionIntent.findMany as jest.Mock).mockResolvedValue([
       buildIntentRecord({
-        intentType: TransactionIntentType.deposit
+        intentType: TransactionIntentType.deposit,
       }),
       buildIntentRecord({
         id: "intent_2",
         intentType: TransactionIntentType.withdrawal,
-        externalAddress: "0x0000000000000000000000000000000000000abc"
-      })
+        externalAddress: "0x0000000000000000000000000000000000000abc",
+      }),
     ]);
 
     const result = await service.getCustomerOperationsSnapshot({
       supabaseUserId: "supabase_1",
-      recentLimit: 10
+      recentLimit: 10,
     });
 
     expect(result.customer.customerAccountId).toBe("account_1");
@@ -348,17 +371,19 @@ describe("TransactionOperationsService", () => {
     const { service } = createService();
 
     await expect(
-      service.getCustomerOperationsSnapshot({})
+      service.getCustomerOperationsSnapshot({}),
     ).rejects.toBeInstanceOf(BadRequestException);
   });
 
   it("rejects history when the authenticated customer account does not exist", async () => {
     const { service, prismaService } = createService();
 
-    (prismaService.customerAccount.findFirst as jest.Mock).mockResolvedValue(null);
+    (prismaService.customerAccount.findFirst as jest.Mock).mockResolvedValue(
+      null,
+    );
 
     await expect(
-      service.listMyTransactionHistory("missing_user", {})
+      service.listMyTransactionHistory("missing_user", {}),
     ).rejects.toBeInstanceOf(NotFoundException);
   });
 });

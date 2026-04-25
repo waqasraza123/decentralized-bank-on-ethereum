@@ -33,7 +33,11 @@ type NotificationConnectedPayload = {
 };
 
 const customerNotificationPrefix = ["notifications", "customer"] as const;
-const unreadSummaryKey = ["notifications", "customer", "unread-summary"] as const;
+const unreadSummaryKey = [
+  "notifications",
+  "customer",
+  "unread-summary",
+] as const;
 
 function buildHeaders(token: string) {
   return {
@@ -67,7 +71,11 @@ function readStoredSequence(recipientKey: string): number {
 }
 
 function writeStoredSequence(recipientKey: string, sequence: number): void {
-  if (typeof window === "undefined" || !Number.isFinite(sequence) || sequence < 0) {
+  if (
+    typeof window === "undefined" ||
+    !Number.isFinite(sequence) ||
+    sequence < 0
+  ) {
     return;
   }
 
@@ -99,7 +107,9 @@ function applyFeedItemUpdate(
     (!input.category || item.category === input.category) &&
     (!input.unreadOnly || !item.readAt);
 
-  const existingItems = current.items.filter((candidate) => candidate.id !== item.id);
+  const existingItems = current.items.filter(
+    (candidate) => candidate.id !== item.id,
+  );
   const nextItems = matchesFilter ? [item, ...existingItems] : existingItems;
 
   return {
@@ -174,12 +184,16 @@ export function useNotificationFeed(input: NotificationListInput = {}) {
         );
 
         if (response.data.status !== "success" || !response.data.data) {
-          throw new Error(response.data.message || "Failed to load notifications.");
+          throw new Error(
+            response.data.message || "Failed to load notifications.",
+          );
         }
 
         return response.data.data;
       } catch (error) {
-        throw new Error(readApiErrorMessage(error, "Failed to load notifications."));
+        throw new Error(
+          readApiErrorMessage(error, "Failed to load notifications."),
+        );
       }
     },
   });
@@ -197,12 +211,11 @@ export function useNotificationUnreadSummary() {
       }
 
       try {
-        const response = await axios.get<ApiResponse<NotificationUnreadSummary>>(
-          `${webRuntimeConfig.serverUrl}/notifications/me/unread-count`,
-          {
-            headers: buildHeaders(token),
-          },
-        );
+        const response = await axios.get<
+          ApiResponse<NotificationUnreadSummary>
+        >(`${webRuntimeConfig.serverUrl}/notifications/me/unread-count`, {
+          headers: buildHeaders(token),
+        });
 
         if (response.data.status !== "success" || !response.data.data) {
           throw new Error(
@@ -249,7 +262,8 @@ export function useMarkNotificationsRead() {
     onSuccess: async () => {
       await queryClient.invalidateQueries({
         predicate: (query) =>
-          Array.isArray(query.queryKey) && query.queryKey[0] === "notifications",
+          Array.isArray(query.queryKey) &&
+          query.queryKey[0] === "notifications",
       });
     },
   });
@@ -284,7 +298,8 @@ export function useMarkAllNotificationsRead() {
     onSuccess: async () => {
       await queryClient.invalidateQueries({
         predicate: (query) =>
-          Array.isArray(query.queryKey) && query.queryKey[0] === "notifications",
+          Array.isArray(query.queryKey) &&
+          query.queryKey[0] === "notifications",
       });
     },
   });
@@ -319,7 +334,8 @@ export function useArchiveNotifications() {
     onSuccess: async () => {
       await queryClient.invalidateQueries({
         predicate: (query) =>
-          Array.isArray(query.queryKey) && query.queryKey[0] === "notifications",
+          Array.isArray(query.queryKey) &&
+          query.queryKey[0] === "notifications",
       });
     },
   });
@@ -353,7 +369,8 @@ export function useNotificationRealtimeBridge() {
 
       clearReconnectTimer();
       const delayMs =
-        Math.min(30_000, 1_000 * 2 ** attempts) + Math.floor(Math.random() * 250);
+        Math.min(30_000, 1_000 * 2 ** attempts) +
+        Math.floor(Math.random() * 250);
       attempts += 1;
 
       reconnectTimer = window.setTimeout(() => {
@@ -364,6 +381,11 @@ export function useNotificationRealtimeBridge() {
     const connect = async () => {
       try {
         const session = await createCustomerSocketSession(token);
+
+        if (!session.socketToken) {
+          return;
+        }
+
         const lastSeenSequence = Math.max(
           readStoredSequence(session.recipientKey),
           session.latestSequence,
@@ -442,7 +464,8 @@ export function useNotificationRealtimeBridge() {
           } catch {
             void queryClient.invalidateQueries({
               predicate: (query) =>
-                Array.isArray(query.queryKey) && query.queryKey[0] === "notifications",
+                Array.isArray(query.queryKey) &&
+                query.queryKey[0] === "notifications",
             });
           }
         };
@@ -497,7 +520,10 @@ export function useNotificationPreferencesMatrix() {
         return response.data.data.notificationPreferences;
       } catch (error) {
         throw new Error(
-          readApiErrorMessage(error, "Failed to load notification preferences."),
+          readApiErrorMessage(
+            error,
+            "Failed to load notification preferences.",
+          ),
         );
       }
     },

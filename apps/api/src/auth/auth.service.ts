@@ -2798,12 +2798,25 @@ export class AuthService {
     supabaseUserId: string,
     currentSessionId?: string | null,
   ): Promise<CustomerSessionSecurityStatus> {
-    return this.buildCustomerSessionSecurityStatus(
-      await this.getCurrentCustomerSessionRecord(
+    try {
+      return this.buildCustomerSessionSecurityStatus(
+        await this.getCurrentCustomerSessionRecord(
+          supabaseUserId,
+          currentSessionId,
+        ),
+      );
+    } catch (error) {
+      if (!this.isSchemaCompatibilityError(error)) {
+        throw error;
+      }
+
+      writeStructuredApiLog("warn", "customer_auth_session_unavailable", {
         supabaseUserId,
-        currentSessionId,
-      ),
-    );
+        error,
+      });
+
+      return this.buildCustomerSessionSecurityStatus(null);
+    }
   }
 
   async startCurrentSessionTrustChallenge(
