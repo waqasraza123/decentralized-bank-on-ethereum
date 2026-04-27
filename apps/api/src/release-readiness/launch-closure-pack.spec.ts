@@ -50,6 +50,52 @@ function buildManifest(): LaunchClosureManifest {
       workerRollbackReleaseId: "worker-2026.04.09.4",
       backupReference: "snapshot-2026-04-10T08:00Z"
     },
+    deploymentArtifacts: {
+      apiCurrent: {
+        releaseId: "api-2026.04.10.1",
+        service: "api",
+        environment: "production_like",
+        artifactKind: "vercel_deployment",
+        artifactUri: "vercel://api/api-2026.04.10.1",
+        artifactDigestSha256:
+          "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        sourceCommitSha: "abc1234",
+        runtime: "nodejs20.x"
+      },
+      apiRollback: {
+        releaseId: "api-2026.04.09.4",
+        service: "api",
+        environment: "production_like",
+        artifactKind: "vercel_deployment",
+        artifactUri: "vercel://api/api-2026.04.09.4",
+        artifactDigestSha256:
+          "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        sourceCommitSha: "def5678",
+        runtime: "nodejs20.x"
+      },
+      workerCurrent: {
+        releaseId: "worker-2026.04.10.1",
+        service: "worker",
+        environment: "production_like",
+        artifactKind: "worker_bundle",
+        artifactUri: "vercel://worker/worker-2026.04.10.1",
+        artifactDigestSha256:
+          "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        sourceCommitSha: "abc1234",
+        runtime: "nodejs20.x"
+      },
+      workerRollback: {
+        releaseId: "worker-2026.04.09.4",
+        service: "worker",
+        environment: "production_like",
+        artifactKind: "worker_bundle",
+        artifactUri: "vercel://worker/worker-2026.04.09.4",
+        artifactDigestSha256:
+          "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        sourceCommitSha: "def5678",
+        runtime: "nodejs20.x"
+      }
+    },
     chain: {
       networkName: "sepolia",
       chainId: 11155111
@@ -235,6 +281,9 @@ describe("launch-closure-pack", () => {
         path.join(outputDir, "payloads", "critical_alert_reescalation.json")
       );
       expect(result.files).toContain(
+        path.join(outputDir, "payloads", "release-artifacts.json")
+      );
+      expect(result.files).toContain(
         path.join(outputDir, "current-status-summary.md")
       );
       expect(result.files).toContain(
@@ -269,6 +318,10 @@ describe("launch-closure-pack", () => {
         path.join(outputDir, "payloads", "critical_alert_reescalation.json"),
         "utf8"
       );
+      const releaseArtifactsPayload = readFileSync(
+        path.join(outputDir, "payloads", "release-artifacts.json"),
+        "utf8"
+      );
       const artifactManifest = JSON.parse(
         readFileSync(
           path.join(outputDir, launchClosureArtifactManifestRelativePath),
@@ -279,6 +332,7 @@ describe("launch-closure-pack", () => {
       expect(executionPlan).toContain("pnpm release:readiness:probe --");
       expect(executionPlan).toContain("--probe worker_rollback_drill");
       expect(executionPlan).toContain("--release-id launch-2026.04.10.1");
+      expect(executionPlan).toContain("payloads/release-artifacts.json");
       expect(executionPlan).toContain("pnpm release:readiness:verify --");
       expect(executionPlan).toContain("curl -sS -X POST");
       expect(approvalRequest).toContain('"releaseIdentifier": "launch-2026.04.10.1"');
@@ -294,8 +348,11 @@ describe("launch-closure-pack", () => {
       );
       expect(operatorActions).toContain("Operator Actions");
       expect(operatorActions).toContain("payloads/critical_alert_reescalation.json");
+      expect(operatorActions).toContain("payloads/release-artifacts.json");
       expect(criticalAlertPayload).toContain('"evidenceType": "critical_alert_reescalation"');
       expect(criticalAlertPayload).toContain('"environment": "production_like"');
+      expect(releaseArtifactsPayload).toContain('"apiRollback"');
+      expect(releaseArtifactsPayload).toContain('"workerRollback"');
       expect(artifactManifest.manifestChecksumSha256).toEqual(expect.any(String));
       expect(artifactManifest.files).toEqual(
         expect.arrayContaining([
@@ -375,6 +432,10 @@ describe("launch-closure-pack", () => {
         expect.objectContaining({
           relativePath: path.join("payloads", "platform_alert_delivery_slo.json"),
           content: expect.stringContaining('"evidenceType": "platform_alert_delivery_slo"')
+        }),
+        expect.objectContaining({
+          relativePath: path.join("payloads", "release-artifacts.json"),
+          content: expect.stringContaining('"apiRollback"')
         }),
         expect.objectContaining({
           relativePath: "current-status-summary.md",

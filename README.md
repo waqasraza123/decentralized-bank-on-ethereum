@@ -42,6 +42,7 @@ Current execution frontier:
 - Phase 11/12 boundary hardening
 - internal email transfer hardening is in place; dedicated end-to-end verification is deferred to a follow-up pass
 - unified notifications cutover is in place across API, web, admin, and mobile with websocket resume, matrix preferences, fresh-start inbox rollout, and release-readiness cutover proof
+- launch-closure packs now bind API and worker rollback drills to immutable deployment artifact manifests
 
 Immediate next step:
 

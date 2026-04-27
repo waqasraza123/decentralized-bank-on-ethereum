@@ -461,6 +461,68 @@ function buildLaunchClosureManifestTemplate(args: {
       workerRollbackReleaseId: `worker-${rollbackReleaseIdentifier}`,
       backupReference: "snapshot-2026-04-13T09:00Z"
     },
+    deploymentArtifacts: {
+      apiCurrent: {
+        releaseId: `api-${releaseIdentifier}`,
+        service: "api",
+        environment: "production_like",
+        artifactKind: "vercel_deployment",
+        artifactUri: `vercel://api/${releaseIdentifier}`,
+        artifactDigestSha256:
+          "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        sourceCommitSha: "0000000",
+        runtime: "nodejs20.x",
+        deploymentProvider: "vercel",
+        deploymentId: `api-${releaseIdentifier}`,
+        buildUrl: "https://vercel.com/example/api/deployments/current",
+        generatedAt: "2026-04-13T09:00:00.000Z"
+      },
+      apiRollback: {
+        releaseId: `api-${rollbackReleaseIdentifier}`,
+        service: "api",
+        environment: "production_like",
+        artifactKind: "vercel_deployment",
+        artifactUri: `vercel://api/${rollbackReleaseIdentifier}`,
+        artifactDigestSha256:
+          "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        sourceCommitSha: "0000000",
+        runtime: "nodejs20.x",
+        deploymentProvider: "vercel",
+        deploymentId: `api-${rollbackReleaseIdentifier}`,
+        buildUrl: "https://vercel.com/example/api/deployments/rollback",
+        generatedAt: "2026-04-12T09:00:00.000Z"
+      },
+      workerCurrent: {
+        releaseId: `worker-${releaseIdentifier}`,
+        service: "worker",
+        environment: "production_like",
+        artifactKind: "worker_bundle",
+        artifactUri: `vercel://worker/${releaseIdentifier}`,
+        artifactDigestSha256:
+          "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        sourceCommitSha: "0000000",
+        runtime: "nodejs20.x",
+        deploymentProvider: "vercel",
+        deploymentId: `worker-${releaseIdentifier}`,
+        buildUrl: "https://vercel.com/example/worker/deployments/current",
+        generatedAt: "2026-04-13T09:00:00.000Z"
+      },
+      workerRollback: {
+        releaseId: `worker-${rollbackReleaseIdentifier}`,
+        service: "worker",
+        environment: "production_like",
+        artifactKind: "worker_bundle",
+        artifactUri: `vercel://worker/${rollbackReleaseIdentifier}`,
+        artifactDigestSha256:
+          "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        sourceCommitSha: "0000000",
+        runtime: "nodejs20.x",
+        deploymentProvider: "vercel",
+        deploymentId: `worker-${rollbackReleaseIdentifier}`,
+        buildUrl: "https://vercel.com/example/worker/deployments/rollback",
+        generatedAt: "2026-04-12T09:00:00.000Z"
+      }
+    },
     chain: {
       networkName: "base-sepolia",
       chainId: 84532

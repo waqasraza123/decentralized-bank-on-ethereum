@@ -30,6 +30,27 @@ export type SolvencyAnchorRegistryOnchainVerification = {
   bytecodePresent: boolean;
 };
 
+export type LaunchClosureDeploymentArtifact = {
+  releaseId: string;
+  service: "api" | "worker";
+  environment: LaunchClosureEnvironment;
+  artifactKind:
+    | "vercel_deployment"
+    | "container_image"
+    | "node_bundle"
+    | "worker_bundle"
+    | "archive";
+  artifactUri: string;
+  artifactDigestSha256: string;
+  sourceCommitSha: string;
+  runtime: string;
+  deploymentProvider?: string;
+  deploymentId?: string;
+  buildUrl?: string;
+  generatedAt?: string;
+  rollbackValidatedAt?: string;
+};
+
 export type LaunchClosureManifest = {
   releaseIdentifier: string;
   environment: LaunchClosureEnvironment;
@@ -61,6 +82,12 @@ export type LaunchClosureManifest = {
     apiRollbackReleaseId: string;
     workerRollbackReleaseId: string;
     backupReference: string;
+  };
+  deploymentArtifacts: {
+    apiCurrent: LaunchClosureDeploymentArtifact;
+    apiRollback: LaunchClosureDeploymentArtifact;
+    workerCurrent: LaunchClosureDeploymentArtifact;
+    workerRollback: LaunchClosureDeploymentArtifact;
   };
   chain: {
     networkName: string;
@@ -267,6 +294,17 @@ const localDryRunOnlyChecks = [
   "worker_rollback_drill"
 ] as const;
 
+const launchClosureDeploymentArtifactKinds = [
+  "vercel_deployment",
+  "container_image",
+  "node_bundle",
+  "worker_bundle",
+  "archive"
+] as const;
+
+const sha256ChecksumPattern = /^(sha256:)?[a-fA-F0-9]{64}$/;
+const gitCommitShaPattern = /^[a-fA-F0-9]{7,40}$/;
+
 function normalizeString(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
@@ -315,6 +353,50 @@ function validateOptionalNonNegativeInteger(
   }
 }
 
+function validateOptionalDateString(
+  value: unknown,
+  key: string,
+  errors: string[]
+): void {
+  if (value === undefined || value === null || normalizeString(value) === "") {
+    return;
+  }
+
+  if (typeof value !== "string" || Number.isNaN(Date.parse(value))) {
+    errors.push(`Manifest field ${key} must be an ISO-8601 date string.`);
+  }
+}
+
+function validateOptionalString(
+  value: unknown,
+  key: string,
+  errors: string[]
+): void {
+  if (value === undefined || value === null) {
+    return;
+  }
+
+  if (typeof value !== "string" || normalizeString(value) === "") {
+    errors.push(`Manifest field ${key} must be a non-empty string when set.`);
+  }
+}
+
+function validatePattern(
+  value: unknown,
+  key: string,
+  pattern: RegExp,
+  errors: string[],
+  label: string
+): string {
+  const normalizedValue = readString(value, key, errors);
+
+  if (normalizedValue && !pattern.test(normalizedValue)) {
+    errors.push(`Manifest field ${key} must be ${label}.`);
+  }
+
+  return normalizedValue;
+}
+
 function isPlainRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -327,6 +409,157 @@ function isProductionLikeOrProductionLaunchClosureEnvironment(
   environment: LaunchClosureEnvironment
 ): boolean {
   return environment === "production_like" || environment === "production";
+}
+
+function validateLaunchClosureDeploymentArtifact(
+  value: LaunchClosureDeploymentArtifact | undefined,
+  key: string,
+  expected: {
+    releaseId?: string;
+    service: "api" | "worker";
+    environment: LaunchClosureEnvironment;
+  },
+  errors: string[]
+): void {
+  if (!value || !isPlainRecord(value)) {
+    errors.push(`Missing required manifest field: ${key}.`);
+    return;
+  }
+
+  const releaseId = readString(value.releaseId, `${key}.releaseId`, errors);
+  if (releaseId && expected.releaseId && releaseId !== expected.releaseId) {
+    errors.push(
+      `Manifest field ${key}.releaseId must match ${expected.releaseId}.`
+    );
+  }
+
+  const service = readString(value.service, `${key}.service`, errors);
+  if (service && service !== expected.service) {
+    errors.push(`Manifest field ${key}.service must be ${expected.service}.`);
+  }
+
+  const environment = readString(value.environment, `${key}.environment`, errors);
+  if (environment && environment !== expected.environment) {
+    errors.push(
+      `Manifest field ${key}.environment must match ${expected.environment}.`
+    );
+  }
+
+  const artifactKind = readString(
+    value.artifactKind,
+    `${key}.artifactKind`,
+    errors
+  );
+  if (
+    artifactKind &&
+    !launchClosureDeploymentArtifactKinds.includes(
+      artifactKind as (typeof launchClosureDeploymentArtifactKinds)[number]
+    )
+  ) {
+    errors.push(
+      `Manifest field ${key}.artifactKind must be one of ${launchClosureDeploymentArtifactKinds.join(
+        ", "
+      )}.`
+    );
+  }
+
+  readString(value.artifactUri, `${key}.artifactUri`, errors);
+  validatePattern(
+    value.artifactDigestSha256,
+    `${key}.artifactDigestSha256`,
+    sha256ChecksumPattern,
+    errors,
+    "a SHA-256 checksum"
+  );
+  validatePattern(
+    value.sourceCommitSha,
+    `${key}.sourceCommitSha`,
+    gitCommitShaPattern,
+    errors,
+    "a 7 to 40 character git commit SHA"
+  );
+  readString(value.runtime, `${key}.runtime`, errors);
+  validateOptionalString(
+    value.deploymentProvider,
+    `${key}.deploymentProvider`,
+    errors
+  );
+  validateOptionalString(value.deploymentId, `${key}.deploymentId`, errors);
+  validateOptionalString(value.buildUrl, `${key}.buildUrl`, errors);
+  validateOptionalDateString(value.generatedAt, `${key}.generatedAt`, errors);
+  validateOptionalDateString(
+    value.rollbackValidatedAt,
+    `${key}.rollbackValidatedAt`,
+    errors
+  );
+}
+
+function validateLaunchClosureDeploymentArtifacts(
+  manifest: LaunchClosureManifest,
+  errors: string[]
+): void {
+  const artifacts = manifest.artifacts;
+
+  validateLaunchClosureDeploymentArtifact(
+    manifest.deploymentArtifacts?.apiCurrent,
+    "deploymentArtifacts.apiCurrent",
+    {
+      releaseId: artifacts?.apiReleaseId,
+      service: "api",
+      environment: manifest.environment
+    },
+    errors
+  );
+  validateLaunchClosureDeploymentArtifact(
+    manifest.deploymentArtifacts?.apiRollback,
+    "deploymentArtifacts.apiRollback",
+    {
+      releaseId: artifacts?.apiRollbackReleaseId,
+      service: "api",
+      environment: manifest.environment
+    },
+    errors
+  );
+  validateLaunchClosureDeploymentArtifact(
+    manifest.deploymentArtifacts?.workerCurrent,
+    "deploymentArtifacts.workerCurrent",
+    {
+      releaseId: artifacts?.workerReleaseId,
+      service: "worker",
+      environment: manifest.environment
+    },
+    errors
+  );
+  validateLaunchClosureDeploymentArtifact(
+    manifest.deploymentArtifacts?.workerRollback,
+    "deploymentArtifacts.workerRollback",
+    {
+      releaseId: artifacts?.workerRollbackReleaseId,
+      service: "worker",
+      environment: manifest.environment
+    },
+    errors
+  );
+
+  if (
+    artifacts?.apiReleaseId &&
+    artifacts?.apiRollbackReleaseId &&
+    artifacts.apiReleaseId === artifacts.apiRollbackReleaseId
+  ) {
+    errors.push(
+      "Manifest fields artifacts.apiReleaseId and artifacts.apiRollbackReleaseId must reference different artifacts."
+    );
+  }
+
+  if (
+    artifacts?.workerReleaseId &&
+    artifacts?.workerRollbackReleaseId &&
+    artifacts.workerReleaseId === artifacts.workerRollbackReleaseId
+  ) {
+    errors.push(
+      "Manifest fields artifacts.workerReleaseId and artifacts.workerRollbackReleaseId must reference different artifacts."
+    );
+  }
 }
 
 function sanitizePathSegment(value: string): string {
@@ -833,6 +1066,49 @@ function findSolvencyAnchorSigner(
   );
 }
 
+function buildDeploymentArtifactPayload(
+  manifest: LaunchClosureManifest
+): Record<string, unknown> {
+  return {
+    releaseIdentifier: manifest.releaseIdentifier,
+    environment: manifest.environment,
+    artifacts: {
+      apiCurrent: manifest.deploymentArtifacts.apiCurrent,
+      apiRollback: manifest.deploymentArtifacts.apiRollback,
+      workerCurrent: manifest.deploymentArtifacts.workerCurrent,
+      workerRollback: manifest.deploymentArtifacts.workerRollback
+    },
+    releaseIdBindings: {
+      apiReleaseId: manifest.artifacts.apiReleaseId,
+      apiRollbackReleaseId: manifest.artifacts.apiRollbackReleaseId,
+      workerReleaseId: manifest.artifacts.workerReleaseId,
+      workerRollbackReleaseId: manifest.artifacts.workerRollbackReleaseId
+    }
+  };
+}
+
+function buildRollbackArtifactEvidencePayload(
+  manifest: LaunchClosureManifest,
+  service: "api" | "worker"
+): Record<string, unknown> {
+  const currentArtifact =
+    service === "api"
+      ? manifest.deploymentArtifacts.apiCurrent
+      : manifest.deploymentArtifacts.workerCurrent;
+  const rollbackArtifact =
+    service === "api"
+      ? manifest.deploymentArtifacts.apiRollback
+      : manifest.deploymentArtifacts.workerRollback;
+
+  return {
+    proofKind: "deployment_artifact_manifest",
+    service,
+    currentArtifact,
+    rollbackArtifact,
+    artifactManifestPath: "payloads/release-artifacts.json"
+  };
+}
+
 function validateSolvencyAnchorOnchainVerification(
   manifest: LaunchClosureManifest,
   registryContract:
@@ -1083,6 +1359,10 @@ function buildEvidencePayloadTemplate(
       artifact.evidenceType === "api_rollback_drill"
         ? manifest.artifacts.apiRollbackReleaseId
         : manifest.artifacts.workerRollbackReleaseId;
+    basePayload.evidencePayload = buildRollbackArtifactEvidencePayload(
+      manifest,
+      artifact.evidenceType === "api_rollback_drill" ? "api" : "worker"
+    );
   }
 
   if (artifact.evidenceType === "secret_handling_review") {
@@ -1165,6 +1445,12 @@ function renderOperatorActionsGuide(
 - API launch-closure status: \`${manifest.baseUrls.api}/release-readiness/internal/launch-closure/status?releaseIdentifier=${manifest.releaseIdentifier}&environment=${manifest.environment}\`
 
 ## Evidence recording payloads
+
+### Release artifact manifest
+
+- Deployment artifact manifest: \`payloads/release-artifacts.json\`
+- API rollback evidence and worker rollback evidence include the matching current and rollback artifact records from this payload.
+- Operators must compare the deployed provider artifact URI and SHA-256 digest against this payload before running rollback drills.
 
 ${evidenceArtifacts
   .map(
@@ -1344,15 +1630,20 @@ function buildLaunchClosureArtifacts(
         `Primary API base URL: ${manifest.baseUrls.api}`,
         `Current API release id: ${manifest.artifacts.apiReleaseId}`,
         `Rollback API release id: ${manifest.artifacts.apiRollbackReleaseId}`,
+        `Current API artifact digest: ${manifest.deploymentArtifacts.apiCurrent.artifactDigestSha256}`,
+        `Rollback API artifact digest: ${manifest.deploymentArtifacts.apiRollback.artifactDigestSha256}`,
+        "Artifact manifest payload: payloads/release-artifacts.json",
         `Requester operator: ${manifest.operator.requesterId} (${manifest.operator.requesterRole})`
       ],
       steps: [
-        "Capture the currently deployed API release id and confirm the rollback artifact reference is the intended prior known-good build.",
+        "Capture the currently deployed API release id and confirm it matches deploymentArtifacts.apiCurrent.",
+        "Confirm the rollback API artifact digest, source commit, provider id, and URI match deploymentArtifacts.apiRollback.",
         "Deploy the rollback API artifact against the current database schema in the accepted environment.",
         "Run the repo-owned rollback probe below with --record-evidence."
       ],
       expectedOutcome: [
         "The probe returns passed status.",
+        "The recorded evidence payload binds the rollback drill to payloads/release-artifacts.json.",
         "Operator monitoring, reconciliation, review-case, and audit surfaces remain readable after rollback.",
         "Release-readiness evidence is recorded with evidenceType api_rollback_drill."
       ],
@@ -1380,15 +1671,21 @@ function buildLaunchClosureArtifacts(
         `Worker identifier: ${manifest.worker.identifier}`,
         `Current worker release id: ${manifest.artifacts.workerReleaseId}`,
         `Rollback worker release id: ${manifest.artifacts.workerRollbackReleaseId}`,
+        `Current worker artifact digest: ${manifest.deploymentArtifacts.workerCurrent.artifactDigestSha256}`,
+        `Rollback worker artifact digest: ${manifest.deploymentArtifacts.workerRollback.artifactDigestSha256}`,
+        "Artifact manifest payload: payloads/release-artifacts.json",
         `Requester operator: ${manifest.operator.requesterId} (${manifest.operator.requesterRole})`
       ],
       steps: [
-        "Stop the current worker and deploy the prior worker artifact in the accepted environment.",
+        "Stop the current worker and confirm it matches deploymentArtifacts.workerCurrent.",
+        "Confirm the rollback worker artifact digest, source commit, provider id, and URI match deploymentArtifacts.workerRollback.",
+        "Deploy the prior worker artifact in the accepted environment.",
         "Confirm the reverted worker is using the expected worker identifier and the intended execution mode.",
         "Run the repo-owned rollback probe below with --record-evidence."
       ],
       expectedOutcome: [
         "The probe returns passed status.",
+        "The recorded evidence payload binds the rollback drill to payloads/release-artifacts.json.",
         "The worker health surface shows the named worker as healthy with a fresh heartbeat.",
         "Release-readiness evidence is recorded with evidenceType worker_rollback_drill."
       ],
@@ -1776,6 +2073,7 @@ export function renderPhase12CompletionChecklist(args?: {
     "- Every external-only evidence type has a latest `passed` record.",
     "- Every accepted record is from `staging`, `production_like`, or `production`.",
     "- Backup and rollback metadata match the exact release being approved.",
+    "- API and worker rollback evidence is bound to `payloads/release-artifacts.json`.",
     "",
     "## Part C — Governed Launch Approval",
     "",
@@ -1793,7 +2091,7 @@ export function renderPhase12CompletionChecklist(args?: {
     "## Adjacent Follow-On Hardening",
     "",
     "These are important for a broadly production-grade product, but they are not currently enforced by the Phase 12 gate:",
-    "- repo-owned deployment manifests for API and worker rollout or rollback automation",
+    "- promotion automation that consumes the repo-owned API and worker deployment artifact manifests",
     "- mobile distribution config such as `eas.json` and store-release workflow ownership",
     "- mobile crash and error telemetry beyond the current placeholder hook",
     "- deferred mobile push notification support",
@@ -2107,6 +2405,7 @@ export function validateLaunchClosureManifest(
     "artifacts.backupReference",
     errors
   );
+  validateLaunchClosureDeploymentArtifacts(manifest, errors);
 
   readString(manifest.chain?.networkName, "chain.networkName", errors);
   readPositiveInteger(manifest.chain?.chainId, "chain.chainId", errors);
@@ -2390,6 +2689,10 @@ export function previewLaunchClosurePack(
     {
       relativePath: "reject-approval.template.json",
       content: jsonStringify(buildApprovalDecisionTemplate("reject"))
+    },
+    {
+      relativePath: path.join("payloads", "release-artifacts.json"),
+      content: jsonStringify(buildDeploymentArtifactPayload(manifest))
     },
     ...(statusSnapshot
       ? [

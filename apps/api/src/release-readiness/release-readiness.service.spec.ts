@@ -868,6 +868,75 @@ describe("ReleaseReadinessService", () => {
           workerRollbackReleaseId: "worker-rollback-1",
           backupReference: "backup-1"
         },
+        deploymentArtifacts: {
+          apiCurrent: {
+            releaseId: "api-1",
+            service: "api",
+            environment: "production_like",
+            artifactKind: "vercel_deployment",
+            artifactUri: "vercel://api/api-1",
+            artifactDigestSha256:
+              "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            sourceCommitSha: "abc1234",
+            runtime: "nodejs20.x"
+          },
+          apiRollback: {
+            releaseId: "api-rollback-1",
+            service: "api",
+            environment: "production_like",
+            artifactKind: "vercel_deployment",
+            artifactUri: "vercel://api/api-rollback-1",
+            artifactDigestSha256:
+              "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            sourceCommitSha: "def5678",
+            runtime: "nodejs20.x"
+          },
+          workerCurrent: {
+            releaseId: "worker-1",
+            service: "worker",
+            environment: "production_like",
+            artifactKind: "worker_bundle",
+            artifactUri: "vercel://worker/worker-1",
+            artifactDigestSha256:
+              "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            sourceCommitSha: "abc1234",
+            runtime: "nodejs20.x"
+          },
+          workerRollback: {
+            releaseId: "worker-rollback-1",
+            service: "worker",
+            environment: "production_like",
+            artifactKind: "worker_bundle",
+            artifactUri: "vercel://worker/worker-rollback-1",
+            artifactDigestSha256:
+              "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            sourceCommitSha: "def5678",
+            runtime: "nodejs20.x"
+          }
+        },
+        chain: {
+          networkName: "sepolia",
+          chainId: 11155111
+        },
+        solvencyAnchorRegistryDeployment: {
+          deploymentTxHash:
+            "0x1111111111111111111111111111111111111111111111111111111111111111",
+          governanceOwner: "0x3333333333333333333333333333333333333333",
+          authorizedAnchorer: "0x4444444444444444444444444444444444444444",
+          manifestPath: "packages/contracts/deployments/staging.manifest.json",
+          manifestCommitSha: "abc1234",
+          onchainVerification: {
+            chainId: 11155111,
+            rpcUrlHost: "sepolia-rpc.example.com",
+            contractAddress: "0x1111111111111111111111111111111111111111",
+            deploymentTxHash:
+              "0x1111111111111111111111111111111111111111111111111111111111111111",
+            deploymentBlockNumber: 1,
+            owner: "0x3333333333333333333333333333333333333333",
+            authorizedAnchorer: "0x4444444444444444444444444444444444444444",
+            bytecodePresent: true
+          }
+        },
         alerting: {
           expectedTargetName: "ops-critical",
           expectedTargetHealthStatus: "critical",
@@ -879,6 +948,61 @@ describe("ReleaseReadinessService", () => {
           roleReviewReference: "ticket/GOV-1",
           roleReviewRosterReference: "ticket/GOV-1#roster"
         },
+        governedCustody: {
+          governanceSafeAddress: "0x3333333333333333333333333333333333333333",
+          treasurySafeAddress: "0x5555555555555555555555555555555555555555",
+          emergencySafeAddress: "0x6666666666666666666666666666666666666666",
+          signerInventory: [
+            {
+              scope: "deposit_execution",
+              keyReference: "kms://launch/deposit",
+              signerAddress: "0x7777777777777777777777777777777777777777"
+            },
+            {
+              scope: "withdrawal_execution",
+              keyReference: "kms://launch/withdrawal",
+              signerAddress: "0x8888888888888888888888888888888888888888"
+            },
+            {
+              scope: "solvency_anchor_execution",
+              keyReference: "kms://launch/solvency-anchor",
+              signerAddress: "0x4444444444444444444444444444444444444444"
+            },
+            {
+              scope: "incident_package_release",
+              keyReference: "safe://launch/incident-release",
+              signerAddress: "0x9999999999999999999999999999999999999999"
+            },
+            {
+              scope: "governance_admin",
+              keyReference: "safe://launch/governance-admin",
+              signerAddress: "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            }
+          ]
+        },
+        contracts: [
+          {
+            productSurface: "staking_v1",
+            version: "1.0.0",
+            address: "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            abiChecksumSha256:
+              "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+          },
+          {
+            productSurface: "loan_book_v1",
+            version: "1.0.0",
+            address: "0xcccccccccccccccccccccccccccccccccccccccc",
+            abiChecksumSha256:
+              "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+          },
+          {
+            productSurface: "solvency_report_anchor_registry_v1",
+            version: "1.0.0",
+            address: "0x1111111111111111111111111111111111111111",
+            abiChecksumSha256:
+              "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+          }
+        ],
         notes: {
           launchSummary: "Launch candidate ready for final governed review.",
           requestNote: "All evidence must remain current.",

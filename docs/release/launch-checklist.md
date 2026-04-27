@@ -22,7 +22,7 @@ Before any staging-like execution starts:
 - verify the generated pack with `pnpm release:launch-closure -- verify-artifact-manifest --pack-dir <path>`
 - for API/admin generated packs, verify the stored payload with `GET /release-readiness/internal/launch-closure/packs/:packId/integrity`
 - when using generated solvency anchor proof, pass `--solvency-fragment <path>` to `validate` and `scaffold`, paste the same JSON into the admin Launch Readiness solvency fragment editor, or run `merge-solvency-fragment --manifest <path> --solvency-fragment <path> --output <path>` to materialize the merged manifest first
-- preserve the stored pack checksum, merged manifest checksum, generated `artifact-manifest.json`, and generated file checksums from the launch-closure pack response
+- preserve the stored pack checksum, merged manifest checksum, generated `artifact-manifest.json`, generated file checksums, and `payloads/release-artifacts.json` from the launch-closure pack response
 
 Important truth:
 
@@ -36,6 +36,7 @@ Important truth:
 - target release identifier recorded
 - release approver recorded
 - rollback target release identifier recorded
+- API and worker current/rollback deployment artifact manifests recorded
 - release-readiness summary reviewed
 
 ## Security configuration

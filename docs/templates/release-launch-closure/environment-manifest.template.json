@@ -29,6 +29,64 @@
     "workerRollbackReleaseId": "worker-2026.04.09.4",
     "backupReference": "snapshot-2026-04-10T08:00Z"
   },
+  "deploymentArtifacts": {
+    "apiCurrent": {
+      "releaseId": "api-2026.04.10.1",
+      "service": "api",
+      "environment": "production_like",
+      "artifactKind": "vercel_deployment",
+      "artifactUri": "vercel://api/api-2026.04.10.1",
+      "artifactDigestSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "sourceCommitSha": "0000000",
+      "runtime": "nodejs20.x",
+      "deploymentProvider": "vercel",
+      "deploymentId": "api-2026.04.10.1",
+      "buildUrl": "https://vercel.com/example/api/deployments/api-2026.04.10.1",
+      "generatedAt": "2026-04-10T08:10:00.000Z"
+    },
+    "apiRollback": {
+      "releaseId": "api-2026.04.09.4",
+      "service": "api",
+      "environment": "production_like",
+      "artifactKind": "vercel_deployment",
+      "artifactUri": "vercel://api/api-2026.04.09.4",
+      "artifactDigestSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "sourceCommitSha": "0000000",
+      "runtime": "nodejs20.x",
+      "deploymentProvider": "vercel",
+      "deploymentId": "api-2026.04.09.4",
+      "buildUrl": "https://vercel.com/example/api/deployments/api-2026.04.09.4",
+      "generatedAt": "2026-04-09T08:10:00.000Z"
+    },
+    "workerCurrent": {
+      "releaseId": "worker-2026.04.10.1",
+      "service": "worker",
+      "environment": "production_like",
+      "artifactKind": "worker_bundle",
+      "artifactUri": "vercel://worker/worker-2026.04.10.1",
+      "artifactDigestSha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "sourceCommitSha": "0000000",
+      "runtime": "nodejs20.x",
+      "deploymentProvider": "vercel",
+      "deploymentId": "worker-2026.04.10.1",
+      "buildUrl": "https://vercel.com/example/worker/deployments/worker-2026.04.10.1",
+      "generatedAt": "2026-04-10T08:15:00.000Z"
+    },
+    "workerRollback": {
+      "releaseId": "worker-2026.04.09.4",
+      "service": "worker",
+      "environment": "production_like",
+      "artifactKind": "worker_bundle",
+      "artifactUri": "vercel://worker/worker-2026.04.09.4",
+      "artifactDigestSha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "sourceCommitSha": "0000000",
+      "runtime": "nodejs20.x",
+      "deploymentProvider": "vercel",
+      "deploymentId": "worker-2026.04.09.4",
+      "buildUrl": "https://vercel.com/example/worker/deployments/worker-2026.04.09.4",
+      "generatedAt": "2026-04-09T08:15:00.000Z"
+    }
+  },
   "chain": {
     "networkName": "sepolia",
     "chainId": 11155111

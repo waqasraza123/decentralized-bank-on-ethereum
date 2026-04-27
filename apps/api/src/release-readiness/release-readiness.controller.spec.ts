@@ -39,6 +39,75 @@ function buildLaunchClosureManifest() {
       workerRollbackReleaseId: "worker-2026.04.09.4",
       backupReference: "snapshot-2026-04-10T08:00Z"
     },
+    deploymentArtifacts: {
+      apiCurrent: {
+        releaseId: "api-2026.04.10.1",
+        service: "api",
+        environment: "production_like",
+        artifactKind: "vercel_deployment",
+        artifactUri: "vercel://api/api-2026.04.10.1",
+        artifactDigestSha256:
+          "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        sourceCommitSha: "abc1234",
+        runtime: "nodejs20.x"
+      },
+      apiRollback: {
+        releaseId: "api-2026.04.09.4",
+        service: "api",
+        environment: "production_like",
+        artifactKind: "vercel_deployment",
+        artifactUri: "vercel://api/api-2026.04.09.4",
+        artifactDigestSha256:
+          "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        sourceCommitSha: "def5678",
+        runtime: "nodejs20.x"
+      },
+      workerCurrent: {
+        releaseId: "worker-2026.04.10.1",
+        service: "worker",
+        environment: "production_like",
+        artifactKind: "worker_bundle",
+        artifactUri: "vercel://worker/worker-2026.04.10.1",
+        artifactDigestSha256:
+          "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        sourceCommitSha: "abc1234",
+        runtime: "nodejs20.x"
+      },
+      workerRollback: {
+        releaseId: "worker-2026.04.09.4",
+        service: "worker",
+        environment: "production_like",
+        artifactKind: "worker_bundle",
+        artifactUri: "vercel://worker/worker-2026.04.09.4",
+        artifactDigestSha256:
+          "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        sourceCommitSha: "def5678",
+        runtime: "nodejs20.x"
+      }
+    },
+    chain: {
+      networkName: "sepolia",
+      chainId: 11155111
+    },
+    solvencyAnchorRegistryDeployment: {
+      deploymentTxHash:
+        "0x1111111111111111111111111111111111111111111111111111111111111111",
+      governanceOwner: "0x1111111111111111111111111111111111111111",
+      authorizedAnchorer: "0x2222222222222222222222222222222222222222",
+      manifestPath: "packages/contracts/deployments/staging.manifest.json",
+      manifestCommitSha: "abc1234",
+      onchainVerification: {
+        chainId: 11155111,
+        rpcUrlHost: "sepolia-rpc.example.com",
+        contractAddress: "0xcccccccccccccccccccccccccccccccccccccccc",
+        deploymentTxHash:
+          "0x1111111111111111111111111111111111111111111111111111111111111111",
+        deploymentBlockNumber: 12_345_678,
+        owner: "0x1111111111111111111111111111111111111111",
+        authorizedAnchorer: "0x2222222222222222222222222222222222222222",
+        bytecodePresent: true
+      }
+    },
     alerting: {
       expectedTargetName: "ops-critical",
       expectedTargetHealthStatus: "critical",
@@ -50,6 +119,61 @@ function buildLaunchClosureManifest() {
       roleReviewReference: "ticket/GOV-12",
       roleReviewRosterReference: "ticket/GOV-12#launch-roster"
     },
+    governedCustody: {
+      governanceSafeAddress: "0x3333333333333333333333333333333333333333",
+      treasurySafeAddress: "0x4444444444444444444444444444444444444444",
+      emergencySafeAddress: "0x5555555555555555555555555555555555555555",
+      signerInventory: [
+        {
+          scope: "deposit_execution",
+          keyReference: "kms://launch/deposit",
+          signerAddress: "0x6666666666666666666666666666666666666666"
+        },
+        {
+          scope: "withdrawal_execution",
+          keyReference: "kms://launch/withdrawal",
+          signerAddress: "0x7777777777777777777777777777777777777777"
+        },
+        {
+          scope: "solvency_anchor_execution",
+          keyReference: "kms://launch/solvency-anchor",
+          signerAddress: "0x2222222222222222222222222222222222222222"
+        },
+        {
+          scope: "incident_package_release",
+          keyReference: "safe://launch/incident-release",
+          signerAddress: "0x8888888888888888888888888888888888888888"
+        },
+        {
+          scope: "governance_admin",
+          keyReference: "safe://launch/governance-admin",
+          signerAddress: "0x9999999999999999999999999999999999999999"
+        }
+      ]
+    },
+    contracts: [
+      {
+        productSurface: "staking_v1",
+        version: "1.0.0",
+        address: "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        abiChecksumSha256:
+          "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      {
+        productSurface: "loan_book_v1",
+        version: "1.0.0",
+        address: "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        abiChecksumSha256:
+          "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      },
+      {
+        productSurface: "solvency_report_anchor_registry_v1",
+        version: "1.0.0",
+        address: "0xcccccccccccccccccccccccccccccccccccccccc",
+        abiChecksumSha256:
+          "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+      }
+    ],
     notes: {
       launchSummary:
         "Production-like launch candidate ready for final governed review.",

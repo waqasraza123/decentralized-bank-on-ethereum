@@ -53,6 +53,7 @@ Required input classes:
 - web, admin, API, and restore-validation API base URLs
 - live smoke URLs and credentials when rerunning `end_to_end_finance_flows` in `staging`, `production_like`, or `production`
 - worker identifier
+- current and rollback API/worker deployment artifact manifests
 - requester and approver identities
 - requester and approver roles
 - operator API key environment variable name
@@ -73,6 +74,7 @@ Execution must not start if:
 - requester and approver are the same person
 - the environment is `development` or `ci`
 - rollback identifiers are missing
+- API or worker deployment artifact manifests are missing, unchecksummed, or not bound to the rollback identifiers
 - backup reference is missing
 - solvency anchor registry deployment proof fields are missing
 - no critical alert identifier or dedupe key is available for re-escalation proof
@@ -160,6 +162,7 @@ The generated pack contains:
 - execution plan
 - local-versus-accepted truth summary
 - approval request body template
+- `payloads/release-artifacts.json` with current and rollback API/worker artifact bindings
 - one evidence template per remaining Phase 12 item
 - `artifact-manifest.json` with byte lengths and SHA-256 checksums for each generated pack file, excluding `artifact-manifest.json` itself to avoid a recursive checksum, plus the merged `manifest.json` checksum
 
@@ -235,6 +238,8 @@ pnpm release:readiness:probe -- \
   --record-evidence
 ```
 
+Before running the API rollback probe, compare the deployed provider artifact URI and digest against `payloads/release-artifacts.json`. The generated evidence payload for `api_rollback_drill` binds both the current and rollback API artifact records to the recorded drill result.
+
 Worker rollback:
 
 ```bash
@@ -249,6 +254,8 @@ pnpm release:readiness:probe -- \
   --rollback-release-id worker-2026.04.09.4 \
   --record-evidence
 ```
+
+Before running the worker rollback probe, compare the deployed provider artifact URI and digest against `payloads/release-artifacts.json`. The generated evidence payload for `worker_rollback_drill` binds both the current and rollback worker artifact records to the recorded drill result.
 
 ### 4. Record the manual review evidence
 

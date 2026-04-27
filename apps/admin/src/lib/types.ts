@@ -1835,6 +1835,12 @@ export type LaunchClosureManifest = {
     workerRollbackReleaseId: string;
     backupReference: string;
   };
+  deploymentArtifacts: {
+    apiCurrent: LaunchClosureDeploymentArtifact;
+    apiRollback: LaunchClosureDeploymentArtifact;
+    workerCurrent: LaunchClosureDeploymentArtifact;
+    workerRollback: LaunchClosureDeploymentArtifact;
+  };
   chain: {
     networkName: string;
     chainId: number;
@@ -1901,6 +1907,27 @@ export type LaunchClosureManifest = {
     requestNote?: string;
     residualRiskNote?: string;
   };
+};
+
+export type LaunchClosureDeploymentArtifact = {
+  releaseId: string;
+  service: "api" | "worker";
+  environment: "staging" | "production_like" | "production";
+  artifactKind:
+    | "vercel_deployment"
+    | "container_image"
+    | "node_bundle"
+    | "worker_bundle"
+    | "archive";
+  artifactUri: string;
+  artifactDigestSha256: string;
+  sourceCommitSha: string;
+  runtime: string;
+  deploymentProvider?: string;
+  deploymentId?: string;
+  buildUrl?: string;
+  generatedAt?: string;
+  rollbackValidatedAt?: string;
 };
 
 export type LaunchClosureSolvencyFragment = {

@@ -64,7 +64,7 @@ Field requirements by evidence type:
 
 - external-only launch proofs require `releaseIdentifier`
 - `database_restore_drill` also requires `backupReference`
-- `api_rollback_drill` and `worker_rollback_drill` also require `rollbackReleaseIdentifier`
+- `api_rollback_drill` and `worker_rollback_drill` also require `rollbackReleaseIdentifier`; launch-closure generated evidence payloads also include the matching current and rollback records from `payloads/release-artifacts.json`
 - `solvency_anchor_registry_deployment` also requires structured `evidencePayload` fields for chain id, registry address, deployment transaction, owner, authorized anchorer, ABI checksum, manifest path, manifest commit SHA, and production-like or production on-chain verification metadata
 
 For `solvency_anchor_registry_deployment`, the API also verifies the payload against active governed manifest records before it writes evidence:
