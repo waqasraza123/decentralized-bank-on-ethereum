@@ -301,6 +301,90 @@ function readEvidencePayloadJsonError(value: string): string | null {
   }
 }
 
+function isOnchainVerifiedSolvencyAnchorEnvironment(
+  environment: EvidenceDraft["environment"]
+): boolean {
+  return environment === "production_like" || environment === "production";
+}
+
+function readEvidencePayloadObject(value: string): Record<string, unknown> | null {
+  try {
+    return parseEvidencePayloadJson(value) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function hasSolvencyAnchorOnchainVerification(value: string): boolean {
+  const payload = readEvidencePayloadObject(value);
+  const verification = payload?.onchainVerification;
+
+  if (!verification || Array.isArray(verification) || typeof verification !== "object") {
+    return false;
+  }
+
+  const verificationPayload = verification as Record<string, unknown>;
+  const sameHex = (left: unknown, right: unknown) =>
+    typeof left === "string" &&
+    typeof right === "string" &&
+    left.trim().toLowerCase() === right.trim().toLowerCase();
+  const deploymentBlockNumber = verificationPayload.deploymentBlockNumber;
+
+  return Boolean(
+    Number(verificationPayload.chainId) === Number(payload.chainId) &&
+      sameHex(verificationPayload.contractAddress, payload.contractAddress) &&
+      sameHex(verificationPayload.deploymentTxHash, payload.deploymentTxHash) &&
+      sameHex(verificationPayload.owner, payload.governanceOwner) &&
+      sameHex(
+        verificationPayload.authorizedAnchorer,
+        payload.authorizedAnchorer
+      ) &&
+      verificationPayload.bytecodePresent === true &&
+      (deploymentBlockNumber === null ||
+        (Number.isInteger(deploymentBlockNumber) &&
+          Number(deploymentBlockNumber) > 0)) &&
+      typeof verificationPayload.rpcUrlHost === "string" &&
+      verificationPayload.rpcUrlHost.trim().length > 0
+  );
+}
+
+function solvencyAnchorPayloadMatchesPreflight(
+  value: string,
+  preflight: ReleaseReadinessSolvencyAnchorRegistryDeploymentProof | null,
+  evidenceDraft: EvidenceDraft
+): boolean {
+  const draftBody = preflight?.evidenceRequestDraft.body;
+  const payload = readEvidencePayloadObject(value);
+  const draftPayload = draftBody?.evidencePayload;
+
+  if (!draftBody || !draftPayload || !payload) {
+    return false;
+  }
+
+  if (
+    evidenceDraft.environment !== draftBody.environment ||
+    evidenceDraft.status !== draftBody.status ||
+    evidenceDraft.releaseIdentifier.trim() !== draftBody.releaseIdentifier
+  ) {
+    return false;
+  }
+
+  return [
+    "proofKind",
+    "networkName",
+    "chainId",
+    "contractProductSurface",
+    "signerScope",
+    "contractAddress",
+    "deploymentTxHash",
+    "governanceOwner",
+    "authorizedAnchorer",
+    "abiChecksumSha256",
+    "manifestPath",
+    "manifestCommitSha"
+  ].every((field) => String(payload[field]) === String(draftPayload[field]));
+}
+
 function listMissingEvidenceMetadataFields(draft: EvidenceDraft): string[] {
   const requiredFields = listRequiredEvidenceMetadataFields(draft.evidenceType);
 
@@ -1275,13 +1359,31 @@ export function LaunchReadinessPage() {
   );
   const latestScopedLaunchClosurePack: ReleaseLaunchClosurePack | null =
     scopedLaunchClosurePacksQuery.data?.packs[0] ?? null;
+  const solvencyAnchorPayloadStillMatchesPreflight =
+    isSolvencyAnchorRegistryEvidence &&
+    solvencyAnchorPayloadMatchesPreflight(
+      evidenceDraft.evidencePayloadJson,
+      solvencyAnchorPreflight,
+      evidenceDraft
+    );
+  const solvencyAnchorOnchainVerificationRequired =
+    isSolvencyAnchorRegistryEvidence &&
+    evidenceDraft.status === "passed" &&
+    isOnchainVerifiedSolvencyAnchorEnvironment(evidenceDraft.environment);
+  const solvencyAnchorOnchainVerificationPresent =
+    hasSolvencyAnchorOnchainVerification(evidenceDraft.evidencePayloadJson);
   const solvencyAnchorPreflightBlocksRecord =
     isSolvencyAnchorRegistryEvidence &&
-    !solvencyAnchorPreflight?.evidenceRequestDraft.recordable;
+    (!solvencyAnchorPreflight?.evidenceRequestDraft.recordable ||
+      !solvencyAnchorPayloadStillMatchesPreflight);
+  const solvencyAnchorOnchainVerificationBlocksRecord =
+    solvencyAnchorOnchainVerificationRequired &&
+    !solvencyAnchorOnchainVerificationPresent;
   const recordEvidenceDisabled =
     !evidenceConfirm ||
     recordEvidenceMutation.isPending ||
     solvencyAnchorPreflightBlocksRecord ||
+    solvencyAnchorOnchainVerificationBlocksRecord ||
     evidenceDraft.summary.trim().length === 0 ||
     missingEvidenceMetadataFields.length > 0 ||
     evidencePayloadJsonError !== null ||
@@ -1674,7 +1776,6 @@ export function LaunchReadinessPage() {
                   placeholder='{"proofKind":"manual_attestation"}'
                   value={evidenceDraft.evidencePayloadJson}
                   onChange={(event) => {
-                    clearSolvencyAnchorPreflight();
                     setEvidenceDraft((current) => ({
                       ...current,
                       evidencePayloadJson: event.target.value
@@ -1726,6 +1827,32 @@ export function LaunchReadinessPage() {
                               : "critical"
                         }
                       />
+                      {!solvencyAnchorPayloadStillMatchesPreflight ? (
+                        <InlineNotice
+                          title="Solvency proof payload changed"
+                          description="The current payload must keep the preflighted registry, chain, owner, signer, manifest, and release fields. Add only the on-chain verification object after preflight."
+                          tone="warning"
+                        />
+                      ) : null}
+                      {solvencyAnchorOnchainVerificationRequired ? (
+                        <InlineNotice
+                          title={
+                            solvencyAnchorOnchainVerificationPresent
+                              ? "On-chain verification attached"
+                              : "On-chain verification required"
+                          }
+                          description={
+                            solvencyAnchorOnchainVerificationPresent
+                              ? "This payload includes generated on-chain verification metadata for the production release gate."
+                              : "Run the solvency proof generator with --verify-onchain and paste the generated onchainVerification object into this payload before recording."
+                          }
+                          tone={
+                            solvencyAnchorOnchainVerificationPresent
+                              ? "positive"
+                              : "warning"
+                          }
+                        />
+                      ) : null}
                       <DetailList
                         items={[
                           {

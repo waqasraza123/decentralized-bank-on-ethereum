@@ -258,7 +258,7 @@ pnpm release:solvency-anchor-proof -- \
   --access-token "$OPERATOR_ACCESS_TOKEN"
 ```
 
-The manifest proof generator now preflights passed recordings against the API governed manifest state before posting. `--verify-onchain` also reads the registry owner, authorized anchorer, deployed bytecode, and deployment receipt from the accepted chain before the proof is recorded. If the operator wants to inspect the API gate without writing evidence, replace `--record-evidence` with `--preflight-only` and keep the same API URL and token.
+The manifest proof generator now preflights passed recordings against the API governed manifest state before posting. `--verify-onchain` also reads the registry owner, authorized anchorer, deployed bytecode, and deployment receipt from the accepted chain before the proof is recorded. The API requires `onchainVerification` metadata for passed `production_like` and `production` solvency anchor registry deployment evidence. If the operator wants to inspect the API gate without writing evidence, replace `--record-evidence` with `--preflight-only` and keep the same API URL and token.
 
 Alternatively, record the proof through the verifier when the payload must be supplied inline:
 

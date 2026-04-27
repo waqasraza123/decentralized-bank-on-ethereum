@@ -109,7 +109,7 @@ Use `--verify-onchain --rpc-url <url>` before recording production-like or produ
 
 The generated evidence payload includes an `onchainVerification` object with the observed chain id, RPC host, deployment block, registry owner, and authorized anchorer. The RPC URL itself is not persisted.
 
-When present, the API validates `onchainVerification` before it writes evidence. It must match the top-level payload chain id, registry address, deployment transaction hash, governance owner, and authorized anchorer; `bytecodePresent` must be `true`; `deploymentBlockNumber` must be positive when supplied; and `rpcUrlHost` must be present. Malformed `onchainVerification` data is rejected instead of ignored.
+The API requires `onchainVerification` for passed `production_like` and `production` evidence before it writes the record. It must match the top-level payload chain id, registry address, deployment transaction hash, governance owner, and authorized anchorer; `bytecodePresent` must be `true`; `deploymentBlockNumber` must be positive when supplied; and `rpcUrlHost` must be present. Malformed `onchainVerification` data is rejected instead of ignored.
 
 The generator reads:
 
@@ -145,7 +145,7 @@ Treat the preflight as a deployment proof gate:
 - `requiredOperatorInputs` lists evidence fields that are intentionally not persisted in the manifest tables, such as `networkName`, `manifestPath`, `manifestCommitSha`, and `releaseIdentifier`
 - `evidenceRequestDraft.body` mirrors the `POST /release-readiness/internal/evidence` request body; post it only when `evidenceRequestDraft.recordable` is `true`
 
-The admin Launch Readiness console exposes the same preflight from the evidence workspace. Select `solvency_anchor_registry_deployment`, keep the launch-closure manifest draft aligned with the target release, and use `Preflight proof`. The console reads chain id, network name, manifest path, manifest commit SHA, and release identifier from the manifest draft plus evidence form, then fills the evidence payload JSON from `evidenceRequestDraft.body`. It displays the active registry address, deployment transaction, anchor signer, governance safe, and signer key-reference fingerprint returned by the API. The console disables recording for this evidence type until the latest preflight response is recordable; editing the release, environment, payload JSON, or manifest draft clears that preflight state.
+The admin Launch Readiness console exposes the same preflight from the evidence workspace. Select `solvency_anchor_registry_deployment`, keep the launch-closure manifest draft aligned with the target release, and use `Preflight proof`. The console reads chain id, network name, manifest path, manifest commit SHA, and release identifier from the manifest draft plus evidence form, then fills the evidence payload JSON from `evidenceRequestDraft.body`. It displays the active registry address, deployment transaction, anchor signer, governance safe, and signer key-reference fingerprint returned by the API. The console disables recording for this evidence type until the latest preflight response is recordable. For `production_like` and `production`, paste only the generated `onchainVerification` object into the preflighted payload before recording; changing the preflighted registry, chain, owner, signer, manifest, or release fields blocks recording.
 
 ## Recording Through The CLI
 

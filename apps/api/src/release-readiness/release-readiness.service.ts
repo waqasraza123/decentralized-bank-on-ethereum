@@ -457,6 +457,11 @@ const rollbackScopedEvidenceTypes = new Set<ReleaseReadinessEvidenceType>([
   ReleaseReadinessEvidenceType.api_rollback_drill,
   ReleaseReadinessEvidenceType.worker_rollback_drill
 ]);
+const onchainVerifiedSolvencyAnchorEvidenceEnvironments =
+  new Set<ReleaseReadinessEnvironment>([
+    ReleaseReadinessEnvironment.production_like,
+    ReleaseReadinessEnvironment.production
+  ]);
 
 @Injectable()
 export class ReleaseReadinessService {
@@ -1935,11 +1940,21 @@ export class ReleaseReadinessService {
   }
 
   private assertSolvencyAnchorOnchainVerificationMatchesPayload(
-    payload: SolvencyAnchorRegistryEvidencePayload
+    payload: SolvencyAnchorRegistryEvidencePayload,
+    environment: ReleaseReadinessEnvironment,
+    status: ReleaseReadinessEvidenceStatus
   ): void {
     const verification = payload.onchainVerification;
 
     if (!verification) {
+      if (
+        status === ReleaseReadinessEvidenceStatus.passed &&
+        onchainVerifiedSolvencyAnchorEvidenceEnvironments.has(environment)
+      ) {
+        throw new BadRequestException(
+          "Passed production-like or production solvency anchor registry deployment evidence requires on-chain verification metadata."
+        );
+      }
       return;
     }
 
@@ -2010,6 +2025,7 @@ export class ReleaseReadinessService {
 
   private async assertSolvencyAnchorRegistryEvidenceMatchesManifest(
     environment: ReleaseReadinessEnvironment,
+    status: ReleaseReadinessEvidenceStatus,
     evidencePayload: PrismaJsonValue | undefined
   ): Promise<void> {
     const payload =
@@ -2021,7 +2037,11 @@ export class ReleaseReadinessService {
       );
     }
 
-    this.assertSolvencyAnchorOnchainVerificationMatchesPayload(payload);
+    this.assertSolvencyAnchorOnchainVerificationMatchesPayload(
+      payload,
+      environment,
+      status
+    );
 
     const manifest =
       await this.prismaService.contractDeploymentManifest.findFirst({
@@ -2183,6 +2203,7 @@ export class ReleaseReadinessService {
     ) {
       await this.assertSolvencyAnchorRegistryEvidenceMatchesManifest(
         dto.environment,
+        dto.status,
         evidencePayload
       );
     }
