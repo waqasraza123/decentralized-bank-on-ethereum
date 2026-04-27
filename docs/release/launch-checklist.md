@@ -19,6 +19,7 @@ Before any staging-like execution starts:
 - complete the manifest in [`docs/templates/release-launch-closure/environment-manifest.template.json`](/Users/mc/development/blockchain/ethereum/stealth-trails-bank/docs/templates/release-launch-closure/environment-manifest.template.json)
 - validate it with `pnpm release:launch-closure -- validate --manifest <path>`
 - scaffold the execution pack with `pnpm release:launch-closure -- scaffold --manifest <path> --output-dir <path> --force`
+- verify the generated pack with `pnpm release:launch-closure -- verify-artifact-manifest --pack-dir <path>`
 - when using generated solvency anchor proof, pass `--solvency-fragment <path>` to `validate` and `scaffold`, paste the same JSON into the admin Launch Readiness solvency fragment editor, or run `merge-solvency-fragment --manifest <path> --solvency-fragment <path> --output <path>` to materialize the merged manifest first
 - preserve the stored pack checksum, merged manifest checksum, generated `artifact-manifest.json`, and generated file checksums from the launch-closure pack response
 

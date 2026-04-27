@@ -144,6 +144,13 @@ pnpm release:launch-closure -- scaffold \
   --force
 ```
 
+Before distributing or attaching the pack, verify that the generated files still match the artifact manifest:
+
+```bash
+pnpm release:launch-closure -- verify-artifact-manifest \
+  --pack-dir ./artifacts/release-launch/current
+```
+
 The generated pack contains:
 
 - execution plan
@@ -153,6 +160,8 @@ The generated pack contains:
 - `artifact-manifest.json` with byte lengths and SHA-256 checksums for each generated pack file, excluding `artifact-manifest.json` itself to avoid a recursive checksum, plus the merged `manifest.json` checksum
 
 Preserve the stored pack checksum, merged manifest checksum, `artifact-manifest.json`, and per-file checksums with the launch evidence. The admin Launch Readiness workspace displays the pack checksum, manifest checksum, and generated file count after pack generation.
+
+`verify-artifact-manifest` exits non-zero when a listed file is missing, an unexpected file is present, a byte length or SHA-256 checksum differs, the file count is stale, or the top-level merged manifest checksum no longer matches the listed `manifest.json` entry.
 
 ### 3. Run the staging-like probes
 

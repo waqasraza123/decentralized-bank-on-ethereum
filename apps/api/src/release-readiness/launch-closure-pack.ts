@@ -1,5 +1,11 @@
 import { createHash } from "node:crypto";
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync
+} from "node:fs";
 import path from "node:path";
 import {
   externalOnlyReleaseReadinessChecks,
@@ -162,6 +168,33 @@ export type LaunchClosureArtifactManifest = {
   files: LaunchClosureArtifactManifestFile[];
 };
 
+export type LaunchClosureArtifactManifestVerificationIssue = {
+  code:
+    | "artifact_manifest_missing"
+    | "artifact_manifest_invalid"
+    | "invalid_relative_path"
+    | "file_missing"
+    | "file_unexpected"
+    | "byte_length_mismatch"
+    | "content_checksum_mismatch"
+    | "manifest_checksum_mismatch"
+    | "file_count_mismatch";
+  relativePath: string | null;
+  expected: string | number | null;
+  actual: string | number | null;
+  message: string;
+};
+
+export type LaunchClosureArtifactManifestVerificationResult = {
+  packDir: string;
+  artifactManifestPath: string;
+  valid: boolean;
+  manifestChecksumSha256: string | null;
+  expectedFileCount: number | null;
+  checkedFileCount: number;
+  issues: LaunchClosureArtifactManifestVerificationIssue[];
+};
+
 export type LaunchClosureDynamicStatusInput = {
   generatedAt?: string;
   releaseIdentifier?: string | null;
@@ -316,6 +349,91 @@ function fingerprintString(value: string): string {
   return createHash("sha256").update(value).digest("hex");
 }
 
+function fingerprintBuffer(value: Buffer): string {
+  return createHash("sha256").update(value).digest("hex");
+}
+
+function isSafePackRelativePath(relativePath: string): boolean {
+  return (
+    relativePath.length > 0 &&
+    !path.isAbsolute(relativePath) &&
+    !relativePath.split(/[\\/]+/).includes("..")
+  );
+}
+
+function listPackRelativeFiles(
+  packDir: string,
+  currentDir = packDir
+): string[] {
+  return readdirSync(currentDir, {
+    withFileTypes: true
+  }).flatMap((entry) => {
+    const absolutePath = path.join(currentDir, entry.name);
+
+    if (entry.isDirectory()) {
+      return listPackRelativeFiles(packDir, absolutePath);
+    }
+
+    if (!entry.isFile()) {
+      return [];
+    }
+
+    return [path.relative(packDir, absolutePath)];
+  });
+}
+
+function readArtifactManifestPayload(
+  manifestPath: string
+): LaunchClosureArtifactManifest {
+  const parsed = JSON.parse(
+    readFileSync(manifestPath, "utf8")
+  ) as Partial<LaunchClosureArtifactManifest>;
+
+  if (
+    !parsed ||
+    typeof parsed !== "object" ||
+    Array.isArray(parsed) ||
+    !Array.isArray(parsed.files)
+  ) {
+    throw new Error("Artifact manifest must be a JSON object with files[].");
+  }
+
+  const files = parsed.files.map((file, index) => {
+    if (
+      !file ||
+      Array.isArray(file) ||
+      typeof file !== "object" ||
+      typeof (file as Record<string, unknown>).relativePath !== "string" ||
+      typeof (file as Record<string, unknown>).byteLength !== "number" ||
+      typeof (file as Record<string, unknown>).contentSha256 !== "string"
+    ) {
+      throw new Error(
+        `Artifact manifest files[${index}] must include relativePath, byteLength, and contentSha256.`
+      );
+    }
+
+    const manifestFile = file as LaunchClosureArtifactManifestFile;
+
+    return {
+      relativePath: manifestFile.relativePath,
+      byteLength: manifestFile.byteLength,
+      contentSha256: manifestFile.contentSha256
+    };
+  });
+
+  return {
+    manifestChecksumSha256:
+      typeof parsed.manifestChecksumSha256 === "string"
+        ? parsed.manifestChecksumSha256
+        : null,
+    fileCount:
+      typeof parsed.fileCount === "number"
+        ? parsed.fileCount
+        : parsed.files.length,
+    files
+  };
+}
+
 export function buildLaunchClosureArtifactManifest(
   files: LaunchClosurePackFile[]
 ): LaunchClosureArtifactManifest {
@@ -343,6 +461,158 @@ export function buildLaunchClosureArtifactManifest(
     manifestChecksumSha256,
     fileCount: manifestFiles.length,
     files: manifestFiles
+  };
+}
+
+export function verifyLaunchClosureArtifactManifest(
+  packDir: string
+): LaunchClosureArtifactManifestVerificationResult {
+  const artifactManifestPath = path.join(
+    packDir,
+    launchClosureArtifactManifestRelativePath
+  );
+  const issues: LaunchClosureArtifactManifestVerificationIssue[] = [];
+
+  let artifactManifest: LaunchClosureArtifactManifest;
+
+  try {
+    artifactManifest = readArtifactManifestPayload(artifactManifestPath);
+  } catch (error) {
+    const nodeError = error as NodeJS.ErrnoException;
+
+    return {
+      packDir,
+      artifactManifestPath,
+      valid: false,
+      manifestChecksumSha256: null,
+      expectedFileCount: null,
+      checkedFileCount: 0,
+      issues: [
+        {
+          code:
+            nodeError.code === "ENOENT"
+              ? "artifact_manifest_missing"
+              : "artifact_manifest_invalid",
+          relativePath: launchClosureArtifactManifestRelativePath,
+          expected: "readable artifact manifest",
+          actual: null,
+          message: `Could not read ${launchClosureArtifactManifestRelativePath}: ${
+            error instanceof Error ? error.message : String(error)
+          }`
+        }
+      ]
+    };
+  }
+
+  const actualFiles = new Set(
+    listPackRelativeFiles(packDir).filter(
+      (relativePath) =>
+        relativePath !== launchClosureArtifactManifestRelativePath
+    )
+  );
+  const expectedFiles = new Set<string>();
+
+  for (const file of artifactManifest.files) {
+    expectedFiles.add(file.relativePath);
+
+    if (!isSafePackRelativePath(file.relativePath)) {
+      issues.push({
+        code: "invalid_relative_path",
+        relativePath: file.relativePath,
+        expected: "relative path inside pack directory",
+        actual: file.relativePath,
+        message: `Artifact manifest file path is not safe: ${file.relativePath}.`
+      });
+      continue;
+    }
+
+    const targetPath = path.join(packDir, file.relativePath);
+
+    if (!actualFiles.has(file.relativePath)) {
+      issues.push({
+        code: "file_missing",
+        relativePath: file.relativePath,
+        expected: file.relativePath,
+        actual: null,
+        message: `Expected file is missing from the pack: ${file.relativePath}.`
+      });
+      continue;
+    }
+
+    const content = readFileSync(targetPath);
+    const actualByteLength = content.byteLength;
+    const actualChecksumSha256 = fingerprintBuffer(content);
+
+    if (actualByteLength !== file.byteLength) {
+      issues.push({
+        code: "byte_length_mismatch",
+        relativePath: file.relativePath,
+        expected: file.byteLength,
+        actual: actualByteLength,
+        message: `File byte length mismatch for ${file.relativePath}.`
+      });
+    }
+
+    if (actualChecksumSha256 !== file.contentSha256) {
+      issues.push({
+        code: "content_checksum_mismatch",
+        relativePath: file.relativePath,
+        expected: file.contentSha256,
+        actual: actualChecksumSha256,
+        message: `File SHA-256 checksum mismatch for ${file.relativePath}.`
+      });
+    }
+  }
+
+  for (const actualFile of actualFiles) {
+    if (!expectedFiles.has(actualFile)) {
+      issues.push({
+        code: "file_unexpected",
+        relativePath: actualFile,
+        expected: null,
+        actual: actualFile,
+        message: `Pack contains a file not listed in ${launchClosureArtifactManifestRelativePath}: ${actualFile}.`
+      });
+    }
+  }
+
+  if (artifactManifest.fileCount !== artifactManifest.files.length) {
+    issues.push({
+      code: "file_count_mismatch",
+      relativePath: null,
+      expected: artifactManifest.fileCount,
+      actual: artifactManifest.files.length,
+      message:
+        "Artifact manifest fileCount does not match the listed file count."
+    });
+  }
+
+  const manifestFile = artifactManifest.files.find(
+    (file) => file.relativePath === "manifest.json"
+  );
+
+  if (
+    artifactManifest.manifestChecksumSha256 !==
+    (manifestFile?.contentSha256 ?? null)
+  ) {
+    issues.push({
+      code: "manifest_checksum_mismatch",
+      relativePath: "manifest.json",
+      expected: artifactManifest.manifestChecksumSha256,
+      actual: manifestFile?.contentSha256 ?? null,
+      message:
+        "Artifact manifest manifestChecksumSha256 does not match the listed manifest.json checksum."
+    });
+  }
+
+  return {
+    packDir,
+    artifactManifestPath,
+    valid: issues.length === 0,
+    manifestChecksumSha256: artifactManifest.manifestChecksumSha256,
+    expectedFileCount: artifactManifest.fileCount,
+    checkedFileCount: artifactManifest.files.length,
+    issues
   };
 }
 

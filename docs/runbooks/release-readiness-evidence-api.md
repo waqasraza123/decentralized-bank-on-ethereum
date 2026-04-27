@@ -198,6 +198,8 @@ pnpm release:launch-closure -- scaffold \
   --solvency-fragment ./artifacts/release-launch/solvency-anchor-launch-fragment.json \
   --output-dir ./artifacts/release-launch/current \
   --force
+pnpm release:launch-closure -- verify-artifact-manifest \
+  --pack-dir ./artifacts/release-launch/current
 ```
 
 Use `merge-solvency-fragment --manifest <path> --solvency-fragment <path> --output <path>` when the generated solvency fragment should be materialized into a reviewed launch manifest before pack generation. The helper does not close evidence gates. It validates required inputs, generates a strict execution pack, and preserves the distinction between:
@@ -228,6 +230,6 @@ Stored launch-closure packs include:
 - `manifestChecksumSha256`: checksum for the merged `manifest.json`
 - `artifactManifest.files[]`: per-file byte lengths and SHA-256 checksums for generated pack files
 
-The generated file set also includes `artifact-manifest.json`, which mirrors `artifactManifest` from the stored API response. Its file list intentionally excludes `artifact-manifest.json` itself to avoid a recursive checksum. Use those checksums to compare CLI scaffolds, browser-downloaded files, stored pack records, and approval-bound pack references during launch review.
+The generated file set also includes `artifact-manifest.json`, which mirrors `artifactManifest` from the stored API response. Its file list intentionally excludes `artifact-manifest.json` itself to avoid a recursive checksum. Use `verify-artifact-manifest --pack-dir <path>` to detect missing, unexpected, or modified files before comparing CLI scaffolds, browser-downloaded files, stored pack records, and approval-bound pack references during launch review.
 
 See [`docs/runbooks/phase-12-launch-closure.md`](/Users/mc/development/blockchain/ethereum/stealth-trails-bank/docs/runbooks/phase-12-launch-closure.md).

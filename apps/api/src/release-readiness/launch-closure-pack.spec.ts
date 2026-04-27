@@ -13,6 +13,7 @@ import {
   renderLaunchClosureValidationSummary,
   scaffoldLaunchClosurePack,
   validateLaunchClosureManifest,
+  verifyLaunchClosureArtifactManifest,
   type LaunchClosureDynamicStatusInput,
   type LaunchClosureManifest
 } from "./launch-closure-pack";
@@ -315,6 +316,14 @@ describe("launch-closure-pack", () => {
             file.relativePath === launchClosureArtifactManifestRelativePath
         )
       ).toBe(false);
+      expect(verifyLaunchClosureArtifactManifest(outputDir)).toEqual(
+        expect.objectContaining({
+          valid: true,
+          expectedFileCount: artifactManifest.fileCount,
+          checkedFileCount: artifactManifest.files.length,
+          issues: []
+        })
+      );
       expect(validationSummary).toContain(
         "database_restore_drill: accepted only in staging, production_like, production"
       );
@@ -380,6 +389,40 @@ describe("launch-closure-pack", () => {
         })
       ])
     );
+  });
+
+  it("detects launch-closure artifact manifest drift", () => {
+    const manifest = buildManifest();
+    const repoRoot = mkdtempSync(path.join(os.tmpdir(), "launch-closure-repo-"));
+    const outputDir = path.join(repoRoot, "pack");
+
+    try {
+      scaffoldLaunchClosurePack({
+        manifest,
+        repoRoot,
+        outputDir
+      });
+
+      const manifestPath = path.join(outputDir, "manifest.json");
+      rmSync(manifestPath);
+
+      const result = verifyLaunchClosureArtifactManifest(outputDir);
+
+      expect(result.valid).toBe(false);
+      expect(result.issues).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            code: "file_missing",
+            relativePath: "manifest.json"
+          })
+        ])
+      );
+    } finally {
+      rmSync(repoRoot, {
+        force: true,
+        recursive: true
+      });
+    }
   });
 
   it("renders a scoped phase 12 completion checklist", () => {

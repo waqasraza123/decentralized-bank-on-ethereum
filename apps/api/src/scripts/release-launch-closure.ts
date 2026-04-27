@@ -9,6 +9,7 @@ import {
   renderLaunchClosureValidationSummary,
   scaffoldLaunchClosurePack,
   validateLaunchClosureManifest,
+  verifyLaunchClosureArtifactManifest,
   type LaunchClosureManifest,
   type LaunchClosureSolvencyFragment
 } from "../release-readiness/launch-closure-pack";
@@ -30,6 +31,7 @@ Commands:
   status
   validate --manifest <path> [--solvency-fragment <path>]
   scaffold --manifest <path> [--solvency-fragment <path>] [--output-dir <path>] [--force]
+  verify-artifact-manifest --pack-dir <path>
   merge-solvency-fragment --manifest <path> --solvency-fragment <path> --output <path>
 
 Options:
@@ -37,6 +39,7 @@ Options:
   --solvency-fragment            Path to generated solvency launch fragment JSON
   --output                       Output path for a merged launch-closure manifest
   --output-dir                   Output directory for generated pack artifacts
+  --pack-dir                     Generated pack directory containing artifact-manifest.json
   --force                        Remove an existing output directory before scaffold
   --help                         Print this message
 `);
@@ -255,6 +258,21 @@ function main(): void {
         2
       )
     );
+    return;
+  }
+
+  if (command === "verify-artifact-manifest") {
+    const packDir = path.resolve(
+      invocationCwd(),
+      readRequiredStringArg(parsedArgs, "pack-dir")
+    );
+    const result = verifyLaunchClosureArtifactManifest(packDir);
+    console.log(JSON.stringify(result, null, 2));
+
+    if (!result.valid) {
+      process.exit(1);
+    }
+
     return;
   }
 
