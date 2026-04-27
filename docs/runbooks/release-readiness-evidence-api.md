@@ -222,4 +222,12 @@ The HTTP launch-closure endpoints accept the same fragment shape:
 
 The API merges `solvencyFragment` before validation or scaffolding. The admin Launch Readiness workspace exposes a matching "Solvency launch fragment JSON" editor so operators can paste the `--launch-closure-fragment-output` file without manually editing the full manifest draft.
 
+Stored launch-closure packs include:
+
+- `artifactChecksumSha256`: checksum for the full persisted pack payload
+- `manifestChecksumSha256`: checksum for the merged `manifest.json`
+- `artifactManifest.files[]`: per-file byte lengths and SHA-256 checksums for generated pack files
+
+Use those checksums to compare browser-downloaded files, stored pack records, and approval-bound pack references during launch review.
+
 See [`docs/runbooks/phase-12-launch-closure.md`](/Users/mc/development/blockchain/ethereum/stealth-trails-bank/docs/runbooks/phase-12-launch-closure.md).

@@ -153,6 +153,12 @@ describe("ReleaseReadinessController", () => {
         generatedByOperatorId: "ops_1",
         generatedByOperatorRole: "operations_admin",
         artifactChecksumSha256: "checksum_1",
+        manifestChecksumSha256: "manifest_checksum_1",
+        artifactManifest: {
+          manifestChecksumSha256: "manifest_checksum_1",
+          fileCount: 1,
+          files: []
+        },
         artifactPayload: {},
         createdAt: "2026-04-10T12:00:00.000Z",
         updatedAt: "2026-04-10T12:00:00.000Z"
@@ -495,7 +501,8 @@ describe("ReleaseReadinessController", () => {
         launchClosurePack: {
           id: "pack_2",
           version: 2,
-          artifactChecksumSha256: "checksum_2"
+          artifactChecksumSha256: "checksum_2",
+          manifestChecksumSha256: "manifest_checksum_2"
         }
       }
     });

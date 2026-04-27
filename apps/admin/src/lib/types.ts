@@ -1673,6 +1673,7 @@ export type ReleaseReadinessApproval = {
     id: string;
     version: number;
     artifactChecksumSha256: string;
+    manifestChecksumSha256: string | null;
   } | null;
   rollbackReleaseIdentifier: string | null;
   status: "pending_approval" | "approved" | "rejected" | "superseded";
@@ -1714,6 +1715,7 @@ export type ReleaseReadinessApproval = {
       id: string;
       version: number;
       artifactChecksumSha256: string;
+      manifestChecksumSha256: string | null;
     } | null;
   } | null;
   lineageSummary: {
@@ -1895,6 +1897,16 @@ export type LaunchClosurePackFile = {
   content: string;
 };
 
+export type LaunchClosureArtifactManifest = {
+  manifestChecksumSha256: string | null;
+  fileCount: number;
+  files: Array<{
+    relativePath: string;
+    byteLength: number;
+    contentSha256: string;
+  }>;
+};
+
 export type LaunchClosureStatus = {
   generatedAt: string;
   releaseIdentifier: string | null;
@@ -1929,6 +1941,8 @@ export type LaunchClosureScaffoldResponse = LaunchClosureValidationResponse & {
     generatedByOperatorId: string;
     generatedByOperatorRole: string | null;
     artifactChecksumSha256: string;
+    manifestChecksumSha256: string | null;
+    artifactManifest: LaunchClosureArtifactManifest | null;
     artifactPayload: JsonValue;
     createdAt: string;
     updatedAt: string;

@@ -51,7 +51,8 @@ import {
   renderLaunchClosureStatusSummary,
   renderLaunchClosureValidationSummary,
   validateLaunchClosureManifest,
-  type LaunchClosureManifest
+  type LaunchClosureManifest,
+  type LaunchClosurePackFile
 } from "./launch-closure-pack";
 
 type ReleaseReadinessEvidenceRecord =
@@ -281,6 +282,7 @@ type ReleaseReadinessApprovalProjection = {
     id: string;
     version: number;
     artifactChecksumSha256: string;
+    manifestChecksumSha256: string | null;
   } | null;
   rollbackReleaseIdentifier: string | null;
   status: ReleaseReadinessApprovalStatus;
@@ -322,6 +324,7 @@ type ReleaseReadinessApprovalProjection = {
       id: string;
       version: number;
       artifactChecksumSha256: string;
+      manifestChecksumSha256: string | null;
     } | null;
   } | null;
   lineageSummary: {
@@ -408,9 +411,23 @@ type ReleaseLaunchClosurePackProjection = {
   generatedByOperatorId: string;
   generatedByOperatorRole: string | null;
   artifactChecksumSha256: string;
+  manifestChecksumSha256: string | null;
+  artifactManifest: ReleaseLaunchClosureArtifactManifest | null;
   artifactPayload: Prisma.JsonValue;
   createdAt: string;
   updatedAt: string;
+};
+
+type ReleaseLaunchClosureArtifactManifestFile = {
+  relativePath: string;
+  byteLength: number;
+  contentSha256: string;
+};
+
+type ReleaseLaunchClosureArtifactManifest = {
+  manifestChecksumSha256: string | null;
+  fileCount: number;
+  files: ReleaseLaunchClosureArtifactManifestFile[];
 };
 
 type ReleaseLaunchClosurePackMutationResult = {
@@ -1035,14 +1052,20 @@ export class ReleaseReadinessService {
         ? {
             id: latestPack.id,
             version: latestPack.version,
-            artifactChecksumSha256: latestPack.artifactChecksumSha256
+            artifactChecksumSha256: latestPack.artifactChecksumSha256,
+            manifestChecksumSha256:
+              this.readLaunchClosureArtifactManifest(latestPack.artifactPayload)
+                ?.manifestChecksumSha256 ?? null
           }
         : latestPack &&
             latestPack.version !== record.launchClosurePackVersion
           ? {
               id: latestPack.id,
               version: latestPack.version,
-              artifactChecksumSha256: latestPack.artifactChecksumSha256
+              artifactChecksumSha256: latestPack.artifactChecksumSha256,
+              manifestChecksumSha256:
+                this.readLaunchClosureArtifactManifest(latestPack.artifactPayload)
+                  ?.manifestChecksumSha256 ?? null
             }
           : latestPack &&
               latestPack.artifactChecksumSha256 !==
@@ -1050,7 +1073,11 @@ export class ReleaseReadinessService {
             ? {
                 id: latestPack.id,
                 version: latestPack.version,
-                artifactChecksumSha256: latestPack.artifactChecksumSha256
+                artifactChecksumSha256: latestPack.artifactChecksumSha256,
+                manifestChecksumSha256:
+                  this.readLaunchClosureArtifactManifest(
+                    latestPack.artifactPayload
+                  )?.manifestChecksumSha256 ?? null
               }
             : null;
     const summaryDelta = {
@@ -1175,6 +1202,15 @@ export class ReleaseReadinessService {
     latestPack?: ReleaseLaunchClosurePackRecord | null,
     lineageSummary?: ReleaseReadinessApprovalProjection["lineageSummary"]
   ): ReleaseReadinessApprovalProjection {
+    const boundLaunchClosurePackManifestChecksum =
+      latestPack &&
+      latestPack.id === record.launchClosurePackId &&
+      latestPack.version === record.launchClosurePackVersion &&
+      latestPack.artifactChecksumSha256 ===
+        record.launchClosurePackChecksumSha256
+        ? this.readLaunchClosureArtifactManifest(latestPack.artifactPayload)
+            ?.manifestChecksumSha256 ?? null
+        : null;
     const checklist = this.mapApprovalChecklist(record);
     const evidenceSnapshot =
       record.status === ReleaseReadinessApprovalStatus.pending_approval &&
@@ -1204,7 +1240,8 @@ export class ReleaseReadinessService {
         ? {
             id: record.launchClosurePackId,
             version: record.launchClosurePackVersion,
-            artifactChecksumSha256: record.launchClosurePackChecksumSha256
+            artifactChecksumSha256: record.launchClosurePackChecksumSha256,
+            manifestChecksumSha256: boundLaunchClosurePackManifestChecksum
           }
         : null,
       rollbackReleaseIdentifier: record.rollbackReleaseIdentifier ?? null,
@@ -1242,6 +1279,82 @@ export class ReleaseReadinessService {
     return createHash("sha256")
       .update(JSON.stringify(value))
       .digest("hex");
+  }
+
+  private buildLaunchClosureArtifactManifest(
+    files: LaunchClosurePackFile[]
+  ): ReleaseLaunchClosureArtifactManifest {
+    const manifestFiles = files.map((file) => ({
+      relativePath: file.relativePath,
+      byteLength: Buffer.byteLength(file.content, "utf8"),
+      contentSha256: this.fingerprintString(file.content)
+    }));
+    const manifestChecksumSha256 =
+      manifestFiles.find((file) => file.relativePath === "manifest.json")
+        ?.contentSha256 ?? null;
+
+    return {
+      manifestChecksumSha256,
+      fileCount: manifestFiles.length,
+      files: manifestFiles
+    };
+  }
+
+  private readLaunchClosureArtifactManifest(
+    artifactPayload: Prisma.JsonValue
+  ): ReleaseLaunchClosureArtifactManifest | null {
+    if (
+      !artifactPayload ||
+      Array.isArray(artifactPayload) ||
+      typeof artifactPayload !== "object"
+    ) {
+      return null;
+    }
+
+    const payload = artifactPayload as Record<string, unknown>;
+    const artifactManifest = payload.artifactManifest;
+
+    if (
+      !artifactManifest ||
+      Array.isArray(artifactManifest) ||
+      typeof artifactManifest !== "object"
+    ) {
+      return null;
+    }
+
+    const manifest = artifactManifest as Record<string, unknown>;
+    const files = Array.isArray(manifest.files)
+      ? manifest.files
+          .filter(
+            (file): file is ReleaseLaunchClosureArtifactManifestFile =>
+              Boolean(file) &&
+              !Array.isArray(file) &&
+              typeof file === "object" &&
+              typeof (file as Record<string, unknown>).relativePath ===
+                "string" &&
+              typeof (file as Record<string, unknown>).byteLength ===
+                "number" &&
+              typeof (file as Record<string, unknown>).contentSha256 ===
+                "string"
+          )
+          .map((file) => ({
+            relativePath: file.relativePath,
+            byteLength: file.byteLength,
+            contentSha256: file.contentSha256
+          }))
+      : [];
+
+    return {
+      manifestChecksumSha256:
+        typeof manifest.manifestChecksumSha256 === "string"
+          ? manifest.manifestChecksumSha256
+          : null,
+      fileCount:
+        typeof manifest.fileCount === "number"
+          ? manifest.fileCount
+          : files.length,
+      files
+    };
   }
 
   private assertExpectedApprovalVersion(
@@ -1533,6 +1646,10 @@ export class ReleaseReadinessService {
   private mapLaunchClosurePackProjection(
     record: ReleaseLaunchClosurePackRecord
   ): ReleaseLaunchClosurePackProjection {
+    const artifactManifest = this.readLaunchClosureArtifactManifest(
+      record.artifactPayload
+    );
+
     return {
       id: record.id,
       releaseIdentifier: record.releaseIdentifier,
@@ -1541,6 +1658,8 @@ export class ReleaseReadinessService {
       generatedByOperatorId: record.generatedByOperatorId,
       generatedByOperatorRole: record.generatedByOperatorRole ?? null,
       artifactChecksumSha256: record.artifactChecksumSha256,
+      manifestChecksumSha256: artifactManifest?.manifestChecksumSha256 ?? null,
+      artifactManifest,
       artifactPayload: record.artifactPayload,
       createdAt: record.createdAt.toISOString(),
       updatedAt: record.updatedAt.toISOString()
@@ -2582,11 +2701,15 @@ export class ReleaseReadinessService {
         : null
     });
     const summaryMarkdown = renderLaunchClosureValidationSummary(manifest);
+    const artifactManifest = this.buildLaunchClosureArtifactManifest(
+      preview.files
+    );
     const artifactPayload = {
       manifest,
       validation,
       summaryMarkdown,
       outputSubpath: preview.outputSubpath,
+      artifactManifest,
       files: preview.files
     } as Prisma.JsonValue;
     const artifactChecksumSha256 = this.buildChecksum(artifactPayload);
@@ -2626,6 +2749,8 @@ export class ReleaseReadinessService {
             environment: createdPack.environment,
             version: createdPack.version,
             artifactChecksumSha256,
+            manifestChecksumSha256: artifactManifest.manifestChecksumSha256,
+            artifactFileCount: artifactManifest.fileCount,
             operatorRole: normalizedOperatorRole
           } as PrismaJsonValue
         }
@@ -2751,6 +2876,9 @@ export class ReleaseReadinessService {
       ReleaseReadinessApprovalStatus.pending_approval,
       rollbackReleaseIdentifier
     );
+    const launchClosurePackManifestChecksumSha256 =
+      this.readLaunchClosureArtifactManifest(launchClosurePack.artifactPayload)
+        ?.manifestChecksumSha256 ?? null;
 
     const approval = await this.prismaService.$transaction(async (transaction) => {
       const createdApproval = await transaction.releaseReadinessApproval.create({
@@ -2796,6 +2924,7 @@ export class ReleaseReadinessService {
             launchClosurePackVersion: launchClosurePack.version,
             launchClosurePackChecksumSha256:
               launchClosurePack.artifactChecksumSha256,
+            launchClosurePackManifestChecksumSha256,
             rollbackReleaseIdentifier,
             summary: summaryText,
             operatorRole: normalizedOperatorRole,
@@ -2808,7 +2937,11 @@ export class ReleaseReadinessService {
     });
 
     return {
-      approval: this.mapApprovalProjection(approval, readinessSummary)
+      approval: this.mapApprovalProjection(
+        approval,
+        readinessSummary,
+        launchClosurePack
+      )
     };
   }
 
@@ -3024,6 +3157,9 @@ export class ReleaseReadinessService {
       ReleaseReadinessApprovalStatus.pending_approval,
       approval.rollbackReleaseIdentifier ?? null
     );
+    const launchClosurePackManifestChecksumSha256 =
+      this.readLaunchClosureArtifactManifest(launchClosurePack.artifactPayload)
+        ?.manifestChecksumSha256 ?? null;
 
     const updatedApproval = await this.prismaService.$transaction(
       async (transaction) => {
@@ -3151,6 +3287,8 @@ export class ReleaseReadinessService {
               nextLaunchClosurePackVersion: launchClosurePack.version,
               nextLaunchClosurePackChecksumSha256:
                 launchClosurePack.artifactChecksumSha256,
+              nextLaunchClosurePackManifestChecksumSha256:
+                launchClosurePackManifestChecksumSha256,
               operatorRole: normalizedOperatorRole,
               gate
             } as PrismaJsonValue

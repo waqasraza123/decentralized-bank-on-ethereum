@@ -126,6 +126,11 @@ function buildLaunchClosurePackRecord(
       manifest: {
         releaseIdentifier: "release-2026-04-08.1"
       },
+      artifactManifest: {
+        manifestChecksumSha256: "manifest_checksum_1",
+        fileCount: 0,
+        files: []
+      },
       files: []
     },
     createdAt: new Date("2026-04-08T12:00:00.000Z"),
@@ -856,6 +861,11 @@ describe("ReleaseReadinessService", () => {
           generatedByOperatorRole: "operations_admin",
           artifactChecksumSha256: expect.any(String),
           artifactPayload: expect.objectContaining({
+            artifactManifest: expect.objectContaining({
+              manifestChecksumSha256: expect.any(String),
+              fileCount: expect.any(Number),
+              files: expect.any(Array)
+            }),
             outputSubpath: expect.any(String),
             files: expect.any(Array)
           })
@@ -863,6 +873,8 @@ describe("ReleaseReadinessService", () => {
       })
     );
     expect(result.pack.version).toBe(3);
+    expect(result.pack.manifestChecksumSha256).toEqual(expect.any(String));
+    expect(result.pack.artifactManifest?.files.length).toBeGreaterThan(0);
     expect(result.files).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -978,6 +990,9 @@ describe("ReleaseReadinessService", () => {
     expect(result.approval.gate.overallStatus).toBe("ready");
     expect(result.approval.gate.approvalEligible).toBe(true);
     expect(result.approval.gate.staleEvidenceTypes).toEqual([]);
+    expect(result.approval.launchClosurePack?.manifestChecksumSha256).toBe(
+      "manifest_checksum_1"
+    );
     expect(result.approval.launchClosureDrift).toEqual(
       expect.objectContaining({
         changed: false,
@@ -1187,6 +1202,9 @@ describe("ReleaseReadinessService", () => {
     expect(result.approval.id).toBe("approval_2");
     expect(result.approval.supersedesApprovalId).toBe("approval_1");
     expect(result.approval.launchClosurePack?.id).toBe("pack_2");
+    expect(result.approval.launchClosurePack?.manifestChecksumSha256).toBe(
+      "manifest_checksum_1"
+    );
   });
 
   it("rejects rebind when the approval already references the requested pack", async () => {

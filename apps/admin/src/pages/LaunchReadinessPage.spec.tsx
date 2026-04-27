@@ -135,7 +135,8 @@ function buildApproval(releaseIdentifier: string) {
     launchClosurePack: {
       id: `${releaseIdentifier}-pack`,
       version: 3,
-      artifactChecksumSha256: `checksum-${releaseIdentifier}`
+      artifactChecksumSha256: `checksum-${releaseIdentifier}`,
+      manifestChecksumSha256: `manifest-checksum-${releaseIdentifier}`
     },
     rollbackReleaseIdentifier: "launch-rollback-2026.04.12.4",
     status: "pending_approval" as const,
@@ -221,7 +222,8 @@ function buildApproval(releaseIdentifier: string) {
       latestPack: {
         id: `${releaseIdentifier}-pack-v4`,
         version: 4,
-        artifactChecksumSha256: `checksum-${releaseIdentifier}-v4`
+        artifactChecksumSha256: `checksum-${releaseIdentifier}-v4`,
+        manifestChecksumSha256: `manifest-checksum-${releaseIdentifier}-v4`
       }
     },
     lineageSummary: {
@@ -439,7 +441,9 @@ describe("LaunchReadinessPage", () => {
           launchClosurePack: {
             id: payload.launchClosurePackId,
             version: 4,
-            artifactChecksumSha256: "checksum-launch-2026.04.13.2-v4"
+            artifactChecksumSha256: "checksum-launch-2026.04.13.2-v4",
+            manifestChecksumSha256:
+              "manifest-checksum-launch-2026.04.13.2-v4"
           },
           launchClosureDrift: {
             changed: false,
@@ -491,6 +495,12 @@ describe("LaunchReadinessPage", () => {
             generatedByOperatorId: "ops_1",
             generatedByOperatorRole: "operations_admin",
             artifactChecksumSha256: `checksum-${releaseIdentifier}`,
+            manifestChecksumSha256: `manifest-checksum-${releaseIdentifier}`,
+            artifactManifest: {
+              manifestChecksumSha256: `manifest-checksum-${releaseIdentifier}`,
+              fileCount: 0,
+              files: []
+            },
             artifactPayload: {},
             createdAt: "2026-04-14T10:00:00.000Z",
             updatedAt: "2026-04-14T10:00:00.000Z"

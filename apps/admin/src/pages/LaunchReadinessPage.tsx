@@ -2552,6 +2552,14 @@ export function LaunchReadinessPage() {
                             `Pack ID: ${latestScopedLaunchClosurePack.id}`,
                             `Version: v${latestScopedLaunchClosurePack.version}`,
                             `Checksum: ${latestScopedLaunchClosurePack.artifactChecksumSha256}`,
+                            `Manifest checksum: ${
+                              latestScopedLaunchClosurePack.manifestChecksumSha256 ??
+                              "Unavailable"
+                            }`,
+                            `Files: ${
+                              latestScopedLaunchClosurePack.artifactManifest
+                                ?.fileCount ?? "Unavailable"
+                            }`,
                             `Generated: ${formatDateTime(
                               latestScopedLaunchClosurePack.createdAt
                             )}`,
@@ -2735,6 +2743,16 @@ export function LaunchReadinessPage() {
                             selectedApproval.launchClosurePack
                               ?.artifactChecksumSha256 ?? "Unavailable",
                           mono: true
+                        },
+                        {
+                          label: "Manifest checksum",
+                          value:
+                            selectedApproval.launchClosurePack
+                              ?.manifestChecksumSha256 ?? "Unavailable",
+                          mono: Boolean(
+                            selectedApproval.launchClosurePack
+                              ?.manifestChecksumSha256
+                          )
                         }
                       ]}
                     />
