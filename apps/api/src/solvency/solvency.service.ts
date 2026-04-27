@@ -72,10 +72,44 @@ const EXECUTION_ENCUMBERED_STATUSES = [
 ] as const;
 const DEFAULT_PUBLIC_REPORT_LIMIT = 10;
 
+const reserveAttestationSnapshotInclude = {
+  reports: {
+    orderBy: {
+      publishedAt: "desc"
+    },
+    take: 1
+  },
+  assetSnapshots: {
+    include: {
+      asset: true
+    },
+    orderBy: {
+      createdAt: "asc"
+    }
+  },
+  reserveEvidence: {
+    include: {
+      asset: true
+    },
+    orderBy: [
+      {
+        assetId: "asc"
+      },
+      {
+        walletAddress: "asc"
+      }
+    ]
+  }
+} satisfies Prisma.SolvencySnapshotInclude;
+
 type SnapshotActor = {
   actorType: "operator" | "worker" | "system";
   actorId: string | null;
 };
+
+type ReserveAttestationSnapshotRecord = Prisma.SolvencySnapshotGetPayload<{
+  include: typeof reserveAttestationSnapshotInclude;
+}>;
 
 type SolvencyOperatorContext = {
   operatorId: string | null;
@@ -345,6 +379,56 @@ export type CustomerSolvencyProofBundleResult = Omit<
   bundleType: "customer_liability_proof";
   customerAccountId: string;
   customerProofs: CustomerLiabilityInclusionProofResult["proofs"];
+};
+
+export type PublicReserveAttestationPackageResult = {
+  packageVersion: number;
+  packageType: "public_reserve_attestation";
+  generatedAt: string;
+  artifactName: string;
+  packageChecksumSha256: string;
+  verification: {
+    attestationHashAlgorithm: string;
+    attestationChecksumAlgorithm: string;
+    signatureAlgorithm: string;
+    instructions: string[];
+  };
+  report: SolvencyReportProjection;
+  snapshot: SolvencyWorkspaceSummarySnapshot;
+  signedAttestation: {
+    canonicalPayload: Prisma.JsonValue;
+    canonicalPayloadText: string;
+    attestationHash: string;
+    attestationChecksumSha256: string;
+    signature: string;
+    signerAddress: string;
+    signatureAlgorithm: string;
+  };
+  assetSummaries: Array<{
+    assetId: string;
+    symbol: string;
+    displayName: string;
+    chainId: number;
+    evidenceFreshness: SolvencyEvidenceFreshness;
+    observedReserveAmount: string;
+    usableReserveAmount: string;
+    encumberedReserveAmount: string;
+    excludedReserveAmount: string;
+    reserveDeltaAmount: string;
+    reserveRatioBps: number | null;
+  }>;
+  reserveEvidence: Array<
+    SolvencyReserveEvidenceProjection & {
+      asset: {
+        id: string;
+        symbol: string;
+        displayName: string;
+        decimals: number;
+        chainId: number;
+        assetType: AssetType;
+      };
+    }
+  >;
 };
 
 export type GeneratedSolvencySnapshotResult = {
@@ -1267,6 +1351,42 @@ export class SolvencyService {
     };
   }
 
+  async getPublicReserveAttestationPackage(
+    snapshotId?: string
+  ): Promise<PublicReserveAttestationPackageResult> {
+    const snapshot = snapshotId
+      ? await this.prismaService.solvencySnapshot.findFirst({
+          where: {
+            id: snapshotId,
+            environment: this.environment,
+            reports: {
+              some: {}
+            }
+          },
+          include: reserveAttestationSnapshotInclude
+        })
+      : await this.prismaService.solvencySnapshot.findFirst({
+          where: {
+            environment: this.environment,
+            reports: {
+              some: {}
+            }
+          },
+          include: reserveAttestationSnapshotInclude,
+          orderBy: {
+            generatedAt: "desc"
+          }
+        });
+
+    if (!snapshot || !snapshot.reports[0]) {
+      throw new NotFoundException(
+        "Signed solvency reserve evidence was not found."
+      );
+    }
+
+    return this.buildPublicReserveAttestationPackage(snapshot);
+  }
+
   async getCustomerLiabilityInclusionProof(
     supabaseUserId: string,
     snapshotId?: string
@@ -1496,6 +1616,123 @@ export class SolvencyService {
 
   private buildBundleChecksum(bundleWithoutChecksum: unknown): string {
     return buildSha256Checksum(stableStringify(bundleWithoutChecksum));
+  }
+
+  private buildPublicReserveAttestationPackage(
+    snapshot: ReserveAttestationSnapshotRecord
+  ): PublicReserveAttestationPackageResult {
+    const report = snapshot.reports[0]!;
+    const generatedAt = new Date().toISOString();
+    const assetSummaries = snapshot.assetSnapshots.map((assetSnapshot) => ({
+      assetId: assetSnapshot.assetId,
+      symbol: assetSnapshot.asset.symbol,
+      displayName: assetSnapshot.asset.displayName,
+      chainId: assetSnapshot.asset.chainId,
+      evidenceFreshness: assetSnapshot.evidenceFreshness,
+      observedReserveAmount: assetSnapshot.observedReserveAmount.toString(),
+      usableReserveAmount: assetSnapshot.usableReserveAmount.toString(),
+      encumberedReserveAmount: assetSnapshot.encumberedReserveAmount.toString(),
+      excludedReserveAmount: assetSnapshot.excludedReserveAmount.toString(),
+      reserveDeltaAmount: assetSnapshot.reserveDeltaAmount.toString(),
+      reserveRatioBps: assetSnapshot.reserveRatioBps
+    }));
+    const reserveEvidence = snapshot.reserveEvidence.map((evidence) => ({
+      id: evidence.id,
+      assetId: evidence.assetId,
+      walletId: evidence.walletId ?? null,
+      reserveSourceType: evidence.reserveSourceType,
+      walletAddress: evidence.walletAddress ?? null,
+      walletKind: evidence.walletKind ?? null,
+      custodyType: evidence.custodyType ?? null,
+      evidenceFreshness: evidence.evidenceFreshness,
+      observedBalanceAmount: evidence.observedBalanceAmount?.toString() ?? null,
+      usableBalanceAmount: evidence.usableBalanceAmount?.toString() ?? null,
+      encumberedBalanceAmount:
+        evidence.encumberedBalanceAmount?.toString() ?? null,
+      excludedBalanceAmount: evidence.excludedBalanceAmount?.toString() ?? null,
+      observedAt: evidence.observedAt?.toISOString() ?? null,
+      staleAfterSeconds: evidence.staleAfterSeconds,
+      readErrorCode: evidence.readErrorCode ?? null,
+      readErrorMessage: evidence.readErrorMessage ?? null,
+      metadata: evidence.metadata ?? null,
+      createdAt: evidence.createdAt.toISOString(),
+      asset: {
+        id: evidence.asset.id,
+        symbol: evidence.asset.symbol,
+        displayName: evidence.asset.displayName,
+        decimals: evidence.asset.decimals,
+        chainId: evidence.asset.chainId,
+        assetType: evidence.asset.assetType
+      }
+    }));
+    const canonicalPayload = {
+      version: 1,
+      packageType: "public_reserve_attestation",
+      snapshotId: snapshot.id,
+      reportHash: report.reportHash,
+      reportChecksumSha256: report.reportChecksumSha256,
+      environment: snapshot.environment,
+      chainId: snapshot.chainId,
+      snapshotStatus: snapshot.status,
+      evidenceFreshness: snapshot.evidenceFreshness,
+      generatedAt: snapshot.generatedAt.toISOString(),
+      completedAt: snapshot.completedAt?.toISOString() ?? null,
+      totals: {
+        totalObservedReserveAmount: snapshot.totalObservedReserveAmount.toString(),
+        totalUsableReserveAmount: snapshot.totalUsableReserveAmount.toString(),
+        totalEncumberedReserveAmount:
+          snapshot.totalEncumberedReserveAmount.toString(),
+        totalReserveDeltaAmount: snapshot.totalReserveDeltaAmount.toString()
+      },
+      assetSummaries,
+      reserveEvidence
+    } satisfies PrismaJsonValue;
+    const canonicalPayloadText = stableStringify(canonicalPayload);
+    const attestationHash = ethers.utils.keccak256(
+      ethers.utils.toUtf8Bytes(canonicalPayloadText)
+    );
+    const attestationChecksumSha256 =
+      buildSha256Checksum(canonicalPayloadText);
+    const signer = new ethers.Wallet(this.reportSignerPrivateKey);
+    const signature = ethers.utils.joinSignature(
+      signer._signingKey().signDigest(attestationHash)
+    );
+    const packageWithoutChecksum = {
+      packageVersion: 1,
+      packageType: "public_reserve_attestation" as const,
+      generatedAt,
+      artifactName: `public-reserve-attestation-${snapshot.id}.json`,
+      packageChecksumSha256: null,
+      verification: {
+        attestationHashAlgorithm: "keccak256(canonicalPayloadText)",
+        attestationChecksumAlgorithm: "sha256(canonicalPayloadText)",
+        signatureAlgorithm: "ethereum-secp256k1-keccak256-v1",
+        instructions: [
+          "Verify attestationChecksumSha256 by SHA-256 hashing canonicalPayloadText.",
+          "Verify attestationHash by Keccak-256 hashing canonicalPayloadText.",
+          "Recover signerAddress from attestationHash and signature with the declared signatureAlgorithm.",
+          "Match reportHash and reportChecksumSha256 back to the signed solvency report for the same snapshot."
+        ]
+      },
+      report: this.mapReportProjection(report),
+      snapshot: this.mapWorkspaceSnapshot(snapshot),
+      signedAttestation: {
+        canonicalPayload,
+        canonicalPayloadText,
+        attestationHash,
+        attestationChecksumSha256,
+        signature,
+        signerAddress: signer.address,
+        signatureAlgorithm: "ethereum-secp256k1-keccak256-v1"
+      },
+      assetSummaries,
+      reserveEvidence
+    };
+
+    return {
+      ...packageWithoutChecksum,
+      packageChecksumSha256: this.buildBundleChecksum(packageWithoutChecksum)
+    };
   }
 
   async requestPolicyResume(

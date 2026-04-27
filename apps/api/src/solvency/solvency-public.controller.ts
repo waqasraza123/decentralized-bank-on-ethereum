@@ -49,6 +49,18 @@ export class SolvencyPublicController {
     };
   }
 
+  @Get("reports/latest/reserve-attestation")
+  async getLatestReserveAttestation(): Promise<CustomJsonResponse> {
+    const result =
+      await this.solvencyService.getPublicReserveAttestationPackage();
+
+    return {
+      status: "success",
+      message: "Latest public reserve attestation retrieved successfully.",
+      data: result
+    };
+  }
+
   @Get("reports/:snapshotId")
   async getReportBySnapshotId(
     @Param("snapshotId") snapshotId: string
@@ -72,6 +84,20 @@ export class SolvencyPublicController {
     return {
       status: "success",
       message: "Public solvency proof bundle retrieved successfully.",
+      data: result
+    };
+  }
+
+  @Get("reports/:snapshotId/reserve-attestation")
+  async getReserveAttestationBySnapshotId(
+    @Param("snapshotId") snapshotId: string
+  ): Promise<CustomJsonResponse> {
+    const result =
+      await this.solvencyService.getPublicReserveAttestationPackage(snapshotId);
+
+    return {
+      status: "success",
+      message: "Public reserve attestation retrieved successfully.",
       data: result
     };
   }

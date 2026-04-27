@@ -1,11 +1,18 @@
 import { useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { Download, ShieldCheck, FileCheck2, Scale, ShieldAlert } from "lucide-react";
+import {
+  Download,
+  FileCheck2,
+  Scale,
+  ShieldAlert,
+  ShieldCheck
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { useLocale } from "@/i18n/use-locale";
 import {
+  getPublicReserveAttestationPackage,
   getPublicSolvencyProofBundle,
   listPublicSolvencyReports
 } from "@/lib/solvency-api";
@@ -93,6 +100,29 @@ const TrustCenter = () => {
           locale === "ar"
             ? "تعذر تنزيل حزمة إثبات الملاءة."
             : "Solvency proof bundle could not be downloaded."
+        )
+      );
+    }
+  };
+
+  const handleDownloadReserveAttestation = async () => {
+    if (!selectedEntry) {
+      return;
+    }
+
+    setDownloadError(null);
+    try {
+      const attestation = await getPublicReserveAttestationPackage(
+        selectedEntry.snapshot.id
+      );
+      downloadJsonArtifact(attestation.artifactName, attestation);
+    } catch (error) {
+      setDownloadError(
+        readApiErrorMessage(
+          error,
+          locale === "ar"
+            ? "تعذر تنزيل شهادة الاحتياطي."
+            : "Reserve attestation could not be downloaded."
         )
       );
     }
@@ -242,6 +272,17 @@ const TrustCenter = () => {
                         >
                           <Download className="h-4 w-4" />
                           {locale === "ar" ? "تنزيل الحزمة" : "Download bundle"}
+                        </Button>
+                        <Button
+                          className="rounded-[1rem]"
+                          onClick={() => void handleDownloadReserveAttestation()}
+                          type="button"
+                          variant="outline"
+                        >
+                          <Download className="h-4 w-4" />
+                          {locale === "ar"
+                            ? "تنزيل شهادة الاحتياطي"
+                            : "Download reserve attestation"}
                         </Button>
                       </div>
                     </div>

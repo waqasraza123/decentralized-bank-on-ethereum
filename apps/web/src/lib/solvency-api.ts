@@ -134,6 +134,72 @@ export type CustomerSolvencyProofBundle = Omit<
   customerProofs: CustomerLiabilityProofResult["proofs"];
 };
 
+export type PublicReserveAttestationPackage = {
+  packageVersion: number;
+  packageType: "public_reserve_attestation";
+  generatedAt: string;
+  artifactName: string;
+  packageChecksumSha256: string;
+  verification: {
+    attestationHashAlgorithm: string;
+    attestationChecksumAlgorithm: string;
+    signatureAlgorithm: string;
+    instructions: string[];
+  };
+  report: SolvencyReportSummary;
+  snapshot: SolvencyWorkspaceSummarySnapshot;
+  signedAttestation: {
+    canonicalPayload: Record<string, unknown>;
+    canonicalPayloadText: string;
+    attestationHash: string;
+    attestationChecksumSha256: string;
+    signature: string;
+    signerAddress: string;
+    signatureAlgorithm: string;
+  };
+  assetSummaries: Array<{
+    assetId: string;
+    symbol: string;
+    displayName: string;
+    chainId: number;
+    evidenceFreshness: string;
+    observedReserveAmount: string;
+    usableReserveAmount: string;
+    encumberedReserveAmount: string;
+    excludedReserveAmount: string;
+    reserveDeltaAmount: string;
+    reserveRatioBps: number | null;
+  }>;
+  reserveEvidence: Array<{
+    id: string;
+    assetId: string;
+    walletId: string | null;
+    reserveSourceType: string;
+    walletAddress: string | null;
+    walletKind: string | null;
+    custodyType: string | null;
+    evidenceFreshness: string;
+    observedBalanceAmount: string | null;
+    usableBalanceAmount: string | null;
+    encumberedBalanceAmount: string | null;
+    excludedBalanceAmount: string | null;
+    observedAt: string | null;
+    staleAfterSeconds: number;
+    readErrorCode: string | null;
+    readErrorMessage: string | null;
+    metadata: Record<string, unknown> | null;
+    createdAt: string;
+    asset: {
+      id: string;
+      symbol: string;
+      displayName: string;
+      decimals: number;
+      chainId: number;
+      assetType: string;
+    };
+  }>;
+};
+
 export async function listPublicSolvencyReports(
   limit = 10
 ): Promise<PublicSolvencyReportListResult> {
@@ -206,6 +272,25 @@ export async function getPublicSolvencyProofBundle(
   if (response.data.status !== "success" || !response.data.data) {
     throw new Error(
       response.data.message || "Failed to load public solvency proof bundle."
+    );
+  }
+
+  return response.data.data;
+}
+
+export async function getPublicReserveAttestationPackage(
+  snapshotId?: string
+): Promise<PublicReserveAttestationPackage> {
+  const endpoint = snapshotId
+    ? `/solvency/public/reports/${snapshotId}/reserve-attestation`
+    : "/solvency/public/reports/latest/reserve-attestation";
+  const response = await axios.get<ApiResponse<PublicReserveAttestationPackage>>(
+    `${webRuntimeConfig.serverUrl}${endpoint}`
+  );
+
+  if (response.data.status !== "success" || !response.data.data) {
+    throw new Error(
+      response.data.message || "Failed to load public reserve attestation."
     );
   }
 

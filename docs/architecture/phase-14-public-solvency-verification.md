@@ -107,9 +107,15 @@ The first follow-up now adds downloadable proof bundles:
 - web download actions on `/trust/solvency` and `/proofs/me`
 - bundle verification guidance in `docs/runbooks/public-solvency-proof-bundles.md`
 
-## Next follow-up after proof bundles
+The second follow-up now adds signed reserve attestation packages:
 
-After proof bundles, the next best extensions are:
-- signed reserve attestation packages
+- public reserve attestation packages for latest or snapshot-specific signed solvency reports
+- attestation signatures over persisted reserve evidence, per-asset reserve summaries, and report binding fields
+- web reserve-attestation downloads on `/trust/solvency`
+- verification guidance in `docs/runbooks/public-reserve-attestation-packages.md`
+
+## Next follow-up after reserve attestations
+
+After reserve attestations, the next best extensions are:
 - onchain anchoring of report hashes
 - governed timelock for policy resume
