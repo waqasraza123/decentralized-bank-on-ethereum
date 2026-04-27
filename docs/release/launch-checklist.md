@@ -28,7 +28,7 @@ Important truth:
 
 - repo-owned automation can satisfy `contract_invariant_suite`, `backend_integration_suite`, and `end_to_end_finance_flows`
 - local dry-runs for restore and rollback are not accepted launch proof
-- accepted proof for alerting, restore, rollback, secret review, and role review must come from `staging`, `production_like`, or `production`
+- accepted proof for alerting, restore, rollback, notification cutover, secret review, and role review must come from `staging`, `production_like`, or `production`
 - solvency anchor registry deployment proof must come from `staging`, `production_like`, or `production`
 
 ## Release identity
@@ -77,6 +77,7 @@ Important truth:
 ## Functional proof
 
 - customer sign-up or approved auth flow verified
+- customer and operator notification cutover proof verified
 - deposit request flow verified
 - withdrawal request flow verified
 - end-to-end finance flow evidence recorded in release-readiness evidence

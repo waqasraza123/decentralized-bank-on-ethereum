@@ -38,6 +38,10 @@ function buildManifest(): LaunchClosureManifest {
       approverRole: "compliance_lead",
       apiKeyEnvironmentVariable: "INTERNAL_OPERATOR_API_KEY"
     },
+    customer: {
+      verificationAccountReference: "launch-smoke-customer",
+      accessTokenEnvironmentVariable: "CUSTOMER_ACCESS_TOKEN"
+    },
     artifacts: {
       apiReleaseId: "api-2026.04.10.1",
       workerReleaseId: "worker-2026.04.10.1",
@@ -384,7 +388,14 @@ describe("launch-closure-pack", () => {
           content: expect.stringContaining("solvency report anchor registry")
         }),
         expect.objectContaining({
-          relativePath: path.join("evidence", "09-final-governed-launch-approval.md"),
+          relativePath: path.join(
+            "evidence",
+            "09-notification-cutover-verification.md"
+          ),
+          content: expect.stringContaining("notification cutover")
+        }),
+        expect.objectContaining({
+          relativePath: path.join("evidence", "10-final-governed-launch-approval.md"),
           content: expect.stringContaining("dual-control launch approval")
         })
       ])

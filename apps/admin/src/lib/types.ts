@@ -1823,6 +1823,10 @@ export type LaunchClosureManifest = {
     accessTokenEnvironmentVariable?: string;
     apiKeyEnvironmentVariable?: string;
   };
+  customer?: {
+    verificationAccountReference?: string;
+    accessTokenEnvironmentVariable?: string;
+  };
   artifacts: {
     apiReleaseId: string;
     workerReleaseId: string;

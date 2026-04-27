@@ -24,6 +24,7 @@ Still externally required:
 - `database_restore_drill` in `staging`, `production_like`, or `production`
 - `api_rollback_drill` in `staging`, `production_like`, or `production`
 - `worker_rollback_drill` in `staging`, `production_like`, or `production`
+- `notification_cutover_verification` in `staging`, `production_like`, or `production`
 - `secret_handling_review`
 - `role_review`
 - `solvency_anchor_registry_deployment`
@@ -62,6 +63,7 @@ Required input classes:
 - alert delivery target name and expected degraded health status
 - critical alert identifier or dedupe key
 - minimum expected re-escalation count
+- launch smoke customer token environment variable for notification cutover verification
 - secret review references
 - role review references
 - approved role roster reference
@@ -99,7 +101,8 @@ Run the remaining accepted proofs in this order:
 6. `secret_handling_review`
 7. `role_review`
 8. `solvency_anchor_registry_deployment`
-9. final governed launch approval
+9. `notification_cutover_verification`
+10. final governed launch approval
 
 Why this order:
 
@@ -107,6 +110,7 @@ Why this order:
 - restore and rollback drills validate recovery posture before approval is requested
 - manual reviews stay late so they reference the final launch candidate and operator roster
 - solvency anchor deployment proof stays after role review so the signer inventory and on-chain registry owner are reviewed together
+- notification cutover proof stays last among evidence probes so it validates the final API and realtime surfaces immediately before approval
 - approval stays last so it snapshots the current evidence set instead of an earlier incomplete state
 
 ## Exact staging-like execution flow
@@ -321,7 +325,22 @@ pnpm release:readiness:verify -- \
   --access-token "$OPERATOR_ACCESS_TOKEN"
 ```
 
-### 6. Review the release-readiness summary
+### 6. Record notification cutover verification
+
+```bash
+pnpm release:readiness:probe -- \
+  --probe notification_cutover_verification \
+  --base-url https://staging-api.example.com \
+  --access-token "$OPERATOR_ACCESS_TOKEN" \
+  --customer-access-token "$CUSTOMER_ACCESS_TOKEN" \
+  --environment production_like \
+  --release-id launch-2026.04.10.1 \
+  --record-evidence
+```
+
+Use `--require-notification-feed-item` when the launch smoke explicitly emits at least one customer and one operator notification before the probe.
+
+### 7. Review the release-readiness summary
 
 Confirm that every required proof now shows a latest accepted `passed` record:
 
@@ -331,7 +350,7 @@ curl -sS \
   https://staging-api.example.com/release-readiness/internal/summary
 ```
 
-### 7. Submit the governed launch request
+### 8. Submit the governed launch request
 
 Populate the generated `approval-request.template.json` truthfully, then submit:
 
@@ -345,7 +364,7 @@ curl -sS -X POST \
 
 The request fails closed if the referenced pack fails stored integrity verification or belongs to a different release identifier or environment.
 
-### 7. Complete dual-control approval
+### 9. Complete dual-control approval
 
 The separate approver must review the generated approval record and then approve or reject it through the governed approval endpoints defined in [`docs/runbooks/release-launch-approval.md`](/Users/mc/development/blockchain/ethereum/stealth-trails-bank/docs/runbooks/release-launch-approval.md).
 
@@ -422,6 +441,23 @@ Fail:
 
 - heartbeat does not resume
 - queue safety is uncertain or duplicate effects are observed
+- evidence recording is rejected
+
+### `notification_cutover_verification`
+
+Pass:
+
+- customer notification feed, unread summary, preferences, and socket-session endpoints are reachable
+- operator notification feed, unread summary, preferences, and socket-session endpoints are reachable
+- customer and operator preference matrices expose `in_app` and `email`
+- websocket resume sessions issue non-empty tokens with future expiration and coherent latest sequence values
+- the probe records accepted evidence with `passed`
+
+Fail:
+
+- either customer or operator notification API reads fail
+- preference matrix channels are missing
+- socket-session issuance is disabled, expired, or behind feed sequence state
 - evidence recording is rejected
 
 ### `secret_handling_review`

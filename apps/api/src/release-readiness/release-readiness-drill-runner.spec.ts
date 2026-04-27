@@ -1,6 +1,7 @@
 import { ReleaseReadinessEvidenceType } from "@prisma/client";
 import {
   evaluateCriticalAlertReEscalationProbe,
+  evaluateNotificationCutoverVerificationProbe,
   evaluatePlatformAlertDeliverySloProbe,
   evaluateWorkerRollbackProbe
 } from "./release-readiness-drill-runner";
@@ -142,5 +143,73 @@ describe("release-readiness-drill-runner", () => {
 
     expect(result.status).toBe("failed");
     expect(result.failures.join(" ")).toContain("worker-staging-1");
+  });
+
+  it("passes notification cutover verification when customer and operator surfaces are coherent", () => {
+    const futureExpiry = new Date(Date.now() + 60_000).toISOString();
+    const buildFeed = () => ({
+      items: [
+        {
+          id: "notification_1",
+          deliverySequence: 4,
+          category: "money_movement",
+          priority: "high",
+          readAt: null,
+          archivedAt: null,
+          createdAt: "2026-04-27T10:00:00.000Z"
+        }
+      ],
+      unreadCount: 1,
+      limit: 5
+    });
+    const buildUnreadSummary = () => ({
+      unreadCount: 1,
+      criticalCount: 0,
+      highCount: 1
+    });
+    const buildPreferences = (audience: "customer" | "operator") => ({
+      notificationPreferences: {
+        audience,
+        supportedChannels: ["in_app", "email"],
+        entries: [
+          {
+            category: "money_movement",
+            channels: [
+              { channel: "in_app", enabled: true, mandatory: true },
+              { channel: "email", enabled: true, mandatory: false }
+            ]
+          }
+        ],
+        updatedAt: "2026-04-27T10:00:00.000Z"
+      }
+    });
+    const buildSocketSession = (audience: "customer" | "operator") => ({
+      audience,
+      recipientKey: `${audience}:recipient_1`,
+      socketToken: `${audience}_socket_token`,
+      expiresAt: futureExpiry,
+      latestSequence: 4,
+      heartbeatIntervalMs: 20_000,
+      supportedChannels: ["in_app", "email"]
+    });
+
+    const result = evaluateNotificationCutoverVerificationProbe({
+      customerFeed: buildFeed(),
+      customerUnreadSummary: buildUnreadSummary(),
+      customerPreferences: buildPreferences("customer"),
+      customerSocketSession: buildSocketSession("customer"),
+      operatorFeed: buildFeed(),
+      operatorUnreadSummary: buildUnreadSummary(),
+      operatorPreferences: buildPreferences("operator"),
+      operatorSocketSession: buildSocketSession("operator"),
+      options: {
+        evidenceType:
+          "notification_cutover_verification" as ReleaseReadinessEvidenceType,
+        requireNotificationFeedItem: true
+      }
+    });
+
+    expect(result.status).toBe("passed");
+    expect(result.failures).toHaveLength(0);
   });
 });

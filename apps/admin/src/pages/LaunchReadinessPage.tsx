@@ -71,6 +71,7 @@ const releaseReadinessEvidenceTypes = [
   "backend_integration_suite",
   "end_to_end_finance_flows",
   "solvency_anchor_registry_deployment",
+  "notification_cutover_verification",
   "secret_handling_review",
   "role_review"
 ] as const;
@@ -243,6 +244,7 @@ function listRequiredEvidenceMetadataFields(
     case "secret_handling_review":
     case "role_review":
     case "solvency_anchor_registry_deployment":
+    case "notification_cutover_verification":
       return ["release identifier"];
     case "database_restore_drill":
       return ["release identifier", "backup reference"];
@@ -446,6 +448,10 @@ function buildLaunchClosureManifestTemplate(args: {
       approverId: "ops_approver_1",
       approverRole: "compliance_lead",
       accessTokenEnvironmentVariable: "SUPABASE_OPERATOR_ACCESS_TOKEN"
+    },
+    customer: {
+      verificationAccountReference: "launch-smoke-customer",
+      accessTokenEnvironmentVariable: "CUSTOMER_ACCESS_TOKEN"
     },
     artifacts: {
       apiReleaseId: `api-${releaseIdentifier}`,

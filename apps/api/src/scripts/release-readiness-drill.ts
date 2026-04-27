@@ -12,6 +12,9 @@ import {
   describeReleaseReadinessEvidenceMetadataRequirements,
   validateReleaseReadinessEvidenceMetadata
 } from "../release-readiness/release-readiness-evidence-requirements";
+import {
+  notificationCutoverVerificationEvidenceType
+} from "../release-readiness/dto/create-release-readiness-evidence.dto";
 
 type ParsedArgs = {
   [key: string]: string | boolean | undefined;
@@ -22,7 +25,8 @@ const supportedEvidenceTypes = new Set<ReleaseReadinessEvidenceType>([
   ReleaseReadinessEvidenceType.critical_alert_reescalation,
   ReleaseReadinessEvidenceType.database_restore_drill,
   ReleaseReadinessEvidenceType.api_rollback_drill,
-  ReleaseReadinessEvidenceType.worker_rollback_drill
+  ReleaseReadinessEvidenceType.worker_rollback_drill,
+  notificationCutoverVerificationEvidenceType
 ]);
 
 function printUsage(): void {
@@ -33,6 +37,7 @@ Required:
   --probe                         One of: ${[...supportedEvidenceTypes].join(", ")}
   --base-url                      Operator API base URL for the target environment
   --access-token                  Operator bearer token
+  --customer-access-token         Customer JWT for notification cutover verification
 
 Optional:
   --environment                   staging | production_like | production
@@ -53,6 +58,7 @@ Optional:
   --expected-min-re-escalations   Minimum re-escalation count, default 1
   --expected-worker-id            Expected worker id for rollback validation
   --expected-min-healthy-workers  Minimum healthy workers after rollback, default 1
+  --require-notification-feed-item Require customer and operator notification feeds to include at least one item
   --help                          Print this message
 `);
 }
@@ -137,7 +143,8 @@ function readOptionalBooleanFlag(parsedArgs: ParsedArgs, key: string): boolean {
 function buildSession(parsedArgs: ParsedArgs): ReleaseReadinessDrillSession {
   return {
     baseUrl: readRequiredStringArg(parsedArgs, "base-url"),
-    accessToken: readRequiredStringArg(parsedArgs, "access-token")
+    accessToken: readRequiredStringArg(parsedArgs, "access-token"),
+    customerAccessToken: readOptionalStringArg(parsedArgs, "customer-access-token")
   };
 }
 
@@ -181,6 +188,10 @@ function buildOptions(parsedArgs: ParsedArgs): ReleaseReadinessDrillOptions {
     expectedMinHealthyWorkers: readOptionalIntegerArg(
       parsedArgs,
       "expected-min-healthy-workers"
+    ),
+    requireNotificationFeedItem: readOptionalBooleanFlag(
+      parsedArgs,
+      "require-notification-feed-item"
     )
   };
 }

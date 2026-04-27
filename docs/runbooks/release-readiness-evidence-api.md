@@ -106,6 +106,7 @@ The admin Launch Readiness evidence workspace calls this endpoint when operators
 - `backend_integration_suite`
 - `end_to_end_finance_flows`
 - `solvency_anchor_registry_deployment`
+- `notification_cutover_verification`
 - `secret_handling_review`
 - `role_review`
 

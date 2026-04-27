@@ -249,6 +249,12 @@ function buildPassedRequiredEvidenceRecords() {
         manifestPath: "packages/contracts/deployments/staging.manifest.json",
         manifestCommitSha: "abc1234"
       }
+    }),
+    buildEvidenceRecord({
+      id: "evidence_12",
+      evidenceType: "notification_cutover_verification",
+      environment: ReleaseReadinessEnvironment.production_like,
+      runbookPath: "docs/runbooks/notification-cutover-verification.md"
     })
   ];
 }

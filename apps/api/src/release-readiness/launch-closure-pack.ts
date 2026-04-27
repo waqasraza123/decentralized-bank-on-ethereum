@@ -50,6 +50,10 @@ export type LaunchClosureManifest = {
     accessTokenEnvironmentVariable?: string;
     apiKeyEnvironmentVariable?: string;
   };
+  customer?: {
+    verificationAccountReference?: string;
+    accessTokenEnvironmentVariable?: string;
+  };
   artifacts: {
     apiReleaseId: string;
     workerReleaseId: string;
@@ -799,6 +803,15 @@ function getOperatorAccessTokenEnvironmentVariable(
   );
 }
 
+function getCustomerAccessTokenEnvironmentVariable(
+  manifest: LaunchClosureManifest
+): string {
+  return (
+    manifest.customer?.accessTokenEnvironmentVariable ??
+    "CUSTOMER_ACCESS_TOKEN"
+  );
+}
+
 function findSolvencyAnchorRegistryContract(
   manifest: LaunchClosureManifest
 ): NonNullable<LaunchClosureManifest["contracts"]>[number] | null {
@@ -1198,6 +1211,8 @@ function buildLaunchClosureArtifacts(
   const accessTokenEnvironmentVariable = getOperatorAccessTokenEnvironmentVariable(
     manifest
   );
+  const customerAccessTokenEnvironmentVariable =
+    getCustomerAccessTokenEnvironmentVariable(manifest);
 
   return [
     {
@@ -1500,7 +1515,47 @@ function buildLaunchClosureArtifacts(
       )
     },
     {
-      filename: "09-final-governed-launch-approval.md",
+      filename: "09-notification-cutover-verification.md",
+      title: "Notification Cutover Verification",
+      objective:
+        "Prove the unified customer and operator notification cutover is live across inbox reads, unread summaries, preference matrices, and websocket resume sessions.",
+      runbookPath: "docs/runbooks/notification-cutover-verification.md",
+      evidenceType: "notification_cutover_verification",
+      requiredInputs: [
+        `Primary API base URL: ${manifest.baseUrls.api}`,
+        `Launch release identifier recorded with evidence: ${manifest.releaseIdentifier}`,
+        `Requester operator: ${manifest.operator.requesterId} (${manifest.operator.requesterRole})`,
+        `Operator access token environment variable: ${accessTokenEnvironmentVariable}`,
+        `Customer access token environment variable: ${customerAccessTokenEnvironmentVariable}`,
+        manifest.customer?.verificationAccountReference
+          ? `Customer verification account: ${manifest.customer.verificationAccountReference}`
+          : "Customer verification account: launch smoke customer"
+      ],
+      steps: [
+        "Sign in as the launch smoke customer and export a fresh customer JWT into the named customer token environment variable.",
+        "Export a fresh operator bearer token for the requester into the named operator token environment variable.",
+        "Run the repo-owned notification cutover probe below with --record-evidence.",
+        "Use --require-notification-feed-item only after the launch smoke has emitted at least one customer and one operator notification."
+      ],
+      expectedOutcome: [
+        "The probe returns passed status.",
+        "Customer and operator inbox, unread-summary, preference, and socket-session endpoints all return coherent cutover state.",
+        "Release-readiness evidence is recorded with evidenceType notification_cutover_verification."
+      ],
+      exactCommand: buildProbeCommand([
+        "--probe notification_cutover_verification",
+        `--base-url ${manifest.baseUrls.api}`,
+        `--operator-id ${manifest.operator.requesterId}`,
+        `--access-token \"$${accessTokenEnvironmentVariable}\"`,
+        `--customer-access-token \"$${customerAccessTokenEnvironmentVariable}\"`,
+        `--operator-role ${manifest.operator.requesterRole}`,
+        `--environment ${manifest.environment}`,
+        `--release-id ${manifest.releaseIdentifier}`,
+        "--record-evidence"
+      ])
+    },
+    {
+      filename: "10-final-governed-launch-approval.md",
       title: "Final Governed Launch Approval",
       objective:
         "Request and complete the dual-control launch approval only after all required evidence and checklist attestations are satisfied.",
@@ -1685,7 +1740,7 @@ export function renderPhase12CompletionChecklist(args?: {
     "",
     "1. Re-run the repo-owned automated proof bundle for the candidate.",
     "   Command: `pnpm release:readiness:verify -- --proof all-auto`",
-    "2. Re-run the customer and operator shell verification that is outside the release-readiness evidence types but still matters for product confidence.",
+    "2. Re-run the broader customer and operator shell verification that complements the governed notification cutover proof.",
     "   Commands: `pnpm test:e2e` and `pnpm mobile:verify`",
     "3. Validate the launch manifest before touching staging-like execution.",
     "   Command: `pnpm release:launch-closure -- validate --manifest <path>`",
@@ -1712,6 +1767,7 @@ export function renderPhase12CompletionChecklist(args?: {
     "6. `secret_handling_review`",
     "7. `role_review`",
     "8. `solvency_anchor_registry_deployment`",
+    "9. `notification_cutover_verification`",
     "",
     "Current external-only check posture:",
     ...renderExternalCheckLines(status),
@@ -1993,6 +2049,11 @@ export function validateLaunchClosureManifest(
     manifest.operator?.accessTokenEnvironmentVariable ??
       manifest.operator?.apiKeyEnvironmentVariable,
     "operator.accessTokenEnvironmentVariable",
+    errors
+  );
+  readString(
+    manifest.customer?.accessTokenEnvironmentVariable,
+    "customer.accessTokenEnvironmentVariable",
     errors
   );
 

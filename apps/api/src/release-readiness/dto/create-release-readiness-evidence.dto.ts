@@ -33,12 +33,16 @@ export const releaseReadinessEvidenceTypes = [
   "backend_integration_suite",
   "end_to_end_finance_flows",
   "solvency_anchor_registry_deployment",
+  "notification_cutover_verification",
   "secret_handling_review",
   "role_review"
 ] as const;
 
 export const solvencyAnchorRegistryDeploymentEvidenceType =
   "solvency_anchor_registry_deployment" as ReleaseReadinessEvidenceType;
+
+export const notificationCutoverVerificationEvidenceType =
+  "notification_cutover_verification" as ReleaseReadinessEvidenceType;
 
 export const releaseReadinessEnvironments = [
   "development",

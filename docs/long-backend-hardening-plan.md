@@ -82,11 +82,14 @@
   - `pnpm test`
 - Repo-owned release proof entrypoint is also green:
   - `pnpm release:readiness:verify -- --proof all-auto`
+- Notification cutover is now a first-class release-readiness probe:
+  - `pnpm release:readiness:probe -- --probe notification_cutover_verification`
 
 ### Next frontier
 
 - The next meaningful work is no longer a repo-only hardening slice.
 - Remaining Phase 12 work requires external context:
+  - run accepted notification cutover verification against a staging or production-like launch smoke customer and operator
   - run staging or production-like drills for delivery-target SLO, critical alert re-escalation, restore, and rollback
   - record real secret-handling and role-review evidence for the launch roster
   - persist that evidence through release-readiness workflows
