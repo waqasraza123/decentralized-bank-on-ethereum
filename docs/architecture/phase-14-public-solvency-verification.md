@@ -159,6 +159,12 @@ The eighth follow-up now adds manifest-derived release evidence:
 - the manifest validator checks optional registry deployment proof fields when operators add real deployment metadata
 - generated proof refuses placeholder or mismatched owner/authorized-anchorer data before launch approval evidence is recorded
 
-## Next follow-up after manifest-derived proof
+The ninth follow-up now adds API-side manifest integrity checks for deployment proof:
 
-After manifest-derived proof generation, the remaining production extension is to replace placeholder deployment manifest addresses/checksums with real staged deployment values and record accepted `solvency_anchor_registry_deployment` evidence for the launch candidate.
+- `solvency_anchor_registry_deployment` evidence must match the active `ContractDeploymentManifest`
+- the authorized anchorer must match active `GovernedSignerInventory` for `solvency_anchor_execution`
+- the governance owner must match the active `GovernanceAuthorityManifest` governance safe
+
+## Next follow-up after manifest-integrity proof
+
+After manifest-integrity proof enforcement, the remaining production extension is to replace placeholder deployment manifest addresses/checksums with real staged deployment values and record accepted `solvency_anchor_registry_deployment` evidence for the launch candidate.

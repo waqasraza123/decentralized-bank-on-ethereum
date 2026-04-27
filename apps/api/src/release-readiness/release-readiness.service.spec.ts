@@ -261,6 +261,15 @@ function createService() {
       findMany: jest.fn(),
       count: jest.fn()
     },
+    contractDeploymentManifest: {
+      findFirst: jest.fn()
+    },
+    governedSignerInventory: {
+      findFirst: jest.fn()
+    },
+    governanceAuthorityManifest: {
+      findFirst: jest.fn()
+    },
     auditEvent: {
       create: jest.fn()
     }
@@ -403,6 +412,62 @@ describe("ReleaseReadinessService", () => {
       )
     ).rejects.toThrow(
       "Release readiness evidence for api_rollback_drill requires release identifier, rollback release identifier."
+    );
+
+    expect(transactionClient.releaseReadinessEvidence.create).not.toHaveBeenCalled();
+  });
+
+  it("rejects solvency anchor deployment evidence that drifts from the active manifest", async () => {
+    const { service, prismaService, transactionClient } = createService();
+    (
+      prismaService.contractDeploymentManifest.findFirst as jest.Mock
+    ).mockResolvedValue({
+      deploymentTxHash:
+        "0x9999999999999999999999999999999999999999999999999999999999999999",
+      governanceOwner: "0x3333333333333333333333333333333333333333",
+      authorizedAnchorer: "0x4444444444444444444444444444444444444444",
+      abiChecksumSha256:
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    });
+    (prismaService.governedSignerInventory.findFirst as jest.Mock).mockResolvedValue({
+      id: "signer_1"
+    });
+    (
+      prismaService.governanceAuthorityManifest.findFirst as jest.Mock
+    ).mockResolvedValue({
+      id: "authority_1"
+    });
+
+    await expect(
+      service.recordEvidence(
+        {
+          evidenceType: "solvency_anchor_registry_deployment",
+          environment: "production_like",
+          status: "passed",
+          releaseIdentifier: "launch-2026.04.14.1",
+          summary: "Solvency anchor registry deployment verified.",
+          evidencePayload: {
+            proofKind: "manual_attestation",
+            networkName: "base-sepolia",
+            chainId: 84532,
+            contractProductSurface: "solvency_report_anchor_registry_v1",
+            signerScope: "solvency_anchor_execution",
+            contractAddress: "0x1111111111111111111111111111111111111111",
+            deploymentTxHash:
+              "0x2222222222222222222222222222222222222222222222222222222222222222",
+            governanceOwner: "0x3333333333333333333333333333333333333333",
+            authorizedAnchorer: "0x4444444444444444444444444444444444444444",
+            abiChecksumSha256:
+              "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            manifestPath: "packages/contracts/deployments/base-sepolia.manifest.json",
+            manifestCommitSha: "abc1234"
+          }
+        },
+        "ops_1",
+        "operations_admin"
+      )
+    ).rejects.toThrow(
+      "Solvency anchor registry deployment evidence does not match the active manifest fields: deployment transaction hash."
     );
 
     expect(transactionClient.releaseReadinessEvidence.create).not.toHaveBeenCalled();

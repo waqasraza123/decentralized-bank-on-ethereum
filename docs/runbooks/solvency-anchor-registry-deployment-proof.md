@@ -116,7 +116,13 @@ pnpm release:readiness:verify -- \
   --access-token "$INTERNAL_OPERATOR_API_KEY"
 ```
 
-The API rejects this evidence when any required payload field is missing or malformed. It also rejects launch approval while this evidence is missing, failed, stale, or scoped to another release identifier.
+The API rejects this evidence when any required payload field is missing or malformed. Before persisting the record, it also cross-checks the payload against active governed manifest tables:
+
+- `ContractDeploymentManifest` must contain the same chain id, registry address, deployment transaction hash, governance owner, authorized anchorer, and ABI checksum
+- `GovernedSignerInventory` must contain an active `solvency_anchor_execution` signer at the authorized anchorer address
+- `GovernanceAuthorityManifest` must contain an active `governance_safe` authority at the governance owner address
+
+It also rejects launch approval while this evidence is missing, failed, stale, or scoped to another release identifier.
 
 ## Launch-Closure Pack
 

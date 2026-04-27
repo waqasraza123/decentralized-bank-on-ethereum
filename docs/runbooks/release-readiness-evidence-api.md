@@ -64,6 +64,12 @@ Field requirements by evidence type:
 - `api_rollback_drill` and `worker_rollback_drill` also require `rollbackReleaseIdentifier`
 - `solvency_anchor_registry_deployment` also requires structured `evidencePayload` fields for chain id, registry address, deployment transaction, owner, authorized anchorer, ABI checksum, manifest path, and manifest commit SHA
 
+For `solvency_anchor_registry_deployment`, the API also verifies the payload against active governed manifest records before it writes evidence:
+
+- registry deployment fields must match `ContractDeploymentManifest`
+- authorized anchorer must match an active `GovernedSignerInventory` row for `solvency_anchor_execution`
+- governance owner must match the active `GovernanceAuthorityManifest` governance safe
+
 ## Evidence types
 
 - `platform_alert_delivery_slo`

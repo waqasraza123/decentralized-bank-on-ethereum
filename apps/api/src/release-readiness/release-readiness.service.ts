@@ -57,6 +57,15 @@ type ReleaseReadinessApprovalRecord =
 type ReleaseLaunchClosurePackRecord =
   Prisma.ReleaseLaunchClosurePackGetPayload<{}>;
 
+type SolvencyAnchorRegistryEvidencePayload = {
+  chainId: number;
+  contractAddress: string;
+  deploymentTxHash: string;
+  governanceOwner: string;
+  authorizedAnchorer: string;
+  abiChecksumSha256: string;
+};
+
 type ReleaseReadinessEvidenceProjection = {
   id: string;
   evidenceType: ReleaseReadinessEvidenceType;
@@ -1484,6 +1493,167 @@ export class ReleaseReadinessService {
     });
   }
 
+  private normalizeHex(value: string): string {
+    return value.trim().toLowerCase();
+  }
+
+  private normalizeChecksum(value: string): string {
+    return value.trim().toLowerCase().replace(/^sha256:/, "");
+  }
+
+  private readSolvencyAnchorRegistryEvidencePayload(
+    evidencePayload: PrismaJsonValue | undefined
+  ): SolvencyAnchorRegistryEvidencePayload | null {
+    if (
+      !evidencePayload ||
+      Array.isArray(evidencePayload) ||
+      typeof evidencePayload !== "object"
+    ) {
+      return null;
+    }
+
+    const payload = evidencePayload as Record<string, unknown>;
+    const chainId =
+      typeof payload.chainId === "number"
+        ? payload.chainId
+        : Number(payload.chainId);
+
+    if (
+      !Number.isInteger(chainId) ||
+      typeof payload.contractAddress !== "string" ||
+      typeof payload.deploymentTxHash !== "string" ||
+      typeof payload.governanceOwner !== "string" ||
+      typeof payload.authorizedAnchorer !== "string" ||
+      typeof payload.abiChecksumSha256 !== "string"
+    ) {
+      return null;
+    }
+
+    return {
+      chainId,
+      contractAddress: payload.contractAddress,
+      deploymentTxHash: payload.deploymentTxHash,
+      governanceOwner: payload.governanceOwner,
+      authorizedAnchorer: payload.authorizedAnchorer,
+      abiChecksumSha256: payload.abiChecksumSha256
+    };
+  }
+
+  private async assertSolvencyAnchorRegistryEvidenceMatchesManifest(
+    environment: ReleaseReadinessEnvironment,
+    evidencePayload: PrismaJsonValue | undefined
+  ): Promise<void> {
+    const payload =
+      this.readSolvencyAnchorRegistryEvidencePayload(evidencePayload);
+
+    if (!payload) {
+      throw new BadRequestException(
+        "Solvency anchor registry deployment evidence payload could not be parsed for manifest verification."
+      );
+    }
+
+    const manifest =
+      await this.prismaService.contractDeploymentManifest.findFirst({
+        where: {
+          environment,
+          chainId: payload.chainId,
+          productSurface: "solvency_report_anchor_registry_v1",
+          contractAddress: {
+            equals: payload.contractAddress,
+            mode: Prisma.QueryMode.insensitive
+          },
+          manifestStatus: "active"
+        }
+      });
+
+    if (!manifest) {
+      throw new BadRequestException(
+        "Solvency anchor registry deployment evidence must match an active contract deployment manifest."
+      );
+    }
+
+    const mismatches: string[] = [];
+
+    if (
+      !manifest.deploymentTxHash ||
+      this.normalizeHex(manifest.deploymentTxHash) !==
+        this.normalizeHex(payload.deploymentTxHash)
+    ) {
+      mismatches.push("deployment transaction hash");
+    }
+
+    if (
+      !manifest.governanceOwner ||
+      this.normalizeHex(manifest.governanceOwner) !==
+        this.normalizeHex(payload.governanceOwner)
+    ) {
+      mismatches.push("governance owner");
+    }
+
+    if (
+      !manifest.authorizedAnchorer ||
+      this.normalizeHex(manifest.authorizedAnchorer) !==
+        this.normalizeHex(payload.authorizedAnchorer)
+    ) {
+      mismatches.push("authorized anchorer");
+    }
+
+    if (
+      this.normalizeChecksum(manifest.abiChecksumSha256) !==
+      this.normalizeChecksum(payload.abiChecksumSha256)
+    ) {
+      mismatches.push("ABI checksum");
+    }
+
+    if (mismatches.length > 0) {
+      throw new BadRequestException(
+        `Solvency anchor registry deployment evidence does not match the active manifest fields: ${mismatches.join(
+          ", "
+        )}.`
+      );
+    }
+
+    const governedSigner =
+      await this.prismaService.governedSignerInventory.findFirst({
+        where: {
+          environment,
+          chainId: payload.chainId,
+          signerScope: "solvency_anchor_execution",
+          signerAddress: {
+            equals: payload.authorizedAnchorer,
+            mode: Prisma.QueryMode.insensitive
+          },
+          active: true
+        }
+      });
+
+    if (!governedSigner) {
+      throw new BadRequestException(
+        "Solvency anchor registry deployment evidence authorized anchorer must match an active governed solvency_anchor_execution signer."
+      );
+    }
+
+    const governanceAuthority =
+      await this.prismaService.governanceAuthorityManifest.findFirst({
+        where: {
+          environment,
+          chainId: payload.chainId,
+          authorityType: "governance_safe",
+          address: {
+            equals: payload.governanceOwner,
+            mode: Prisma.QueryMode.insensitive
+          },
+          manifestStatus: "active"
+        }
+      });
+
+    if (!governanceAuthority) {
+      throw new BadRequestException(
+        "Solvency anchor registry deployment evidence governance owner must match the active governance_safe manifest authority."
+      );
+    }
+  }
+
   async recordEvidence(
     dto: CreateReleaseReadinessEvidenceDto,
     operatorId: string,
@@ -1533,6 +1703,16 @@ export class ReleaseReadinessService {
         `Release readiness evidence for ${dto.evidenceType} requires valid payload fields: ${describeReleaseReadinessEvidencePayloadRequirements(
           dto.evidenceType
         ).join(", ")}.`
+      );
+    }
+
+    if (
+      dto.evidenceType ===
+      ReleaseReadinessEvidenceType.solvency_anchor_registry_deployment
+    ) {
+      await this.assertSolvencyAnchorRegistryEvidenceMatchesManifest(
+        dto.environment,
+        evidencePayload
       );
     }
 
