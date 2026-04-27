@@ -27,6 +27,7 @@ import {
   SolvencyIssueSeverity,
   SolvencyPolicyResumeRequestStatus,
   SolvencyPolicyStateStatus,
+  SolvencyReportAnchorStatus,
   SolvencyReserveSourceType,
   SolvencySnapshotStatus,
   TransactionIntentStatus,
@@ -44,6 +45,10 @@ import { NotificationsService } from "../notifications/notifications.service";
 import { PrismaService } from "../prisma/prisma.service";
 import type { PrismaJsonValue } from "../prisma/prisma-json";
 import { ReviewCasesService } from "../review-cases/review-cases.service";
+import { RecordSolvencyReportAnchorConfirmedDto } from "./dto/record-solvency-report-anchor-confirmed.dto";
+import { RecordSolvencyReportAnchorFailedDto } from "./dto/record-solvency-report-anchor-failed.dto";
+import { RecordSolvencyReportAnchorSubmittedDto } from "./dto/record-solvency-report-anchor-submitted.dto";
+import { RequestSolvencyReportAnchorDto } from "./dto/request-solvency-report-anchor.dto";
 import {
   buildMerkleProof,
   buildMerkleRoot,
@@ -72,8 +77,17 @@ const EXECUTION_ENCUMBERED_STATUSES = [
 ] as const;
 const DEFAULT_PUBLIC_REPORT_LIMIT = 10;
 
+const solvencyReportAnchorInclude = {
+  anchors: {
+    orderBy: {
+      createdAt: "desc"
+    }
+  }
+} as const;
+
 const reserveAttestationSnapshotInclude = {
   reports: {
+    include: solvencyReportAnchorInclude,
     orderBy: {
       publishedAt: "desc"
     },
@@ -188,6 +202,44 @@ type SolvencyReportProjection = {
   signatureAlgorithm: string;
   signerAddress: string;
   publishedAt: string;
+  anchors: SolvencyReportAnchorProjection[];
+};
+
+type SolvencyReportAnchorProjection = {
+  id: string;
+  reportId: string;
+  environment: WorkerRuntimeEnvironment;
+  chainId: number;
+  status: SolvencyReportAnchorStatus;
+  anchorPayload: Prisma.JsonValue;
+  anchorPayloadText: string;
+  anchorPayloadHash: string;
+  anchorPayloadChecksumSha256: string;
+  anchorNote: string | null;
+  requestedByOperatorId: string;
+  requestedByOperatorRole: string | null;
+  requestedAt: string;
+  submittedByOperatorId: string | null;
+  submittedByOperatorRole: string | null;
+  submittedAt: string | null;
+  txHash: string | null;
+  contractAddress: string | null;
+  blockNumber: number | null;
+  logIndex: number | null;
+  confirmedByOperatorId: string | null;
+  confirmedByOperatorRole: string | null;
+  confirmedAt: string | null;
+  failedByOperatorId: string | null;
+  failedByOperatorRole: string | null;
+  failureReason: string | null;
+  failedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+type SolvencyReportAnchorMutationResult = {
+  anchor: SolvencyReportAnchorProjection;
+  stateReused: boolean;
 };
 
 type SolvencyWorkspaceSummarySnapshot = {
@@ -681,6 +733,7 @@ export class SolvencyService {
           },
           include: {
             reports: {
+              include: solvencyReportAnchorInclude,
               orderBy: {
                 publishedAt: "desc"
               },
@@ -697,6 +750,7 @@ export class SolvencyService {
           },
           include: {
             reports: {
+              include: solvencyReportAnchorInclude,
               orderBy: {
                 publishedAt: "desc"
               },
@@ -715,6 +769,7 @@ export class SolvencyService {
           },
           include: {
             reports: {
+              include: solvencyReportAnchorInclude,
               orderBy: {
                 publishedAt: "desc"
               },
@@ -760,6 +815,7 @@ export class SolvencyService {
       },
       include: {
         reports: {
+          include: solvencyReportAnchorInclude,
           orderBy: {
             publishedAt: "desc"
           },
@@ -1169,6 +1225,7 @@ export class SolvencyService {
             },
             include: {
               reports: {
+                include: solvencyReportAnchorInclude,
                 orderBy: {
                   publishedAt: "desc"
                 },
@@ -1240,6 +1297,7 @@ export class SolvencyService {
       },
       include: {
         reports: {
+          include: solvencyReportAnchorInclude,
           orderBy: {
             publishedAt: "desc"
           },
@@ -1272,6 +1330,7 @@ export class SolvencyService {
       },
       include: {
         reports: {
+          include: solvencyReportAnchorInclude,
           orderBy: {
             publishedAt: "desc"
           },
@@ -1307,6 +1366,7 @@ export class SolvencyService {
       },
       include: {
         reports: {
+          include: solvencyReportAnchorInclude,
           orderBy: {
             publishedAt: "desc"
           },
@@ -1422,6 +1482,7 @@ export class SolvencyService {
           },
           include: {
             reports: {
+              include: solvencyReportAnchorInclude,
               orderBy: {
                 publishedAt: "desc"
               },
@@ -1438,6 +1499,7 @@ export class SolvencyService {
           },
           include: {
             reports: {
+              include: solvencyReportAnchorInclude,
               orderBy: {
                 publishedAt: "desc"
               },
@@ -2128,6 +2190,403 @@ export class SolvencyService {
     };
   }
 
+  async requestReportAnchor(
+    reportId: string,
+    dto: RequestSolvencyReportAnchorDto,
+    operatorId: string,
+    operatorRole: string | undefined
+  ): Promise<SolvencyReportAnchorMutationResult> {
+    const normalizedOperatorRole = normalizeOperatorRole(operatorRole);
+    const report = await this.prismaService.solvencyReport.findUnique({
+      where: {
+        id: reportId
+      }
+    });
+
+    if (!report || report.environment !== this.environment) {
+      throw new NotFoundException("Solvency report was not found.");
+    }
+
+    const chainId = dto.chainId ?? report.chainId;
+    const contractAddress = this.normalizeOptionalEvmAddress(dto.contractAddress);
+    const anchorNote = this.normalizeOptionalString(dto.anchorNote);
+    const anchorPayload = {
+      version: 1,
+      anchorType: "solvency_report_hash",
+      environment: report.environment,
+      chainId,
+      reportId: report.id,
+      snapshotId: report.snapshotId,
+      reportVersion: report.reportVersion,
+      reportHash: report.reportHash,
+      reportChecksumSha256: report.reportChecksumSha256,
+      signerAddress: report.signerAddress,
+      signatureAlgorithm: report.signatureAlgorithm,
+      contractAddress: contractAddress ?? null,
+      publishedAt: report.publishedAt.toISOString()
+    } satisfies PrismaJsonValue;
+    const anchorPayloadText = stableStringify(anchorPayload);
+    const anchorPayloadHash = ethers.utils.keccak256(
+      ethers.utils.toUtf8Bytes(anchorPayloadText)
+    );
+    const anchorPayloadChecksumSha256 =
+      buildSha256Checksum(anchorPayloadText);
+
+    const existingAnchor =
+      await this.prismaService.solvencyReportAnchor.findUnique({
+        where: {
+          reportId_anchorPayloadHash: {
+            reportId: report.id,
+            anchorPayloadHash
+          }
+        }
+      });
+
+    if (existingAnchor) {
+      return {
+        anchor: this.mapReportAnchorProjection(existingAnchor),
+        stateReused: true
+      };
+    }
+
+    try {
+      const createdAnchor = await this.prismaService.$transaction(
+        async (transaction) => {
+          const anchor = await transaction.solvencyReportAnchor.create({
+            data: {
+              reportId: report.id,
+              environment: report.environment,
+              chainId,
+              status: SolvencyReportAnchorStatus.requested,
+              anchorPayload: anchorPayload as Prisma.InputJsonValue,
+              anchorPayloadText,
+              anchorPayloadHash,
+              anchorPayloadChecksumSha256,
+              anchorNote: anchorNote ?? undefined,
+              contractAddress: contractAddress ?? undefined,
+              requestedByOperatorId: operatorId,
+              requestedByOperatorRole: normalizedOperatorRole
+            }
+          });
+
+          await this.appendAuditEvent(transaction, {
+            data: {
+              customerId: null,
+              actorType: "operator",
+              actorId: operatorId,
+              action: "solvency.report_anchor.requested",
+              targetType: "SolvencyReportAnchor",
+              targetId: anchor.id,
+              metadata: {
+                reportId: report.id,
+                snapshotId: report.snapshotId,
+                chainId,
+                contractAddress: contractAddress ?? null,
+                anchorPayloadHash,
+                anchorPayloadChecksumSha256,
+                operatorRole: normalizedOperatorRole
+              } as PrismaJsonValue
+            }
+          });
+
+          return anchor;
+        }
+      );
+
+      return {
+        anchor: this.mapReportAnchorProjection(createdAnchor),
+        stateReused: false
+      };
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === "P2002"
+      ) {
+        const anchor = await this.prismaService.solvencyReportAnchor.findUnique({
+          where: {
+            reportId_anchorPayloadHash: {
+              reportId: report.id,
+              anchorPayloadHash
+            }
+          }
+        });
+
+        if (anchor) {
+          return {
+            anchor: this.mapReportAnchorProjection(anchor),
+            stateReused: true
+          };
+        }
+      }
+
+      throw error;
+    }
+  }
+
+  async recordReportAnchorSubmitted(
+    anchorId: string,
+    dto: RecordSolvencyReportAnchorSubmittedDto,
+    operatorId: string,
+    operatorRole: string | undefined
+  ): Promise<SolvencyReportAnchorMutationResult> {
+    const normalizedOperatorRole = normalizeOperatorRole(operatorRole);
+    const anchor = await this.findReportAnchorForMutation(anchorId);
+    const txHash = this.normalizeTransactionHash(dto.txHash);
+    const contractAddress =
+      this.normalizeOptionalEvmAddress(dto.contractAddress) ??
+      anchor.contractAddress;
+
+    if (anchor.status === SolvencyReportAnchorStatus.confirmed) {
+      throw new ConflictException("Confirmed report anchors cannot be resubmitted.");
+    }
+
+    if (
+      anchor.contractAddress &&
+      contractAddress &&
+      anchor.contractAddress !== contractAddress
+    ) {
+      throw new ConflictException(
+        "Submitted contract address does not match the requested anchor contract address."
+      );
+    }
+
+    if (
+      anchor.status === SolvencyReportAnchorStatus.submitted &&
+      anchor.txHash === txHash &&
+      anchor.contractAddress === contractAddress &&
+      anchor.blockNumber === (dto.blockNumber ?? anchor.blockNumber) &&
+      anchor.logIndex === (dto.logIndex ?? anchor.logIndex)
+    ) {
+      return {
+        anchor: this.mapReportAnchorProjection(anchor),
+        stateReused: true
+      };
+    }
+
+    const submittedAt = new Date();
+    const updatedAnchor = await this.prismaService.$transaction(
+      async (transaction) => {
+        const nextAnchor = await transaction.solvencyReportAnchor.update({
+          where: {
+            id: anchor.id
+          },
+          data: {
+            status: SolvencyReportAnchorStatus.submitted,
+            submittedByOperatorId: operatorId,
+            submittedByOperatorRole: normalizedOperatorRole,
+            submittedAt,
+            txHash,
+            contractAddress: contractAddress ?? undefined,
+            blockNumber: dto.blockNumber ?? undefined,
+            logIndex: dto.logIndex ?? undefined,
+            failedByOperatorId: null,
+            failedByOperatorRole: null,
+            failureReason: null,
+            failedAt: null
+          }
+        });
+
+        await this.appendAuditEvent(transaction, {
+          data: {
+            customerId: null,
+            actorType: "operator",
+            actorId: operatorId,
+            action: "solvency.report_anchor.submitted",
+            targetType: "SolvencyReportAnchor",
+            targetId: nextAnchor.id,
+            metadata: {
+              reportId: nextAnchor.reportId,
+              txHash,
+              contractAddress: contractAddress ?? null,
+              blockNumber: dto.blockNumber ?? null,
+              logIndex: dto.logIndex ?? null,
+              operatorRole: normalizedOperatorRole
+            } as PrismaJsonValue
+          }
+        });
+
+        return nextAnchor;
+      }
+    );
+
+    return {
+      anchor: this.mapReportAnchorProjection(updatedAnchor),
+      stateReused: false
+    };
+  }
+
+  async recordReportAnchorConfirmed(
+    anchorId: string,
+    dto: RecordSolvencyReportAnchorConfirmedDto,
+    operatorId: string,
+    operatorRole: string | undefined
+  ): Promise<SolvencyReportAnchorMutationResult> {
+    const normalizedOperatorRole = normalizeOperatorRole(operatorRole);
+    const anchor = await this.findReportAnchorForMutation(anchorId);
+    const txHash = this.normalizeTransactionHash(dto.txHash);
+    const contractAddress =
+      this.normalizeOptionalEvmAddress(dto.contractAddress) ??
+      anchor.contractAddress;
+
+    if (anchor.status === SolvencyReportAnchorStatus.failed) {
+      throw new ConflictException("Failed report anchors must be resubmitted before confirmation.");
+    }
+
+    if (
+      anchor.contractAddress &&
+      contractAddress &&
+      anchor.contractAddress !== contractAddress
+    ) {
+      throw new ConflictException(
+        "Confirmed contract address does not match the requested anchor contract address."
+      );
+    }
+
+    if (anchor.txHash && anchor.txHash !== txHash) {
+      throw new ConflictException(
+        "Submitted transaction hash does not match the confirmation transaction hash."
+      );
+    }
+
+    if (
+      anchor.status === SolvencyReportAnchorStatus.confirmed &&
+      anchor.txHash === txHash &&
+      anchor.contractAddress === contractAddress &&
+      anchor.blockNumber === (dto.blockNumber ?? anchor.blockNumber) &&
+      anchor.logIndex === (dto.logIndex ?? anchor.logIndex)
+    ) {
+      return {
+        anchor: this.mapReportAnchorProjection(anchor),
+        stateReused: true
+      };
+    }
+
+    const confirmedAt = new Date();
+    const updatedAnchor = await this.prismaService.$transaction(
+      async (transaction) => {
+        const nextAnchor = await transaction.solvencyReportAnchor.update({
+          where: {
+            id: anchor.id
+          },
+          data: {
+            status: SolvencyReportAnchorStatus.confirmed,
+            submittedByOperatorId: anchor.submittedByOperatorId ?? operatorId,
+            submittedByOperatorRole:
+              anchor.submittedByOperatorRole ?? normalizedOperatorRole,
+            submittedAt: anchor.submittedAt ?? confirmedAt,
+            txHash,
+            contractAddress: contractAddress ?? undefined,
+            blockNumber: dto.blockNumber ?? anchor.blockNumber ?? undefined,
+            logIndex: dto.logIndex ?? anchor.logIndex ?? undefined,
+            confirmedByOperatorId: operatorId,
+            confirmedByOperatorRole: normalizedOperatorRole,
+            confirmedAt,
+            failedByOperatorId: null,
+            failedByOperatorRole: null,
+            failureReason: null,
+            failedAt: null
+          }
+        });
+
+        await this.appendAuditEvent(transaction, {
+          data: {
+            customerId: null,
+            actorType: "operator",
+            actorId: operatorId,
+            action: "solvency.report_anchor.confirmed",
+            targetType: "SolvencyReportAnchor",
+            targetId: nextAnchor.id,
+            metadata: {
+              reportId: nextAnchor.reportId,
+              txHash,
+              contractAddress: contractAddress ?? null,
+              blockNumber: dto.blockNumber ?? anchor.blockNumber ?? null,
+              logIndex: dto.logIndex ?? anchor.logIndex ?? null,
+              operatorRole: normalizedOperatorRole
+            } as PrismaJsonValue
+          }
+        });
+
+        return nextAnchor;
+      }
+    );
+
+    return {
+      anchor: this.mapReportAnchorProjection(updatedAnchor),
+      stateReused: false
+    };
+  }
+
+  async recordReportAnchorFailed(
+    anchorId: string,
+    dto: RecordSolvencyReportAnchorFailedDto,
+    operatorId: string,
+    operatorRole: string | undefined
+  ): Promise<SolvencyReportAnchorMutationResult> {
+    const normalizedOperatorRole = normalizeOperatorRole(operatorRole);
+    const anchor = await this.findReportAnchorForMutation(anchorId);
+    const failureReason = this.normalizeOptionalString(dto.failureReason);
+
+    if (anchor.status === SolvencyReportAnchorStatus.confirmed) {
+      throw new ConflictException("Confirmed report anchors cannot be marked failed.");
+    }
+
+    if (!failureReason) {
+      throw new BadRequestException("Failure reason is required.");
+    }
+
+    if (
+      anchor.status === SolvencyReportAnchorStatus.failed &&
+      anchor.failureReason === failureReason
+    ) {
+      return {
+        anchor: this.mapReportAnchorProjection(anchor),
+        stateReused: true
+      };
+    }
+
+    const failedAt = new Date();
+    const updatedAnchor = await this.prismaService.$transaction(
+      async (transaction) => {
+        const nextAnchor = await transaction.solvencyReportAnchor.update({
+          where: {
+            id: anchor.id
+          },
+          data: {
+            status: SolvencyReportAnchorStatus.failed,
+            failedByOperatorId: operatorId,
+            failedByOperatorRole: normalizedOperatorRole,
+            failureReason,
+            failedAt
+          }
+        });
+
+        await this.appendAuditEvent(transaction, {
+          data: {
+            customerId: null,
+            actorType: "operator",
+            actorId: operatorId,
+            action: "solvency.report_anchor.failed",
+            targetType: "SolvencyReportAnchor",
+            targetId: nextAnchor.id,
+            metadata: {
+              reportId: nextAnchor.reportId,
+              failureReason,
+              operatorRole: normalizedOperatorRole
+            } as PrismaJsonValue
+          }
+        });
+
+        return nextAnchor;
+      }
+    );
+
+    return {
+      anchor: this.mapReportAnchorProjection(updatedAnchor),
+      stateReused: false
+    };
+  }
+
   async assertWithdrawalApprovalAllowed(): Promise<void> {
     const policyState = await this.getOrCreatePolicyState();
 
@@ -2313,6 +2772,37 @@ export class SolvencyService {
       signatureAlgorithm: string;
       signerAddress: string;
       publishedAt: Date;
+      anchors?: Array<{
+        id: string;
+        reportId: string;
+        environment: WorkerRuntimeEnvironment;
+        chainId: number;
+        status: SolvencyReportAnchorStatus;
+        anchorPayload: Prisma.JsonValue;
+        anchorPayloadText: string;
+        anchorPayloadHash: string;
+        anchorPayloadChecksumSha256: string;
+        anchorNote: string | null;
+        requestedByOperatorId: string;
+        requestedByOperatorRole: string | null;
+        requestedAt: Date;
+        submittedByOperatorId: string | null;
+        submittedByOperatorRole: string | null;
+        submittedAt: Date | null;
+        txHash: string | null;
+        contractAddress: string | null;
+        blockNumber: number | null;
+        logIndex: number | null;
+        confirmedByOperatorId: string | null;
+        confirmedByOperatorRole: string | null;
+        confirmedAt: Date | null;
+        failedByOperatorId: string | null;
+        failedByOperatorRole: string | null;
+        failureReason: string | null;
+        failedAt: Date | null;
+        createdAt: Date;
+        updatedAt: Date;
+      }>;
     }
   ): SolvencyReportProjection {
     return {
@@ -2328,7 +2818,74 @@ export class SolvencyService {
       signature: record.signature,
       signatureAlgorithm: record.signatureAlgorithm,
       signerAddress: record.signerAddress,
-      publishedAt: record.publishedAt.toISOString()
+      publishedAt: record.publishedAt.toISOString(),
+      anchors: (record.anchors ?? []).map((anchor) =>
+        this.mapReportAnchorProjection(anchor)
+      )
+    };
+  }
+
+  private mapReportAnchorProjection(record: {
+    id: string;
+    reportId: string;
+    environment: WorkerRuntimeEnvironment;
+    chainId: number;
+    status: SolvencyReportAnchorStatus;
+    anchorPayload: Prisma.JsonValue;
+    anchorPayloadText: string;
+    anchorPayloadHash: string;
+    anchorPayloadChecksumSha256: string;
+    anchorNote: string | null;
+    requestedByOperatorId: string;
+    requestedByOperatorRole: string | null;
+    requestedAt: Date;
+    submittedByOperatorId: string | null;
+    submittedByOperatorRole: string | null;
+    submittedAt: Date | null;
+    txHash: string | null;
+    contractAddress: string | null;
+    blockNumber: number | null;
+    logIndex: number | null;
+    confirmedByOperatorId: string | null;
+    confirmedByOperatorRole: string | null;
+    confirmedAt: Date | null;
+    failedByOperatorId: string | null;
+    failedByOperatorRole: string | null;
+    failureReason: string | null;
+    failedAt: Date | null;
+    createdAt: Date;
+    updatedAt: Date;
+  }): SolvencyReportAnchorProjection {
+    return {
+      id: record.id,
+      reportId: record.reportId,
+      environment: record.environment,
+      chainId: record.chainId,
+      status: record.status,
+      anchorPayload: record.anchorPayload,
+      anchorPayloadText: record.anchorPayloadText,
+      anchorPayloadHash: record.anchorPayloadHash,
+      anchorPayloadChecksumSha256: record.anchorPayloadChecksumSha256,
+      anchorNote: record.anchorNote ?? null,
+      requestedByOperatorId: record.requestedByOperatorId,
+      requestedByOperatorRole: record.requestedByOperatorRole ?? null,
+      requestedAt: record.requestedAt.toISOString(),
+      submittedByOperatorId: record.submittedByOperatorId ?? null,
+      submittedByOperatorRole: record.submittedByOperatorRole ?? null,
+      submittedAt: record.submittedAt?.toISOString() ?? null,
+      txHash: record.txHash ?? null,
+      contractAddress: record.contractAddress ?? null,
+      blockNumber: record.blockNumber ?? null,
+      logIndex: record.logIndex ?? null,
+      confirmedByOperatorId: record.confirmedByOperatorId ?? null,
+      confirmedByOperatorRole: record.confirmedByOperatorRole ?? null,
+      confirmedAt: record.confirmedAt?.toISOString() ?? null,
+      failedByOperatorId: record.failedByOperatorId ?? null,
+      failedByOperatorRole: record.failedByOperatorRole ?? null,
+      failureReason: record.failureReason ?? null,
+      failedAt: record.failedAt?.toISOString() ?? null,
+      createdAt: record.createdAt.toISOString(),
+      updatedAt: record.updatedAt.toISOString()
     };
   }
 
@@ -3839,6 +4396,46 @@ export class SolvencyService {
   private normalizeOptionalString(value?: string | null): string | null {
     const normalizedValue = value?.trim() ?? null;
     return normalizedValue && normalizedValue.length > 0 ? normalizedValue : null;
+  }
+
+  private normalizeOptionalEvmAddress(value?: string | null): string | null {
+    const normalizedValue = this.normalizeOptionalString(value);
+
+    if (!normalizedValue) {
+      return null;
+    }
+
+    try {
+      return ethers.utils.getAddress(normalizedValue);
+    } catch {
+      throw new BadRequestException("Contract address must be a valid EVM address.");
+    }
+  }
+
+  private normalizeTransactionHash(value: string): string {
+    const normalizedValue = this.normalizeOptionalString(value)?.toLowerCase();
+
+    if (!normalizedValue || !/^0x[a-f0-9]{64}$/.test(normalizedValue)) {
+      throw new BadRequestException(
+        "Transaction hash must be a valid 32-byte hash."
+      );
+    }
+
+    return normalizedValue;
+  }
+
+  private async findReportAnchorForMutation(anchorId: string) {
+    const anchor = await this.prismaService.solvencyReportAnchor.findUnique({
+      where: {
+        id: anchorId
+      }
+    });
+
+    if (!anchor || anchor.environment !== this.environment) {
+      throw new NotFoundException("Solvency report anchor was not found.");
+    }
+
+    return anchor;
   }
 
   private readDecimalStringFromJson(

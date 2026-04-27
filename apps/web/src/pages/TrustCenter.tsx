@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import {
   Download,
   FileCheck2,
+  Link2,
   Scale,
   ShieldAlert,
   ShieldCheck
@@ -74,6 +75,7 @@ const TrustCenter = () => {
 
     return entries[0] ?? null;
   }, [entries, selectedSnapshotId]);
+  const selectedAnchor = (selectedEntry?.report.anchors ?? [])[0] ?? null;
 
   const payload =
     selectedEntry?.report.canonicalPayload &&
@@ -300,7 +302,7 @@ const TrustCenter = () => {
                       <Metric label={locale === "ar" ? "توقيت النشر" : "Published"} value={formatDate(selectedEntry.report.publishedAt, locale)} />
                     </div>
 
-                    <div className="mt-6 grid gap-4 lg:grid-cols-2">
+                    <div className="mt-6 grid gap-4 lg:grid-cols-3">
                       <DetailCard
                         icon={Scale}
                         title={locale === "ar" ? "هوية التقرير" : "Report identity"}
@@ -319,6 +321,18 @@ const TrustCenter = () => {
                           [locale === "ar" ? "مطلوب استئناف يدوي" : "Manual resume required", String(Boolean(policyState?.manualResumeRequired))],
                           [locale === "ar" ? "سبب السياسة" : "Reason code", String(policyState?.reasonCode ?? "none")],
                           [locale === "ar" ? "التقادم" : "Evidence freshness", selectedEntry.snapshot.evidenceFreshness]
+                        ]}
+                      />
+                      <DetailCard
+                        icon={Link2}
+                        title={locale === "ar" ? "مرساة السلسلة" : "On-chain anchor"}
+                        rows={[
+                          [locale === "ar" ? "الحالة" : "Status", selectedAnchor?.status ?? "not_requested"],
+                          [locale === "ar" ? "السلسلة" : "Chain ID", String(selectedAnchor?.chainId ?? selectedEntry.report.chainId)],
+                          [locale === "ar" ? "تجزئة المرساة" : "Anchor hash", selectedAnchor?.anchorPayloadHash ?? selectedEntry.report.reportHash],
+                          [locale === "ar" ? "المعاملة" : "Transaction", selectedAnchor?.txHash ?? "pending"],
+                          [locale === "ar" ? "الكتلة" : "Block", selectedAnchor?.blockNumber === null || typeof selectedAnchor?.blockNumber === "undefined" ? "pending" : String(selectedAnchor.blockNumber)],
+                          [locale === "ar" ? "تأكيد" : "Confirmed", selectedAnchor?.confirmedAt ? formatDate(selectedAnchor.confirmedAt, locale) : "pending"]
                         ]}
                       />
                     </div>

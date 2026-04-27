@@ -972,6 +972,13 @@ enum SolvencySnapshotStatus {
   failed
 }
 
+enum SolvencyReportAnchorStatus {
+  requested
+  submitted
+  confirmed
+  failed
+}
+
 enum SolvencyEvidenceFreshness {
   fresh
   stale
@@ -1155,9 +1162,48 @@ model SolvencyReport {
   signerAddress          String
   publishedAt            DateTime                  @default(now())
   createdAt              DateTime                  @default(now())
+  anchors                SolvencyReportAnchor[]
 
   @@unique([snapshotId])
   @@index([environment, publishedAt])
+}
+
+model SolvencyReportAnchor {
+  id                          String                     @id @default(cuid())
+  reportId                    String
+  report                      SolvencyReport             @relation(fields: [reportId], references: [id])
+  environment                 WorkerRuntimeEnvironment
+  chainId                     Int
+  status                      SolvencyReportAnchorStatus @default(requested)
+  anchorPayload               Json
+  anchorPayloadText           String
+  anchorPayloadHash           String
+  anchorPayloadChecksumSha256 String
+  anchorNote                  String?
+  requestedByOperatorId       String
+  requestedByOperatorRole     String?
+  requestedAt                 DateTime                   @default(now())
+  submittedByOperatorId       String?
+  submittedByOperatorRole     String?
+  submittedAt                 DateTime?
+  txHash                      String?
+  contractAddress             String?
+  blockNumber                 Int?
+  logIndex                    Int?
+  confirmedByOperatorId       String?
+  confirmedByOperatorRole     String?
+  confirmedAt                 DateTime?
+  failedByOperatorId          String?
+  failedByOperatorRole        String?
+  failureReason               String?
+  failedAt                    DateTime?
+  createdAt                   DateTime                   @default(now())
+  updatedAt                   DateTime                   @updatedAt
+
+  @@unique([reportId, anchorPayloadHash])
+  @@index([environment, status, requestedAt])
+  @@index([chainId, txHash])
+  @@index([reportId, status, requestedAt])
 }
 
 model SolvencyReserveEvidence {

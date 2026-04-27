@@ -15,6 +15,10 @@ import { GetSolvencyWorkspaceDto } from "./dto/get-solvency-workspace.dto";
 import { ApproveSolvencyPolicyResumeRequestDto } from "./dto/approve-solvency-policy-resume-request.dto";
 import { RejectSolvencyPolicyResumeRequestDto } from "./dto/reject-solvency-policy-resume-request.dto";
 import { RequestSolvencyPolicyResumeDto } from "./dto/request-solvency-policy-resume.dto";
+import { RecordSolvencyReportAnchorConfirmedDto } from "./dto/record-solvency-report-anchor-confirmed.dto";
+import { RecordSolvencyReportAnchorFailedDto } from "./dto/record-solvency-report-anchor-failed.dto";
+import { RecordSolvencyReportAnchorSubmittedDto } from "./dto/record-solvency-report-anchor-submitted.dto";
+import { RequestSolvencyReportAnchorDto } from "./dto/request-solvency-report-anchor.dto";
 import { SolvencyService } from "./solvency.service";
 
 type InternalOperatorRequest = {
@@ -138,6 +142,122 @@ export class SolvencyController {
     return {
       status: "success",
       message: "Solvency policy resume rejected successfully.",
+      data: result
+    };
+  }
+
+  @Post("reports/:reportId/anchor-requests")
+  async requestReportAnchor(
+    @Param("reportId") reportId: string,
+    @Body(
+      new ValidationPipe({
+        transform: true,
+        whitelist: true,
+        forbidNonWhitelisted: true
+      })
+    )
+    dto: RequestSolvencyReportAnchorDto,
+    @Request() request: InternalOperatorRequest
+  ): Promise<CustomJsonResponse> {
+    const result = await this.solvencyService.requestReportAnchor(
+      reportId,
+      dto,
+      request.internalOperator.operatorId,
+      request.internalOperator.operatorRole
+    );
+
+    return {
+      status: "success",
+      message: result.stateReused
+        ? "Solvency report anchor request already exists."
+        : "Solvency report anchor requested successfully.",
+      data: result
+    };
+  }
+
+  @Post("report-anchors/:anchorId/record-submitted")
+  async recordReportAnchorSubmitted(
+    @Param("anchorId") anchorId: string,
+    @Body(
+      new ValidationPipe({
+        transform: true,
+        whitelist: true,
+        forbidNonWhitelisted: true
+      })
+    )
+    dto: RecordSolvencyReportAnchorSubmittedDto,
+    @Request() request: InternalOperatorRequest
+  ): Promise<CustomJsonResponse> {
+    const result = await this.solvencyService.recordReportAnchorSubmitted(
+      anchorId,
+      dto,
+      request.internalOperator.operatorId,
+      request.internalOperator.operatorRole
+    );
+
+    return {
+      status: "success",
+      message: result.stateReused
+        ? "Solvency report anchor submission was already recorded."
+        : "Solvency report anchor submission recorded successfully.",
+      data: result
+    };
+  }
+
+  @Post("report-anchors/:anchorId/record-confirmed")
+  async recordReportAnchorConfirmed(
+    @Param("anchorId") anchorId: string,
+    @Body(
+      new ValidationPipe({
+        transform: true,
+        whitelist: true,
+        forbidNonWhitelisted: true
+      })
+    )
+    dto: RecordSolvencyReportAnchorConfirmedDto,
+    @Request() request: InternalOperatorRequest
+  ): Promise<CustomJsonResponse> {
+    const result = await this.solvencyService.recordReportAnchorConfirmed(
+      anchorId,
+      dto,
+      request.internalOperator.operatorId,
+      request.internalOperator.operatorRole
+    );
+
+    return {
+      status: "success",
+      message: result.stateReused
+        ? "Solvency report anchor confirmation was already recorded."
+        : "Solvency report anchor confirmation recorded successfully.",
+      data: result
+    };
+  }
+
+  @Post("report-anchors/:anchorId/record-failed")
+  async recordReportAnchorFailed(
+    @Param("anchorId") anchorId: string,
+    @Body(
+      new ValidationPipe({
+        transform: true,
+        whitelist: true,
+        forbidNonWhitelisted: true
+      })
+    )
+    dto: RecordSolvencyReportAnchorFailedDto,
+    @Request() request: InternalOperatorRequest
+  ): Promise<CustomJsonResponse> {
+    const result = await this.solvencyService.recordReportAnchorFailed(
+      anchorId,
+      dto,
+      request.internalOperator.operatorId,
+      request.internalOperator.operatorRole
+    );
+
+    return {
+      status: "success",
+      message: result.stateReused
+        ? "Solvency report anchor failure was already recorded."
+        : "Solvency report anchor failure recorded successfully.",
       data: result
     };
   }

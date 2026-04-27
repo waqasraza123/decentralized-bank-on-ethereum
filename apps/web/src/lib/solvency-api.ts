@@ -21,6 +21,39 @@ export type SolvencyReportSummary = {
   signatureAlgorithm: string;
   signerAddress: string;
   publishedAt: string;
+  anchors?: SolvencyReportAnchorSummary[];
+};
+
+export type SolvencyReportAnchorSummary = {
+  id: string;
+  reportId: string;
+  environment: string;
+  chainId: number;
+  status: string;
+  anchorPayload: unknown;
+  anchorPayloadText: string;
+  anchorPayloadHash: string;
+  anchorPayloadChecksumSha256: string;
+  anchorNote: string | null;
+  requestedByOperatorId: string;
+  requestedByOperatorRole: string | null;
+  requestedAt: string;
+  submittedByOperatorId: string | null;
+  submittedByOperatorRole: string | null;
+  submittedAt: string | null;
+  txHash: string | null;
+  contractAddress: string | null;
+  blockNumber: number | null;
+  logIndex: number | null;
+  confirmedByOperatorId: string | null;
+  confirmedByOperatorRole: string | null;
+  confirmedAt: string | null;
+  failedByOperatorId: string | null;
+  failedByOperatorRole: string | null;
+  failureReason: string | null;
+  failedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
 };
 
 export type SolvencyWorkspaceSummarySnapshot = {

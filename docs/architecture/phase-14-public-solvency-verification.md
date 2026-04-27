@@ -43,7 +43,6 @@ This slice is intentionally narrow and production-useful:
 
 - public Merkle download bundles
 - third-party attestor integration
-- onchain report anchoring
 - multisig-enforced treasury execution redesign
 - public historical CSV/PDF export
 - external notarization pipeline
@@ -122,7 +121,15 @@ The third follow-up now adds governed resume timelock enforcement:
 - audit metadata proving the configured delay was observed
 - operator guidance in `docs/runbooks/solvency-policy-resume-timelock.md`
 
-## Next follow-up after resume timelock
+The fourth follow-up now adds on-chain report hash anchoring records:
 
-After resume timelock, the next best extension is:
-- onchain anchoring of report hashes
+- durable `SolvencyReportAnchor` rows bound to signed solvency reports
+- deterministic anchor payload text, Keccak-256 anchor hash, and SHA-256 payload checksum
+- internal operator lifecycle routes for requested, submitted, confirmed, and failed anchors
+- audit events for each anchor lifecycle transition
+- public report anchor projection and trust-center anchor visibility
+- operator guidance in `docs/runbooks/solvency-report-hash-anchoring.md`
+
+## Next follow-up after report anchoring
+
+After report anchoring, the remaining production extension is to connect the recorded anchor lifecycle to the actual contract or multisig automation that broadcasts and confirms the chain transaction.
