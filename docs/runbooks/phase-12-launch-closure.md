@@ -253,12 +253,13 @@ pnpm release:solvency-anchor-proof -- \
   --network-name base-sepolia \
   --verify-onchain \
   --rpc-url "$BASE_SEPOLIA_RPC_URL" \
+  --launch-closure-fragment-output artifacts/release-launch/solvency-anchor-launch-fragment.json \
   --record-evidence \
   --base-url https://staging-api.example.com \
   --access-token "$OPERATOR_ACCESS_TOKEN"
 ```
 
-The manifest proof generator now preflights passed recordings against the API governed manifest state before posting. `--verify-onchain` also reads the registry owner, authorized anchorer, deployed bytecode, and deployment receipt from the accepted chain before the proof is recorded. The API requires `onchainVerification` metadata for passed `production_like` and `production` solvency anchor registry deployment evidence. If the operator wants to inspect the API gate without writing evidence, replace `--record-evidence` with `--preflight-only` and keep the same API URL and token.
+The manifest proof generator now preflights passed recordings against the API governed manifest state before posting. `--verify-onchain` also reads the registry owner, authorized anchorer, deployed bytecode, and deployment receipt from the accepted chain before the proof is recorded. The API requires `onchainVerification` metadata for passed `production_like` and `production` solvency anchor registry deployment evidence. `--launch-closure-fragment-output` writes a launch-manifest patch containing the checked registry deployment fields and on-chain verification object so operators can update the launch-closure manifest before scaffolding the pack. If the operator wants to inspect the API gate without writing evidence, replace `--record-evidence` with `--preflight-only` and keep the same API URL and token.
 
 Alternatively, record the proof through the verifier when the payload must be supplied inline:
 

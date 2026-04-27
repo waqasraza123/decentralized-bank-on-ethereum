@@ -32,6 +32,10 @@ Optional:
   --note                   Override evidence note
   --evidence-links         Comma-separated durable evidence links
   --output                 Write JSON evidence payload to this file
+  --onchain-verification-output
+                           Write launch-manifest-ready onchainVerification JSON
+  --launch-closure-fragment-output
+                           Write chain, contract, signer, and registry manifest fragment JSON
   --verify-onchain         Read registry state and deployment receipt through RPC
   --rpc-url                JSON-RPC URL for --verify-onchain
   --preflight              Check API governed manifest bindings before printing output
@@ -102,6 +106,10 @@ function readOptionalStringArg(parsedArgs, key) {
 
 function readOptionalBooleanFlag(parsedArgs, key) {
   return parsedArgs[key] === true;
+}
+
+function isProductionLikeOrProduction(environment) {
+  return environment === "production_like" || environment === "production";
 }
 
 function parseEvidenceLinks(value) {
@@ -338,6 +346,52 @@ function buildEvidencePayload({
       blockExplorerUrl: anchorRegistry.blockExplorerUrl ?? "",
       anchoredSmokeTxHash: anchorRegistry.anchoredSmokeTxHash ?? "",
       onchainVerification: onchainVerification ?? undefined
+    }
+  };
+}
+
+function buildLaunchClosureSolvencyFragment({
+  manifest,
+  anchorRegistry,
+  anchorSigner,
+  governanceOwner,
+  manifestPath,
+  manifestCommit,
+  networkName,
+  onchainVerification
+}) {
+  return {
+    chain: {
+      networkName,
+      chainId: manifest.chainId
+    },
+    solvencyAnchorRegistryDeployment: {
+      deploymentTxHash: anchorRegistry.deploymentTxHash,
+      governanceOwner: anchorRegistry.governanceOwner,
+      authorizedAnchorer: anchorRegistry.authorizedAnchorer,
+      manifestPath,
+      manifestCommitSha: manifestCommit,
+      blockExplorerUrl: anchorRegistry.blockExplorerUrl ?? "",
+      anchoredSmokeTxHash: anchorRegistry.anchoredSmokeTxHash ?? "",
+      onchainVerification: onchainVerification ?? undefined
+    },
+    contracts: [
+      {
+        productSurface: contractProductSurface,
+        version: anchorRegistry.version ?? contractProductSurface,
+        address: anchorRegistry.address,
+        abiChecksumSha256: anchorRegistry.abiChecksumSha256
+      }
+    ],
+    governedCustody: {
+      governanceSafeAddress: governanceOwner.address,
+      signerInventory: [
+        {
+          scope: signerScope,
+          keyReference: anchorSigner.keyReference,
+          signerAddress: anchorSigner.signerAddress
+        }
+      ]
     }
   };
 }
@@ -647,6 +701,14 @@ function assertPreflightMatchesProof(preflight, proof) {
   }
 }
 
+function writeJsonFile(outputPath, value) {
+  writeFileSync(
+    path.resolve(resolveRepoRoot(), outputPath),
+    JSON.stringify(value, null, 2) + "\n",
+    "utf8"
+  );
+}
+
 async function main() {
   const parsedArgs = parseArgs(process.argv.slice(2));
 
@@ -695,6 +757,8 @@ async function main() {
         anchorRegistry
       })
     : null;
+  const networkName =
+    readOptionalStringArg(parsedArgs, "network-name") ?? manifest.environment;
 
   const proof = buildEvidencePayload({
     manifest,
@@ -702,8 +766,7 @@ async function main() {
     anchorSigner,
     manifestPath: relativePath,
     manifestCommit,
-    networkName:
-      readOptionalStringArg(parsedArgs, "network-name") ?? manifest.environment,
+    networkName,
     releaseIdentifier,
     status,
     summary: readOptionalStringArg(parsedArgs, "summary"),
@@ -713,8 +776,26 @@ async function main() {
     ),
     onchainVerification
   });
+  const launchClosureFragment = buildLaunchClosureSolvencyFragment({
+    manifest,
+    anchorRegistry,
+    anchorSigner,
+    governanceOwner,
+    manifestPath: relativePath,
+    manifestCommit,
+    networkName,
+    onchainVerification
+  });
   const output = JSON.stringify(proof, null, 2) + "\n";
   const outputPath = readOptionalStringArg(parsedArgs, "output");
+  const onchainVerificationOutputPath = readOptionalStringArg(
+    parsedArgs,
+    "onchain-verification-output"
+  );
+  const launchClosureFragmentOutputPath = readOptionalStringArg(
+    parsedArgs,
+    "launch-closure-fragment-output"
+  );
   const shouldRecordEvidence = readOptionalBooleanFlag(
     parsedArgs,
     "record-evidence"
@@ -728,6 +809,22 @@ async function main() {
     parsedArgs,
     "preflight-only"
   );
+  const writesDurableProof =
+    Boolean(outputPath) ||
+    Boolean(onchainVerificationOutputPath) ||
+    Boolean(launchClosureFragmentOutputPath) ||
+    shouldRecordEvidence;
+
+  if (
+    status === "passed" &&
+    isProductionLikeOrProduction(manifest.environment) &&
+    writesDurableProof &&
+    !onchainVerification
+  ) {
+    fail(
+      "Passed production_like or production proof output requires --verify-onchain --rpc-url <url>."
+    );
+  }
   let preflight = null;
 
   if (shouldPreflightEvidence) {
@@ -746,7 +843,30 @@ async function main() {
   }
 
   if (outputPath) {
-    writeFileSync(path.resolve(resolveRepoRoot(), outputPath), output, "utf8");
+    writeJsonFile(outputPath, proof);
+  }
+
+  if (onchainVerificationOutputPath) {
+    if (!onchainVerification) {
+      fail(
+        "--onchain-verification-output requires --verify-onchain --rpc-url <url>."
+      );
+    }
+
+    writeJsonFile(onchainVerificationOutputPath, onchainVerification);
+  }
+
+  if (launchClosureFragmentOutputPath) {
+    if (
+      isProductionLikeOrProduction(manifest.environment) &&
+      !onchainVerification
+    ) {
+      fail(
+        "--launch-closure-fragment-output for production_like or production manifests requires --verify-onchain --rpc-url <url>."
+      );
+    }
+
+    writeJsonFile(launchClosureFragmentOutputPath, launchClosureFragment);
   }
 
   if (shouldPreflightOnly) {
@@ -754,6 +874,7 @@ async function main() {
       JSON.stringify(
         {
           generatedProof: proof,
+          launchClosureFragment,
           preflight
         },
         null,
@@ -769,6 +890,7 @@ async function main() {
         ? JSON.stringify(
             {
               generatedProof: proof,
+              launchClosureFragment,
               preflight
             },
             null,
@@ -791,6 +913,7 @@ async function main() {
     JSON.stringify(
       {
         generatedProof: proof,
+        launchClosureFragment,
         preflight,
         recordedEvidence
       },

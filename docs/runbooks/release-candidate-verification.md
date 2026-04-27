@@ -145,10 +145,13 @@ pnpm release:solvency-anchor-proof -- \
   --release-id launch-2026.04.10.1 \
   --manifest-commit <git-sha> \
   --network-name base-sepolia \
+  --verify-onchain \
+  --rpc-url "$BASE_SEPOLIA_RPC_URL" \
+  --launch-closure-fragment-output artifacts/release-launch/solvency-anchor-launch-fragment.json \
   --output artifacts/release-launch/solvency-anchor-registry-evidence.json
 ```
 
-To persist the generated proof immediately, add `--record-evidence --base-url <operator-api-url> --access-token "$OPERATOR_ACCESS_TOKEN"`. You can also use the verifier directly when the payload must be supplied inline:
+To persist the generated proof immediately, add `--record-evidence --base-url <operator-api-url> --access-token "$OPERATOR_ACCESS_TOKEN"`. For production-like and production launch candidates, keep `--verify-onchain` and merge the generated launch-closure fragment into the manifest before scaffolding the final pack. You can also use the verifier directly when the payload must be supplied inline:
 
 ```bash
 pnpm release:readiness:verify -- \

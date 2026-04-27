@@ -156,6 +156,7 @@ The seventh follow-up now adds launch-readiness deployment proof for the anchor 
 The eighth follow-up now adds manifest-derived release evidence:
 
 - `pnpm release:solvency-anchor-proof` builds the exact release-readiness evidence payload from the governed custody deployment manifest
+- the same generator can now write the launch-closure manifest fragment and standalone `onchainVerification` object after RPC verification, avoiding hand-copied production-like pack metadata
 - the manifest validator checks optional registry deployment proof fields when operators add real deployment metadata
 - generated proof refuses placeholder or mismatched owner/authorized-anchorer data before launch approval evidence is recorded
 

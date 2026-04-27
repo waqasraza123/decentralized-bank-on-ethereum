@@ -79,6 +79,8 @@ pnpm release:solvency-anchor-proof -- \
   --verify-onchain \
   --rpc-url "$BASE_SEPOLIA_RPC_URL" \
   --evidence-links https://sepolia.etherscan.io/tx/<deployment-tx>,packages/contracts/deployments/base-sepolia.manifest.json \
+  --launch-closure-fragment-output artifacts/release-launch/solvency-anchor-launch-fragment.json \
+  --onchain-verification-output artifacts/release-launch/solvency-anchor-onchain-verification.json \
   --record-evidence \
   --base-url https://prodlike-api.example.com \
   --access-token "$OPERATOR_ACCESS_TOKEN"
@@ -107,7 +109,7 @@ Use `--verify-onchain --rpc-url <url>` before recording production-like or produ
 - `owner()` matches the manifest `governanceOwner`
 - `authorizedAnchorer()` matches the manifest `authorizedAnchorer`
 
-The generated evidence payload includes an `onchainVerification` object with the observed chain id, RPC host, deployment block, registry owner, and authorized anchorer. The RPC URL itself is not persisted.
+The generated evidence payload includes an `onchainVerification` object with the observed chain id, RPC host, deployment block, registry owner, and authorized anchorer. The RPC URL itself is not persisted. Use `--onchain-verification-output <path>` when the operator only needs the exact object to paste under `solvencyAnchorRegistryDeployment.onchainVerification`. Use `--launch-closure-fragment-output <path>` when the operator wants a larger launch-manifest patch containing `chain`, `solvencyAnchorRegistryDeployment`, the registry `contracts[]` entry, and the governed `solvency_anchor_execution` signer reference. For `production_like` and `production`, that fragment output requires `--verify-onchain` so it cannot produce a pack-invalid manifest snippet.
 
 The API requires `onchainVerification` for passed `production_like` and `production` evidence before it writes the record. It must match the top-level payload chain id, registry address, deployment transaction hash, governance owner, and authorized anchorer; `bytecodePresent` must be `true`; `deploymentBlockNumber` must be positive when supplied; and `rpcUrlHost` must be present. Malformed `onchainVerification` data is rejected instead of ignored.
 
