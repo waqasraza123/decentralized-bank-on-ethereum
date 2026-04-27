@@ -55,7 +55,20 @@ function buildManifest(): LaunchClosureManifest {
       manifestPath: "packages/contracts/deployments/staging.manifest.json",
       manifestCommitSha: "abc1234",
       blockExplorerUrl:
-        "https://sepolia.etherscan.io/tx/0x1111111111111111111111111111111111111111111111111111111111111111"
+        "https://sepolia.etherscan.io/tx/0x1111111111111111111111111111111111111111111111111111111111111111",
+      onchainVerification: {
+        verifiedAt: "2026-04-10T11:30:00.000Z",
+        chainId: 11155111,
+        rpcUrlHost: "sepolia-rpc.example.com",
+        contractAddress: "0xcccccccccccccccccccccccccccccccccccccccc",
+        deploymentTxHash:
+          "0x1111111111111111111111111111111111111111111111111111111111111111",
+        deploymentBlockNumber: 12_345_678,
+        deploymentTransactionIndex: 0,
+        owner: "0x1111111111111111111111111111111111111111",
+        authorizedAnchorer: "0x2222222222222222222222222222222222222222",
+        bytecodePresent: true
+      }
     },
     alerting: {
       expectedTargetName: "ops-critical",

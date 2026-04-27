@@ -464,7 +464,20 @@ function buildLaunchClosureManifestTemplate(args: {
       manifestPath: "packages/contracts/deployments/base-sepolia.manifest.json",
       manifestCommitSha: "0000000",
       blockExplorerUrl: "",
-      anchoredSmokeTxHash: ""
+      anchoredSmokeTxHash: "",
+      onchainVerification: {
+        verifiedAt: "2026-04-13T09:00:00.000Z",
+        chainId: 84532,
+        rpcUrlHost: "base-sepolia.example-rpc.internal",
+        contractAddress: "0x0000000000000000000000000000000000003103",
+        deploymentTxHash:
+          "0x0000000000000000000000000000000000000000000000000000000000000000",
+        deploymentBlockNumber: 1,
+        deploymentTransactionIndex: 0,
+        owner: "0x0000000000000000000000000000000000001101",
+        authorizedAnchorer: "0x0000000000000000000000000000000000002105",
+        bytecodePresent: true
+      }
     },
     alerting: {
       expectedTargetName: "ops-critical",

@@ -185,5 +185,13 @@ When using the launch-closure manifest, populate:
 - `solvencyAnchorRegistryDeployment.authorizedAnchorer`
 - `solvencyAnchorRegistryDeployment.manifestPath`
 - `solvencyAnchorRegistryDeployment.manifestCommitSha`
+- `solvencyAnchorRegistryDeployment.onchainVerification.chainId`
+- `solvencyAnchorRegistryDeployment.onchainVerification.rpcUrlHost`
+- `solvencyAnchorRegistryDeployment.onchainVerification.contractAddress`
+- `solvencyAnchorRegistryDeployment.onchainVerification.deploymentTxHash`
+- `solvencyAnchorRegistryDeployment.onchainVerification.deploymentBlockNumber`
+- `solvencyAnchorRegistryDeployment.onchainVerification.owner`
+- `solvencyAnchorRegistryDeployment.onchainVerification.authorizedAnchorer`
+- `solvencyAnchorRegistryDeployment.onchainVerification.bytecodePresent`
 
-The pack generator writes `payloads/solvency_anchor_registry_deployment.json` from those values so the operator can record the proof through the same release-readiness evidence endpoint as the other launch proofs.
+For `production_like` and `production`, the pack generator rejects the manifest unless `solvencyAnchorRegistryDeployment.onchainVerification` is present, uses the same chain id, registry address, deployment transaction, owner, and authorized anchorer as the rest of the manifest, reports deployed bytecode, includes an RPC host, and carries a positive deployment block. The generator writes `payloads/solvency_anchor_registry_deployment.json` from those values so the operator can record the proof through the same release-readiness evidence endpoint as the other launch proofs without weakening the API write gate.

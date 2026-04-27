@@ -243,7 +243,7 @@ curl -sS \
 
 Proceed only when `ready` is `true`, `blockers` is empty, and `evidenceRequestDraft.recordable` is `true`.
 
-Use the generated `payloads/solvency_anchor_registry_deployment.json` from the launch-closure pack. When the governed custody manifest already contains the final registry deployment metadata, prefer generating the evidence payload directly from that manifest:
+Use the generated `payloads/solvency_anchor_registry_deployment.json` from the launch-closure pack. For `production_like` and `production`, the launch-closure manifest must include `solvencyAnchorRegistryDeployment.onchainVerification`; pack validation checks that it matches the registry contract entry, deployment transaction, governance owner, authorized anchorer, chain id, deployed bytecode observation, RPC host, and deployment block before writing the payload. When the governed custody manifest already contains the final registry deployment metadata, prefer generating the evidence payload directly from that manifest:
 
 ```bash
 pnpm release:solvency-anchor-proof -- \
@@ -408,12 +408,14 @@ Pass:
 - deployment transaction and manifest commit SHA are durable and reviewable
 - registry governance owner is the expected governance owner
 - registry authorized anchorer matches the governed `solvency_anchor_execution` signer
+- production-like or production payloads include on-chain verification metadata copied from the accepted RPC observation
 
 Fail:
 
 - registry address, deployment transaction, or ABI checksum is missing
 - owner or authorized anchorer cannot be read from the accepted chain
 - authorized anchorer does not match the governed signer inventory
+- production-like or production launch-closure manifest omits `solvencyAnchorRegistryDeployment.onchainVerification`
 - evidence is recorded without the required structured payload fields
 
 ### final governed launch approval

@@ -10,6 +10,19 @@ export type LaunchClosureEnvironment =
   | "production_like"
   | "production";
 
+export type SolvencyAnchorRegistryOnchainVerification = {
+  verifiedAt?: string;
+  chainId: number;
+  rpcUrlHost: string;
+  contractAddress: string;
+  deploymentTxHash: string;
+  deploymentBlockNumber: number | null;
+  deploymentTransactionIndex?: number | null;
+  owner: string;
+  authorizedAnchorer: string;
+  bytecodePresent: boolean;
+};
+
 export type LaunchClosureManifest = {
   releaseIdentifier: string;
   environment: LaunchClosureEnvironment;
@@ -50,6 +63,7 @@ export type LaunchClosureManifest = {
     manifestCommitSha: string;
     blockExplorerUrl?: string;
     anchoredSmokeTxHash?: string;
+    onchainVerification?: SolvencyAnchorRegistryOnchainVerification;
   };
   alerting: {
     expectedTargetName: string;
@@ -216,6 +230,34 @@ function readPositiveInteger(
   return Number(value);
 }
 
+function validateOptionalNonNegativeInteger(
+  value: unknown,
+  key: string,
+  errors: string[]
+): void {
+  if (value === undefined || value === null) {
+    return;
+  }
+
+  if (!Number.isInteger(value) || Number(value) < 0) {
+    errors.push(`Manifest field ${key} must be a non-negative integer.`);
+  }
+}
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function normalizeComparableHex(value: unknown): string {
+  return normalizeString(value).toLowerCase();
+}
+
+function isProductionLikeOrProductionLaunchClosureEnvironment(
+  environment: LaunchClosureEnvironment
+): boolean {
+  return environment === "production_like" || environment === "production";
+}
+
 function sanitizePathSegment(value: string): string {
   return value.replace(/[^a-zA-Z0-9._-]+/g, "-");
 }
@@ -347,6 +389,145 @@ function findSolvencyAnchorSigner(
     manifest.governedCustody?.signerInventory.find(
       (signer) => signer.scope === "solvency_anchor_execution"
     ) ?? null
+  );
+}
+
+function validateSolvencyAnchorOnchainVerification(
+  manifest: LaunchClosureManifest,
+  registryContract:
+    | NonNullable<LaunchClosureManifest["contracts"]>[number]
+    | null,
+  errors: string[]
+): void {
+  const verification =
+    manifest.solvencyAnchorRegistryDeployment?.onchainVerification;
+  const required = isProductionLikeOrProductionLaunchClosureEnvironment(
+    manifest.environment
+  );
+
+  if (!verification) {
+    if (required) {
+      errors.push(
+        "Manifest field solvencyAnchorRegistryDeployment.onchainVerification is required for production_like and production launch-closure packs."
+      );
+    }
+    return;
+  }
+
+  if (!isPlainRecord(verification)) {
+    errors.push(
+      "Manifest field solvencyAnchorRegistryDeployment.onchainVerification must be an object."
+    );
+    return;
+  }
+
+  const chainId = readPositiveInteger(
+    verification.chainId,
+    "solvencyAnchorRegistryDeployment.onchainVerification.chainId",
+    errors
+  );
+  const contractAddress = readString(
+    verification.contractAddress,
+    "solvencyAnchorRegistryDeployment.onchainVerification.contractAddress",
+    errors
+  );
+  const deploymentTxHash = readString(
+    verification.deploymentTxHash,
+    "solvencyAnchorRegistryDeployment.onchainVerification.deploymentTxHash",
+    errors
+  );
+  const owner = readString(
+    verification.owner,
+    "solvencyAnchorRegistryDeployment.onchainVerification.owner",
+    errors
+  );
+  const authorizedAnchorer = readString(
+    verification.authorizedAnchorer,
+    "solvencyAnchorRegistryDeployment.onchainVerification.authorizedAnchorer",
+    errors
+  );
+
+  readString(
+    verification.rpcUrlHost,
+    "solvencyAnchorRegistryDeployment.onchainVerification.rpcUrlHost",
+    errors
+  );
+
+  if (chainId > 0 && chainId !== manifest.chain?.chainId) {
+    errors.push(
+      "Manifest field solvencyAnchorRegistryDeployment.onchainVerification.chainId must match chain.chainId."
+    );
+  }
+
+  if (
+    contractAddress &&
+    registryContract?.address &&
+    normalizeComparableHex(contractAddress) !==
+      normalizeComparableHex(registryContract.address)
+  ) {
+    errors.push(
+      "Manifest field solvencyAnchorRegistryDeployment.onchainVerification.contractAddress must match the solvency registry contract address."
+    );
+  }
+
+  if (
+    deploymentTxHash &&
+    normalizeComparableHex(deploymentTxHash) !==
+      normalizeComparableHex(
+        manifest.solvencyAnchorRegistryDeployment?.deploymentTxHash
+      )
+  ) {
+    errors.push(
+      "Manifest field solvencyAnchorRegistryDeployment.onchainVerification.deploymentTxHash must match solvencyAnchorRegistryDeployment.deploymentTxHash."
+    );
+  }
+
+  if (
+    owner &&
+    normalizeComparableHex(owner) !==
+      normalizeComparableHex(
+        manifest.solvencyAnchorRegistryDeployment?.governanceOwner
+      )
+  ) {
+    errors.push(
+      "Manifest field solvencyAnchorRegistryDeployment.onchainVerification.owner must match solvencyAnchorRegistryDeployment.governanceOwner."
+    );
+  }
+
+  if (
+    authorizedAnchorer &&
+    normalizeComparableHex(authorizedAnchorer) !==
+      normalizeComparableHex(
+        manifest.solvencyAnchorRegistryDeployment?.authorizedAnchorer
+      )
+  ) {
+    errors.push(
+      "Manifest field solvencyAnchorRegistryDeployment.onchainVerification.authorizedAnchorer must match solvencyAnchorRegistryDeployment.authorizedAnchorer."
+    );
+  }
+
+  if (verification.bytecodePresent !== true) {
+    errors.push(
+      "Manifest field solvencyAnchorRegistryDeployment.onchainVerification.bytecodePresent must be true."
+    );
+  }
+
+  if (required && verification.deploymentBlockNumber === null) {
+    errors.push(
+      "Manifest field solvencyAnchorRegistryDeployment.onchainVerification.deploymentBlockNumber must be a positive integer for production_like and production launch-closure packs."
+    );
+  } else if (verification.deploymentBlockNumber !== null) {
+    readPositiveInteger(
+      verification.deploymentBlockNumber,
+      "solvencyAnchorRegistryDeployment.onchainVerification.deploymentBlockNumber",
+      errors
+    );
+  }
+
+  validateOptionalNonNegativeInteger(
+    verification.deploymentTransactionIndex,
+    "solvencyAnchorRegistryDeployment.onchainVerification.deploymentTransactionIndex",
+    errors
   );
 }
 
@@ -504,7 +685,9 @@ function buildEvidencePayloadTemplate(
       blockExplorerUrl:
         manifest.solvencyAnchorRegistryDeployment.blockExplorerUrl ?? "",
       anchoredSmokeTxHash:
-        manifest.solvencyAnchorRegistryDeployment.anchoredSmokeTxHash ?? ""
+        manifest.solvencyAnchorRegistryDeployment.anchoredSmokeTxHash ?? "",
+      onchainVerification:
+        manifest.solvencyAnchorRegistryDeployment.onchainVerification
     };
   }
 
@@ -1582,6 +1765,12 @@ export function validateLaunchClosureManifest(
       errors
     );
   }
+
+  validateSolvencyAnchorOnchainVerification(
+    manifest,
+    registryContract,
+    errors
+  );
 
   if (manifest.operatorRoster && manifest.operatorRoster.length < 2) {
     errors.push(

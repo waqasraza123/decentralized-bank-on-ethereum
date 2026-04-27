@@ -36,7 +36,19 @@
     "manifestPath": "packages/contracts/deployments/staging.manifest.json",
     "manifestCommitSha": "0000000",
     "blockExplorerUrl": "https://sepolia.etherscan.io/tx/0x0000000000000000000000000000000000000000000000000000000000000000",
-    "anchoredSmokeTxHash": ""
+    "anchoredSmokeTxHash": "",
+    "onchainVerification": {
+      "verifiedAt": "2026-04-10T08:30:00.000Z",
+      "chainId": 11155111,
+      "rpcUrlHost": "sepolia-rpc.example.com",
+      "contractAddress": "0x0000000000000000000000000000000000000000",
+      "deploymentTxHash": "0x0000000000000000000000000000000000000000000000000000000000000000",
+      "deploymentBlockNumber": 1,
+      "deploymentTransactionIndex": 0,
+      "owner": "0x0000000000000000000000000000000000000000",
+      "authorizedAnchorer": "0x0000000000000000000000000000000000000000",
+      "bytecodePresent": true
+    }
   },
   "alerting": {
     "expectedTargetName": "ops-critical",

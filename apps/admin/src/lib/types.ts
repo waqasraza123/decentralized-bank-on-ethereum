@@ -1815,6 +1815,18 @@ export type LaunchClosureManifest = {
     manifestCommitSha: string;
     blockExplorerUrl?: string;
     anchoredSmokeTxHash?: string;
+    onchainVerification?: {
+      verifiedAt?: string;
+      chainId: number;
+      rpcUrlHost: string;
+      contractAddress: string;
+      deploymentTxHash: string;
+      deploymentBlockNumber: number | null;
+      deploymentTransactionIndex?: number | null;
+      owner: string;
+      authorizedAnchorer: string;
+      bytecodePresent: boolean;
+    };
   };
   alerting: {
     expectedTargetName: string;

@@ -63,7 +63,7 @@ Field requirements by evidence type:
 - external-only launch proofs require `releaseIdentifier`
 - `database_restore_drill` also requires `backupReference`
 - `api_rollback_drill` and `worker_rollback_drill` also require `rollbackReleaseIdentifier`
-- `solvency_anchor_registry_deployment` also requires structured `evidencePayload` fields for chain id, registry address, deployment transaction, owner, authorized anchorer, ABI checksum, manifest path, and manifest commit SHA
+- `solvency_anchor_registry_deployment` also requires structured `evidencePayload` fields for chain id, registry address, deployment transaction, owner, authorized anchorer, ABI checksum, manifest path, manifest commit SHA, and production-like or production on-chain verification metadata
 
 For `solvency_anchor_registry_deployment`, the API also verifies the payload against active governed manifest records before it writes evidence:
 
@@ -72,6 +72,7 @@ For `solvency_anchor_registry_deployment`, the API also verifies the payload aga
 - governance owner must match the active `GovernanceAuthorityManifest` governance safe
 - `onchainVerification` is required for passed `production_like` and `production` solvency anchor registry deployment evidence
 - when supplied, `onchainVerification` must match the same chain id, registry address, deployment transaction, governance owner, authorized anchorer, deployed bytecode flag, positive deployment block, and RPC host captured by the proof generator
+- launch-closure packs for `production_like` and `production` must carry `solvencyAnchorRegistryDeployment.onchainVerification` in the manifest so the generated `payloads/solvency_anchor_registry_deployment.json` is recordable without hand-editing
 
 Operators can preflight those same governed manifest bindings before recording evidence:
 
