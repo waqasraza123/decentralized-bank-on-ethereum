@@ -1535,6 +1535,82 @@ export type ReleaseReadinessSummary = {
   recentEvidence: ReleaseReadinessEvidence[];
 };
 
+export type ReleaseReadinessSolvencyAnchorRegistryDeploymentProof = {
+  generatedAt: string;
+  evidenceType: "solvency_anchor_registry_deployment";
+  environment: string;
+  chainId: number;
+  ready: boolean;
+  blockers: string[];
+  requiredOperatorInputs: string[];
+  recordEvidenceEndpoint: "/release-readiness/internal/evidence";
+  registryContract: {
+    id: string;
+    productSurface: "solvency_report_anchor_registry_v1";
+    contractVersion: string;
+    contractAddress: string;
+    abiChecksumSha256: string;
+    deploymentTxHash: string | null;
+    governanceOwner: string | null;
+    authorizedAnchorer: string | null;
+    blockExplorerUrl: string | null;
+    anchoredSmokeTxHash: string | null;
+    manifestStatus: string;
+    legacyPath: boolean;
+    updatedAt: string;
+  } | null;
+  governedSigner: {
+    id: string;
+    signerScope: "solvency_anchor_execution";
+    backendKind: string;
+    keyReferenceSha256: string;
+    signerAddress: string;
+    allowedMethods: string[];
+    manifestVersion: string | null;
+    environmentBinding: string | null;
+    active: boolean;
+    updatedAt: string;
+  } | null;
+  governanceAuthority: {
+    id: string;
+    authorityType: "governance_safe";
+    address: string;
+    ownerLabel: string | null;
+    manifestStatus: string;
+    updatedAt: string;
+  } | null;
+  evidenceRequestDraft: {
+    recordable: boolean;
+    body: {
+      evidenceType: "solvency_anchor_registry_deployment";
+      environment:
+        | "development"
+        | "ci"
+        | "staging"
+        | "production_like"
+        | "production";
+      status: "passed";
+      releaseIdentifier: string;
+      summary: string;
+      runbookPath: string;
+      evidencePayload: {
+        proofKind: "manual_attestation";
+        networkName: string;
+        chainId: number;
+        contractProductSurface: "solvency_report_anchor_registry_v1";
+        signerScope: "solvency_anchor_execution";
+        contractAddress: string;
+        deploymentTxHash: string;
+        governanceOwner: string;
+        authorizedAnchorer: string;
+        abiChecksumSha256: string;
+        manifestPath: string;
+        manifestCommitSha: string;
+      };
+    } | null;
+  };
+};
+
 export type ReleaseReadinessApprovalChecklist = {
   securityConfigurationComplete: boolean;
   accessAndGovernanceComplete: boolean;

@@ -63,6 +63,7 @@ import type {
   ReleaseReadinessApprovalRecoveryTarget,
   ReleaseReadinessApprovalList,
   ReleaseReadinessEvidenceList,
+  ReleaseReadinessSolvencyAnchorRegistryDeploymentProof,
   ReleaseReadinessSummary,
   PlatformAlertGovernanceMutationResult,
   PlatformAlertRouteResult,
@@ -1069,6 +1070,24 @@ export async function createReleaseReadinessEvidence(
     method: "POST",
     url: "/release-readiness/internal/evidence",
     data: payload
+  });
+}
+
+export async function getSolvencyAnchorRegistryDeploymentProof(
+  session: OperatorSession,
+  params: {
+    environment: string;
+    chainId: number;
+    networkName?: string;
+    manifestPath?: string;
+    manifestCommitSha?: string;
+    releaseIdentifier?: string;
+  }
+): Promise<ReleaseReadinessSolvencyAnchorRegistryDeploymentProof> {
+  return requestData(session, {
+    method: "GET",
+    url: "/release-readiness/internal/solvency-anchor-registry-deployment-proof",
+    params
   });
 }
 

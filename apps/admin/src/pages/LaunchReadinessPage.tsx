@@ -8,6 +8,7 @@ import {
   getReleaseReadinessApprovalLineage,
   getReleaseReadinessApprovalRecoveryTarget,
   getReleaseReadinessSummary,
+  getSolvencyAnchorRegistryDeploymentProof,
   listLaunchClosurePacks,
   listPendingReleases,
   listReleaseReadinessApprovalLineageIncidents,
@@ -24,7 +25,8 @@ import type {
   LaunchClosureManifest,
   LaunchClosurePackFile,
   ReleaseLaunchClosurePack,
-  ReleaseReadinessApproval
+  ReleaseReadinessApproval,
+  ReleaseReadinessSolvencyAnchorRegistryDeploymentProof
 } from "@/lib/types";
 import {
   formatCount,
@@ -142,6 +144,15 @@ type ApprovalDraft = {
   residualRiskNote: string;
   openBlockers: string;
 } & Record<(typeof approvalChecklistFields)[number]["key"], boolean>;
+
+type SolvencyAnchorPreflightParams = {
+  environment: EvidenceDraft["environment"];
+  chainId: number;
+  networkName?: string;
+  manifestPath?: string;
+  manifestCommitSha?: string;
+  releaseIdentifier?: string;
+};
 
 const staleApprovalMutationMessage =
   "Launch approval changed after it was loaded. Refresh approval data and retry.";
@@ -475,6 +486,46 @@ function parseLaunchClosureManifestDraft(
   return parsed as LaunchClosureManifest;
 }
 
+function buildSolvencyAnchorPreflightParams(
+  manifestDraft: string,
+  evidenceDraft: EvidenceDraft
+): SolvencyAnchorPreflightParams {
+  const manifest = parseLaunchClosureManifestDraft(manifestDraft);
+
+  if (!Number.isInteger(manifest.chain?.chainId) || manifest.chain.chainId <= 0) {
+    throw new Error("Launch-closure manifest must include a positive chain id.");
+  }
+
+  return {
+    environment: evidenceDraft.environment,
+    chainId: manifest.chain.chainId,
+    networkName: trimToUndefined(manifest.chain.networkName),
+    manifestPath: trimToUndefined(
+      manifest.solvencyAnchorRegistryDeployment?.manifestPath
+    ),
+    manifestCommitSha: trimToUndefined(
+      manifest.solvencyAnchorRegistryDeployment?.manifestCommitSha
+    ),
+    releaseIdentifier:
+      trimToUndefined(evidenceDraft.releaseIdentifier) ??
+      trimToUndefined(manifest.releaseIdentifier)
+  };
+}
+
+function formatSolvencyAnchorPreflightSummary(
+  preflight: ReleaseReadinessSolvencyAnchorRegistryDeploymentProof
+): string {
+  if (preflight.ready && preflight.evidenceRequestDraft.recordable) {
+    return "Solvency anchor registry proof is ready to record.";
+  }
+
+  if (preflight.ready) {
+    return "Solvency anchor registry manifest bindings are ready; supply the remaining operator inputs before recording.";
+  }
+
+  return "Solvency anchor registry proof has blockers.";
+}
+
 function downloadLaunchClosureFile(file: LaunchClosurePackFile) {
   const blob = new Blob([file.content], {
     type: "text/plain;charset=utf-8"
@@ -511,6 +562,10 @@ export function LaunchReadinessPage() {
     null
   );
   const [decisionFlash, setDecisionFlash] = useState<string | null>(null);
+  const [solvencyAnchorPreflight, setSolvencyAnchorPreflight] =
+    useState<ReleaseReadinessSolvencyAnchorRegistryDeploymentProof | null>(null);
+  const [solvencyAnchorPreflightError, setSolvencyAnchorPreflightError] =
+    useState<string | null>(null);
   const [evidenceError, setEvidenceError] = useState<string | null>(null);
   const [approvalRequestError, setApprovalRequestError] = useState<string | null>(
     null
@@ -669,6 +724,11 @@ export function LaunchReadinessPage() {
     setSearchParams(nextParams);
   }
 
+  function clearSolvencyAnchorPreflight() {
+    setSolvencyAnchorPreflight(null);
+    setSolvencyAnchorPreflightError(null);
+  }
+
   useEffect(() => {
     const nextParams = new URLSearchParams(searchParams);
     let changed = false;
@@ -822,6 +882,8 @@ export function LaunchReadinessPage() {
       setEvidenceFlash("Evidence recorded.");
       setEvidenceError(null);
       setEvidenceConfirm(false);
+      setSolvencyAnchorPreflight(null);
+      setSolvencyAnchorPreflightError(null);
       setEvidenceDraft(
         createEvidenceDraft(result.evidence.evidenceType, result.evidence.environment)
       );
@@ -834,6 +896,47 @@ export function LaunchReadinessPage() {
     onError: (error) => {
       setEvidenceError(
         readApiErrorMessage(error, "Failed to record release readiness evidence.")
+      );
+    }
+  });
+
+  const solvencyAnchorPreflightMutation = useMutation({
+    mutationFn: () =>
+      getSolvencyAnchorRegistryDeploymentProof(
+        session!,
+        buildSolvencyAnchorPreflightParams(
+          launchClosureManifestDraft,
+          evidenceDraft
+        )
+      ),
+    onSuccess: (result) => {
+      const draftBody = result.evidenceRequestDraft.body;
+
+      setSolvencyAnchorPreflight(result);
+      setSolvencyAnchorPreflightError(null);
+      setEvidenceFlash(formatSolvencyAnchorPreflightSummary(result));
+      setEvidenceError(null);
+
+      if (draftBody) {
+        setEvidenceDraft((current) => ({
+          ...current,
+          evidenceType: draftBody.evidenceType,
+          environment: draftBody.environment,
+          status: draftBody.status,
+          releaseIdentifier: draftBody.releaseIdentifier,
+          runbookPath: draftBody.runbookPath,
+          summary: draftBody.summary,
+          evidencePayloadJson: JSON.stringify(draftBody.evidencePayload, null, 2)
+        }));
+      }
+    },
+    onError: (error) => {
+      setSolvencyAnchorPreflight(null);
+      setSolvencyAnchorPreflightError(
+        readApiErrorMessage(
+          error,
+          "Failed to preflight the solvency anchor registry deployment proof."
+        )
       );
     }
   });
@@ -1018,6 +1121,7 @@ export function LaunchReadinessPage() {
   }
 
   function seedLaunchClosureTemplate() {
+    clearSolvencyAnchorPreflight();
     setLaunchClosureManifestDraft(
       stringifyLaunchClosureManifest(
         buildLaunchClosureManifestTemplate({
@@ -1161,6 +1265,8 @@ export function LaunchReadinessPage() {
   const requiredEvidencePayloadFields = listRequiredEvidencePayloadFields(
     evidenceDraft.evidenceType
   );
+  const isSolvencyAnchorRegistryEvidence =
+    evidenceDraft.evidenceType === "solvency_anchor_registry_deployment";
   const evidencePayloadJsonError = evidenceDraft.evidencePayloadJson.trim()
     ? readEvidencePayloadJsonError(evidenceDraft.evidencePayloadJson)
     : null;
@@ -1169,9 +1275,13 @@ export function LaunchReadinessPage() {
   );
   const latestScopedLaunchClosurePack: ReleaseLaunchClosurePack | null =
     scopedLaunchClosurePacksQuery.data?.packs[0] ?? null;
+  const solvencyAnchorPreflightBlocksRecord =
+    isSolvencyAnchorRegistryEvidence &&
+    !solvencyAnchorPreflight?.evidenceRequestDraft.recordable;
   const recordEvidenceDisabled =
     !evidenceConfirm ||
     recordEvidenceMutation.isPending ||
+    solvencyAnchorPreflightBlocksRecord ||
     evidenceDraft.summary.trim().length === 0 ||
     missingEvidenceMetadataFields.length > 0 ||
     evidencePayloadJsonError !== null ||
@@ -1394,12 +1504,13 @@ export function LaunchReadinessPage() {
                 <select
                   aria-label="Evidence type"
                   value={evidenceDraft.evidenceType}
-                  onChange={(event) =>
+                  onChange={(event) => {
+                    clearSolvencyAnchorPreflight();
                     setEvidenceDraft((current) => ({
                       ...current,
                       evidenceType: event.target.value as EvidenceDraft["evidenceType"]
-                    }))
-                  }
+                    }));
+                  }}
                 >
                   {releaseReadinessEvidenceTypes.map((option) => (
                     <option key={option} value={option}>
@@ -1414,12 +1525,13 @@ export function LaunchReadinessPage() {
                 <select
                   aria-label="Evidence environment"
                   value={evidenceDraft.environment}
-                  onChange={(event) =>
+                  onChange={(event) => {
+                    clearSolvencyAnchorPreflight();
                     setEvidenceDraft((current) => ({
                       ...current,
                       environment: event.target.value as EvidenceDraft["environment"]
-                    }))
-                  }
+                    }));
+                  }}
                 >
                   {releaseReadinessEnvironments.map((option) => (
                     <option key={option} value={option}>
@@ -1455,12 +1567,13 @@ export function LaunchReadinessPage() {
                   aria-label="Evidence release identifier"
                   placeholder="launch-2026.04.13.1"
                   value={evidenceDraft.releaseIdentifier}
-                  onChange={(event) =>
+                  onChange={(event) => {
+                    clearSolvencyAnchorPreflight();
                     setEvidenceDraft((current) => ({
                       ...current,
                       releaseIdentifier: event.target.value
-                    }))
-                  }
+                    }));
+                  }}
                 />
               </div>
 
@@ -1560,14 +1673,134 @@ export function LaunchReadinessPage() {
                   aria-label="Evidence payload JSON"
                   placeholder='{"proofKind":"manual_attestation"}'
                   value={evidenceDraft.evidencePayloadJson}
-                  onChange={(event) =>
+                  onChange={(event) => {
+                    clearSolvencyAnchorPreflight();
                     setEvidenceDraft((current) => ({
                       ...current,
                       evidencePayloadJson: event.target.value
-                    }))
-                  }
+                    }));
+                  }}
                 />
               </div>
+
+              {isSolvencyAnchorRegistryEvidence ? (
+                <>
+                  <div className="admin-action-buttons">
+                    <button
+                      type="button"
+                      className="admin-secondary-button"
+                      disabled={solvencyAnchorPreflightMutation.isPending}
+                      onClick={() => solvencyAnchorPreflightMutation.mutate()}
+                    >
+                      {solvencyAnchorPreflightMutation.isPending
+                        ? "Checking proof..."
+                        : "Preflight proof"}
+                    </button>
+                  </div>
+
+                  {solvencyAnchorPreflight ? (
+                    <>
+                      <InlineNotice
+                        title={
+                          solvencyAnchorPreflight.evidenceRequestDraft.recordable
+                            ? "Solvency proof recordable"
+                            : solvencyAnchorPreflight.ready
+                              ? "Solvency proof needs metadata"
+                              : "Solvency proof blocked"
+                        }
+                        description={
+                          solvencyAnchorPreflight.blockers.length > 0
+                            ? solvencyAnchorPreflight.blockers.join(" ")
+                            : solvencyAnchorPreflight.requiredOperatorInputs
+                                  .length > 0
+                              ? `Missing ${solvencyAnchorPreflight.requiredOperatorInputs.join(
+                                  ", "
+                                )}.`
+                              : "Active deployment, signer, and governance manifests match the release proof gate."
+                        }
+                        tone={
+                          solvencyAnchorPreflight.evidenceRequestDraft.recordable
+                            ? "positive"
+                            : solvencyAnchorPreflight.ready
+                              ? "warning"
+                              : "critical"
+                        }
+                      />
+                      <DetailList
+                        items={[
+                          {
+                            label: "Registry",
+                            value:
+                              solvencyAnchorPreflight.registryContract
+                                ?.contractAddress ?? "Missing",
+                            mono: Boolean(
+                              solvencyAnchorPreflight.registryContract
+                                ?.contractAddress
+                            )
+                          },
+                          {
+                            label: "Deployment tx",
+                            value:
+                              solvencyAnchorPreflight.registryContract
+                                ?.deploymentTxHash ?? "Missing",
+                            mono: Boolean(
+                              solvencyAnchorPreflight.registryContract
+                                ?.deploymentTxHash
+                            )
+                          },
+                          {
+                            label: "Anchor signer",
+                            value:
+                              solvencyAnchorPreflight.governedSigner
+                                ?.signerAddress ?? "Missing",
+                            mono: Boolean(
+                              solvencyAnchorPreflight.governedSigner
+                                ?.signerAddress
+                            )
+                          },
+                          {
+                            label: "Governance safe",
+                            value:
+                              solvencyAnchorPreflight.governanceAuthority
+                                ?.address ?? "Missing",
+                            mono: Boolean(
+                              solvencyAnchorPreflight.governanceAuthority
+                                ?.address
+                            )
+                          },
+                          {
+                            label: "Key reference fingerprint",
+                            value:
+                              solvencyAnchorPreflight.governedSigner
+                                ?.keyReferenceSha256 ?? "Missing",
+                            mono: Boolean(
+                              solvencyAnchorPreflight.governedSigner
+                                ?.keyReferenceSha256
+                            )
+                          }
+                        ]}
+                      />
+                    </>
+                  ) : null}
+
+                  {!solvencyAnchorPreflight &&
+                  !solvencyAnchorPreflightError ? (
+                    <InlineNotice
+                      title="Solvency proof preflight required"
+                      description="Run the manifest preflight before recording this evidence type."
+                      tone="warning"
+                    />
+                  ) : null}
+
+                  {solvencyAnchorPreflightError ? (
+                    <InlineNotice
+                      title="Solvency proof preflight failed"
+                      description={solvencyAnchorPreflightError}
+                      tone="critical"
+                    />
+                  ) : null}
+                </>
+              ) : null}
 
               {requiredEvidenceMetadataFields.length > 0 ? (
                 <InlineNotice
@@ -2991,9 +3224,10 @@ export function LaunchReadinessPage() {
                 <textarea
                   aria-label="Launch-closure manifest JSON"
                   value={launchClosureManifestDraft}
-                  onChange={(event) =>
-                    setLaunchClosureManifestDraft(event.target.value)
-                  }
+                  onChange={(event) => {
+                    clearSolvencyAnchorPreflight();
+                    setLaunchClosureManifestDraft(event.target.value);
+                  }}
                 />
                 <p className="admin-field-help">
                   Seed from the selected release context, validate the manifest,

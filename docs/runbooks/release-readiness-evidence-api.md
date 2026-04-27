@@ -88,6 +88,8 @@ The response includes:
 - `governedSigner.keyReferenceSha256`: a fingerprint of the signer key reference; the raw key reference is not returned by this endpoint
 - `evidenceRequestDraft`: a `POST /release-readiness/internal/evidence` body draft; `recordable` becomes `true` only when the database bindings are ready and all operator inputs were supplied
 
+The admin Launch Readiness evidence workspace calls this endpoint when operators select `solvency_anchor_registry_deployment` and choose `Preflight proof`. The console derives the request from the launch-closure manifest draft, shows the same blockers and governed records, copies the returned evidence payload into the record-evidence form, and keeps recording disabled until the latest preflight is recordable.
+
 ## Evidence types
 
 - `platform_alert_delivery_slo`
