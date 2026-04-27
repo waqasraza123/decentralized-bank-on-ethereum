@@ -54,6 +54,37 @@ Optional but recommended fields:
 - the `solvency_anchor_execution` signer address matches the authorized anchorer
 - any post-deploy smoke anchor transaction is linked when it exists
 
+## Generate Evidence From The Deployment Manifest
+
+Prefer generating the evidence payload from the governed custody deployment manifest instead of hand-copying JSON:
+
+```bash
+pnpm release:solvency-anchor-proof -- \
+  --manifest packages/contracts/deployments/base-sepolia.manifest.json \
+  --release-id launch-2026.04.10.1 \
+  --manifest-commit <git-sha> \
+  --network-name base-sepolia \
+  --evidence-links https://sepolia.etherscan.io/tx/<deployment-tx>,packages/contracts/deployments/base-sepolia.manifest.json \
+  --output artifacts/release-launch/solvency-anchor-registry-evidence.json
+```
+
+The generator reads:
+
+- `authorities[]` entry with `authorityType: "governance_safe"`
+- `signers[]` entry with `scope: "solvency_anchor_execution"`
+- `contracts[]` entry with `productSurface: "solvency_report_anchor_registry_v1"`
+
+The contract manifest entry must include:
+
+- `deploymentTxHash`
+- `governanceOwner`
+- `authorizedAnchorer`
+- `abiChecksumSha256`
+- optional `blockExplorerUrl`
+- optional `anchoredSmokeTxHash`
+
+The command refuses to produce accepted proof when the registry owner does not match the governance safe, the authorized anchorer does not match the governed anchor signer, the ABI checksum is still a placeholder, or the deployment transaction hash is missing.
+
 ## Recording Through The CLI
 
 Use the release-readiness verifier for a manual attestation:

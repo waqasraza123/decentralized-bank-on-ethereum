@@ -12,6 +12,22 @@ function fail(message) {
   throw new Error(message);
 }
 
+const evmAddressPattern = /^0x[a-fA-F0-9]{40}$/;
+const evmTransactionHashPattern = /^0x[a-fA-F0-9]{64}$/;
+const sha256ChecksumPattern = /^(sha256:)?[a-fA-F0-9]{64}$/;
+const solvencyAnchorProductSurface = "solvency_report_anchor_registry_v1";
+const solvencyAnchorSignerScope = "solvency_anchor_execution";
+
+function assertOptionalPattern(value, label, pattern) {
+  if (value === undefined || value === null) {
+    return;
+  }
+
+  if (typeof value !== "string" || !pattern.test(value.trim())) {
+    fail(`${label} is malformed.`);
+  }
+}
+
 for (const relativePath of manifestPaths) {
   const absolutePath = path.join(packageRoot, relativePath);
   const manifest = JSON.parse(readFileSync(absolutePath, "utf8"));
@@ -26,6 +42,16 @@ for (const relativePath of manifestPaths) {
 
   if (!Array.isArray(manifest.signers) || manifest.signers.length < 5) {
     fail(`${relativePath} must define at least five governed signers.`);
+  }
+
+  const solvencyAnchorSigner = manifest.signers.find(
+    (signer) => signer.scope === solvencyAnchorSignerScope
+  );
+
+  if (!solvencyAnchorSigner) {
+    fail(`${relativePath} must define ${solvencyAnchorSignerScope} signer.`);
+  } else if (!evmAddressPattern.test(solvencyAnchorSigner.signerAddress ?? "")) {
+    fail(`${relativePath} ${solvencyAnchorSignerScope}.signerAddress is malformed.`);
   }
 
   if (!Array.isArray(manifest.contracts) || manifest.contracts.length < 3) {
@@ -43,6 +69,45 @@ for (const relativePath of manifestPaths) {
 
     if (contract.legacyPath === true) {
       fail(`${relativePath} cannot mark production v1 contracts as legacyPath=true.`);
+    }
+
+    assertOptionalPattern(
+      contract.deploymentTxHash,
+      `${relativePath} ${contract.productSurface}.deploymentTxHash`,
+      evmTransactionHashPattern
+    );
+    assertOptionalPattern(
+      contract.governanceOwner,
+      `${relativePath} ${contract.productSurface}.governanceOwner`,
+      evmAddressPattern
+    );
+    assertOptionalPattern(
+      contract.authorizedAnchorer,
+      `${relativePath} ${contract.productSurface}.authorizedAnchorer`,
+      evmAddressPattern
+    );
+
+    if (
+      contract.productSurface === solvencyAnchorProductSurface &&
+      contract.authorizedAnchorer &&
+      solvencyAnchorSigner &&
+      contract.authorizedAnchorer.toLowerCase() !==
+        solvencyAnchorSigner.signerAddress.toLowerCase()
+    ) {
+      fail(
+        `${relativePath} ${solvencyAnchorProductSurface}.authorizedAnchorer must match ${solvencyAnchorSignerScope} signerAddress.`
+      );
+    }
+
+    if (
+      contract.productSurface === solvencyAnchorProductSurface &&
+      contract.abiChecksumSha256 &&
+      contract.deploymentTxHash &&
+      !sha256ChecksumPattern.test(contract.abiChecksumSha256)
+    ) {
+      fail(
+        `${relativePath} ${solvencyAnchorProductSurface}.abiChecksumSha256 must be a real SHA-256 checksum once deploymentTxHash is recorded.`
+      );
     }
   }
 }

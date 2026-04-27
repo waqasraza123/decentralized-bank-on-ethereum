@@ -23,6 +23,7 @@
     "release:readiness:probe": "pnpm --filter @stealth-trails-bank/api release-readiness:probe",
     "release:readiness:verify": "pnpm --filter @stealth-trails-bank/api release-readiness:verify",
     "release:launch-closure": "pnpm --filter @stealth-trails-bank/api release-launch-closure",
+    "release:solvency-anchor-proof": "pnpm --filter @stealth-trails-bank/contracts release-proof:solvency-anchor",
     "mobile:android": "pnpm --filter @stealth-trails-bank/mobile android",
     "mobile:ios": "pnpm --filter @stealth-trails-bank/mobile ios",
     "mobile:typecheck": "pnpm --filter @stealth-trails-bank/mobile exec tsc --noEmit",

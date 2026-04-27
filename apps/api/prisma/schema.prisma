@@ -2678,6 +2678,11 @@ model ContractDeploymentManifest {
   contractVersion           String
   contractAddress           String
   abiChecksumSha256         String
+  deploymentTxHash          String?
+  governanceOwner           String?
+  authorizedAnchorer        String?
+  blockExplorerUrl          String?
+  anchoredSmokeTxHash       String?
   manifestStatus            ContractDeploymentStatus    @default(active)
   legacyPath                Boolean                     @default(false)
   governanceAuthorityId     String?
@@ -2690,6 +2695,8 @@ model ContractDeploymentManifest {
   @@unique([environment, chainId, productSurface, contractAddress])
   @@index([environment, chainId, productSurface, manifestStatus])
   @@index([contractVersion, manifestStatus])
+  @@index([deploymentTxHash])
+  @@index([authorizedAnchorer])
 }
 
 model ReleaseReadinessEvidence {

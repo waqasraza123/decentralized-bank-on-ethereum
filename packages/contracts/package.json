@@ -10,6 +10,7 @@
     "clean": "hardhat clean",
     "compile": "hardhat compile",
     "validate:manifests": "node ./scripts/validate-manifests.mjs",
+    "release-proof:solvency-anchor": "node ./scripts/build-solvency-anchor-release-proof.mjs",
     "deploy:staking-v1": "hardhat ignition deploy ./ignition/modules/StakingV1.ts",
     "deploy:loan-book-v1": "hardhat ignition deploy ./ignition/modules/LoanBookV1.ts",
     "deploy:solvency-anchor-registry": "hardhat ignition deploy ./ignition/modules/SolvencyReportAnchorRegistry.ts",

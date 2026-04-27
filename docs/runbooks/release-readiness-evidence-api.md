@@ -145,6 +145,14 @@ pnpm release:readiness:verify -- --help
 
 That command runs the automated Phase 12 proof suites, supports manual secret or role review attestations, prints structured JSON proof, and can persist each result through the same evidence API.
 
+For solvency anchor registry deployment evidence, generate the structured payload from the governed deployment manifest before recording it:
+
+```bash
+pnpm release:solvency-anchor-proof -- --help
+```
+
+That command refuses placeholder deployment metadata and emits a `POST /release-readiness/internal/evidence` payload for `solvency_anchor_registry_deployment`.
+
 ## Launch-closure pack
 
 For the remaining staging-like Phase 12 work, prefer the repo-owned launch-closure helper:

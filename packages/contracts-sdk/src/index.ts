@@ -109,6 +109,11 @@ export type ContractDeploymentManifestEntry = {
   address: string;
   abiChecksumSha256: string;
   legacyPath: boolean;
+  deploymentTxHash?: string;
+  governanceOwner?: string;
+  authorizedAnchorer?: string;
+  blockExplorerUrl?: string;
+  anchoredSmokeTxHash?: string;
 };
 
 export type GovernedCustodyManifest = {

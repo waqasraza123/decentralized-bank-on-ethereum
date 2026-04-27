@@ -188,6 +188,14 @@ pnpm release:readiness:verify -- --help
 
 That command runs the automated contract, backend integration, and end-to-end finance proofs, and it can also record manual secret-handling or role-review evidence through the same release-readiness workflow.
 
+For solvency anchor registry launch proof, generate the structured evidence payload from the governed deployment manifest:
+
+~~~bash
+pnpm release:solvency-anchor-proof -- --help
+~~~
+
+The generator refuses placeholder deployment metadata and checks that `solvency_report_anchor_registry_v1` is owned by the manifest governance safe and authorized for the manifest `solvency_anchor_execution` signer.
+
 ## Documentation
 
 Update docs when you change:

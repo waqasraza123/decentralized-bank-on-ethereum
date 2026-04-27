@@ -153,6 +153,12 @@ The seventh follow-up now adds launch-readiness deployment proof for the anchor 
 - launch-closure manifest validation for `solvency_report_anchor_registry_v1` and the governed `solvency_anchor_execution` signer
 - operator guidance in `docs/runbooks/solvency-anchor-registry-deployment-proof.md`
 
-## Next follow-up after deployment proof gating
+The eighth follow-up now adds manifest-derived release evidence:
 
-After release-readiness proof gating, the remaining production extension is to replace placeholder deployment manifest addresses/checksums with real staged deployment values and record accepted `solvency_anchor_registry_deployment` evidence for the launch candidate.
+- `pnpm release:solvency-anchor-proof` builds the exact release-readiness evidence payload from the governed custody deployment manifest
+- the manifest validator checks optional registry deployment proof fields when operators add real deployment metadata
+- generated proof refuses placeholder or mismatched owner/authorized-anchorer data before launch approval evidence is recorded
+
+## Next follow-up after manifest-derived proof
+
+After manifest-derived proof generation, the remaining production extension is to replace placeholder deployment manifest addresses/checksums with real staged deployment values and record accepted `solvency_anchor_registry_deployment` evidence for the launch candidate.

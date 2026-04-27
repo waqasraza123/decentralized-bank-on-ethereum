@@ -198,6 +198,7 @@ Run these from the repository root unless noted otherwise.
 | `pnpm compile`                            | Run compile tasks where defined                                      |
 | `pnpm release:readiness:probe -- --help`  | Run a Phase 12 drill probe and optionally record evidence            |
 | `pnpm release:readiness:verify -- --help` | Run Phase 12 automated proof suites or manual review attestations    |
+| `pnpm release:solvency-anchor-proof -- --help` | Build release evidence from the solvency anchor registry manifest |
 | `pnpm dev:mobile`                         | Start the Expo mobile app                                            |
 | `pnpm mobile:ios`                         | Open the Expo app in an iOS simulator                                |
 | `pnpm mobile:android`                     | Open the Expo app in an Android emulator                             |

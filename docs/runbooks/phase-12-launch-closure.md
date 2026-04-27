@@ -233,7 +233,18 @@ pnpm release:readiness:verify -- \
 
 ### 5. Record the solvency anchor registry deployment proof
 
-Use the generated `payloads/solvency_anchor_registry_deployment.json` from the launch-closure pack, or record the proof through the verifier:
+Use the generated `payloads/solvency_anchor_registry_deployment.json` from the launch-closure pack. When the governed custody manifest already contains the final registry deployment metadata, prefer generating the evidence payload directly from that manifest:
+
+```bash
+pnpm release:solvency-anchor-proof -- \
+  --manifest packages/contracts/deployments/base-sepolia.manifest.json \
+  --release-id launch-2026.04.10.1 \
+  --manifest-commit <git-sha> \
+  --network-name base-sepolia \
+  --output artifacts/release-launch/solvency-anchor-registry-evidence.json
+```
+
+Alternatively, record the proof through the verifier when the payload must be supplied inline:
 
 ```bash
 pnpm release:readiness:verify -- \

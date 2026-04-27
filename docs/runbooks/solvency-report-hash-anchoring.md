@@ -160,10 +160,12 @@ pnpm --filter @stealth-trails-bank/contracts deploy:solvency-anchor-registry
 
 After deployment:
 
-1. update the appropriate `packages/contracts/deployments/*.manifest.json` address and ABI checksum
-2. configure `WORKER_SOLVENCY_ANCHOR_CONTRACT_ADDRESS`
-3. configure `WORKER_SOLVENCY_ANCHOR_SIGNER_PRIVATE_KEY` only for the managed worker signer approved as the registry `authorizedAnchorer`
-4. keep `WORKER_EXECUTION_MODE=managed` for automatic broadcasting, or omit the signer pair for manual multisig submission plus worker confirmation monitoring
+1. update the appropriate `packages/contracts/deployments/*.manifest.json` address, ABI checksum, deployment transaction, governance owner, and authorized anchorer
+2. run `pnpm --filter @stealth-trails-bank/contracts validate:manifests`
+3. generate release-readiness evidence with `pnpm release:solvency-anchor-proof -- --manifest <path> --release-id <id> --manifest-commit <sha>`
+4. configure `WORKER_SOLVENCY_ANCHOR_CONTRACT_ADDRESS`
+5. configure `WORKER_SOLVENCY_ANCHOR_SIGNER_PRIVATE_KEY` only for the managed worker signer approved as the registry `authorizedAnchorer`
+6. keep `WORKER_EXECUTION_MODE=managed` for automatic broadcasting, or omit the signer pair for manual multisig submission plus worker confirmation monitoring
 
 ## Operator Verification
 

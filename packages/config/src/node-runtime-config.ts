@@ -572,10 +572,43 @@ function parseGovernedCustodyManifest(
         ),
         legacyPath:
           typeof entry.legacyPath === "boolean" ? entry.legacyPath : false,
+        deploymentTxHash: readOptionalStringLike(
+          entry.deploymentTxHash,
+          `${name}.contracts[${index}].deploymentTxHash`,
+        ),
+        governanceOwner: readOptionalStringLike(
+          entry.governanceOwner,
+          `${name}.contracts[${index}].governanceOwner`,
+        ),
+        authorizedAnchorer: readOptionalStringLike(
+          entry.authorizedAnchorer,
+          `${name}.contracts[${index}].authorizedAnchorer`,
+        ),
+        blockExplorerUrl: readOptionalStringLike(
+          entry.blockExplorerUrl,
+          `${name}.contracts[${index}].blockExplorerUrl`,
+        ),
+        anchoredSmokeTxHash: readOptionalStringLike(
+          entry.anchoredSmokeTxHash,
+          `${name}.contracts[${index}].anchoredSmokeTxHash`,
+        ),
       };
     }),
     rawManifest: input,
   };
+}
+
+function readOptionalStringLike(value: unknown, name: string): string | null {
+  if (value === undefined || value === null) {
+    return null;
+  }
+
+  if (typeof value !== "string") {
+    throw new Error(`${name} must be a string when provided.`);
+  }
+
+  const normalizedValue = value.trim();
+  return normalizedValue.length > 0 ? normalizedValue : null;
 }
 
 function readStringLike(value: unknown, name: string): string {
@@ -1302,6 +1335,11 @@ export type ContractDeploymentRuntimeConfig = {
   readonly address: string;
   readonly abiChecksumSha256: string;
   readonly legacyPath: boolean;
+  readonly deploymentTxHash: string | null;
+  readonly governanceOwner: string | null;
+  readonly authorizedAnchorer: string | null;
+  readonly blockExplorerUrl: string | null;
+  readonly anchoredSmokeTxHash: string | null;
 };
 
 export type GovernedCustodyRuntimeConfig = {

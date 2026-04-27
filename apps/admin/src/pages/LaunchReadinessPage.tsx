@@ -357,6 +357,20 @@ function buildLaunchClosureManifestTemplate(args: {
       workerRollbackReleaseId: `worker-${rollbackReleaseIdentifier}`,
       backupReference: "snapshot-2026-04-13T09:00Z"
     },
+    chain: {
+      networkName: "base-sepolia",
+      chainId: 84532
+    },
+    solvencyAnchorRegistryDeployment: {
+      deploymentTxHash:
+        "0x0000000000000000000000000000000000000000000000000000000000000000",
+      governanceOwner: "0x0000000000000000000000000000000000001101",
+      authorizedAnchorer: "0x0000000000000000000000000000000000002105",
+      manifestPath: "packages/contracts/deployments/base-sepolia.manifest.json",
+      manifestCommitSha: "0000000",
+      blockExplorerUrl: "",
+      anchoredSmokeTxHash: ""
+    },
     alerting: {
       expectedTargetName: "ops-critical",
       expectedTargetHealthStatus: "critical",

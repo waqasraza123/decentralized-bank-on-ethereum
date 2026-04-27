@@ -137,6 +137,19 @@ pnpm release:readiness:verify -- \
 
 Solvency anchor registry deployment:
 
+Prefer generating the payload from the governed custody manifest first:
+
+```bash
+pnpm release:solvency-anchor-proof -- \
+  --manifest packages/contracts/deployments/base-sepolia.manifest.json \
+  --release-id launch-2026.04.10.1 \
+  --manifest-commit <git-sha> \
+  --network-name base-sepolia \
+  --output artifacts/release-launch/solvency-anchor-registry-evidence.json
+```
+
+Then record the generated JSON through the evidence API, or use the verifier directly when the payload must be supplied inline:
+
 ```bash
 pnpm release:readiness:verify -- \
   --proof solvency_anchor_registry_deployment \

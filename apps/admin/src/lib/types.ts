@@ -1727,6 +1727,19 @@ export type LaunchClosureManifest = {
     workerRollbackReleaseId: string;
     backupReference: string;
   };
+  chain: {
+    networkName: string;
+    chainId: number;
+  };
+  solvencyAnchorRegistryDeployment: {
+    deploymentTxHash: string;
+    governanceOwner: string;
+    authorizedAnchorer: string;
+    manifestPath: string;
+    manifestCommitSha: string;
+    blockExplorerUrl?: string;
+    anchoredSmokeTxHash?: string;
+  };
   alerting: {
     expectedTargetName: string;
     expectedTargetHealthStatus: "warning" | "critical";
