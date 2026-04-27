@@ -6,7 +6,10 @@ import {
   Matches,
   MaxLength
 } from "class-validator";
-import type { LaunchClosureManifest } from "../launch-closure-pack";
+import type {
+  LaunchClosureManifest,
+  LaunchClosureSolvencyFragment
+} from "../launch-closure-pack";
 import { OPERATOR_CASE_NOTE_CONTENT_PATTERN } from "../../review-cases/dto/operator-case-input.validation";
 import { releaseReadinessEnvironments } from "./create-release-readiness-evidence.dto";
 import { RELEASE_READINESS_IDENTIFIER_MAX_LENGTH } from "./release-readiness-input.validation";
@@ -14,6 +17,10 @@ import { RELEASE_READINESS_IDENTIFIER_MAX_LENGTH } from "./release-readiness-inp
 export class LaunchClosureManifestDto {
   @IsObject()
   manifest!: LaunchClosureManifest;
+
+  @IsOptional()
+  @IsObject()
+  solvencyFragment?: LaunchClosureSolvencyFragment;
 }
 
 export class GetLaunchClosureStatusDto {

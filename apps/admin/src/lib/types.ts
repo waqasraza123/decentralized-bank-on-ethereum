@@ -1871,6 +1871,20 @@ export type LaunchClosureManifest = {
   };
 };
 
+export type LaunchClosureSolvencyFragment = {
+  chain?: LaunchClosureManifest["chain"];
+  solvencyAnchorRegistryDeployment?: LaunchClosureManifest["solvencyAnchorRegistryDeployment"];
+  contracts?: NonNullable<LaunchClosureManifest["contracts"]>;
+  governedCustody?: {
+    governanceSafeAddress?: string;
+    treasurySafeAddress?: string;
+    emergencySafeAddress?: string;
+    signerInventory?: NonNullable<
+      LaunchClosureManifest["governedCustody"]
+    >["signerInventory"];
+  };
+};
+
 export type LaunchClosureValidationResult = {
   errors: string[];
   warnings: string[];
@@ -1901,6 +1915,7 @@ export type LaunchClosureStatus = {
 export type LaunchClosureValidationResponse = {
   validation: LaunchClosureValidationResult;
   summaryMarkdown: string;
+  manifest?: LaunchClosureManifest;
 };
 
 export type LaunchClosureScaffoldResponse = LaunchClosureValidationResponse & {

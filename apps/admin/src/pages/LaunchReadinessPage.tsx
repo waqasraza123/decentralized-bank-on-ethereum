@@ -24,6 +24,7 @@ import {
 import type {
   LaunchClosureManifest,
   LaunchClosurePackFile,
+  LaunchClosureSolvencyFragment,
   ReleaseLaunchClosurePack,
   ReleaseReadinessApproval,
   ReleaseReadinessSolvencyAnchorRegistryDeploymentProof
@@ -583,6 +584,28 @@ function parseLaunchClosureManifestDraft(
   return parsed as LaunchClosureManifest;
 }
 
+function parseLaunchClosureSolvencyFragmentDraft(
+  draft: string
+): LaunchClosureSolvencyFragment | undefined {
+  if (draft.trim().length === 0) {
+    return undefined;
+  }
+
+  let parsed: unknown;
+
+  try {
+    parsed = JSON.parse(draft) as unknown;
+  } catch {
+    throw new Error("Solvency fragment draft is not valid JSON.");
+  }
+
+  if (!parsed || Array.isArray(parsed) || typeof parsed !== "object") {
+    throw new Error("Solvency fragment draft must be a JSON object.");
+  }
+
+  return parsed as LaunchClosureSolvencyFragment;
+}
+
 function buildSolvencyAnchorPreflightParams(
   manifestDraft: string,
   evidenceDraft: EvidenceDraft
@@ -674,6 +697,8 @@ export function LaunchReadinessPage() {
   const [launchClosureManifestDraft, setLaunchClosureManifestDraft] = useState(
     stringifyLaunchClosureManifest(buildLaunchClosureManifestTemplate())
   );
+  const [launchClosureSolvencyFragmentDraft, setLaunchClosureSolvencyFragmentDraft] =
+    useState("");
   const [launchClosureSummary, setLaunchClosureSummary] = useState<string | null>(null);
   const [launchClosureFlash, setLaunchClosureFlash] = useState<string | null>(null);
   const [launchClosureError, setLaunchClosureError] = useState<string | null>(null);
@@ -1156,8 +1181,15 @@ export function LaunchReadinessPage() {
   });
 
   const validateLaunchClosureMutation = useMutation({
-    mutationFn: (manifest: LaunchClosureManifest) =>
-      validateLaunchClosureManifest(session!, manifest),
+    mutationFn: (input: {
+      manifest: LaunchClosureManifest;
+      solvencyFragment?: LaunchClosureSolvencyFragment;
+    }) =>
+      validateLaunchClosureManifest(
+        session!,
+        input.manifest,
+        input.solvencyFragment
+      ),
     onSuccess: (result) => {
       setLaunchClosureSummary(result.summaryMarkdown);
       setLaunchClosureFlash("Manifest validated.");
@@ -1174,8 +1206,15 @@ export function LaunchReadinessPage() {
   });
 
   const scaffoldLaunchClosureMutation = useMutation({
-    mutationFn: (manifest: LaunchClosureManifest) =>
-      scaffoldLaunchClosurePack(session!, manifest),
+    mutationFn: (input: {
+      manifest: LaunchClosureManifest;
+      solvencyFragment?: LaunchClosureSolvencyFragment;
+    }) =>
+      scaffoldLaunchClosurePack(
+        session!,
+        input.manifest,
+        input.solvencyFragment
+      ),
     onSuccess: async (result) => {
       setLaunchClosureSummary(result.summaryMarkdown);
       setLaunchClosureFlash("Launch-closure pack generated.");
@@ -1200,16 +1239,25 @@ export function LaunchReadinessPage() {
   function runLaunchClosureAction(action: "validate" | "scaffold") {
     try {
       const manifest = parseLaunchClosureManifestDraft(launchClosureManifestDraft);
+      const solvencyFragment = parseLaunchClosureSolvencyFragmentDraft(
+        launchClosureSolvencyFragmentDraft
+      );
 
       setLaunchClosureError(null);
       setLaunchClosureFlash(null);
 
       if (action === "validate") {
-        validateLaunchClosureMutation.mutate(manifest);
+        validateLaunchClosureMutation.mutate({
+          manifest,
+          solvencyFragment
+        });
         return;
       }
 
-      scaffoldLaunchClosureMutation.mutate(manifest);
+      scaffoldLaunchClosureMutation.mutate({
+        manifest,
+        solvencyFragment
+      });
     } catch (error) {
       setLaunchClosureError(
         error instanceof Error ? error.message : "Manifest draft must be valid JSON."
@@ -1219,6 +1267,7 @@ export function LaunchReadinessPage() {
 
   function seedLaunchClosureTemplate() {
     clearSolvencyAnchorPreflight();
+    setLaunchClosureSolvencyFragmentDraft("");
     setLaunchClosureManifestDraft(
       stringifyLaunchClosureManifest(
         buildLaunchClosureManifestTemplate({
@@ -3372,6 +3421,22 @@ export function LaunchReadinessPage() {
                 <p className="admin-field-help">
                   Seed from the selected release context, validate the manifest,
                   then generate the full execution pack for browser download.
+                </p>
+              </div>
+              <div className="admin-field">
+                <span>Solvency launch fragment JSON</span>
+                <textarea
+                  aria-label="Solvency launch fragment JSON"
+                  value={launchClosureSolvencyFragmentDraft}
+                  onChange={(event) => {
+                    clearSolvencyAnchorPreflight();
+                    setLaunchClosureSolvencyFragmentDraft(event.target.value);
+                  }}
+                />
+                <p className="admin-field-help">
+                  Paste the `--launch-closure-fragment-output` JSON to merge
+                  registry deployment, signer, and on-chain verification fields
+                  during validation and pack generation.
                 </p>
               </div>
 

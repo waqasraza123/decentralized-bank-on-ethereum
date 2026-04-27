@@ -132,6 +132,8 @@ pnpm release:launch-closure -- validate \
 
 The merge replaces the solvency registry deployment block, updates the `chain` scope, replaces or appends the `solvency_report_anchor_registry_v1` contract entry, and replaces or appends the governed `solvency_anchor_execution` signer while preserving the rest of the manifest. For `production_like` and `production`, validation still requires the fragment to carry RPC-verified `onchainVerification` metadata.
 
+In the admin Launch Readiness workspace, paste the same fragment into `Solvency launch fragment JSON` next to the manifest editor. `Validate manifest` and `Generate pack` send the base manifest plus the fragment to the API, and the API validates/scaffolds the merged manifest.
+
 ### 2. Generate the launch-closure pack
 
 ```bash

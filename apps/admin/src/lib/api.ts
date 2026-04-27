@@ -46,6 +46,7 @@ import type {
   LedgerReconciliationScanRunList,
   LedgerReconciliationWorkspace,
   LaunchClosureManifest,
+  LaunchClosureSolvencyFragment,
   LaunchClosureScaffoldResponse,
   LaunchClosureStatus,
   LaunchClosureValidationResponse,
@@ -1202,26 +1203,30 @@ export async function getLaunchClosureStatus(
 
 export async function validateLaunchClosureManifest(
   session: OperatorSession,
-  manifest: LaunchClosureManifest
+  manifest: LaunchClosureManifest,
+  solvencyFragment?: LaunchClosureSolvencyFragment
 ): Promise<LaunchClosureValidationResponse> {
   return requestData(session, {
     method: "POST",
     url: "/release-readiness/internal/launch-closure/validate",
     data: {
-      manifest
+      manifest,
+      ...(solvencyFragment ? { solvencyFragment } : {})
     }
   });
 }
 
 export async function scaffoldLaunchClosurePack(
   session: OperatorSession,
-  manifest: LaunchClosureManifest
+  manifest: LaunchClosureManifest,
+  solvencyFragment?: LaunchClosureSolvencyFragment
 ): Promise<LaunchClosureScaffoldResponse> {
   return requestData(session, {
     method: "POST",
     url: "/release-readiness/internal/launch-closure/scaffold",
     data: {
-      manifest
+      manifest,
+      ...(solvencyFragment ? { solvencyFragment } : {})
     }
   });
 }

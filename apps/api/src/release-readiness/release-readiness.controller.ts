@@ -30,6 +30,7 @@ import {
   RejectReleaseReadinessApprovalDto
 } from "./dto/release-readiness-approval.dto";
 import {
+  mergeLaunchClosureSolvencyFragment,
   renderLaunchClosureValidationSummary,
   validateLaunchClosureManifest as validateLaunchClosureManifestPayload
 } from "./launch-closure-pack";
@@ -411,14 +412,18 @@ export class ReleaseReadinessController {
     )
     dto: LaunchClosureManifestDto
   ): CustomJsonResponse {
-    const validation = validateLaunchClosureManifestPayload(dto.manifest);
+    const manifest = dto.solvencyFragment
+      ? mergeLaunchClosureSolvencyFragment(dto.manifest, dto.solvencyFragment)
+      : dto.manifest;
+    const validation = validateLaunchClosureManifestPayload(manifest);
 
     return {
       status: "success",
       message: "Launch-closure manifest validated successfully.",
       data: {
         validation,
-        summaryMarkdown: renderLaunchClosureValidationSummary(dto.manifest)
+        summaryMarkdown: renderLaunchClosureValidationSummary(manifest),
+        manifest
       }
     };
   }
@@ -434,14 +439,17 @@ export class ReleaseReadinessController {
     dto: LaunchClosureManifestDto,
     @Request() request: InternalOperatorRequest
   ): Promise<CustomJsonResponse> {
-    const validation = validateLaunchClosureManifestPayload(dto.manifest);
+    const manifest = dto.solvencyFragment
+      ? mergeLaunchClosureSolvencyFragment(dto.manifest, dto.solvencyFragment)
+      : dto.manifest;
+    const validation = validateLaunchClosureManifestPayload(manifest);
 
     if (validation.errors.length > 0) {
       throw new BadRequestException(validation.errors.join(" "));
     }
 
     const result = await this.releaseReadinessService.storeLaunchClosurePack(
-      dto.manifest,
+      manifest,
       request.internalOperator.operatorId,
       request.internalOperator.operatorRole
     );

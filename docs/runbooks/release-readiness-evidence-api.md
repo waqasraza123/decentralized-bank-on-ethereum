@@ -206,4 +206,20 @@ Use `merge-solvency-fragment --manifest <path> --solvency-fragment <path> --outp
 - local dry-run support that is still not accepted launch proof
 - external-only accepted proofs that require `staging`, `production_like`, or `production`
 
+The HTTP launch-closure endpoints accept the same fragment shape:
+
+```json
+{
+  "manifest": {},
+  "solvencyFragment": {
+    "chain": {},
+    "solvencyAnchorRegistryDeployment": {},
+    "contracts": [],
+    "governedCustody": {}
+  }
+}
+```
+
+The API merges `solvencyFragment` before validation or scaffolding. The admin Launch Readiness workspace exposes a matching "Solvency launch fragment JSON" editor so operators can paste the `--launch-closure-fragment-output` file without manually editing the full manifest draft.
+
 See [`docs/runbooks/phase-12-launch-closure.md`](/Users/mc/development/blockchain/ethereum/stealth-trails-bank/docs/runbooks/phase-12-launch-closure.md).
