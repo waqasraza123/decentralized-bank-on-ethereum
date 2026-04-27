@@ -163,6 +163,16 @@ Preserve the stored pack checksum, merged manifest checksum, `artifact-manifest.
 
 `verify-artifact-manifest` exits non-zero when a listed file is missing, an unexpected file is present, a byte length or SHA-256 checksum differs, the file count is stale, or the top-level merged manifest checksum no longer matches the listed `manifest.json` entry.
 
+After generating a stored pack through the admin workspace or API, check the persisted payload before requesting approval:
+
+```bash
+curl -sS \
+  'https://staging-api.example.com/release-readiness/internal/launch-closure/packs/<pack-id>/integrity' \
+  -H "authorization: Bearer $OPERATOR_ACCESS_TOKEN"
+```
+
+The integrity response must report `valid: true`, `artifactChecksumMatches: true`, and an empty `issues` array. A failed response means the stored pack payload, its `artifactManifest`, or the generated file snapshot no longer agree and the pack must not be used for governed approval.
+
 ### 3. Run the staging-like probes
 
 Alert delivery SLO:

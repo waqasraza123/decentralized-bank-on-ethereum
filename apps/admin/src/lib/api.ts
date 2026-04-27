@@ -58,6 +58,7 @@ import type {
   OversightIncidentList,
   PlatformAlertDeliveryTargetHealthList,
   PlatformAlertList,
+  ReleaseLaunchClosurePackIntegrity,
   ReleaseLaunchClosurePackList,
   ReleaseReadinessApprovalLineage,
   ReleaseReadinessApprovalLineageIncidentList,
@@ -1239,6 +1240,16 @@ export async function listLaunchClosurePacks(
     method: "GET",
     url: "/release-readiness/internal/launch-closure/packs",
     params
+  });
+}
+
+export async function verifyLaunchClosurePackIntegrity(
+  session: OperatorSession,
+  packId: string
+): Promise<ReleaseLaunchClosurePackIntegrity> {
+  return requestData(session, {
+    method: "GET",
+    url: `/release-readiness/internal/launch-closure/packs/${packId}/integrity`
   });
 }
 

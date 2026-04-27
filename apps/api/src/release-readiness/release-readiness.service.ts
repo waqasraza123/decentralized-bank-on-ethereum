@@ -55,6 +55,7 @@ import {
   type LaunchClosureArtifactManifest,
   type LaunchClosureArtifactManifestFile,
   type LaunchClosureManifest,
+  type LaunchClosurePackFile
 } from "./launch-closure-pack";
 
 type ReleaseReadinessEvidenceRecord =
@@ -428,6 +429,35 @@ type ReleaseLaunchClosurePackList = {
   packs: ReleaseLaunchClosurePackProjection[];
   limit: number;
   totalCount: number;
+};
+
+type ReleaseLaunchClosurePackIntegrityIssue = {
+  code:
+    | "artifact_payload_invalid"
+    | "artifact_checksum_mismatch"
+    | "artifact_manifest_missing"
+    | "file_missing"
+    | "file_unexpected"
+    | "byte_length_mismatch"
+    | "content_checksum_mismatch"
+    | "manifest_checksum_mismatch"
+    | "file_count_mismatch";
+  relativePath: string | null;
+  expected: string | number | null;
+  actual: string | number | null;
+  message: string;
+};
+
+type ReleaseLaunchClosurePackIntegrityResult = {
+  pack: ReleaseLaunchClosurePackProjection;
+  valid: boolean;
+  artifactChecksumSha256: string;
+  recomputedArtifactChecksumSha256: string;
+  artifactChecksumMatches: boolean;
+  manifestChecksumSha256: string | null;
+  expectedFileCount: number | null;
+  checkedFileCount: number;
+  issues: ReleaseLaunchClosurePackIntegrityIssue[];
 };
 
 type StoredLaunchClosurePackResult = {
@@ -1325,6 +1355,201 @@ export class ReleaseReadinessService {
           ? manifest.fileCount
           : files.length,
       files
+    };
+  }
+
+  private readLaunchClosurePackFiles(
+    artifactPayload: Prisma.JsonValue
+  ): LaunchClosurePackFile[] | null {
+    if (
+      !artifactPayload ||
+      Array.isArray(artifactPayload) ||
+      typeof artifactPayload !== "object"
+    ) {
+      return null;
+    }
+
+    const payload = artifactPayload as Record<string, unknown>;
+
+    if (!Array.isArray(payload.files)) {
+      return null;
+    }
+
+    const files: LaunchClosurePackFile[] = [];
+
+    for (const file of payload.files) {
+      if (
+        !file ||
+        Array.isArray(file) ||
+        typeof file !== "object" ||
+        typeof (file as Record<string, unknown>).relativePath !== "string" ||
+        typeof (file as Record<string, unknown>).content !== "string"
+      ) {
+        return null;
+      }
+
+      files.push({
+        relativePath: (file as Record<string, unknown>).relativePath as string,
+        content: (file as Record<string, unknown>).content as string
+      });
+    }
+
+    return files;
+  }
+
+  private verifyStoredLaunchClosurePackIntegrity(
+    record: ReleaseLaunchClosurePackRecord
+  ): ReleaseLaunchClosurePackIntegrityResult {
+    const issues: ReleaseLaunchClosurePackIntegrityIssue[] = [];
+    const pack = this.mapLaunchClosurePackProjection(record);
+    const recomputedArtifactChecksumSha256 = this.buildChecksum(
+      record.artifactPayload
+    );
+    const artifactChecksumMatches =
+      recomputedArtifactChecksumSha256 === record.artifactChecksumSha256;
+
+    if (!artifactChecksumMatches) {
+      issues.push({
+        code: "artifact_checksum_mismatch",
+        relativePath: null,
+        expected: record.artifactChecksumSha256,
+        actual: recomputedArtifactChecksumSha256,
+        message:
+          "Stored launch-closure pack checksum does not match its persisted artifact payload."
+      });
+    }
+
+    const artifactManifest = this.readLaunchClosureArtifactManifest(
+      record.artifactPayload
+    );
+    const files = this.readLaunchClosurePackFiles(record.artifactPayload);
+
+    if (!artifactManifest) {
+      issues.push({
+        code: "artifact_manifest_missing",
+        relativePath: null,
+        expected: "artifactManifest",
+        actual: null,
+        message:
+          "Stored launch-closure pack payload does not include an artifact manifest."
+      });
+    }
+
+    if (!files) {
+      issues.push({
+        code: "artifact_payload_invalid",
+        relativePath: null,
+        expected: "files[] with relativePath and content",
+        actual: null,
+        message:
+          "Stored launch-closure pack payload does not include a valid generated files array."
+      });
+    }
+
+    if (!artifactManifest || !files) {
+      return {
+        pack,
+        valid: false,
+        artifactChecksumSha256: record.artifactChecksumSha256,
+        recomputedArtifactChecksumSha256,
+        artifactChecksumMatches,
+        manifestChecksumSha256: artifactManifest?.manifestChecksumSha256 ?? null,
+        expectedFileCount: artifactManifest?.fileCount ?? null,
+        checkedFileCount: files?.length ?? 0,
+        issues
+      };
+    }
+
+    const actualManifest = buildLaunchClosureArtifactManifest(files);
+    const actualFiles = new Map(
+      actualManifest.files.map((file) => [file.relativePath, file])
+    );
+    const expectedFiles = new Map(
+      artifactManifest.files.map((file) => [file.relativePath, file])
+    );
+
+    for (const expectedFile of artifactManifest.files) {
+      const actualFile = actualFiles.get(expectedFile.relativePath);
+
+      if (!actualFile) {
+        issues.push({
+          code: "file_missing",
+          relativePath: expectedFile.relativePath,
+          expected: expectedFile.relativePath,
+          actual: null,
+          message: `Stored launch-closure pack payload is missing generated file ${expectedFile.relativePath}.`
+        });
+        continue;
+      }
+
+      if (actualFile.byteLength !== expectedFile.byteLength) {
+        issues.push({
+          code: "byte_length_mismatch",
+          relativePath: expectedFile.relativePath,
+          expected: expectedFile.byteLength,
+          actual: actualFile.byteLength,
+          message: `Stored generated file byte length differs for ${expectedFile.relativePath}.`
+        });
+      }
+
+      if (actualFile.contentSha256 !== expectedFile.contentSha256) {
+        issues.push({
+          code: "content_checksum_mismatch",
+          relativePath: expectedFile.relativePath,
+          expected: expectedFile.contentSha256,
+          actual: actualFile.contentSha256,
+          message: `Stored generated file SHA-256 checksum differs for ${expectedFile.relativePath}.`
+        });
+      }
+    }
+
+    for (const actualFile of actualManifest.files) {
+      if (!expectedFiles.has(actualFile.relativePath)) {
+        issues.push({
+          code: "file_unexpected",
+          relativePath: actualFile.relativePath,
+          expected: null,
+          actual: actualFile.relativePath,
+          message: `Stored launch-closure pack payload contains an unlisted generated file ${actualFile.relativePath}.`
+        });
+      }
+    }
+
+    if (artifactManifest.fileCount !== artifactManifest.files.length) {
+      issues.push({
+        code: "file_count_mismatch",
+        relativePath: null,
+        expected: artifactManifest.fileCount,
+        actual: artifactManifest.files.length,
+        message:
+          "Stored artifact manifest fileCount does not match its listed file count."
+      });
+    }
+
+    if (
+      artifactManifest.manifestChecksumSha256 !==
+      actualManifest.manifestChecksumSha256
+    ) {
+      issues.push({
+        code: "manifest_checksum_mismatch",
+        relativePath: "manifest.json",
+        expected: artifactManifest.manifestChecksumSha256,
+        actual: actualManifest.manifestChecksumSha256,
+        message:
+          "Stored artifact manifest checksum does not match the generated manifest.json content."
+      });
+    }
+
+    return {
+      pack,
+      valid: issues.length === 0,
+      artifactChecksumSha256: record.artifactChecksumSha256,
+      recomputedArtifactChecksumSha256,
+      artifactChecksumMatches,
+      manifestChecksumSha256: artifactManifest.manifestChecksumSha256,
+      expectedFileCount: artifactManifest.fileCount,
+      checkedFileCount: actualManifest.files.length,
+      issues
     };
   }
 
@@ -2753,6 +2978,22 @@ export class ReleaseReadinessService {
     return {
       pack: this.mapLaunchClosurePackProjection(pack)
     };
+  }
+
+  async verifyLaunchClosurePackIntegrity(
+    packId: string
+  ): Promise<ReleaseLaunchClosurePackIntegrityResult> {
+    const pack = await this.prismaService.releaseLaunchClosurePack.findUnique({
+      where: {
+        id: packId
+      }
+    });
+
+    if (!pack) {
+      throw new NotFoundException("Launch-closure pack was not found.");
+    }
+
+    return this.verifyStoredLaunchClosurePackIntegrity(pack);
   }
 
   async listLaunchClosurePacks(

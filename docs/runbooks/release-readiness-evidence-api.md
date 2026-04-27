@@ -32,6 +32,7 @@ The goal is to replace ad hoc screenshots and scattered notes with a durable ope
 - `POST /release-readiness/internal/approvals`
 - `POST /release-readiness/internal/approvals/:approvalId/approve`
 - `POST /release-readiness/internal/approvals/:approvalId/reject`
+- `GET /release-readiness/internal/launch-closure/packs/:packId/integrity`
 
 Required operator authentication:
 
@@ -230,6 +231,16 @@ Stored launch-closure packs include:
 - `manifestChecksumSha256`: checksum for the merged `manifest.json`
 - `artifactManifest.files[]`: per-file byte lengths and SHA-256 checksums for generated pack files
 
-The generated file set also includes `artifact-manifest.json`, which mirrors `artifactManifest` from the stored API response. Its file list intentionally excludes `artifact-manifest.json` itself to avoid a recursive checksum. Use `verify-artifact-manifest --pack-dir <path>` to detect missing, unexpected, or modified files before comparing CLI scaffolds, browser-downloaded files, stored pack records, and approval-bound pack references during launch review.
+The generated file set also includes `artifact-manifest.json`, which mirrors `artifactManifest` from the stored API response. Its file list intentionally excludes `artifact-manifest.json` itself to avoid a recursive checksum. Use `verify-artifact-manifest --pack-dir <path>` to detect missing, unexpected, or modified local files before comparing CLI scaffolds, browser-downloaded files, stored pack records, and approval-bound pack references during launch review.
+
+Stored pack integrity can be checked without downloading files:
+
+```bash
+curl -sS \
+  'https://prodlike-api.example.com/release-readiness/internal/launch-closure/packs/<pack-id>/integrity' \
+  -H "authorization: Bearer $OPERATOR_ACCESS_TOKEN"
+```
+
+`GET /release-readiness/internal/launch-closure/packs/:packId/integrity` recomputes the persisted pack payload checksum, rebuilds the generated file manifest from stored `files[]`, and reports any checksum, byte-length, missing-file, unexpected-file, file-count, or merged-manifest checksum drift before the pack is used for approval review.
 
 See [`docs/runbooks/phase-12-launch-closure.md`](/Users/mc/development/blockchain/ethereum/stealth-trails-bank/docs/runbooks/phase-12-launch-closure.md).

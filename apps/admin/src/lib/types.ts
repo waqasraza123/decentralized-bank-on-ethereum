@@ -1951,6 +1951,35 @@ export type LaunchClosureScaffoldResponse = LaunchClosureValidationResponse & {
 
 export type ReleaseLaunchClosurePack = LaunchClosureScaffoldResponse["pack"];
 
+export type ReleaseLaunchClosurePackIntegrityIssue = {
+  code:
+    | "artifact_payload_invalid"
+    | "artifact_checksum_mismatch"
+    | "artifact_manifest_missing"
+    | "file_missing"
+    | "file_unexpected"
+    | "byte_length_mismatch"
+    | "content_checksum_mismatch"
+    | "manifest_checksum_mismatch"
+    | "file_count_mismatch";
+  relativePath: string | null;
+  expected: string | number | null;
+  actual: string | number | null;
+  message: string;
+};
+
+export type ReleaseLaunchClosurePackIntegrity = {
+  pack: ReleaseLaunchClosurePack;
+  valid: boolean;
+  artifactChecksumSha256: string;
+  recomputedArtifactChecksumSha256: string;
+  artifactChecksumMatches: boolean;
+  manifestChecksumSha256: string | null;
+  expectedFileCount: number | null;
+  checkedFileCount: number;
+  issues: ReleaseLaunchClosurePackIntegrityIssue[];
+};
+
 export type ReleaseLaunchClosurePackList = {
   packs: ReleaseLaunchClosurePack[];
   limit: number;

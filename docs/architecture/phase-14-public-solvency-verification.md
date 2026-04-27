@@ -172,6 +172,7 @@ The tenth follow-up now hardens launch-closure pack traceability:
 - `manifestChecksumSha256` exposes the exact checksum for the merged `manifest.json`
 - generated packs include `artifact-manifest.json`, matching the API response file list and excluding itself to avoid recursive checksum semantics
 - `verify-artifact-manifest --pack-dir <path>` checks missing, unexpected, byte-length-mismatched, checksum-mismatched, and stale-count file drift before approval review
+- `GET /release-readiness/internal/launch-closure/packs/:packId/integrity` performs the same integrity comparison against persisted API pack payloads
 - approval request and rebind audit metadata carry the bound pack manifest checksum when the pack record is available
 
 ## Remaining External Launch Work

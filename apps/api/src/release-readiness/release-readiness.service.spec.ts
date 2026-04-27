@@ -4,10 +4,16 @@ import {
   ReleaseReadinessEvidenceStatus,
   ReleaseReadinessEvidenceType
 } from "@prisma/client";
+import { createHash } from "node:crypto";
 import { PrismaService } from "../prisma/prisma.service";
+import { buildLaunchClosureArtifactManifest } from "./launch-closure-pack";
 import { ReleaseReadinessService } from "./release-readiness.service";
 
 const approvalExpectedUpdatedAt = "2026-04-08T12:00:00.000Z";
+
+function checksumPayload(value: unknown): string {
+  return createHash("sha256").update(JSON.stringify(value)).digest("hex");
+}
 
 function buildEvidenceRecord(
   overrides: Partial<Record<string, unknown>> = {}
@@ -137,6 +143,44 @@ function buildLaunchClosurePackRecord(
     updatedAt: new Date("2026-04-08T12:00:00.000Z"),
     ...overrides
   };
+}
+
+function buildVerifiableLaunchClosurePackRecord(
+  overrides: Partial<Record<string, unknown>> = {}
+) {
+  const files = [
+    {
+      relativePath: "manifest.json",
+      content: JSON.stringify(
+        {
+          releaseIdentifier: "release-2026-04-08.1"
+        },
+        null,
+        2
+      )
+    },
+    {
+      relativePath: "README.md",
+      content: "Launch closure pack\n"
+    },
+    {
+      relativePath: "artifact-manifest.json",
+      content: "{}\n"
+    }
+  ];
+  const artifactPayload = {
+    manifest: {
+      releaseIdentifier: "release-2026-04-08.1"
+    },
+    artifactManifest: buildLaunchClosureArtifactManifest(files),
+    files
+  };
+
+  return buildLaunchClosurePackRecord({
+    artifactChecksumSha256: checksumPayload(artifactPayload),
+    artifactPayload,
+    ...overrides
+  });
 }
 
 function buildPassedRequiredEvidenceRecords() {
@@ -927,6 +971,57 @@ describe("ReleaseReadinessService", () => {
 
     expect(result.pack.id).toBe("pack_1");
     expect(result.pack.artifactChecksumSha256).toBe("checksum_1");
+  });
+
+  it("verifies stored launch-closure pack artifact integrity", async () => {
+    const { service, prismaService } = createService();
+    (prismaService.releaseLaunchClosurePack.findUnique as jest.Mock).mockResolvedValue(
+      buildVerifiableLaunchClosurePackRecord()
+    );
+
+    const result = await service.verifyLaunchClosurePackIntegrity("pack_1");
+
+    expect(result.valid).toBe(true);
+    expect(result.artifactChecksumMatches).toBe(true);
+    expect(result.checkedFileCount).toBe(2);
+    expect(result.issues).toEqual([]);
+  });
+
+  it("reports stored launch-closure pack artifact drift", async () => {
+    const { service, prismaService } = createService();
+    const pack = buildVerifiableLaunchClosurePackRecord();
+    const payload = pack.artifactPayload as {
+      files: Array<{
+        relativePath: string;
+        content: string;
+      }>;
+    };
+    payload.files = payload.files.filter(
+      (file) => file.relativePath !== "manifest.json"
+    );
+    (prismaService.releaseLaunchClosurePack.findUnique as jest.Mock).mockResolvedValue(
+      pack
+    );
+
+    const result = await service.verifyLaunchClosurePackIntegrity("pack_1");
+
+    expect(result.valid).toBe(false);
+    expect(result.artifactChecksumMatches).toBe(false);
+    expect(result.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "artifact_checksum_mismatch"
+        }),
+        expect.objectContaining({
+          code: "file_missing",
+          relativePath: "manifest.json"
+        }),
+        expect.objectContaining({
+          code: "manifest_checksum_mismatch",
+          relativePath: "manifest.json"
+        })
+      ])
+    );
   });
 
   it("requests launch approval and snapshots checklist blockers from live evidence", async () => {

@@ -67,6 +67,7 @@ describe("ReleaseReadinessController", () => {
     getLaunchClosureStatus: jest.fn(),
     listLaunchClosurePacks: jest.fn(),
     getLaunchClosurePack: jest.fn(),
+    verifyLaunchClosurePackIntegrity: jest.fn(),
     storeLaunchClosurePack: jest.fn(),
     listEvidence: jest.fn(),
     getEvidence: jest.fn(),
@@ -885,6 +886,34 @@ describe("ReleaseReadinessController", () => {
       "pack_1"
     );
     expect(response.body.data.pack.id).toBe("pack_1");
+  });
+
+  it("verifies stored launch-closure pack integrity through the HTTP boundary", async () => {
+    releaseReadinessService.verifyLaunchClosurePackIntegrity.mockResolvedValue({
+      pack: {
+        id: "pack_1"
+      },
+      valid: true,
+      artifactChecksumSha256: "checksum_1",
+      recomputedArtifactChecksumSha256: "checksum_1",
+      artifactChecksumMatches: true,
+      manifestChecksumSha256: "manifest_checksum_1",
+      expectedFileCount: 26,
+      checkedFileCount: 26,
+      issues: []
+    });
+
+    const response = await request(app.getHttpServer())
+      .get("/release-readiness/internal/launch-closure/packs/pack_1/integrity")
+      .set("x-operator-api-key", "test-operator-key")
+      .set("x-operator-id", "ops_1")
+      .expect(200);
+
+    expect(
+      releaseReadinessService.verifyLaunchClosurePackIntegrity
+    ).toHaveBeenCalledWith("pack_1");
+    expect(response.body.data.valid).toBe(true);
+    expect(response.body.data.checkedFileCount).toBe(26);
   });
 
   it("rejects invalid launch-closure scaffold requests before pack generation", async () => {

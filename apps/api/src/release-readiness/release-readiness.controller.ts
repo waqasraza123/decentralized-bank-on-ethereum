@@ -402,6 +402,22 @@ export class ReleaseReadinessController {
     };
   }
 
+  @Get("launch-closure/packs/:packId/integrity")
+  async verifyLaunchClosurePackIntegrity(
+    @Param("packId") packId: string
+  ): Promise<CustomJsonResponse> {
+    const result =
+      await this.releaseReadinessService.verifyLaunchClosurePackIntegrity(
+        packId
+      );
+
+    return {
+      status: "success",
+      message: "Launch-closure pack integrity verified successfully.",
+      data: result
+    };
+  }
+
   @Post("launch-closure/validate")
   validateLaunchClosureManifest(
     @Body(

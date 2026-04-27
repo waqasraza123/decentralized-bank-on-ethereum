@@ -20,6 +20,7 @@ Before any staging-like execution starts:
 - validate it with `pnpm release:launch-closure -- validate --manifest <path>`
 - scaffold the execution pack with `pnpm release:launch-closure -- scaffold --manifest <path> --output-dir <path> --force`
 - verify the generated pack with `pnpm release:launch-closure -- verify-artifact-manifest --pack-dir <path>`
+- for API/admin generated packs, verify the stored payload with `GET /release-readiness/internal/launch-closure/packs/:packId/integrity`
 - when using generated solvency anchor proof, pass `--solvency-fragment <path>` to `validate` and `scaffold`, paste the same JSON into the admin Launch Readiness solvency fragment editor, or run `merge-solvency-fragment --manifest <path> --solvency-fragment <path> --output <path>` to materialize the merged manifest first
 - preserve the stored pack checksum, merged manifest checksum, generated `artifact-manifest.json`, and generated file checksums from the launch-closure pack response
 
