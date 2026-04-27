@@ -10,6 +10,7 @@ Use it when a release candidate has collected its staging or production-like evi
 
 - `GET /release-readiness/internal/approvals`
 - `GET /release-readiness/internal/approvals/:approvalId`
+- `GET /release-readiness/internal/approvals/:approvalId/decision-receipt`
 - `POST /release-readiness/internal/approvals`
 - `POST /release-readiness/internal/approvals/:approvalId/approve`
 - `POST /release-readiness/internal/approvals/:approvalId/reject`
@@ -65,6 +66,29 @@ Request policy:
 If any of those conditions are false, the approval stays blocked and the endpoint rejects the action.
 
 Launch-closure pack integrity is enforced on approval request creation, approval rebind, and final approval. The service recomputes the persisted pack payload checksum, rebuilds `artifactManifest` from stored `files[]`, and rejects binding or approval when checksums, byte lengths, file counts, merged-manifest checksum, or expected file membership drift.
+
+## Decision Receipt
+
+After the separate approver records the final decision, export the decision receipt:
+
+```bash
+curl -sS \
+  'https://staging-api.example.com/release-readiness/internal/approvals/<approval-id>/decision-receipt' \
+  -H "authorization: Bearer $OPERATOR_ACCESS_TOKEN"
+```
+
+The receipt is a deterministic archive payload for launch review and later audit. It contains:
+
+- `receiptVersion` and `receiptChecksumSha256`
+- the final approval decision, operator identity, note, and decision timestamp
+- the approval projection, checklist, evidence snapshot, gate, and drift snapshot
+- the bound launch-closure pack record and stored-pack integrity result
+- a boolean `snapshotMatchesApproval` check for the pack id, release identifier, environment, version, and checksum captured by the approval
+- approval lineage integrity
+- release-readiness audit events for the approval lineage
+- `launchReady`, which is true only for an approved decision with no receipt blockers
+
+Store the receipt checksum, approval id, pack checksum, and manifest checksum with the Phase 12 evidence archive. A receipt with non-empty `blockers` is not a launch-ready receipt even if the approval record exists.
 
 ## Rejection rule
 

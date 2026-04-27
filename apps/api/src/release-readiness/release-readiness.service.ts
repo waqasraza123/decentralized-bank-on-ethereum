@@ -64,6 +64,7 @@ type ReleaseReadinessApprovalRecord =
   Prisma.ReleaseReadinessApprovalGetPayload<{}>;
 type ReleaseLaunchClosurePackRecord =
   Prisma.ReleaseLaunchClosurePackGetPayload<{}>;
+type AuditEventRecord = Prisma.AuditEventGetPayload<{}>;
 type ContractDeploymentManifestRecord =
   Prisma.ContractDeploymentManifestGetPayload<{}>;
 
@@ -397,6 +398,43 @@ type ReleaseReadinessApprovalRecoveryTargetResult = {
   integrity: ReleaseReadinessApprovalLineageIntegrity;
 };
 
+type ReleaseReadinessApprovalDecisionReceiptAuditEvent = {
+  id: string;
+  actorType: string;
+  actorId: string | null;
+  action: string;
+  targetType: string;
+  targetId: string | null;
+  metadata: Prisma.JsonValue | null;
+  createdAt: string;
+};
+
+type ReleaseReadinessApprovalDecisionReceipt = {
+  receiptVersion: "release-readiness-approval-decision/v1";
+  generatedAt: string;
+  receiptChecksumSha256: string;
+  releaseIdentifier: string;
+  environment: ReleaseReadinessEnvironment;
+  finalDecision: boolean;
+  launchReady: boolean;
+  blockers: string[];
+  decision: {
+    status: ReleaseReadinessApprovalStatus;
+    decidedAt: string | null;
+    decidedByOperatorId: string | null;
+    decidedByOperatorRole: string | null;
+    note: string | null;
+  };
+  approval: ReleaseReadinessApprovalProjection;
+  launchClosurePack: {
+    snapshotMatchesApproval: boolean;
+    record: ReleaseLaunchClosurePackProjection | null;
+    integrity: ReleaseLaunchClosurePackIntegrityResult | null;
+  };
+  lineage: ReleaseReadinessApprovalLineageIntegrity;
+  auditTrail: ReleaseReadinessApprovalDecisionReceiptAuditEvent[];
+};
+
 type ReleaseReadinessApprovalLookupClient = {
   releaseReadinessApproval: {
     findUnique(args: Prisma.ReleaseReadinessApprovalFindUniqueArgs): Promise<ReleaseReadinessApprovalRecord | null>;
@@ -647,6 +685,21 @@ export class ReleaseReadinessService {
       observedAt: record.observedAt.toISOString(),
       createdAt: record.createdAt.toISOString(),
       updatedAt: record.updatedAt.toISOString()
+    };
+  }
+
+  private mapDecisionReceiptAuditEvent(
+    record: AuditEventRecord
+  ): ReleaseReadinessApprovalDecisionReceiptAuditEvent {
+    return {
+      id: record.id,
+      actorType: record.actorType,
+      actorId: record.actorId ?? null,
+      action: record.action,
+      targetType: record.targetType,
+      targetId: record.targetId ?? null,
+      metadata: record.metadata ?? null,
+      createdAt: record.createdAt.toISOString()
     };
   }
 
@@ -1597,6 +1650,20 @@ export class ReleaseReadinessService {
     }
 
     return pack;
+  }
+
+  private launchClosurePackMatchesApprovalSnapshot(
+    pack: ReleaseLaunchClosurePackRecord | null,
+    approval: ReleaseReadinessApprovalRecord
+  ): boolean {
+    return Boolean(
+      pack &&
+        pack.id === approval.launchClosurePackId &&
+        pack.releaseIdentifier === approval.releaseIdentifier &&
+        pack.environment === approval.environment &&
+        pack.version === approval.launchClosurePackVersion &&
+        pack.artifactChecksumSha256 === approval.launchClosurePackChecksumSha256
+    );
   }
 
   private assertExpectedApprovalVersion(
@@ -3769,6 +3836,146 @@ export class ReleaseReadinessService {
 
     return {
       approval: projection
+    };
+  }
+
+  async getApprovalDecisionReceipt(
+    approvalId: string
+  ): Promise<ReleaseReadinessApprovalDecisionReceipt> {
+    const approval = await this.prismaService.releaseReadinessApproval.findUnique({
+      where: {
+        id: approvalId
+      }
+    });
+
+    if (!approval) {
+      throw new NotFoundException("Release readiness approval request was not found.");
+    }
+
+    const { lineageRecords, issues } = await this.collectApprovalLineageRecords(
+      this.prismaService,
+      approval
+    );
+    const lineage = this.buildApprovalLineageIntegrityFromRecords(
+      lineageRecords,
+      issues
+    );
+    const lineageIds = [...new Set(lineageRecords.map((record) => record.id))];
+
+    const [boundLaunchClosurePack, auditTrailRecords] = await Promise.all([
+      approval.launchClosurePackId
+        ? this.prismaService.releaseLaunchClosurePack.findUnique({
+            where: {
+              id: approval.launchClosurePackId
+            }
+          })
+        : Promise.resolve(null),
+      this.prismaService.auditEvent.findMany({
+        where: {
+          targetType: "ReleaseReadinessApproval",
+          targetId: {
+            in: lineageIds.length > 0 ? lineageIds : [approval.id]
+          },
+          action: {
+            startsWith: "release_readiness."
+          }
+        },
+        orderBy: {
+          createdAt: "asc"
+        }
+      })
+    ]);
+
+    const snapshotMatchesApproval =
+      this.launchClosurePackMatchesApprovalSnapshot(
+        boundLaunchClosurePack,
+        approval
+      );
+    const launchClosurePackIntegrity = boundLaunchClosurePack
+      ? this.verifyStoredLaunchClosurePackIntegrity(boundLaunchClosurePack)
+      : null;
+    const projection = this.mapApprovalProjection(
+      approval,
+      undefined,
+      boundLaunchClosurePack,
+      {
+        status: lineage.status,
+        issueCount: lineage.issues.length,
+        actionableApprovalId: lineage.actionableApprovalId,
+        isActionable: lineage.actionableApprovalId === approval.id
+      }
+    );
+    const blockers = [
+      ...(!boundLaunchClosurePack
+        ? ["The approval-bound launch-closure pack record is missing."]
+        : []),
+      ...(boundLaunchClosurePack && !snapshotMatchesApproval
+        ? [
+            "The approval-bound launch-closure pack no longer matches the approval snapshot."
+          ]
+        : []),
+      ...(launchClosurePackIntegrity && !launchClosurePackIntegrity.valid
+        ? [
+            "The approval-bound launch-closure pack has stored integrity issues."
+          ]
+        : []),
+      ...(lineage.status !== "healthy"
+        ? ["The approval lineage has unresolved integrity issues."]
+        : []),
+      ...(approval.status !== ReleaseReadinessApprovalStatus.approved
+        ? ["The approval decision is not an approved launch decision."]
+        : [])
+    ];
+    const decidedAt =
+      approval.approvedAt?.toISOString() ??
+      approval.rejectedAt?.toISOString() ??
+      null;
+    const decidedByOperatorId =
+      approval.approvedByOperatorId ?? approval.rejectedByOperatorId ?? null;
+    const decidedByOperatorRole =
+      approval.approvedByOperatorRole ?? approval.rejectedByOperatorRole ?? null;
+    const note = approval.approvalNote ?? approval.rejectionNote ?? null;
+    const receiptPayload = {
+      receiptVersion: "release-readiness-approval-decision/v1",
+      generatedAt: approval.updatedAt.toISOString(),
+      releaseIdentifier: approval.releaseIdentifier,
+      environment: approval.environment,
+      finalDecision:
+        approval.status === ReleaseReadinessApprovalStatus.approved ||
+        approval.status === ReleaseReadinessApprovalStatus.rejected,
+      launchReady:
+        approval.status === ReleaseReadinessApprovalStatus.approved &&
+        blockers.length === 0,
+      blockers,
+      decision: {
+        status: approval.status,
+        decidedAt,
+        decidedByOperatorId,
+        decidedByOperatorRole,
+        note
+      },
+      approval: projection,
+      launchClosurePack: {
+        snapshotMatchesApproval,
+        record: boundLaunchClosurePack
+          ? this.mapLaunchClosurePackProjection(boundLaunchClosurePack)
+          : null,
+        integrity: launchClosurePackIntegrity
+      },
+      lineage,
+      auditTrail: auditTrailRecords.map((record) =>
+        this.mapDecisionReceiptAuditEvent(record)
+      )
+    } satisfies Omit<
+      ReleaseReadinessApprovalDecisionReceipt,
+      "receiptChecksumSha256"
+    >;
+
+    return {
+      ...receiptPayload,
+      receiptChecksumSha256: this.buildChecksum(
+        receiptPayload as unknown as Prisma.JsonValue
+      )
     };
   }
 

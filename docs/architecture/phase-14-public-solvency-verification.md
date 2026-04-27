@@ -176,6 +176,12 @@ The tenth follow-up now hardens launch-closure pack traceability:
 - approval request and rebind audit metadata carry the bound pack manifest checksum when the pack record is available
 - approval request, approval rebind, and final dual-control approval now enforce the stored-pack integrity result before binding or approving launch posture
 
+The eleventh follow-up adds launch approval decision receipts:
+
+- `GET /release-readiness/internal/approvals/:approvalId/decision-receipt` exports a checksum-bound archive payload for the final approval state
+- receipts include the final decision, approval snapshot, bound pack record, stored-pack integrity result, lineage integrity, and approval audit trail
+- `launchReady` is true only when the decision is approved and the receipt has no pack, lineage, or decision blockers
+
 ## Remaining External Launch Work
 
-After manifest-integrity proof enforcement and launch-pack traceability, the remaining production extension is to replace placeholder deployment manifest addresses/checksums with real staged deployment values and record accepted `solvency_anchor_registry_deployment` evidence for the launch candidate.
+After manifest-integrity proof enforcement, launch-pack traceability, and approval decision receipts, the remaining production extension is to replace placeholder deployment manifest addresses/checksums with real staged deployment values and record accepted `solvency_anchor_registry_deployment` evidence for the launch candidate.

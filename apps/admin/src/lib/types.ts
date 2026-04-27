@@ -1777,6 +1777,32 @@ export type ReleaseReadinessApprovalRecoveryTarget = {
   integrity: ReleaseReadinessApprovalLineage["integrity"];
 };
 
+export type ReleaseReadinessApprovalDecisionReceipt = {
+  receiptVersion: "release-readiness-approval-decision/v1";
+  generatedAt: string;
+  receiptChecksumSha256: string;
+  releaseIdentifier: string;
+  environment: string;
+  finalDecision: boolean;
+  launchReady: boolean;
+  blockers: string[];
+  decision: {
+    status: ReleaseReadinessApproval["status"];
+    decidedAt: string | null;
+    decidedByOperatorId: string | null;
+    decidedByOperatorRole: string | null;
+    note: string | null;
+  };
+  approval: ReleaseReadinessApproval;
+  launchClosurePack: {
+    snapshotMatchesApproval: boolean;
+    record: ReleaseLaunchClosurePack | null;
+    integrity: ReleaseLaunchClosurePackIntegrity | null;
+  };
+  lineage: ReleaseReadinessApprovalLineage["integrity"];
+  auditTrail: AuditTimelineEntry[];
+};
+
 export type LaunchClosureManifest = {
   releaseIdentifier: string;
   environment: "staging" | "production_like" | "production";

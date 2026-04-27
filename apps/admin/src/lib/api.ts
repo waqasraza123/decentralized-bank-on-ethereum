@@ -58,6 +58,7 @@ import type {
   OversightIncidentList,
   PlatformAlertDeliveryTargetHealthList,
   PlatformAlertList,
+  ReleaseReadinessApprovalDecisionReceipt,
   ReleaseLaunchClosurePackIntegrity,
   ReleaseLaunchClosurePackList,
   ReleaseReadinessApprovalLineage,
@@ -1132,6 +1133,16 @@ export async function getReleaseReadinessApprovalRecoveryTarget(
   return requestData(session, {
     method: "GET",
     url: `/release-readiness/internal/approvals/${approvalId}/recovery-target`
+  });
+}
+
+export async function getReleaseReadinessApprovalDecisionReceipt(
+  session: OperatorSession,
+  approvalId: string
+): Promise<ReleaseReadinessApprovalDecisionReceipt> {
+  return requestData(session, {
+    method: "GET",
+    url: `/release-readiness/internal/approvals/${approvalId}/decision-receipt`
   });
 }
 

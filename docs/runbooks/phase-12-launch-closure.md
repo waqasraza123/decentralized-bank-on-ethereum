@@ -351,6 +351,8 @@ The separate approver must review the generated approval record and then approve
 
 Final approval rechecks the approval-bound launch-closure pack. Approval is blocked if the pack is missing, if its id, release identifier, environment, version, or checksum no longer match the approval snapshot, or if its stored integrity result is no longer valid.
 
+After approval, export `GET /release-readiness/internal/approvals/<approval-id>/decision-receipt` and archive the returned `receiptChecksumSha256` with the launch evidence. The receipt binds the final decision, approval snapshot, pack integrity result, lineage state, and release-readiness audit trail under one checksum. Treat a receipt with `launchReady: false` or non-empty `blockers` as not launch-ready.
+
 ## Pass and fail criteria
 
 ### `platform_alert_delivery_slo`

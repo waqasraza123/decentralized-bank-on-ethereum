@@ -209,6 +209,20 @@ export class ReleaseReadinessController {
     };
   }
 
+  @Get("approvals/:approvalId/decision-receipt")
+  async getApprovalDecisionReceipt(
+    @Param("approvalId") approvalId: string
+  ): Promise<CustomJsonResponse> {
+    const result =
+      await this.releaseReadinessService.getApprovalDecisionReceipt(approvalId);
+
+    return {
+      status: "success",
+      message: "Release readiness approval decision receipt retrieved successfully.",
+      data: result
+    };
+  }
+
   @Get("approvals/:approvalId/lineage")
   async getApprovalLineage(
     @Param("approvalId") approvalId: string
