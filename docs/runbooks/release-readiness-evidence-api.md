@@ -25,6 +25,7 @@ The goal is to replace ad hoc screenshots and scattered notes with a durable ope
 - `GET /release-readiness/internal/summary`
 - `GET /release-readiness/internal/evidence`
 - `GET /release-readiness/internal/evidence/:evidenceId`
+- `GET /release-readiness/internal/solvency-anchor-registry-deployment-proof`
 - `POST /release-readiness/internal/evidence`
 - `GET /release-readiness/internal/approvals`
 - `GET /release-readiness/internal/approvals/:approvalId`
@@ -69,6 +70,23 @@ For `solvency_anchor_registry_deployment`, the API also verifies the payload aga
 - registry deployment fields must match `ContractDeploymentManifest`
 - authorized anchorer must match an active `GovernedSignerInventory` row for `solvency_anchor_execution`
 - governance owner must match the active `GovernanceAuthorityManifest` governance safe
+
+Operators can preflight those same governed manifest bindings before recording evidence:
+
+```bash
+curl -sS \
+  -H "Authorization: Bearer $INTERNAL_OPERATOR_API_KEY" \
+  "https://prodlike-api.example.com/release-readiness/internal/solvency-anchor-registry-deployment-proof?environment=production_like&chainId=84532&networkName=base-sepolia&manifestPath=packages/contracts/deployments/base-sepolia.manifest.json&manifestCommitSha=<git-sha>&releaseIdentifier=launch-2026.04.10.1"
+```
+
+The response includes:
+
+- `ready`: `true` only when the active registry deployment manifest is non-legacy, contains deployment proof fields, and matches active governance and signer inventory
+- `blockers`: operator-actionable reasons that would prevent accepted evidence from being recorded
+- `requiredOperatorInputs`: missing request inputs that are not stored in the database, such as the launch release identifier and manifest commit SHA
+- `registryContract`, `governedSigner`, and `governanceAuthority`: the exact active records the evidence write gate will compare against
+- `governedSigner.keyReferenceSha256`: a fingerprint of the signer key reference; the raw key reference is not returned by this endpoint
+- `evidenceRequestDraft`: a `POST /release-readiness/internal/evidence` body draft; `recordable` becomes `true` only when the database bindings are ready and all operator inputs were supplied
 
 ## Evidence types
 

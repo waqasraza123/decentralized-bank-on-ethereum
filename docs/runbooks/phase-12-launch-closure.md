@@ -233,6 +233,16 @@ pnpm release:readiness:verify -- \
 
 ### 5. Record the solvency anchor registry deployment proof
 
+Preflight the active API-side manifest state before writing evidence:
+
+```bash
+curl -sS \
+  -H "Authorization: Bearer $OPERATOR_ACCESS_TOKEN" \
+  "https://staging-api.example.com/release-readiness/internal/solvency-anchor-registry-deployment-proof?environment=production_like&chainId=84532&networkName=base-sepolia&manifestPath=packages/contracts/deployments/base-sepolia.manifest.json&manifestCommitSha=<git-sha>&releaseIdentifier=launch-2026.04.10.1"
+```
+
+Proceed only when `ready` is `true`, `blockers` is empty, and `evidenceRequestDraft.recordable` is `true`.
+
 Use the generated `payloads/solvency_anchor_registry_deployment.json` from the launch-closure pack. When the governed custody manifest already contains the final registry deployment metadata, prefer generating the evidence payload directly from that manifest:
 
 ```bash

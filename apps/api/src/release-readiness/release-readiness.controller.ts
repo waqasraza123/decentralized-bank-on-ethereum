@@ -15,6 +15,7 @@ import { CustomJsonResponse } from "../types/CustomJsonResponse";
 import { CreateReleaseReadinessApprovalDto } from "./dto/create-release-readiness-approval.dto";
 import { CreateReleaseReadinessEvidenceDto } from "./dto/create-release-readiness-evidence.dto";
 import { GetReleaseReadinessSummaryDto } from "./dto/get-release-readiness-summary.dto";
+import { GetSolvencyAnchorRegistryDeploymentProofDto } from "./dto/get-solvency-anchor-registry-deployment-proof.dto";
 import {
   GetLaunchClosureStatusDto,
   LaunchClosureManifestDto
@@ -101,6 +102,30 @@ export class ReleaseReadinessController {
     return {
       status: "success",
       message: "Release readiness evidence retrieved successfully.",
+      data: result
+    };
+  }
+
+  @Get("solvency-anchor-registry-deployment-proof")
+  async getSolvencyAnchorRegistryDeploymentProof(
+    @Query(
+      new ValidationPipe({
+        transform: true,
+        whitelist: true,
+        forbidNonWhitelisted: true
+      })
+    )
+    query: GetSolvencyAnchorRegistryDeploymentProofDto
+  ): Promise<CustomJsonResponse> {
+    const result =
+      await this.releaseReadinessService.getSolvencyAnchorRegistryDeploymentProof(
+        query
+      );
+
+    return {
+      status: "success",
+      message:
+        "Solvency anchor registry deployment proof preflight retrieved successfully.",
       data: result
     };
   }

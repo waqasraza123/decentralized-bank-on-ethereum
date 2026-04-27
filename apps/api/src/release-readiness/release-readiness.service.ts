@@ -24,6 +24,7 @@ import { PrismaService } from "../prisma/prisma.service";
 import type { PrismaJsonValue } from "../prisma/prisma-json";
 import { CreateReleaseReadinessApprovalDto } from "./dto/create-release-readiness-approval.dto";
 import { CreateReleaseReadinessEvidenceDto } from "./dto/create-release-readiness-evidence.dto";
+import { GetSolvencyAnchorRegistryDeploymentProofDto } from "./dto/get-solvency-anchor-registry-deployment-proof.dto";
 import { ListReleaseLaunchClosurePacksDto } from "./dto/list-release-launch-closure-packs.dto";
 import { ListReleaseReadinessApprovalLineageIncidentsDto } from "./dto/list-release-readiness-approval-lineage-incidents.dto";
 import { ListReleaseReadinessApprovalsDto } from "./dto/list-release-readiness-approvals.dto";
@@ -56,6 +57,8 @@ type ReleaseReadinessApprovalRecord =
   Prisma.ReleaseReadinessApprovalGetPayload<{}>;
 type ReleaseLaunchClosurePackRecord =
   Prisma.ReleaseLaunchClosurePackGetPayload<{}>;
+type ContractDeploymentManifestRecord =
+  Prisma.ContractDeploymentManifestGetPayload<{}>;
 
 type SolvencyAnchorRegistryEvidencePayload = {
   chainId: number;
@@ -64,6 +67,77 @@ type SolvencyAnchorRegistryEvidencePayload = {
   governanceOwner: string;
   authorizedAnchorer: string;
   abiChecksumSha256: string;
+};
+
+type SolvencyAnchorRegistryDeploymentProofStatus = {
+  generatedAt: string;
+  evidenceType: "solvency_anchor_registry_deployment";
+  environment: ReleaseReadinessEnvironment;
+  chainId: number;
+  ready: boolean;
+  blockers: string[];
+  requiredOperatorInputs: string[];
+  recordEvidenceEndpoint: "/release-readiness/internal/evidence";
+  registryContract: {
+    id: string;
+    productSurface: "solvency_report_anchor_registry_v1";
+    contractVersion: string;
+    contractAddress: string;
+    abiChecksumSha256: string;
+    deploymentTxHash: string | null;
+    governanceOwner: string | null;
+    authorizedAnchorer: string | null;
+    blockExplorerUrl: string | null;
+    anchoredSmokeTxHash: string | null;
+    manifestStatus: string;
+    legacyPath: boolean;
+    updatedAt: string;
+  } | null;
+  governedSigner: {
+    id: string;
+    signerScope: "solvency_anchor_execution";
+    backendKind: string;
+    keyReferenceSha256: string;
+    signerAddress: string;
+    allowedMethods: string[];
+    manifestVersion: string | null;
+    environmentBinding: string | null;
+    active: boolean;
+    updatedAt: string;
+  } | null;
+  governanceAuthority: {
+    id: string;
+    authorityType: "governance_safe";
+    address: string;
+    ownerLabel: string | null;
+    manifestStatus: string;
+    updatedAt: string;
+  } | null;
+  evidenceRequestDraft: {
+    recordable: boolean;
+    body: {
+      evidenceType: "solvency_anchor_registry_deployment";
+      environment: ReleaseReadinessEnvironment;
+      status: "passed";
+      releaseIdentifier: string;
+      summary: string;
+      runbookPath: string;
+      evidencePayload: {
+        proofKind: "manual_attestation";
+        networkName: string;
+        chainId: number;
+        contractProductSurface: "solvency_report_anchor_registry_v1";
+        signerScope: "solvency_anchor_execution";
+        contractAddress: string;
+        deploymentTxHash: string;
+        governanceOwner: string;
+        authorizedAnchorer: string;
+        abiChecksumSha256: string;
+        manifestPath: string;
+        manifestCommitSha: string;
+      };
+    } | null;
+  };
 };
 
 type ReleaseReadinessEvidenceProjection = {
@@ -1499,6 +1573,267 @@ export class ReleaseReadinessService {
 
   private normalizeChecksum(value: string): string {
     return value.trim().toLowerCase().replace(/^sha256:/, "");
+  }
+
+  private fingerprintString(value: string): string {
+    return createHash("sha256").update(value).digest("hex");
+  }
+
+  private buildSolvencyAnchorRegistryEvidenceDraft(
+    query: GetSolvencyAnchorRegistryDeploymentProofDto,
+    manifest: ContractDeploymentManifestRecord | null,
+    ready: boolean,
+    requiredOperatorInputs: string[]
+  ): SolvencyAnchorRegistryDeploymentProofStatus["evidenceRequestDraft"] {
+    const networkName =
+      this.normalizeOptionalString(query.networkName) ?? "<networkName>";
+    const manifestPath =
+      this.normalizeOptionalString(query.manifestPath) ??
+      "<deploymentManifestPath>";
+    const manifestCommitSha =
+      this.normalizeOptionalString(query.manifestCommitSha) ??
+      "<manifestCommitSha>";
+    const releaseIdentifier =
+      this.normalizeOptionalString(query.releaseIdentifier) ??
+      "<releaseIdentifier>";
+
+    if (
+      !manifest ||
+      !manifest.deploymentTxHash ||
+      !manifest.governanceOwner ||
+      !manifest.authorizedAnchorer
+    ) {
+      return {
+        recordable: false,
+        body: null
+      };
+    }
+
+    return {
+      recordable: ready && requiredOperatorInputs.length === 0,
+      body: {
+        evidenceType: "solvency_anchor_registry_deployment",
+        environment: query.environment,
+        status: "passed",
+        releaseIdentifier,
+        summary:
+          "Solvency report anchor registry deployment is active, governed, and bound to the authorized anchor signer.",
+        runbookPath:
+          "docs/runbooks/solvency-anchor-registry-deployment-proof.md",
+        evidencePayload: {
+          proofKind: "manual_attestation",
+          networkName,
+          chainId: query.chainId,
+          contractProductSurface: "solvency_report_anchor_registry_v1",
+          signerScope: "solvency_anchor_execution",
+          contractAddress: manifest.contractAddress,
+          deploymentTxHash: manifest.deploymentTxHash,
+          governanceOwner: manifest.governanceOwner,
+          authorizedAnchorer: manifest.authorizedAnchorer,
+          abiChecksumSha256: manifest.abiChecksumSha256,
+          manifestPath,
+          manifestCommitSha
+        }
+      }
+    };
+  }
+
+  async getSolvencyAnchorRegistryDeploymentProof(
+    query: GetSolvencyAnchorRegistryDeploymentProofDto
+  ): Promise<SolvencyAnchorRegistryDeploymentProofStatus> {
+    const manifest =
+      await this.prismaService.contractDeploymentManifest.findFirst({
+        where: {
+          environment: query.environment,
+          chainId: query.chainId,
+          productSurface: "solvency_report_anchor_registry_v1",
+          manifestStatus: "active"
+        },
+        orderBy: [{ updatedAt: "desc" }]
+      });
+    const governedSigner = manifest?.authorizedAnchorer
+      ? await this.prismaService.governedSignerInventory.findFirst({
+          where: {
+            environment: query.environment,
+            chainId: query.chainId,
+            signerScope: "solvency_anchor_execution",
+            signerAddress: {
+              equals: manifest.authorizedAnchorer,
+              mode: Prisma.QueryMode.insensitive
+            },
+            active: true
+          },
+          orderBy: [{ updatedAt: "desc" }]
+        })
+      : await this.prismaService.governedSignerInventory.findFirst({
+          where: {
+            environment: query.environment,
+            chainId: query.chainId,
+            signerScope: "solvency_anchor_execution",
+            active: true
+          },
+          orderBy: [{ updatedAt: "desc" }]
+        });
+    const governanceAuthority = manifest?.governanceOwner
+      ? await this.prismaService.governanceAuthorityManifest.findFirst({
+          where: {
+            environment: query.environment,
+            chainId: query.chainId,
+            authorityType: "governance_safe",
+            address: {
+              equals: manifest.governanceOwner,
+              mode: Prisma.QueryMode.insensitive
+            },
+            manifestStatus: "active"
+          },
+          orderBy: [{ updatedAt: "desc" }]
+        })
+      : await this.prismaService.governanceAuthorityManifest.findFirst({
+          where: {
+            environment: query.environment,
+            chainId: query.chainId,
+            authorityType: "governance_safe",
+            manifestStatus: "active"
+          },
+          orderBy: [{ updatedAt: "desc" }]
+        });
+    const blockers: string[] = [];
+
+    if (!manifest) {
+      blockers.push(
+        "No active solvency_report_anchor_registry_v1 deployment manifest exists for the requested environment and chain."
+      );
+    } else {
+      if (manifest.legacyPath) {
+        blockers.push(
+          "The active solvency anchor registry deployment manifest is marked as a legacy path."
+        );
+      }
+
+      if (!manifest.deploymentTxHash) {
+        blockers.push(
+          "The active solvency anchor registry deployment manifest is missing deploymentTxHash."
+        );
+      }
+
+      if (!manifest.governanceOwner) {
+        blockers.push(
+          "The active solvency anchor registry deployment manifest is missing governanceOwner."
+        );
+      }
+
+      if (!manifest.authorizedAnchorer) {
+        blockers.push(
+          "The active solvency anchor registry deployment manifest is missing authorizedAnchorer."
+        );
+      }
+
+      if (!manifest.abiChecksumSha256) {
+        blockers.push(
+          "The active solvency anchor registry deployment manifest is missing abiChecksumSha256."
+        );
+      }
+
+      if (!governedSigner) {
+        blockers.push(
+          "No active governed signer inventory entry matches solvency_anchor_execution for the manifest authorizedAnchorer."
+        );
+      } else if (
+        manifest.authorizedAnchorer &&
+        this.normalizeHex(governedSigner.signerAddress) !==
+          this.normalizeHex(manifest.authorizedAnchorer)
+      ) {
+        blockers.push(
+          "The active governed solvency_anchor_execution signer does not match the manifest authorizedAnchorer."
+        );
+      }
+
+      if (!governanceAuthority) {
+        blockers.push(
+          "No active governance_safe authority manifest matches the manifest governanceOwner."
+        );
+      } else if (
+        manifest.governanceOwner &&
+        this.normalizeHex(governanceAuthority.address) !==
+          this.normalizeHex(manifest.governanceOwner)
+      ) {
+        blockers.push(
+          "The active governance_safe authority does not match the manifest governanceOwner."
+        );
+      }
+    }
+
+    const operatorInputs: Array<[string, string | undefined]> = [
+      ["networkName", query.networkName],
+      ["manifestPath", query.manifestPath],
+      ["manifestCommitSha", query.manifestCommitSha],
+      ["releaseIdentifier", query.releaseIdentifier]
+    ];
+    const requiredOperatorInputs = operatorInputs
+      .filter(([, value]) => !this.normalizeOptionalString(value))
+      .map(([field]) => field);
+    const ready = blockers.length === 0;
+
+    return {
+      generatedAt: new Date().toISOString(),
+      evidenceType:
+        ReleaseReadinessEvidenceType.solvency_anchor_registry_deployment,
+      environment: query.environment,
+      chainId: query.chainId,
+      ready,
+      blockers,
+      requiredOperatorInputs,
+      recordEvidenceEndpoint: "/release-readiness/internal/evidence",
+      registryContract: manifest
+        ? {
+            id: manifest.id,
+            productSurface: "solvency_report_anchor_registry_v1",
+            contractVersion: manifest.contractVersion,
+            contractAddress: manifest.contractAddress,
+            abiChecksumSha256: manifest.abiChecksumSha256,
+            deploymentTxHash: manifest.deploymentTxHash ?? null,
+            governanceOwner: manifest.governanceOwner ?? null,
+            authorizedAnchorer: manifest.authorizedAnchorer ?? null,
+            blockExplorerUrl: manifest.blockExplorerUrl ?? null,
+            anchoredSmokeTxHash: manifest.anchoredSmokeTxHash ?? null,
+            manifestStatus: manifest.manifestStatus,
+            legacyPath: manifest.legacyPath,
+            updatedAt: manifest.updatedAt.toISOString()
+          }
+        : null,
+      governedSigner: governedSigner
+        ? {
+            id: governedSigner.id,
+            signerScope: "solvency_anchor_execution",
+            backendKind: governedSigner.backendKind,
+            keyReferenceSha256: this.fingerprintString(
+              governedSigner.keyReference
+            ),
+            signerAddress: governedSigner.signerAddress,
+            allowedMethods: [...governedSigner.allowedMethods],
+            manifestVersion: governedSigner.manifestVersion ?? null,
+            environmentBinding: governedSigner.environmentBinding ?? null,
+            active: governedSigner.active,
+            updatedAt: governedSigner.updatedAt.toISOString()
+          }
+        : null,
+      governanceAuthority: governanceAuthority
+        ? {
+            id: governanceAuthority.id,
+            authorityType: "governance_safe",
+            address: governanceAuthority.address,
+            ownerLabel: governanceAuthority.ownerLabel ?? null,
+            manifestStatus: governanceAuthority.manifestStatus,
+            updatedAt: governanceAuthority.updatedAt.toISOString()
+          }
+        : null,
+      evidenceRequestDraft: this.buildSolvencyAnchorRegistryEvidenceDraft(
+        query,
+        manifest,
+        ready,
+        requiredOperatorInputs
+      )
+    };
   }
 
   private readSolvencyAnchorRegistryEvidencePayload(

@@ -99,6 +99,23 @@ The contract manifest entry must include:
 
 The command refuses to produce or record accepted proof when the registry owner does not match the governance safe, the authorized anchorer does not match the governed anchor signer, the ABI checksum is still a placeholder, or the deployment transaction hash is missing.
 
+## Manifest Preflight
+
+Before recording accepted evidence, check the API-side governed manifest bindings that the write path will enforce:
+
+```bash
+curl -sS \
+  -H "Authorization: Bearer $INTERNAL_OPERATOR_API_KEY" \
+  "https://prodlike-api.example.com/release-readiness/internal/solvency-anchor-registry-deployment-proof?environment=production_like&chainId=84532&networkName=base-sepolia&manifestPath=packages/contracts/deployments/base-sepolia.manifest.json&manifestCommitSha=<git-sha>&releaseIdentifier=launch-2026.04.10.1"
+```
+
+Treat the preflight as a deployment proof gate:
+
+- `ready: true` means the active `ContractDeploymentManifest` is non-legacy and contains deployment proof fields for the requested environment and chain
+- `blockers` lists the exact missing or mismatched records, including absent deployment transaction hash, absent owner or anchorer, signer mismatch, and governance safe mismatch
+- `requiredOperatorInputs` lists evidence fields that are intentionally not persisted in the manifest tables, such as `networkName`, `manifestPath`, `manifestCommitSha`, and `releaseIdentifier`
+- `evidenceRequestDraft.body` mirrors the `POST /release-readiness/internal/evidence` request body; post it only when `evidenceRequestDraft.recordable` is `true`
+
 ## Recording Through The CLI
 
 Use the release-readiness verifier for a manual attestation:
