@@ -48,13 +48,15 @@ function buildEvidenceRecord(
 function buildApprovalRecord(
   overrides: Partial<Record<string, unknown>> = {}
 ) {
+  const launchClosurePack = buildLaunchClosurePackRecord();
+
   return {
     id: "approval_1",
     releaseIdentifier: "release-2026-04-08.1",
     environment: ReleaseReadinessEnvironment.production_like,
     launchClosurePackId: "pack_1",
     launchClosurePackVersion: 1,
-    launchClosurePackChecksumSha256: "checksum_1",
+    launchClosurePackChecksumSha256: launchClosurePack.artifactChecksumSha256,
     rollbackReleaseIdentifier: "release-2026-04-07.3",
     status: ReleaseReadinessApprovalStatus.pending_approval,
     summary: "Phase 12 launch checklist reviewed against production-like proof.",
@@ -112,40 +114,12 @@ function buildApprovalRecord(
     supersededAt: null,
     createdAt: new Date("2026-04-08T12:00:00.000Z"),
     updatedAt: new Date("2026-04-08T12:00:00.000Z"),
-    launchClosurePack: buildLaunchClosurePackRecord(),
+    launchClosurePack,
     ...overrides
   };
 }
 
 function buildLaunchClosurePackRecord(
-  overrides: Partial<Record<string, unknown>> = {}
-) {
-  return {
-    id: "pack_1",
-    releaseIdentifier: "release-2026-04-08.1",
-    environment: ReleaseReadinessEnvironment.production_like,
-    version: 1,
-    generatedByOperatorId: "ops_1",
-    generatedByOperatorRole: "operations_admin",
-    artifactChecksumSha256: "checksum_1",
-    artifactPayload: {
-      manifest: {
-        releaseIdentifier: "release-2026-04-08.1"
-      },
-      artifactManifest: {
-        manifestChecksumSha256: "manifest_checksum_1",
-        fileCount: 0,
-        files: []
-      },
-      files: []
-    },
-    createdAt: new Date("2026-04-08T12:00:00.000Z"),
-    updatedAt: new Date("2026-04-08T12:00:00.000Z"),
-    ...overrides
-  };
-}
-
-function buildVerifiableLaunchClosurePackRecord(
   overrides: Partial<Record<string, unknown>> = {}
 ) {
   const files = [
@@ -176,11 +150,25 @@ function buildVerifiableLaunchClosurePackRecord(
     files
   };
 
-  return buildLaunchClosurePackRecord({
+  return {
+    id: "pack_1",
+    releaseIdentifier: "release-2026-04-08.1",
+    environment: ReleaseReadinessEnvironment.production_like,
+    version: 1,
+    generatedByOperatorId: "ops_1",
+    generatedByOperatorRole: "operations_admin",
     artifactChecksumSha256: checksumPayload(artifactPayload),
     artifactPayload,
+    createdAt: new Date("2026-04-08T12:00:00.000Z"),
+    updatedAt: new Date("2026-04-08T12:00:00.000Z"),
     ...overrides
-  });
+  };
+}
+
+function buildVerifiableLaunchClosurePackRecord(
+  overrides: Partial<Record<string, unknown>> = {}
+) {
+  return buildLaunchClosurePackRecord(overrides);
 }
 
 function buildPassedRequiredEvidenceRecords() {
@@ -970,7 +958,7 @@ describe("ReleaseReadinessService", () => {
     const result = await service.getLaunchClosurePack("pack_1");
 
     expect(result.pack.id).toBe("pack_1");
-    expect(result.pack.artifactChecksumSha256).toBe("checksum_1");
+    expect(result.pack.artifactChecksumSha256).toEqual(expect.any(String));
   });
 
   it("verifies stored launch-closure pack artifact integrity", async () => {
@@ -1067,7 +1055,7 @@ describe("ReleaseReadinessService", () => {
           environment: "production_like",
           launchClosurePackId: "pack_1",
           launchClosurePackVersion: 1,
-          launchClosurePackChecksumSha256: "checksum_1",
+          launchClosurePackChecksumSha256: expect.any(String),
           evidenceSnapshot: expect.any(Object),
           blockerSnapshot: expect.any(Object)
         })
@@ -1085,8 +1073,8 @@ describe("ReleaseReadinessService", () => {
     expect(result.approval.gate.overallStatus).toBe("ready");
     expect(result.approval.gate.approvalEligible).toBe(true);
     expect(result.approval.gate.staleEvidenceTypes).toEqual([]);
-    expect(result.approval.launchClosurePack?.manifestChecksumSha256).toBe(
-      "manifest_checksum_1"
+    expect(result.approval.launchClosurePack?.manifestChecksumSha256).toEqual(
+      expect.any(String)
     );
     expect(result.approval.launchClosureDrift).toEqual(
       expect.objectContaining({
@@ -1132,8 +1120,7 @@ describe("ReleaseReadinessService", () => {
     (prismaService.releaseLaunchClosurePack.findFirst as jest.Mock).mockResolvedValue(
       buildLaunchClosurePackRecord({
         id: "pack_2",
-        version: 2,
-        artifactChecksumSha256: "checksum_2"
+        version: 2
       })
     );
 
@@ -1148,8 +1135,7 @@ describe("ReleaseReadinessService", () => {
         newerPackAvailable: true,
         latestPack: expect.objectContaining({
           id: "pack_2",
-          version: 2,
-          artifactChecksumSha256: "checksum_2"
+          version: 2
         })
       })
     );
@@ -1179,8 +1165,7 @@ describe("ReleaseReadinessService", () => {
     (prismaService.releaseLaunchClosurePack.findFirst as jest.Mock).mockResolvedValue(
       buildLaunchClosurePackRecord({
         id: "pack_2",
-        version: 2,
-        artifactChecksumSha256: "checksum_2"
+        version: 2
       })
     );
 
@@ -1201,15 +1186,15 @@ describe("ReleaseReadinessService", () => {
 
   it("rebinds a pending approval to a newer scoped launch-closure pack", async () => {
     const { service, prismaService, transactionClient } = createService();
+    const nextLaunchClosurePack = buildLaunchClosurePackRecord({
+      id: "pack_2",
+      version: 2
+    });
     (prismaService.releaseReadinessApproval.findUnique as jest.Mock).mockResolvedValue(
       buildApprovalRecord()
     );
     (prismaService.releaseLaunchClosurePack.findUnique as jest.Mock).mockResolvedValue(
-      buildLaunchClosurePackRecord({
-        id: "pack_2",
-        version: 2,
-        artifactChecksumSha256: "checksum_2"
-      })
+      nextLaunchClosurePack
     );
     (prismaService.releaseReadinessEvidence.findMany as jest.Mock)
       .mockResolvedValueOnce(buildPassedRequiredEvidenceRecords())
@@ -1228,7 +1213,8 @@ describe("ReleaseReadinessService", () => {
         supersedesApprovalId: "approval_1",
         launchClosurePackId: "pack_2",
         launchClosurePackVersion: 2,
-        launchClosurePackChecksumSha256: "checksum_2",
+        launchClosurePackChecksumSha256:
+          nextLaunchClosurePack.artifactChecksumSha256,
         blockerSnapshot: {
           overallStatus: "ready",
           approvalEligible: true,
@@ -1274,7 +1260,7 @@ describe("ReleaseReadinessService", () => {
           supersedesApprovalId: "approval_1",
           launchClosurePackId: "pack_2",
           launchClosurePackVersion: 2,
-          launchClosurePackChecksumSha256: "checksum_2",
+          launchClosurePackChecksumSha256: expect.any(String),
           status: ReleaseReadinessApprovalStatus.pending_approval
         })
       })
@@ -1297,8 +1283,8 @@ describe("ReleaseReadinessService", () => {
     expect(result.approval.id).toBe("approval_2");
     expect(result.approval.supersedesApprovalId).toBe("approval_1");
     expect(result.approval.launchClosurePack?.id).toBe("pack_2");
-    expect(result.approval.launchClosurePack?.manifestChecksumSha256).toBe(
-      "manifest_checksum_1"
+    expect(result.approval.launchClosurePack?.manifestChecksumSha256).toEqual(
+      expect.any(String)
     );
   });
 
@@ -1333,8 +1319,7 @@ describe("ReleaseReadinessService", () => {
     (prismaService.releaseLaunchClosurePack.findUnique as jest.Mock).mockResolvedValue(
       buildLaunchClosurePackRecord({
         id: "pack_2",
-        version: 2,
-        artifactChecksumSha256: "checksum_2"
+        version: 2
       })
     );
     (prismaService.releaseReadinessEvidence.findMany as jest.Mock)
@@ -1372,8 +1357,7 @@ describe("ReleaseReadinessService", () => {
     (prismaService.releaseLaunchClosurePack.findUnique as jest.Mock).mockResolvedValue(
       buildLaunchClosurePackRecord({
         id: "pack_2",
-        version: 2,
-        artifactChecksumSha256: "checksum_2"
+        version: 2
       })
     );
     (prismaService.releaseReadinessEvidence.findMany as jest.Mock)
@@ -1416,8 +1400,7 @@ describe("ReleaseReadinessService", () => {
     (prismaService.releaseLaunchClosurePack.findUnique as jest.Mock).mockResolvedValue(
       buildLaunchClosurePackRecord({
         id: "pack_2",
-        version: 2,
-        artifactChecksumSha256: "checksum_2"
+        version: 2
       })
     );
     (prismaService.releaseReadinessEvidence.findMany as jest.Mock)
@@ -1458,8 +1441,7 @@ describe("ReleaseReadinessService", () => {
     (prismaService.releaseLaunchClosurePack.findUnique as jest.Mock).mockResolvedValue(
       buildLaunchClosurePackRecord({
         id: "pack_2",
-        version: 2,
-        artifactChecksumSha256: "checksum_2"
+        version: 2
       })
     );
     (prismaService.releaseReadinessEvidence.findMany as jest.Mock)
@@ -1534,8 +1516,7 @@ describe("ReleaseReadinessService", () => {
           newerPackAvailable: true,
           latestPack: {
             id: "pack_2",
-            version: 2,
-            artifactChecksumSha256: "checksum_2"
+            version: 2
           }
         },
         decisionDriftCapturedAt: new Date("2026-04-08T13:00:00.000Z")
@@ -2037,6 +2018,9 @@ describe("ReleaseReadinessService", () => {
     (prismaService.releaseReadinessApproval.findUnique as jest.Mock).mockResolvedValue(
       buildApprovalRecord()
     );
+    (prismaService.releaseLaunchClosurePack.findFirst as jest.Mock).mockResolvedValue(
+      buildLaunchClosurePackRecord()
+    );
     (prismaService.releaseReadinessEvidence.findMany as jest.Mock)
       .mockResolvedValueOnce(buildPassedRequiredEvidenceRecords())
       .mockResolvedValueOnce([buildEvidenceRecord()]);
@@ -2127,6 +2111,9 @@ describe("ReleaseReadinessService", () => {
     (prismaService.releaseReadinessApproval.findUnique as jest.Mock).mockResolvedValue(
       buildApprovalRecord()
     );
+    (prismaService.releaseLaunchClosurePack.findFirst as jest.Mock).mockResolvedValue(
+      buildLaunchClosurePackRecord()
+    );
     (prismaService.releaseReadinessEvidence.findMany as jest.Mock)
       .mockResolvedValueOnce(buildPassedRequiredEvidenceRecords())
       .mockResolvedValueOnce([buildEvidenceRecord()]);
@@ -2159,6 +2146,9 @@ describe("ReleaseReadinessService", () => {
     const { service, prismaService, transactionClient } = createService();
     (prismaService.releaseReadinessApproval.findUnique as jest.Mock).mockResolvedValue(
       buildApprovalRecord()
+    );
+    (prismaService.releaseLaunchClosurePack.findFirst as jest.Mock).mockResolvedValue(
+      buildLaunchClosurePackRecord()
     );
     (prismaService.releaseReadinessEvidence.findMany as jest.Mock)
       .mockResolvedValueOnce(buildPassedRequiredEvidenceRecords())

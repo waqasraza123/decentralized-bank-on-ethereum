@@ -1553,6 +1553,52 @@ export class ReleaseReadinessService {
     };
   }
 
+  private assertLaunchClosurePackIntegrityDoesNotBlock(
+    integrity: ReleaseLaunchClosurePackIntegrityResult
+  ): void {
+    if (integrity.valid) {
+      return;
+    }
+
+    const issueSummary = integrity.issues
+      .map((issue) => issue.message)
+      .join(" ");
+
+    throw new ConflictException(
+      [
+        "Launch approval is blocked until the bound launch-closure pack integrity is repaired or regenerated.",
+        issueSummary
+      ]
+        .filter(Boolean)
+        .join(" ")
+    );
+  }
+
+  private assertLaunchClosurePackMatchesApprovalSnapshot(
+    pack: ReleaseLaunchClosurePackRecord | null,
+    approval: ReleaseReadinessApprovalRecord
+  ): ReleaseLaunchClosurePackRecord {
+    if (!pack) {
+      throw new ConflictException(
+        "Launch approval is blocked because the bound launch-closure pack could not be found."
+      );
+    }
+
+    if (
+      pack.id !== approval.launchClosurePackId ||
+      pack.releaseIdentifier !== approval.releaseIdentifier ||
+      pack.environment !== approval.environment ||
+      pack.version !== approval.launchClosurePackVersion ||
+      pack.artifactChecksumSha256 !== approval.launchClosurePackChecksumSha256
+    ) {
+      throw new ConflictException(
+        "Launch approval is blocked because the bound launch-closure pack no longer matches the approval snapshot."
+      );
+    }
+
+    return pack;
+  }
+
   private assertExpectedApprovalVersion(
     approval: ReleaseReadinessApprovalRecord,
     expectedUpdatedAt: string
@@ -3079,6 +3125,12 @@ export class ReleaseReadinessService {
       );
     }
 
+    const launchClosurePackIntegrity =
+      this.verifyStoredLaunchClosurePackIntegrity(launchClosurePack);
+    this.assertLaunchClosurePackIntegrityDoesNotBlock(
+      launchClosurePackIntegrity
+    );
+
     const evidenceSnapshot = this.buildApprovalEvidenceSnapshot(readinessSummary);
     const gate = this.evaluateApprovalGate(
       readinessSummary,
@@ -3135,6 +3187,13 @@ export class ReleaseReadinessService {
             launchClosurePackChecksumSha256:
               launchClosurePack.artifactChecksumSha256,
             launchClosurePackManifestChecksumSha256,
+            launchClosurePackIntegrity: {
+              valid: launchClosurePackIntegrity.valid,
+              artifactChecksumMatches:
+                launchClosurePackIntegrity.artifactChecksumMatches,
+              expectedFileCount: launchClosurePackIntegrity.expectedFileCount,
+              checkedFileCount: launchClosurePackIntegrity.checkedFileCount
+            },
             rollbackReleaseIdentifier,
             summary: summaryText,
             operatorRole: normalizedOperatorRole,
@@ -3212,6 +3271,29 @@ export class ReleaseReadinessService {
 
     this.assertApprovalDriftDoesNotBlock(launchClosureDrift);
 
+    const boundLaunchClosurePack =
+      latestPack?.id === approval.launchClosurePackId
+        ? latestPack
+        : approval.launchClosurePackId
+          ? await this.prismaService.releaseLaunchClosurePack.findUnique({
+              where: {
+                id: approval.launchClosurePackId
+              }
+            })
+          : null;
+    const verifiedBoundLaunchClosurePack =
+      this.assertLaunchClosurePackMatchesApprovalSnapshot(
+        boundLaunchClosurePack,
+        approval
+      );
+    const launchClosurePackIntegrity =
+      this.verifyStoredLaunchClosurePackIntegrity(
+        verifiedBoundLaunchClosurePack
+      );
+    this.assertLaunchClosurePackIntegrityDoesNotBlock(
+      launchClosurePackIntegrity
+    );
+
     const approvalNote = this.normalizeOptionalString(dto.approvalNote);
     const evidenceSnapshot = this.buildApprovalEvidenceSnapshot(readinessSummary);
     const approvedGate = this.evaluateApprovalGate(
@@ -3287,6 +3369,13 @@ export class ReleaseReadinessService {
               approvedByOperatorRole: approvedOperatorRole,
               approvalNote,
               gate: approvedGate,
+              launchClosurePackIntegrity: {
+                valid: launchClosurePackIntegrity.valid,
+                artifactChecksumMatches:
+                  launchClosurePackIntegrity.artifactChecksumMatches,
+                expectedFileCount: launchClosurePackIntegrity.expectedFileCount,
+                checkedFileCount: launchClosurePackIntegrity.checkedFileCount
+              },
               launchClosureDrift,
               decisionDriftCapturedAt: decisionDriftCapturedAt.toISOString()
             } as PrismaJsonValue
@@ -3358,6 +3447,12 @@ export class ReleaseReadinessService {
         "Launch approval rebind requires a launch-closure pack for the same release identifier and environment."
       );
     }
+
+    const launchClosurePackIntegrity =
+      this.verifyStoredLaunchClosurePackIntegrity(launchClosurePack);
+    this.assertLaunchClosurePackIntegrityDoesNotBlock(
+      launchClosurePackIntegrity
+    );
 
     const checklist = this.mapApprovalChecklist(approval);
     const evidenceSnapshot = this.buildApprovalEvidenceSnapshot(readinessSummary);
@@ -3499,6 +3594,13 @@ export class ReleaseReadinessService {
                 launchClosurePack.artifactChecksumSha256,
               nextLaunchClosurePackManifestChecksumSha256:
                 launchClosurePackManifestChecksumSha256,
+              nextLaunchClosurePackIntegrity: {
+                valid: launchClosurePackIntegrity.valid,
+                artifactChecksumMatches:
+                  launchClosurePackIntegrity.artifactChecksumMatches,
+                expectedFileCount: launchClosurePackIntegrity.expectedFileCount,
+                checkedFileCount: launchClosurePackIntegrity.checkedFileCount
+              },
               operatorRole: normalizedOperatorRole,
               gate
             } as PrismaJsonValue

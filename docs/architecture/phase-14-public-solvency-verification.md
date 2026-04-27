@@ -174,6 +174,7 @@ The tenth follow-up now hardens launch-closure pack traceability:
 - `verify-artifact-manifest --pack-dir <path>` checks missing, unexpected, byte-length-mismatched, checksum-mismatched, and stale-count file drift before approval review
 - `GET /release-readiness/internal/launch-closure/packs/:packId/integrity` performs the same integrity comparison against persisted API pack payloads
 - approval request and rebind audit metadata carry the bound pack manifest checksum when the pack record is available
+- approval request, approval rebind, and final dual-control approval now enforce the stored-pack integrity result before binding or approving launch posture
 
 ## Remaining External Launch Work
 

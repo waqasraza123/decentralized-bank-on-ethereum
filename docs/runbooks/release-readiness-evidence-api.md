@@ -243,4 +243,6 @@ curl -sS \
 
 `GET /release-readiness/internal/launch-closure/packs/:packId/integrity` recomputes the persisted pack payload checksum, rebuilds the generated file manifest from stored `files[]`, and reports any checksum, byte-length, missing-file, unexpected-file, file-count, or merged-manifest checksum drift before the pack is used for approval review.
 
+The governed approval workflow calls the same integrity guard during approval request creation, pack rebind, and final approval. Operators should treat any non-`valid` integrity response as a launch blocker until the pack is regenerated or the stored payload is repaired through the controlled release process.
+
 See [`docs/runbooks/phase-12-launch-closure.md`](/Users/mc/development/blockchain/ethereum/stealth-trails-bank/docs/runbooks/phase-12-launch-closure.md).

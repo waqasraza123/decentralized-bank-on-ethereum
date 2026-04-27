@@ -49,6 +49,7 @@ Request policy:
 - the requester cannot later approve or reject the same launch request
 - the approval gate records stale evidence separately from missing or failed evidence
 - the approval gate blocks if rollback drill evidence targets a different rollback release than the request
+- the referenced launch-closure pack must pass stored-pack integrity before it can be bound to the approval request
 
 ## Approval rule
 
@@ -59,8 +60,11 @@ Request policy:
 - rollback drill evidence metadata matches the requested rollback release identifier
 - every checklist attestation is complete
 - no open blockers remain
+- the bound launch-closure pack still exists, still matches the approval snapshot by id, release identifier, environment, version, and checksum, and still passes stored-pack integrity
 
 If any of those conditions are false, the approval stays blocked and the endpoint rejects the action.
+
+Launch-closure pack integrity is enforced on approval request creation, approval rebind, and final approval. The service recomputes the persisted pack payload checksum, rebuilds `artifactManifest` from stored `files[]`, and rejects binding or approval when checksums, byte lengths, file counts, merged-manifest checksum, or expected file membership drift.
 
 ## Rejection rule
 

@@ -173,6 +173,8 @@ curl -sS \
 
 The integrity response must report `valid: true`, `artifactChecksumMatches: true`, and an empty `issues` array. A failed response means the stored pack payload, its `artifactManifest`, or the generated file snapshot no longer agree and the pack must not be used for governed approval.
 
+The governed approval endpoints enforce the same check. A launch-closure pack with any stored integrity issue cannot be bound to a new approval request, cannot be used as a rebind target, and cannot pass final dual-control approval.
+
 ### 3. Run the staging-like probes
 
 Alert delivery SLO:
@@ -341,9 +343,13 @@ curl -sS -X POST \
   --data @approval-request.template.json
 ```
 
+The request fails closed if the referenced pack fails stored integrity verification or belongs to a different release identifier or environment.
+
 ### 7. Complete dual-control approval
 
 The separate approver must review the generated approval record and then approve or reject it through the governed approval endpoints defined in [`docs/runbooks/release-launch-approval.md`](/Users/mc/development/blockchain/ethereum/stealth-trails-bank/docs/runbooks/release-launch-approval.md).
+
+Final approval rechecks the approval-bound launch-closure pack. Approval is blocked if the pack is missing, if its id, release identifier, environment, version, or checksum no longer match the approval snapshot, or if its stored integrity result is no longer valid.
 
 ## Pass and fail criteria
 
