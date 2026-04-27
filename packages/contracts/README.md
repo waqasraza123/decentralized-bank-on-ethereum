@@ -33,6 +33,8 @@ pnpm release:solvency-anchor-proof -- \
   --release-id launch-2026.04.10.1 \
   --manifest-commit <git-sha> \
   --network-name base-sepolia \
+  --verify-onchain \
+  --rpc-url "$BASE_SEPOLIA_RPC_URL" \
   --output artifacts/release-launch/solvency-anchor-registry-evidence.json
 ```
 
@@ -47,6 +49,8 @@ To record the generated proof immediately, replace `--output ...` with:
 Passed `--record-evidence` first checks `GET /release-readiness/internal/solvency-anchor-registry-deployment-proof` and refuses to post if the API-side deployment manifest, governance safe, or anchor signer inventory is not recordable. Use `--preflight-only --base-url ... --access-token ...` to inspect that gate without writing evidence. `--skip-preflight` is reserved for documented break-glass recording.
 
 The generator refuses placeholder deployment proof. The registry contract entry must include a real `deploymentTxHash`, `governanceOwner`, `authorizedAnchorer`, and SHA-256 ABI checksum, and the authorized anchorer must match the manifest `solvency_anchor_execution` signer.
+
+`--verify-onchain` checks the RPC chain id, deployed bytecode, successful deployment receipt, `owner()`, and `authorizedAnchorer()` before writing or recording the proof. The generated payload stores the observed chain id, RPC host, deployment block, owner, and authorized anchorer, but not the full RPC URL.
 
 ## Deployment Manifest Proof Fields
 

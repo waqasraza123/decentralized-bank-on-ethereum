@@ -251,12 +251,14 @@ pnpm release:solvency-anchor-proof -- \
   --release-id launch-2026.04.10.1 \
   --manifest-commit <git-sha> \
   --network-name base-sepolia \
+  --verify-onchain \
+  --rpc-url "$BASE_SEPOLIA_RPC_URL" \
   --record-evidence \
   --base-url https://staging-api.example.com \
   --access-token "$OPERATOR_ACCESS_TOKEN"
 ```
 
-The manifest proof generator now preflights passed recordings against the API governed manifest state before posting. If the operator wants to inspect that gate without writing evidence, replace `--record-evidence` with `--preflight-only` and keep the same API URL and token.
+The manifest proof generator now preflights passed recordings against the API governed manifest state before posting. `--verify-onchain` also reads the registry owner, authorized anchorer, deployed bytecode, and deployment receipt from the accepted chain before the proof is recorded. If the operator wants to inspect the API gate without writing evidence, replace `--record-evidence` with `--preflight-only` and keep the same API URL and token.
 
 Alternatively, record the proof through the verifier when the payload must be supplied inline:
 

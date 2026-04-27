@@ -1,5 +1,6 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import { Contract, JsonRpcProvider, getAddress } from "ethers";
 
 const evidenceType = "solvency_anchor_registry_deployment";
 const contractProductSurface = "solvency_report_anchor_registry_v1";
@@ -31,6 +32,8 @@ Optional:
   --note                   Override evidence note
   --evidence-links         Comma-separated durable evidence links
   --output                 Write JSON evidence payload to this file
+  --verify-onchain         Read registry state and deployment receipt through RPC
+  --rpc-url                JSON-RPC URL for --verify-onchain
   --preflight              Check API governed manifest bindings before printing output
   --preflight-only         Check API governed manifest bindings and exit without recording
   --record-evidence        POST the generated payload to release-readiness evidence
@@ -155,6 +158,10 @@ function findAnchorRegistry(manifest) {
   return manifest.contracts?.find(
     (contract) => contract.productSurface === contractProductSurface
   );
+}
+
+function normalizeEvmAddress(value) {
+  return getAddress(value).toLowerCase();
 }
 
 function pushIfMissing(errors, value, label) {
@@ -297,7 +304,8 @@ function buildEvidencePayload({
   status,
   summary,
   note,
-  evidenceLinks
+  evidenceLinks,
+  onchainVerification
 }) {
   return {
     evidenceType,
@@ -328,8 +336,125 @@ function buildEvidencePayload({
       manifestPath,
       manifestCommitSha: manifestCommit,
       blockExplorerUrl: anchorRegistry.blockExplorerUrl ?? "",
-      anchoredSmokeTxHash: anchorRegistry.anchoredSmokeTxHash ?? ""
+      anchoredSmokeTxHash: anchorRegistry.anchoredSmokeTxHash ?? "",
+      onchainVerification: onchainVerification ?? undefined
     }
+  };
+}
+
+async function verifySolvencyAnchorRegistryOnchain({
+  rpcUrl,
+  manifest,
+  anchorRegistry
+}) {
+  const provider = new JsonRpcProvider(rpcUrl);
+  const network = await provider.getNetwork();
+  const observedChainId = Number(network.chainId);
+  const errors = [];
+
+  if (observedChainId !== manifest.chainId) {
+    errors.push(
+      `RPC chain id ${observedChainId} does not match manifest.chainId ${manifest.chainId}.`
+    );
+  }
+
+  const [bytecode, deploymentReceipt] = await Promise.all([
+    provider.getCode(anchorRegistry.address),
+    provider.getTransactionReceipt(anchorRegistry.deploymentTxHash)
+  ]);
+
+  if (!bytecode || bytecode === "0x") {
+    errors.push(
+      `${contractProductSurface} address has no deployed bytecode on RPC chain ${observedChainId}.`
+    );
+  }
+
+  if (!deploymentReceipt) {
+    errors.push(
+      `${contractProductSurface} deploymentTxHash was not found on RPC chain ${observedChainId}.`
+    );
+  } else {
+    if (deploymentReceipt.status !== 1) {
+      errors.push(`${contractProductSurface} deployment transaction did not succeed.`);
+    }
+
+    if (
+      deploymentReceipt.contractAddress &&
+      normalizeEvmAddress(deploymentReceipt.contractAddress) !==
+        normalizeEvmAddress(anchorRegistry.address)
+    ) {
+      errors.push(
+        `${contractProductSurface} deployment receipt contractAddress does not match manifest address.`
+      );
+    }
+  }
+
+  const registry = new Contract(
+    anchorRegistry.address,
+    [
+      "function owner() view returns (address)",
+      "function authorizedAnchorer() view returns (address)"
+    ],
+    provider
+  );
+  let owner = null;
+  let authorizedAnchorer = null;
+
+  if (bytecode && bytecode !== "0x") {
+    try {
+      [owner, authorizedAnchorer] = await Promise.all([
+        registry.owner(),
+        registry.authorizedAnchorer()
+      ]);
+    } catch (error) {
+      errors.push(
+        `Could not read registry owner() and authorizedAnchorer(): ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
+    }
+  }
+
+  if (
+    owner &&
+    normalizeEvmAddress(owner) !== normalizeEvmAddress(anchorRegistry.governanceOwner)
+  ) {
+    errors.push(
+      `${contractProductSurface} owner() does not match manifest governanceOwner.`
+    );
+  }
+
+  if (
+    authorizedAnchorer &&
+    normalizeEvmAddress(authorizedAnchorer) !==
+      normalizeEvmAddress(anchorRegistry.authorizedAnchorer)
+  ) {
+    errors.push(
+      `${contractProductSurface} authorizedAnchorer() does not match manifest authorizedAnchorer.`
+    );
+  }
+
+  if (errors.length > 0) {
+    fail(
+      [
+        "Cannot verify solvency anchor registry release evidence on chain:",
+        ...errors.map((error) => `- ${error}`)
+      ].join("\n")
+    );
+  }
+
+  return {
+    verifiedAt: new Date().toISOString(),
+    chainId: observedChainId,
+    rpcUrlHost: new URL(rpcUrl).host,
+    contractAddress: anchorRegistry.address,
+    deploymentTxHash: anchorRegistry.deploymentTxHash,
+    deploymentBlockNumber: deploymentReceipt?.blockNumber ?? null,
+    deploymentTransactionIndex:
+      deploymentReceipt?.index ?? deploymentReceipt?.transactionIndex ?? null,
+    owner,
+    authorizedAnchorer,
+    bytecodePresent: bytecode !== "0x"
   };
 }
 
@@ -560,6 +685,17 @@ async function main() {
     );
   }
 
+  const onchainVerification = readOptionalBooleanFlag(
+    parsedArgs,
+    "verify-onchain"
+  )
+    ? await verifySolvencyAnchorRegistryOnchain({
+        rpcUrl: readRequiredStringArg(parsedArgs, "rpc-url"),
+        manifest,
+        anchorRegistry
+      })
+    : null;
+
   const proof = buildEvidencePayload({
     manifest,
     anchorRegistry,
@@ -574,7 +710,8 @@ async function main() {
     note: readOptionalStringArg(parsedArgs, "note"),
     evidenceLinks: parseEvidenceLinks(
       readOptionalStringArg(parsedArgs, "evidence-links")
-    )
+    ),
+    onchainVerification
   });
   const output = JSON.stringify(proof, null, 2) + "\n";
   const outputPath = readOptionalStringArg(parsedArgs, "output");

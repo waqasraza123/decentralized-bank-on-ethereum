@@ -76,6 +76,8 @@ pnpm release:solvency-anchor-proof -- \
   --release-id launch-2026.04.10.1 \
   --manifest-commit <git-sha> \
   --network-name base-sepolia \
+  --verify-onchain \
+  --rpc-url "$BASE_SEPOLIA_RPC_URL" \
   --evidence-links https://sepolia.etherscan.io/tx/<deployment-tx>,packages/contracts/deployments/base-sepolia.manifest.json \
   --record-evidence \
   --base-url https://prodlike-api.example.com \
@@ -96,6 +98,16 @@ pnpm release:solvency-anchor-proof -- \
 ```
 
 When `--record-evidence` is used for a passed proof, the generator runs the same API preflight automatically before it posts evidence. It refuses to record when the preflight is not `recordable`, when the API reports blockers, or when the API draft differs from the generated proof. `--skip-preflight` exists only for break-glass recording after the governance approver explicitly accepts the risk in the evidence note.
+
+Use `--verify-onchain --rpc-url <url>` before recording production-like or production proof. The generator then verifies:
+
+- the RPC chain id matches `manifest.chainId`
+- the registry address has deployed bytecode
+- the deployment transaction receipt exists and succeeded
+- `owner()` matches the manifest `governanceOwner`
+- `authorizedAnchorer()` matches the manifest `authorizedAnchorer`
+
+The generated evidence payload includes an `onchainVerification` object with the observed chain id, RPC host, deployment block, registry owner, and authorized anchorer. The RPC URL itself is not persisted.
 
 The generator reads:
 
