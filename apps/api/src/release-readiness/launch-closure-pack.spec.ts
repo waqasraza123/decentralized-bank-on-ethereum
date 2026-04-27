@@ -6,6 +6,8 @@ import {
 import os from "node:os";
 import path from "node:path";
 import {
+  buildLaunchClosureArtifactManifest,
+  launchClosureArtifactManifestRelativePath,
   previewLaunchClosurePack,
   renderPhase12CompletionChecklist,
   renderLaunchClosureValidationSummary,
@@ -233,6 +235,9 @@ describe("launch-closure-pack", () => {
       expect(result.files).toContain(
         path.join(outputDir, "phase-12-completion-checklist.md")
       );
+      expect(result.files).toContain(
+        path.join(outputDir, launchClosureArtifactManifestRelativePath)
+      );
 
       const executionPlan = readFileSync(
         path.join(outputDir, "execution-plan.md"),
@@ -259,6 +264,12 @@ describe("launch-closure-pack", () => {
         path.join(outputDir, "payloads", "critical_alert_reescalation.json"),
         "utf8"
       );
+      const artifactManifest = JSON.parse(
+        readFileSync(
+          path.join(outputDir, launchClosureArtifactManifestRelativePath),
+          "utf8"
+        )
+      ) as ReturnType<typeof buildLaunchClosureArtifactManifest>;
 
       expect(executionPlan).toContain("pnpm release:readiness:probe --");
       expect(executionPlan).toContain("--probe worker_rollback_drill");
@@ -280,6 +291,30 @@ describe("launch-closure-pack", () => {
       expect(operatorActions).toContain("payloads/critical_alert_reescalation.json");
       expect(criticalAlertPayload).toContain('"evidenceType": "critical_alert_reescalation"');
       expect(criticalAlertPayload).toContain('"environment": "production_like"');
+      expect(artifactManifest.manifestChecksumSha256).toEqual(expect.any(String));
+      expect(artifactManifest.files).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            relativePath: "manifest.json",
+            byteLength: expect.any(Number),
+            contentSha256: artifactManifest.manifestChecksumSha256
+          }),
+          expect.objectContaining({
+            relativePath: path.join(
+              "payloads",
+              "critical_alert_reescalation.json"
+            ),
+            byteLength: expect.any(Number),
+            contentSha256: expect.any(String)
+          })
+        ])
+      );
+      expect(
+        artifactManifest.files.some(
+          (file) =>
+            file.relativePath === launchClosureArtifactManifestRelativePath
+        )
+      ).toBe(false);
       expect(validationSummary).toContain(
         "database_restore_drill: accepted only in staging, production_like, production"
       );
@@ -319,6 +354,10 @@ describe("launch-closure-pack", () => {
         expect.objectContaining({
           relativePath: "operator-actions.md",
           content: expect.stringContaining("payloads/platform_alert_delivery_slo.json")
+        }),
+        expect.objectContaining({
+          relativePath: launchClosureArtifactManifestRelativePath,
+          content: expect.stringContaining('"relativePath": "manifest.json"')
         }),
         expect.objectContaining({
           relativePath: path.join("payloads", "platform_alert_delivery_slo.json"),

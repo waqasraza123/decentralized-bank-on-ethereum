@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import {
@@ -144,6 +145,21 @@ export type LaunchClosurePackFile = {
 export type LaunchClosurePackPreview = {
   outputSubpath: string;
   files: LaunchClosurePackFile[];
+};
+
+export const launchClosureArtifactManifestRelativePath =
+  "artifact-manifest.json";
+
+export type LaunchClosureArtifactManifestFile = {
+  relativePath: string;
+  byteLength: number;
+  contentSha256: string;
+};
+
+export type LaunchClosureArtifactManifest = {
+  manifestChecksumSha256: string | null;
+  fileCount: number;
+  files: LaunchClosureArtifactManifestFile[];
 };
 
 export type LaunchClosureDynamicStatusInput = {
@@ -294,6 +310,40 @@ function defaultOutputDir(manifest: LaunchClosureManifest, repoRoot: string): st
 
 function jsonStringify(value: unknown): string {
   return JSON.stringify(value, null, 2) + "\n";
+}
+
+function fingerprintString(value: string): string {
+  return createHash("sha256").update(value).digest("hex");
+}
+
+export function buildLaunchClosureArtifactManifest(
+  files: LaunchClosurePackFile[]
+): LaunchClosureArtifactManifest {
+  const manifestFiles = files
+    .filter(
+      (file) => file.relativePath !== launchClosureArtifactManifestRelativePath
+    )
+    .map((file) => ({
+      relativePath: file.relativePath,
+      byteLength: Buffer.byteLength(file.content, "utf8"),
+      contentSha256: fingerprintString(file.content)
+    }))
+    .sort((left, right) =>
+      left.relativePath < right.relativePath
+        ? -1
+        : left.relativePath > right.relativePath
+          ? 1
+          : 0
+    );
+  const manifestChecksumSha256 =
+    manifestFiles.find((file) => file.relativePath === "manifest.json")
+      ?.contentSha256 ?? null;
+
+  return {
+    manifestChecksumSha256,
+    fileCount: manifestFiles.length,
+    files: manifestFiles
+  };
 }
 
 function mergeContracts(
@@ -1227,6 +1277,7 @@ Use this pack to:
 - validate that the launch manifest is complete before execution starts
 - run the remaining accepted probes and manual attestations in the correct order
 - capture auditable evidence for each remaining Phase 12 item
+- compare \`${launchClosureArtifactManifestRelativePath}\` against downloaded files and the stored API pack record before requesting approval
 - request governed launch approval only after the evidence set is actually complete
 
 ## Sequence
@@ -1969,62 +2020,70 @@ export function previewLaunchClosurePack(
       };
     })
     .filter((file): file is LaunchClosurePackFile => file !== null);
+  const packFiles: LaunchClosurePackFile[] = [
+    {
+      relativePath: "README.md",
+      content: renderPackReadme(manifest)
+    },
+    {
+      relativePath: "manifest.json",
+      content: jsonStringify(manifest)
+    },
+    {
+      relativePath: "local-vs-accepted-status.md",
+      content: renderLocalVsAcceptedStatus()
+    },
+    {
+      relativePath: "phase-12-completion-checklist.md",
+      content: renderPhase12CompletionChecklist({
+        manifest,
+        statusSnapshot
+      })
+    },
+    {
+      relativePath: "execution-plan.md",
+      content: renderExecutionPlan(manifest)
+    },
+    {
+      relativePath: "operator-actions.md",
+      content: renderOperatorActionsGuide(manifest, artifacts)
+    },
+    {
+      relativePath: "approval-request.template.json",
+      content: buildApprovalBodyTemplate(manifest, statusSnapshot)
+    },
+    {
+      relativePath: "approve-approval.template.json",
+      content: jsonStringify(buildApprovalDecisionTemplate("approve"))
+    },
+    {
+      relativePath: "reject-approval.template.json",
+      content: jsonStringify(buildApprovalDecisionTemplate("reject"))
+    },
+    ...(statusSnapshot
+      ? [
+          {
+            relativePath: "current-status-summary.md",
+            content: renderCurrentStatusSnapshot(manifest, statusSnapshot)
+          }
+        ]
+      : []),
+    ...evidencePayloadFiles,
+    ...artifacts.map((artifact) => ({
+      relativePath: path.join("evidence", artifact.filename),
+      content: renderEvidenceTemplate(manifest, artifact)
+    }))
+  ];
+  const artifactManifest = buildLaunchClosureArtifactManifest(packFiles);
 
   return {
     outputSubpath: buildOutputSubpath(manifest),
     files: [
+      ...packFiles,
       {
-        relativePath: "README.md",
-        content: renderPackReadme(manifest)
-      },
-      {
-        relativePath: "manifest.json",
-        content: jsonStringify(manifest)
-      },
-      {
-        relativePath: "local-vs-accepted-status.md",
-        content: renderLocalVsAcceptedStatus()
-      },
-      {
-        relativePath: "phase-12-completion-checklist.md",
-        content: renderPhase12CompletionChecklist({
-          manifest,
-          statusSnapshot
-        })
-      },
-      {
-        relativePath: "execution-plan.md",
-        content: renderExecutionPlan(manifest)
-      },
-      {
-        relativePath: "operator-actions.md",
-        content: renderOperatorActionsGuide(manifest, artifacts)
-      },
-      {
-        relativePath: "approval-request.template.json",
-        content: buildApprovalBodyTemplate(manifest, statusSnapshot)
-      },
-      {
-        relativePath: "approve-approval.template.json",
-        content: jsonStringify(buildApprovalDecisionTemplate("approve"))
-      },
-      {
-        relativePath: "reject-approval.template.json",
-        content: jsonStringify(buildApprovalDecisionTemplate("reject"))
-      },
-      ...(statusSnapshot
-        ? [
-            {
-              relativePath: "current-status-summary.md",
-              content: renderCurrentStatusSnapshot(manifest, statusSnapshot)
-            }
-          ]
-        : []),
-      ...evidencePayloadFiles,
-      ...artifacts.map((artifact) => ({
-        relativePath: path.join("evidence", artifact.filename),
-        content: renderEvidenceTemplate(manifest, artifact)
-      }))
+        relativePath: launchClosureArtifactManifestRelativePath,
+        content: jsonStringify(artifactManifest)
+      }
     ]
   };
 }

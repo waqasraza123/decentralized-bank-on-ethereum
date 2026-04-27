@@ -166,6 +166,13 @@ The ninth follow-up now adds API-side manifest integrity checks for deployment p
 - the authorized anchorer must match active `GovernedSignerInventory` for `solvency_anchor_execution`
 - the governance owner must match the active `GovernanceAuthorityManifest` governance safe
 
-## Next follow-up after manifest-integrity proof
+The tenth follow-up now hardens launch-closure pack traceability:
 
-After manifest-integrity proof enforcement, the remaining production extension is to replace placeholder deployment manifest addresses/checksums with real staged deployment values and record accepted `solvency_anchor_registry_deployment` evidence for the launch candidate.
+- launch-closure packs persist an `artifactManifest` alongside the full stored pack payload
+- `manifestChecksumSha256` exposes the exact checksum for the merged `manifest.json`
+- generated packs include `artifact-manifest.json`, matching the API response file list and excluding itself to avoid recursive checksum semantics
+- approval request and rebind audit metadata carry the bound pack manifest checksum when the pack record is available
+
+## Remaining External Launch Work
+
+After manifest-integrity proof enforcement and launch-pack traceability, the remaining production extension is to replace placeholder deployment manifest addresses/checksums with real staged deployment values and record accepted `solvency_anchor_registry_deployment` evidence for the launch candidate.

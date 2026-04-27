@@ -47,12 +47,14 @@ import {
   RejectReleaseReadinessApprovalDto
 } from "./dto/release-readiness-approval.dto";
 import {
+  buildLaunchClosureArtifactManifest,
   previewLaunchClosurePack,
   renderLaunchClosureStatusSummary,
   renderLaunchClosureValidationSummary,
   validateLaunchClosureManifest,
+  type LaunchClosureArtifactManifest,
+  type LaunchClosureArtifactManifestFile,
   type LaunchClosureManifest,
-  type LaunchClosurePackFile
 } from "./launch-closure-pack";
 
 type ReleaseReadinessEvidenceRecord =
@@ -412,22 +414,10 @@ type ReleaseLaunchClosurePackProjection = {
   generatedByOperatorRole: string | null;
   artifactChecksumSha256: string;
   manifestChecksumSha256: string | null;
-  artifactManifest: ReleaseLaunchClosureArtifactManifest | null;
+  artifactManifest: LaunchClosureArtifactManifest | null;
   artifactPayload: Prisma.JsonValue;
   createdAt: string;
   updatedAt: string;
-};
-
-type ReleaseLaunchClosureArtifactManifestFile = {
-  relativePath: string;
-  byteLength: number;
-  contentSha256: string;
-};
-
-type ReleaseLaunchClosureArtifactManifest = {
-  manifestChecksumSha256: string | null;
-  fileCount: number;
-  files: ReleaseLaunchClosureArtifactManifestFile[];
 };
 
 type ReleaseLaunchClosurePackMutationResult = {
@@ -1281,28 +1271,9 @@ export class ReleaseReadinessService {
       .digest("hex");
   }
 
-  private buildLaunchClosureArtifactManifest(
-    files: LaunchClosurePackFile[]
-  ): ReleaseLaunchClosureArtifactManifest {
-    const manifestFiles = files.map((file) => ({
-      relativePath: file.relativePath,
-      byteLength: Buffer.byteLength(file.content, "utf8"),
-      contentSha256: this.fingerprintString(file.content)
-    }));
-    const manifestChecksumSha256 =
-      manifestFiles.find((file) => file.relativePath === "manifest.json")
-        ?.contentSha256 ?? null;
-
-    return {
-      manifestChecksumSha256,
-      fileCount: manifestFiles.length,
-      files: manifestFiles
-    };
-  }
-
   private readLaunchClosureArtifactManifest(
     artifactPayload: Prisma.JsonValue
-  ): ReleaseLaunchClosureArtifactManifest | null {
+  ): LaunchClosureArtifactManifest | null {
     if (
       !artifactPayload ||
       Array.isArray(artifactPayload) ||
@@ -1326,7 +1297,7 @@ export class ReleaseReadinessService {
     const files = Array.isArray(manifest.files)
       ? manifest.files
           .filter(
-            (file): file is ReleaseLaunchClosureArtifactManifestFile =>
+            (file): file is LaunchClosureArtifactManifestFile =>
               Boolean(file) &&
               !Array.isArray(file) &&
               typeof file === "object" &&
@@ -2701,9 +2672,7 @@ export class ReleaseReadinessService {
         : null
     });
     const summaryMarkdown = renderLaunchClosureValidationSummary(manifest);
-    const artifactManifest = this.buildLaunchClosureArtifactManifest(
-      preview.files
-    );
+    const artifactManifest = buildLaunchClosureArtifactManifest(preview.files);
     const artifactPayload = {
       manifest,
       validation,

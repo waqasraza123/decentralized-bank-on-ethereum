@@ -228,6 +228,6 @@ Stored launch-closure packs include:
 - `manifestChecksumSha256`: checksum for the merged `manifest.json`
 - `artifactManifest.files[]`: per-file byte lengths and SHA-256 checksums for generated pack files
 
-Use those checksums to compare browser-downloaded files, stored pack records, and approval-bound pack references during launch review.
+The generated file set also includes `artifact-manifest.json`, which mirrors `artifactManifest` from the stored API response. Its file list intentionally excludes `artifact-manifest.json` itself to avoid a recursive checksum. Use those checksums to compare CLI scaffolds, browser-downloaded files, stored pack records, and approval-bound pack references during launch review.
 
 See [`docs/runbooks/phase-12-launch-closure.md`](/Users/mc/development/blockchain/ethereum/stealth-trails-bank/docs/runbooks/phase-12-launch-closure.md).

@@ -150,9 +150,9 @@ The generated pack contains:
 - local-versus-accepted truth summary
 - approval request body template
 - one evidence template per remaining Phase 12 item
-- an artifact manifest with SHA-256 checksums for every generated file and the merged `manifest.json`
+- `artifact-manifest.json` with byte lengths and SHA-256 checksums for each generated pack file, excluding `artifact-manifest.json` itself to avoid a recursive checksum, plus the merged `manifest.json` checksum
 
-Preserve the stored pack checksum, merged manifest checksum, and per-file checksums with the launch evidence. The admin Launch Readiness workspace displays the pack checksum, manifest checksum, and generated file count after pack generation.
+Preserve the stored pack checksum, merged manifest checksum, `artifact-manifest.json`, and per-file checksums with the launch evidence. The admin Launch Readiness workspace displays the pack checksum, manifest checksum, and generated file count after pack generation.
 
 ### 3. Run the staging-like probes
 
