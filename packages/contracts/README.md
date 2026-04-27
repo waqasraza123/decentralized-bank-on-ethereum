@@ -51,7 +51,7 @@ Passed `--record-evidence` first checks `GET /release-readiness/internal/solvenc
 
 The generator refuses placeholder deployment proof. The registry contract entry must include a real `deploymentTxHash`, `governanceOwner`, `authorizedAnchorer`, and SHA-256 ABI checksum, and the authorized anchorer must match the manifest `solvency_anchor_execution` signer.
 
-`--verify-onchain` checks the RPC chain id, deployed bytecode, successful deployment receipt, `owner()`, and `authorizedAnchorer()` before writing or recording the proof. The generated payload stores the observed chain id, RPC host, deployment block, owner, and authorized anchorer, but not the full RPC URL. `--launch-closure-fragment-output` writes the matching launch-closure manifest patch for `chain`, `solvencyAnchorRegistryDeployment`, the registry contract entry, and the governed anchor signer; `--onchain-verification-output` writes only the nested verification block.
+`--verify-onchain` checks the RPC chain id, deployed bytecode, successful deployment receipt, `owner()`, and `authorizedAnchorer()` before writing or recording the proof. The generated payload stores the observed chain id, RPC host, deployment block, owner, and authorized anchorer, but not the full RPC URL. `--launch-closure-fragment-output` writes the matching launch-closure manifest patch for `chain`, `solvencyAnchorRegistryDeployment`, the registry contract entry, and the governed anchor signer; `--onchain-verification-output` writes only the nested verification block. Pass the fragment to `pnpm release:launch-closure -- validate|scaffold --solvency-fragment <path>` or materialize it with `merge-solvency-fragment`.
 
 ## Deployment Manifest Proof Fields
 

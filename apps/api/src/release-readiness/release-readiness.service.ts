@@ -23,7 +23,10 @@ import { NotificationsService } from "../notifications/notifications.service";
 import { PrismaService } from "../prisma/prisma.service";
 import type { PrismaJsonValue } from "../prisma/prisma-json";
 import { CreateReleaseReadinessApprovalDto } from "./dto/create-release-readiness-approval.dto";
-import { CreateReleaseReadinessEvidenceDto } from "./dto/create-release-readiness-evidence.dto";
+import {
+  CreateReleaseReadinessEvidenceDto,
+  solvencyAnchorRegistryDeploymentEvidenceType
+} from "./dto/create-release-readiness-evidence.dto";
 import { GetSolvencyAnchorRegistryDeploymentProofDto } from "./dto/get-solvency-anchor-registry-deployment-proof.dto";
 import { ListReleaseLaunchClosurePacksDto } from "./dto/list-release-launch-closure-packs.dto";
 import { ListReleaseReadinessApprovalLineageIncidentsDto } from "./dto/list-release-readiness-approval-lineage-incidents.dto";
@@ -1791,8 +1794,7 @@ export class ReleaseReadinessService {
 
     return {
       generatedAt: new Date().toISOString(),
-      evidenceType:
-        ReleaseReadinessEvidenceType.solvency_anchor_registry_deployment,
+      evidenceType: solvencyAnchorRegistryDeploymentEvidenceType,
       environment: query.environment,
       chainId: query.chainId,
       ready,
@@ -2198,8 +2200,7 @@ export class ReleaseReadinessService {
     }
 
     if (
-      dto.evidenceType ===
-      ReleaseReadinessEvidenceType.solvency_anchor_registry_deployment
+      dto.evidenceType === solvencyAnchorRegistryDeploymentEvidenceType
     ) {
       await this.assertSolvencyAnchorRegistryEvidenceMatchesManifest(
         dto.environment,

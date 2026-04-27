@@ -117,10 +117,29 @@ Why this order:
 pnpm release:launch-closure -- validate --manifest ./launch-manifest.json
 ```
 
+When solvency anchor registry deployment proof was generated from the governed contract manifest, merge that fragment into the launch manifest before validation:
+
+```bash
+pnpm release:launch-closure -- merge-solvency-fragment \
+  --manifest ./launch-manifest.json \
+  --solvency-fragment ./artifacts/release-launch/solvency-anchor-launch-fragment.json \
+  --output ./launch-manifest.merged.json
+
+pnpm release:launch-closure -- validate \
+  --manifest ./launch-manifest.json \
+  --solvency-fragment ./artifacts/release-launch/solvency-anchor-launch-fragment.json
+```
+
+The merge replaces the solvency registry deployment block, updates the `chain` scope, replaces or appends the `solvency_report_anchor_registry_v1` contract entry, and replaces or appends the governed `solvency_anchor_execution` signer while preserving the rest of the manifest. For `production_like` and `production`, validation still requires the fragment to carry RPC-verified `onchainVerification` metadata.
+
 ### 2. Generate the launch-closure pack
 
 ```bash
-pnpm release:launch-closure -- scaffold --manifest ./launch-manifest.json --output-dir ./artifacts/release-launch/current --force
+pnpm release:launch-closure -- scaffold \
+  --manifest ./launch-manifest.json \
+  --solvency-fragment ./artifacts/release-launch/solvency-anchor-launch-fragment.json \
+  --output-dir ./artifacts/release-launch/current \
+  --force
 ```
 
 The generated pack contains:

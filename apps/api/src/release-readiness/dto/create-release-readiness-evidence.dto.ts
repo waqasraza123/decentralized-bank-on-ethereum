@@ -37,6 +37,9 @@ export const releaseReadinessEvidenceTypes = [
   "role_review"
 ] as const;
 
+export const solvencyAnchorRegistryDeploymentEvidenceType =
+  "solvency_anchor_registry_deployment" as ReleaseReadinessEvidenceType;
+
 export const releaseReadinessEnvironments = [
   "development",
   "ci",

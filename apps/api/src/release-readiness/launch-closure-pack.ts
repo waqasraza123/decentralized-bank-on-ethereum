@@ -108,6 +108,24 @@ export type LaunchClosureManifest = {
   };
 };
 
+export type LaunchClosureSolvencyFragment = {
+  chain?: LaunchClosureManifest["chain"];
+  solvencyAnchorRegistryDeployment?: LaunchClosureManifest["solvencyAnchorRegistryDeployment"];
+  contracts?: NonNullable<LaunchClosureManifest["contracts"]>;
+  governedCustody?: {
+    governanceSafeAddress?: string;
+    treasurySafeAddress?: string;
+    emergencySafeAddress?: string;
+    signerInventory?: NonNullable<
+      LaunchClosureManifest["governedCustody"]
+    >["signerInventory"];
+  };
+};
+
+type LaunchClosureSignerInventory = NonNullable<
+  LaunchClosureManifest["governedCustody"]
+>["signerInventory"];
+
 export type LaunchClosureValidationResult = {
   errors: string[];
   warnings: string[];
@@ -276,6 +294,96 @@ function defaultOutputDir(manifest: LaunchClosureManifest, repoRoot: string): st
 
 function jsonStringify(value: unknown): string {
   return JSON.stringify(value, null, 2) + "\n";
+}
+
+function mergeContracts(
+  currentContracts: LaunchClosureManifest["contracts"],
+  fragmentContracts: LaunchClosureSolvencyFragment["contracts"]
+): LaunchClosureManifest["contracts"] {
+  if (!fragmentContracts || fragmentContracts.length === 0) {
+    return currentContracts;
+  }
+
+  const mergedContracts = [...(currentContracts ?? [])];
+
+  for (const fragmentContract of fragmentContracts) {
+    const existingIndex = mergedContracts.findIndex(
+      (contract) => contract.productSurface === fragmentContract.productSurface
+    );
+
+    if (existingIndex >= 0) {
+      mergedContracts[existingIndex] = {
+        ...mergedContracts[existingIndex],
+        ...fragmentContract
+      };
+      continue;
+    }
+
+    mergedContracts.push(fragmentContract);
+  }
+
+  return mergedContracts;
+}
+
+function mergeSignerInventory(
+  currentSigners: LaunchClosureSignerInventory | undefined,
+  fragmentSigners: LaunchClosureSignerInventory | undefined
+): LaunchClosureSignerInventory {
+  if (!fragmentSigners || fragmentSigners.length === 0) {
+    return currentSigners ?? [];
+  }
+
+  const mergedSigners = [...(currentSigners ?? [])];
+
+  for (const fragmentSigner of fragmentSigners) {
+    const existingIndex = mergedSigners.findIndex(
+      (signer) => signer.scope === fragmentSigner.scope
+    );
+
+    if (existingIndex >= 0) {
+      mergedSigners[existingIndex] = {
+        ...mergedSigners[existingIndex],
+        ...fragmentSigner
+      };
+      continue;
+    }
+
+    mergedSigners.push(fragmentSigner);
+  }
+
+  return mergedSigners;
+}
+
+export function mergeLaunchClosureSolvencyFragment(
+  manifest: LaunchClosureManifest,
+  fragment: LaunchClosureSolvencyFragment
+): LaunchClosureManifest {
+  const nextGovernedCustody =
+    manifest.governedCustody || fragment.governedCustody
+      ? {
+          ...(manifest.governedCustody ?? {
+            governanceSafeAddress: "",
+            treasurySafeAddress: "",
+            emergencySafeAddress: "",
+            signerInventory: []
+          }),
+          ...(fragment.governedCustody ?? {}),
+          signerInventory: mergeSignerInventory(
+            manifest.governedCustody?.signerInventory,
+            fragment.governedCustody?.signerInventory
+          )
+        }
+      : undefined;
+
+  return {
+    ...manifest,
+    chain: fragment.chain ?? manifest.chain,
+    solvencyAnchorRegistryDeployment:
+      fragment.solvencyAnchorRegistryDeployment ??
+      manifest.solvencyAnchorRegistryDeployment,
+    contracts: mergeContracts(manifest.contracts, fragment.contracts),
+    governedCustody: nextGovernedCustody
+  };
 }
 
 function buildProbeCommand(args: string[]): string {

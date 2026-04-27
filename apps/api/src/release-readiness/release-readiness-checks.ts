@@ -2,6 +2,7 @@ import {
   ReleaseReadinessEnvironment,
   ReleaseReadinessEvidenceType
 } from "@prisma/client";
+import { solvencyAnchorRegistryDeploymentEvidenceType } from "./dto/create-release-readiness-evidence.dto";
 
 export type RequiredReleaseReadinessCheck = {
   evidenceType: ReleaseReadinessEvidenceType;
@@ -115,8 +116,7 @@ export const requiredReleaseReadinessChecks: RequiredReleaseReadinessCheck[] = [
     ]
   },
   {
-    evidenceType:
-      ReleaseReadinessEvidenceType.solvency_anchor_registry_deployment,
+    evidenceType: solvencyAnchorRegistryDeploymentEvidenceType,
     label: "Solvency Anchor Registry Deployment",
     description:
       "Prove the solvency report anchor registry is deployed, governed, and bound to the launch signer manifest before public report anchors can be trusted.",

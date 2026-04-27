@@ -6,6 +6,7 @@ import {
   validateReleaseReadinessEvidenceMetadata,
   validateReleaseReadinessEvidencePayload
 } from "./release-readiness-evidence-requirements";
+import { solvencyAnchorRegistryDeploymentEvidenceType } from "./dto/create-release-readiness-evidence.dto";
 
 describe("release-readiness-evidence-requirements", () => {
   it("requires launch candidate metadata for external-only proofs", () => {
@@ -62,13 +63,12 @@ describe("release-readiness-evidence-requirements", () => {
   it("requires structured solvency anchor registry deployment payload", () => {
     expect(
       describeReleaseReadinessEvidencePayloadRequirements(
-        ReleaseReadinessEvidenceType.solvency_anchor_registry_deployment
+        solvencyAnchorRegistryDeploymentEvidenceType
       )
     ).toContain("deployment transaction hash");
     expect(
       validateReleaseReadinessEvidencePayload({
-        evidenceType:
-          ReleaseReadinessEvidenceType.solvency_anchor_registry_deployment,
+        evidenceType: solvencyAnchorRegistryDeploymentEvidenceType,
         evidencePayload: {
           proofKind: "manual_attestation",
           networkName: "sepolia",

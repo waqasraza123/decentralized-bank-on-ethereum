@@ -1,5 +1,6 @@
 import { ReleaseReadinessEvidenceType } from "@prisma/client";
 import { externalOnlyReleaseReadinessChecks } from "./release-readiness-checks";
+import { solvencyAnchorRegistryDeploymentEvidenceType } from "./dto/create-release-readiness-evidence.dto";
 
 export type ReleaseReadinessEvidenceMetadataField =
   | "releaseIdentifier"
@@ -186,8 +187,7 @@ export function listReleaseReadinessEvidencePayloadRequirements(
   evidenceType: ReleaseReadinessEvidenceType
 ): readonly ReleaseReadinessEvidencePayloadField[] {
   if (
-    evidenceType ===
-    ReleaseReadinessEvidenceType.solvency_anchor_registry_deployment
+    evidenceType === solvencyAnchorRegistryDeploymentEvidenceType
   ) {
     return solvencyAnchorRegistryDeploymentPayloadFields;
   }

@@ -190,11 +190,17 @@ For the remaining staging-like Phase 12 work, prefer the repo-owned launch-closu
 
 ```bash
 pnpm release:launch-closure -- status
-pnpm release:launch-closure -- validate --manifest ./launch-manifest.json
-pnpm release:launch-closure -- scaffold --manifest ./launch-manifest.json --output-dir ./artifacts/release-launch/current --force
+pnpm release:launch-closure -- validate \
+  --manifest ./launch-manifest.json \
+  --solvency-fragment ./artifacts/release-launch/solvency-anchor-launch-fragment.json
+pnpm release:launch-closure -- scaffold \
+  --manifest ./launch-manifest.json \
+  --solvency-fragment ./artifacts/release-launch/solvency-anchor-launch-fragment.json \
+  --output-dir ./artifacts/release-launch/current \
+  --force
 ```
 
-That helper does not close evidence gates. It validates required inputs, generates a strict execution pack, and preserves the distinction between:
+Use `merge-solvency-fragment --manifest <path> --solvency-fragment <path> --output <path>` when the generated solvency fragment should be materialized into a reviewed launch manifest before pack generation. The helper does not close evidence gates. It validates required inputs, generates a strict execution pack, and preserves the distinction between:
 
 - repo-owned proofs already satisfiable from development or ci
 - local dry-run support that is still not accepted launch proof
