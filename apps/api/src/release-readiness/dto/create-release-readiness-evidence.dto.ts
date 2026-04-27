@@ -32,6 +32,7 @@ export const releaseReadinessEvidenceTypes = [
   "contract_invariant_suite",
   "backend_integration_suite",
   "end_to_end_finance_flows",
+  "solvency_anchor_registry_deployment",
   "secret_handling_review",
   "role_review"
 ] as const;

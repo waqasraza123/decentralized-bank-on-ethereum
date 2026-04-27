@@ -65,6 +65,7 @@ const releaseReadinessEvidenceTypes = [
   "contract_invariant_suite",
   "backend_integration_suite",
   "end_to_end_finance_flows",
+  "solvency_anchor_registry_deployment",
   "secret_handling_review",
   "role_review"
 ] as const;
@@ -129,6 +130,7 @@ type EvidenceDraft = {
   summary: string;
   note: string;
   evidenceLinks: string;
+  evidencePayloadJson: string;
 };
 
 type ApprovalDraft = {
@@ -180,7 +182,8 @@ function createEvidenceDraft(
     runbookPath: "",
     summary: "",
     note: "",
-    evidenceLinks: ""
+    evidenceLinks: "",
+    evidencePayloadJson: ""
   };
 }
 
@@ -225,6 +228,7 @@ function listRequiredEvidenceMetadataFields(
     case "critical_alert_reescalation":
     case "secret_handling_review":
     case "role_review":
+    case "solvency_anchor_registry_deployment":
       return ["release identifier"];
     case "database_restore_drill":
       return ["release identifier", "backup reference"];
@@ -233,6 +237,56 @@ function listRequiredEvidenceMetadataFields(
       return ["release identifier", "rollback release identifier"];
     default:
       return [];
+  }
+}
+
+function listRequiredEvidencePayloadFields(
+  evidenceType: EvidenceDraft["evidenceType"]
+): string[] {
+  return evidenceType === "solvency_anchor_registry_deployment"
+    ? [
+        "proofKind",
+        "networkName",
+        "chainId",
+        "contractProductSurface",
+        "signerScope",
+        "contractAddress",
+        "deploymentTxHash",
+        "governanceOwner",
+        "authorizedAnchorer",
+        "abiChecksumSha256",
+        "manifestPath",
+        "manifestCommitSha"
+      ]
+    : [];
+}
+
+function parseEvidencePayloadJson(
+  value: string
+): Record<string, unknown> | undefined {
+  const normalizedValue = value.trim();
+
+  if (normalizedValue.length === 0) {
+    return undefined;
+  }
+
+  const parsed = JSON.parse(normalizedValue) as unknown;
+
+  if (!parsed || Array.isArray(parsed) || typeof parsed !== "object") {
+    throw new Error("Evidence payload JSON must be an object.");
+  }
+
+  return parsed as Record<string, unknown>;
+}
+
+function readEvidencePayloadJsonError(value: string): string | null {
+  try {
+    parseEvidencePayloadJson(value);
+    return null;
+  } catch (error) {
+    return error instanceof Error
+      ? error.message
+      : "Evidence payload JSON is invalid.";
   }
 }
 
@@ -745,7 +799,10 @@ export function LaunchReadinessPage() {
         runbookPath: trimToUndefined(evidenceDraft.runbookPath),
         summary: evidenceDraft.summary.trim(),
         note: trimToUndefined(evidenceDraft.note),
-        evidenceLinks: parseListInput(evidenceDraft.evidenceLinks)
+        evidenceLinks: parseListInput(evidenceDraft.evidenceLinks),
+        evidencePayload: parseEvidencePayloadJson(
+          evidenceDraft.evidencePayloadJson
+        )
       }),
     onSuccess: async (result) => {
       setEvidenceFlash("Evidence recorded.");
@@ -1087,6 +1144,12 @@ export function LaunchReadinessPage() {
   const missingEvidenceMetadataFields = listMissingEvidenceMetadataFields(
     evidenceDraft
   );
+  const requiredEvidencePayloadFields = listRequiredEvidencePayloadFields(
+    evidenceDraft.evidenceType
+  );
+  const evidencePayloadJsonError = evidenceDraft.evidencePayloadJson.trim()
+    ? readEvidencePayloadJsonError(evidenceDraft.evidencePayloadJson)
+    : null;
   const missingApprovalMetadataFields = listMissingApprovalMetadataFields(
     approvalDraft
   );
@@ -1096,7 +1159,10 @@ export function LaunchReadinessPage() {
     !evidenceConfirm ||
     recordEvidenceMutation.isPending ||
     evidenceDraft.summary.trim().length === 0 ||
-    missingEvidenceMetadataFields.length > 0;
+    missingEvidenceMetadataFields.length > 0 ||
+    evidencePayloadJsonError !== null ||
+    (requiredEvidencePayloadFields.length > 0 &&
+      evidenceDraft.evidencePayloadJson.trim().length === 0);
   const requestApprovalDisabled =
     !approvalRequestConfirm ||
     requestApprovalMutation.isPending ||
@@ -1474,6 +1540,21 @@ export function LaunchReadinessPage() {
                 />
               </div>
 
+              <div className="admin-field">
+                <span>Evidence payload JSON</span>
+                <textarea
+                  aria-label="Evidence payload JSON"
+                  placeholder='{"proofKind":"manual_attestation"}'
+                  value={evidenceDraft.evidencePayloadJson}
+                  onChange={(event) =>
+                    setEvidenceDraft((current) => ({
+                      ...current,
+                      evidencePayloadJson: event.target.value
+                    }))
+                  }
+                />
+              </div>
+
               {requiredEvidenceMetadataFields.length > 0 ? (
                 <InlineNotice
                   title="Evidence metadata required"
@@ -1485,6 +1566,29 @@ export function LaunchReadinessPage() {
                       ? "warning"
                       : "positive"
                   }
+                />
+              ) : null}
+
+              {requiredEvidencePayloadFields.length > 0 ? (
+                <InlineNotice
+                  title="Evidence payload required"
+                  description={`This evidence type requires payload fields ${requiredEvidencePayloadFields.join(
+                    ", "
+                  )}.`}
+                  tone={
+                    evidenceDraft.evidencePayloadJson.trim().length === 0 ||
+                    evidencePayloadJsonError !== null
+                      ? "warning"
+                      : "positive"
+                  }
+                />
+              ) : null}
+
+              {evidencePayloadJsonError ? (
+                <InlineNotice
+                  title="Evidence payload JSON invalid"
+                  description={evidencePayloadJsonError}
+                  tone="critical"
                 />
               ) : null}
 

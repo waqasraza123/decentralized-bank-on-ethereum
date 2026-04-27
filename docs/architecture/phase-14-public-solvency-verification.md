@@ -146,6 +146,13 @@ The sixth follow-up now adds the repo-owned anchoring contract and managed worke
 - managed worker broadcaster gated by `WORKER_SOLVENCY_ANCHOR_CONTRACT_ADDRESS` and `WORKER_SOLVENCY_ANCHOR_SIGNER_PRIVATE_KEY`
 - operator documentation for automatic worker broadcast and external multisig submission
 
-## Next follow-up after contract integration
+The seventh follow-up now adds launch-readiness deployment proof for the anchor registry:
 
-After contract integration, the remaining production extension is to replace placeholder deployment manifest addresses/checksums with real staged deployment evidence and release-readiness proof.
+- required `solvency_anchor_registry_deployment` release-readiness evidence
+- API-side structured payload validation for chain id, registry address, deployment transaction, owner, authorized anchorer, ABI checksum, manifest path, and manifest commit SHA
+- launch-closure manifest validation for `solvency_report_anchor_registry_v1` and the governed `solvency_anchor_execution` signer
+- operator guidance in `docs/runbooks/solvency-anchor-registry-deployment-proof.md`
+
+## Next follow-up after deployment proof gating
+
+After release-readiness proof gating, the remaining production extension is to replace placeholder deployment manifest addresses/checksums with real staged deployment values and record accepted `solvency_anchor_registry_deployment` evidence for the launch candidate.

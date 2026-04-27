@@ -26,6 +26,7 @@ Still externally required:
 - `worker_rollback_drill` in `staging`, `production_like`, or `production`
 - `secret_handling_review`
 - `role_review`
+- `solvency_anchor_registry_deployment`
 - final governed launch approval
 
 Important truth:
@@ -56,6 +57,8 @@ Required input classes:
 - operator API key environment variable name
 - current release ids and rollback release ids
 - backup or snapshot reference
+- chain id, network name, and solvency anchor registry deployment transaction
+- registry owner, authorized anchorer, ABI checksum, manifest path, and manifest commit SHA
 - alert delivery target name and expected degraded health status
 - critical alert identifier or dedupe key
 - minimum expected re-escalation count
@@ -69,6 +72,7 @@ Execution must not start if:
 - the environment is `development` or `ci`
 - rollback identifiers are missing
 - backup reference is missing
+- solvency anchor registry deployment proof fields are missing
 - no critical alert identifier or dedupe key is available for re-escalation proof
 
 ## Operator program
@@ -79,6 +83,7 @@ Execution must not start if:
 - approver: independently approves or rejects the governed launch request
 - secret reviewer: owns the secret-handling review evidence
 - access reviewer: owns the operator roster and role review evidence
+- contract reviewer: owns the solvency anchor registry deployment proof
 
 The requester and approver must be different identities.
 
@@ -93,13 +98,15 @@ Run the remaining accepted proofs in this order:
 5. `worker_rollback_drill`
 6. `secret_handling_review`
 7. `role_review`
-8. final governed launch approval
+8. `solvency_anchor_registry_deployment`
+9. final governed launch approval
 
 Why this order:
 
 - alerting proof validates operator visibility before rollback work starts
 - restore and rollback drills validate recovery posture before approval is requested
 - manual reviews stay late so they reference the final launch candidate and operator roster
+- solvency anchor deployment proof stays after role review so the signer inventory and on-chain registry owner are reviewed together
 - approval stays last so it snapshots the current evidence set instead of an earlier incomplete state
 
 ## Exact staging-like execution flow
@@ -224,7 +231,24 @@ pnpm release:readiness:verify -- \
   --access-token "$OPERATOR_ACCESS_TOKEN"
 ```
 
-### 5. Review the release-readiness summary
+### 5. Record the solvency anchor registry deployment proof
+
+Use the generated `payloads/solvency_anchor_registry_deployment.json` from the launch-closure pack, or record the proof through the verifier:
+
+```bash
+pnpm release:readiness:verify -- \
+  --proof solvency_anchor_registry_deployment \
+  --environment production_like \
+  --release-id launch-2026.04.10.1 \
+  --summary "Solvency anchor registry deployment verified for launch-2026.04.10.1." \
+  --evidence-links docs/runbooks/solvency-anchor-registry-deployment-proof.md,https://sepolia.etherscan.io/tx/<deployment-tx> \
+  --evidence-payload-json '{"proofKind":"manual_attestation","networkName":"sepolia","chainId":11155111,"contractProductSurface":"solvency_report_anchor_registry_v1","signerScope":"solvency_anchor_execution","contractAddress":"0x0000000000000000000000000000000000000000","deploymentTxHash":"0x0000000000000000000000000000000000000000000000000000000000000000","governanceOwner":"0x0000000000000000000000000000000000000000","authorizedAnchorer":"0x0000000000000000000000000000000000000000","abiChecksumSha256":"0000000000000000000000000000000000000000000000000000000000000000","manifestPath":"packages/contracts/deployments/staging.manifest.json","manifestCommitSha":"0000000"}' \
+  --record-evidence \
+  --base-url https://staging-api.example.com \
+  --access-token "$OPERATOR_ACCESS_TOKEN"
+```
+
+### 6. Review the release-readiness summary
 
 Confirm that every required proof now shows a latest accepted `passed` record:
 
@@ -234,7 +258,7 @@ curl -sS \
   https://staging-api.example.com/release-readiness/internal/summary
 ```
 
-### 6. Submit the governed launch request
+### 7. Submit the governed launch request
 
 Populate the generated `approval-request.template.json` truthfully, then submit:
 
@@ -348,6 +372,22 @@ Fail:
 - roster is incomplete
 - role assignments are not approved
 - approval identity separation is unclear
+
+### `solvency_anchor_registry_deployment`
+
+Pass:
+
+- registry address and ABI checksum match the accepted deployment manifest
+- deployment transaction and manifest commit SHA are durable and reviewable
+- registry governance owner is the expected governance owner
+- registry authorized anchorer matches the governed `solvency_anchor_execution` signer
+
+Fail:
+
+- registry address, deployment transaction, or ABI checksum is missing
+- owner or authorized anchorer cannot be read from the accepted chain
+- authorized anchorer does not match the governed signer inventory
+- evidence is recorded without the required structured payload fields
 
 ### final governed launch approval
 

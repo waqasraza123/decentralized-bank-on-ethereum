@@ -115,6 +115,19 @@ export const requiredReleaseReadinessChecks: RequiredReleaseReadinessCheck[] = [
     ]
   },
   {
+    evidenceType:
+      ReleaseReadinessEvidenceType.solvency_anchor_registry_deployment,
+    label: "Solvency Anchor Registry Deployment",
+    description:
+      "Prove the solvency report anchor registry is deployed, governed, and bound to the launch signer manifest before public report anchors can be trusted.",
+    runbookPath: "docs/runbooks/solvency-anchor-registry-deployment-proof.md",
+    acceptedEnvironments: [
+      ReleaseReadinessEnvironment.staging,
+      ReleaseReadinessEnvironment.production_like,
+      ReleaseReadinessEnvironment.production
+    ]
+  },
+  {
     evidenceType: ReleaseReadinessEvidenceType.secret_handling_review,
     label: "Secret Handling Review",
     description:

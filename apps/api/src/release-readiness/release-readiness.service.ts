@@ -34,7 +34,9 @@ import {
 } from "./release-readiness-checks";
 import {
   describeReleaseReadinessEvidenceMetadataRequirements,
-  validateReleaseReadinessEvidenceMetadata
+  describeReleaseReadinessEvidencePayloadRequirements,
+  validateReleaseReadinessEvidenceMetadata,
+  validateReleaseReadinessEvidencePayload
 } from "./release-readiness-evidence-requirements";
 import {
   ApproveReleaseReadinessApprovalDto,
@@ -1513,10 +1515,22 @@ export class ReleaseReadinessService {
     const evidenceLinks = this.normalizeEvidenceLinks(dto.evidenceLinks);
     const evidencePayload =
       (dto.evidencePayload as PrismaJsonValue | undefined) ?? undefined;
+    const missingPayloadFields = validateReleaseReadinessEvidencePayload({
+      evidenceType: dto.evidenceType,
+      evidencePayload
+    });
 
     if (missingMetadata.length > 0) {
       throw new BadRequestException(
         `Release readiness evidence for ${dto.evidenceType} requires ${describeReleaseReadinessEvidenceMetadataRequirements(
+          dto.evidenceType
+        ).join(", ")}.`
+      );
+    }
+
+    if (missingPayloadFields.length > 0) {
+      throw new BadRequestException(
+        `Release readiness evidence for ${dto.evidenceType} requires valid payload fields: ${describeReleaseReadinessEvidencePayloadRequirements(
           dto.evidenceType
         ).join(", ")}.`
       );

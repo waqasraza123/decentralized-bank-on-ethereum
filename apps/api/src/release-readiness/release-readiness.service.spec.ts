@@ -79,8 +79,8 @@ function buildApprovalRecord(
       generatedAt: "2026-04-08T12:00:00.000Z",
       overallStatus: "healthy",
       summary: {
-        requiredCheckCount: 10,
-        passedCheckCount: 10,
+        requiredCheckCount: 11,
+        passedCheckCount: 11,
         failedCheckCount: 0,
         pendingCheckCount: 0
       },
@@ -190,6 +190,28 @@ function buildPassedRequiredEvidenceRecords() {
       evidenceType: "role_review",
       environment: ReleaseReadinessEnvironment.production_like,
       runbookPath: "docs/security/role-review.md"
+    }),
+    buildEvidenceRecord({
+      id: "evidence_11",
+      evidenceType: "solvency_anchor_registry_deployment",
+      environment: ReleaseReadinessEnvironment.production_like,
+      runbookPath: "docs/runbooks/solvency-anchor-registry-deployment-proof.md",
+      evidencePayload: {
+        proofKind: "manual_attestation",
+        networkName: "sepolia",
+        chainId: 11155111,
+        contractProductSurface: "solvency_report_anchor_registry_v1",
+        signerScope: "solvency_anchor_execution",
+        contractAddress: "0x1111111111111111111111111111111111111111",
+        deploymentTxHash:
+          "0x2222222222222222222222222222222222222222222222222222222222222222",
+        governanceOwner: "0x3333333333333333333333333333333333333333",
+        authorizedAnchorer: "0x4444444444444444444444444444444444444444",
+        abiChecksumSha256:
+          "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        manifestPath: "packages/contracts/deployments/staging.manifest.json",
+        manifestCommitSha: "abc1234"
+      }
     })
   ];
 }

@@ -35,7 +35,8 @@ type AutomatedReleaseReadinessProofType =
 
 type ManualReleaseReadinessProofType =
   | "secret_handling_review"
-  | "role_review";
+  | "role_review"
+  | "solvency_anchor_registry_deployment";
 
 type ReleaseReadinessProofType =
   | AutomatedReleaseReadinessProofType
@@ -63,7 +64,7 @@ type AutomatedReleaseReadinessProofInput = {
 type ManualReleaseReadinessProofInput = {
   evidenceType: ManualReleaseReadinessProofType;
   status?: ReleaseReadinessEvidenceStatus;
-  summary: string;
+  summary?: string;
   note?: string;
   evidenceLinks?: string[];
   evidencePayload?: Record<string, unknown>;
@@ -246,6 +247,11 @@ const manualProofDefinitions: Record<
     runbookPath: "docs/security/role-review.md",
     defaultSummary:
       "Role review completed and launch operator role mappings attested."
+  },
+  solvency_anchor_registry_deployment: {
+    runbookPath: "docs/runbooks/solvency-anchor-registry-deployment-proof.md",
+    defaultSummary:
+      "Solvency anchor registry deployment, governance owner, authorized anchorer, and manifest binding attested for launch."
   }
 };
 
@@ -488,6 +494,12 @@ function isManualProofType(
   );
 }
 
+export function isManualReleaseReadinessProofType(
+  evidenceType: ReleaseReadinessEvidenceType
+): evidenceType is ManualReleaseReadinessProofType {
+  return isManualProofType(evidenceType);
+}
+
 export function isReleaseReadinessProofType(
   value: string
 ): value is ReleaseReadinessProofType {
@@ -603,9 +615,9 @@ export async function runReleaseReadinessProof(
       runbookPath: definition.runbookPath,
       evidenceLinks: normalizeStringArray(manualInput.evidenceLinks),
       evidencePayload: {
+        ...(manualInput.evidencePayload ?? {}),
         proofKind: "manual_attestation",
-        runbookPath: definition.runbookPath,
-        ...(manualInput.evidencePayload ?? {})
+        runbookPath: definition.runbookPath
       }
     };
   }

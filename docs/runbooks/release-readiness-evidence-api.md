@@ -14,6 +14,7 @@ Use this API to record immutable proof for the current required checks:
 - contract invariant suite
 - backend integration suite
 - end-to-end finance flows
+- solvency anchor registry deployment
 - secret handling review
 - role review
 
@@ -61,6 +62,7 @@ Field requirements by evidence type:
 - external-only launch proofs require `releaseIdentifier`
 - `database_restore_drill` also requires `backupReference`
 - `api_rollback_drill` and `worker_rollback_drill` also require `rollbackReleaseIdentifier`
+- `solvency_anchor_registry_deployment` also requires structured `evidencePayload` fields for chain id, registry address, deployment transaction, owner, authorized anchorer, ABI checksum, manifest path, and manifest commit SHA
 
 ## Evidence types
 
@@ -72,6 +74,7 @@ Field requirements by evidence type:
 - `contract_invariant_suite`
 - `backend_integration_suite`
 - `end_to_end_finance_flows`
+- `solvency_anchor_registry_deployment`
 - `secret_handling_review`
 - `role_review`
 

@@ -38,6 +38,19 @@ export type LaunchClosureManifest = {
     workerRollbackReleaseId: string;
     backupReference: string;
   };
+  chain: {
+    networkName: string;
+    chainId: number;
+  };
+  solvencyAnchorRegistryDeployment: {
+    deploymentTxHash: string;
+    governanceOwner: string;
+    authorizedAnchorer: string;
+    manifestPath: string;
+    manifestCommitSha: string;
+    blockExplorerUrl?: string;
+    anchoredSmokeTxHash?: string;
+  };
   alerting: {
     expectedTargetName: string;
     expectedTargetHealthStatus: "warning" | "critical";
@@ -276,10 +289,14 @@ function buildApprovalRequestBody(
 }
 
 function buildApprovalCurlCommand(manifest: LaunchClosureManifest): string {
+  const accessTokenEnvironmentVariable = getOperatorAccessTokenEnvironmentVariable(
+    manifest
+  );
+
   return [
     "curl -sS -X POST \\",
     `  '${manifest.baseUrls.api}/release-readiness/internal/approvals' \\`,
-    `  -H 'authorization: Bearer $${manifest.operator.accessTokenEnvironmentVariable}' \\`,
+    `  -H 'authorization: Bearer $${accessTokenEnvironmentVariable}' \\`,
     "  -H 'content-type: application/json' \\",
     "  --data @approval-request.template.json"
   ].join("\n");
@@ -289,19 +306,57 @@ function buildEvidenceCurlCommand(
   manifest: LaunchClosureManifest,
   evidenceType: string
 ): string {
+  const accessTokenEnvironmentVariable = getOperatorAccessTokenEnvironmentVariable(
+    manifest
+  );
+
   return [
     "curl -sS -X POST \\",
     `  '${manifest.baseUrls.api}/release-readiness/internal/evidence' \\`,
-    `  -H 'authorization: Bearer $${manifest.operator.accessTokenEnvironmentVariable}' \\`,
+    `  -H 'authorization: Bearer $${accessTokenEnvironmentVariable}' \\`,
     "  -H 'content-type: application/json' \\",
     `  --data @payloads/${evidenceType}.json`
   ].join("\n");
+}
+
+function getOperatorAccessTokenEnvironmentVariable(
+  manifest: LaunchClosureManifest
+): string {
+  return (
+    manifest.operator.accessTokenEnvironmentVariable ??
+    manifest.operator.apiKeyEnvironmentVariable ??
+    "OPERATOR_ACCESS_TOKEN"
+  );
+}
+
+function findSolvencyAnchorRegistryContract(
+  manifest: LaunchClosureManifest
+): NonNullable<LaunchClosureManifest["contracts"]>[number] | null {
+  return (
+    manifest.contracts?.find(
+      (contract) =>
+        contract.productSurface === "solvency_report_anchor_registry_v1"
+    ) ?? null
+  );
+}
+
+function findSolvencyAnchorSigner(
+  manifest: LaunchClosureManifest
+): { scope: string; keyReference: string; signerAddress: string } | null {
+  return (
+    manifest.governedCustody?.signerInventory.find(
+      (signer) => signer.scope === "solvency_anchor_execution"
+    ) ?? null
+  );
 }
 
 function buildApprovalDecisionCurlCommand(
   manifest: LaunchClosureManifest,
   action: "approve" | "reject"
 ): string {
+  const accessTokenEnvironmentVariable = getOperatorAccessTokenEnvironmentVariable(
+    manifest
+  );
   const templateName =
     action === "approve"
       ? "approve-approval.template.json"
@@ -310,7 +365,7 @@ function buildApprovalDecisionCurlCommand(
   return [
     "curl -sS -X POST \\",
     `  '${manifest.baseUrls.api}/release-readiness/internal/approvals/<approval-id>/${action}' \\`,
-    `  -H 'authorization: Bearer $${manifest.operator.accessTokenEnvironmentVariable}' \\`,
+    `  -H 'authorization: Bearer $${accessTokenEnvironmentVariable}' \\`,
     "  -H 'content-type: application/json' \\",
     `  --data @${templateName}`
   ].join("\n");
@@ -421,6 +476,38 @@ function buildEvidencePayloadTemplate(
     ];
   }
 
+  if (artifact.evidenceType === "solvency_anchor_registry_deployment") {
+    const registryContract = findSolvencyAnchorRegistryContract(manifest);
+    const anchorSigner = findSolvencyAnchorSigner(manifest);
+
+    basePayload.summary = `Solvency anchor registry deployment verified for ${manifest.releaseIdentifier}.`;
+    basePayload.note =
+      "Registry deployment, governance owner, authorized anchorer, ABI checksum, and manifest binding verified.";
+    basePayload.evidencePayload = {
+      proofKind: "manual_attestation",
+      networkName: manifest.chain.networkName,
+      chainId: manifest.chain.chainId,
+      contractProductSurface: "solvency_report_anchor_registry_v1",
+      signerScope: "solvency_anchor_execution",
+      contractAddress: registryContract?.address ?? "",
+      deploymentTxHash:
+        manifest.solvencyAnchorRegistryDeployment.deploymentTxHash,
+      governanceOwner: manifest.solvencyAnchorRegistryDeployment.governanceOwner,
+      authorizedAnchorer:
+        manifest.solvencyAnchorRegistryDeployment.authorizedAnchorer,
+      anchorerKeyReference: anchorSigner?.keyReference ?? "",
+      anchorerSignerAddress: anchorSigner?.signerAddress ?? "",
+      abiChecksumSha256: registryContract?.abiChecksumSha256 ?? "",
+      manifestPath: manifest.solvencyAnchorRegistryDeployment.manifestPath,
+      manifestCommitSha:
+        manifest.solvencyAnchorRegistryDeployment.manifestCommitSha,
+      blockExplorerUrl:
+        manifest.solvencyAnchorRegistryDeployment.blockExplorerUrl ?? "",
+      anchoredSmokeTxHash:
+        manifest.solvencyAnchorRegistryDeployment.anchoredSmokeTxHash ?? ""
+    };
+  }
+
   return basePayload;
 }
 
@@ -497,6 +584,10 @@ ${buildApprovalDecisionCurlCommand(manifest, "reject")}
 function buildLaunchClosureArtifacts(
   manifest: LaunchClosureManifest
 ): LaunchClosureArtifact[] {
+  const accessTokenEnvironmentVariable = getOperatorAccessTokenEnvironmentVariable(
+    manifest
+  );
+
   return [
     {
       filename: "01-platform-alert-delivery-slo.md",
@@ -512,7 +603,7 @@ function buildLaunchClosureArtifacts(
         `Launch release identifier recorded with evidence: ${manifest.releaseIdentifier}`,
         `Current API release id: ${manifest.artifacts.apiReleaseId}`,
         `Requester operator: ${manifest.operator.requesterId} (${manifest.operator.requesterRole})`,
-        `Operator access token environment variable: ${manifest.operator.accessTokenEnvironmentVariable}`
+        `Operator access token environment variable: ${accessTokenEnvironmentVariable}`
       ],
       steps: [
         "Generate sustained degraded or critical delivery-target behavior against the configured staging or production-like alert target.",
@@ -529,7 +620,7 @@ function buildLaunchClosureArtifacts(
         "--probe platform_alert_delivery_slo",
         `--base-url ${manifest.baseUrls.api}`,
         `--operator-id ${manifest.operator.requesterId}`,
-        `--access-token \"$${manifest.operator.accessTokenEnvironmentVariable}\"`,
+        `--access-token \"$${accessTokenEnvironmentVariable}\"`,
         `--operator-role ${manifest.operator.requesterRole}`,
         `--expected-target-name ${manifest.alerting.expectedTargetName}`,
         `--expected-target-health-status ${manifest.alerting.expectedTargetHealthStatus}`,
@@ -569,7 +660,7 @@ function buildLaunchClosureArtifacts(
         "--probe critical_alert_reescalation",
         `--base-url ${manifest.baseUrls.api}`,
         `--operator-id ${manifest.operator.requesterId}`,
-        `--access-token \"$${manifest.operator.accessTokenEnvironmentVariable}\"`,
+        `--access-token \"$${accessTokenEnvironmentVariable}\"`,
         `--operator-role ${manifest.operator.requesterRole}`,
         manifest.alerting.expectedAlertId
           ? `--expected-alert-id ${manifest.alerting.expectedAlertId}`
@@ -608,7 +699,7 @@ function buildLaunchClosureArtifacts(
         "--probe database_restore_drill",
         `--base-url ${manifest.baseUrls.restoreApi}`,
         `--operator-id ${manifest.operator.requesterId}`,
-        `--access-token \"$${manifest.operator.accessTokenEnvironmentVariable}\"`,
+        `--access-token \"$${accessTokenEnvironmentVariable}\"`,
         `--operator-role ${manifest.operator.requesterRole}`,
         `--environment ${manifest.environment}`,
         `--release-id ${manifest.releaseIdentifier}`,
@@ -643,7 +734,7 @@ function buildLaunchClosureArtifacts(
         "--probe api_rollback_drill",
         `--base-url ${manifest.baseUrls.api}`,
         `--operator-id ${manifest.operator.requesterId}`,
-        `--access-token \"$${manifest.operator.accessTokenEnvironmentVariable}\"`,
+        `--access-token \"$${accessTokenEnvironmentVariable}\"`,
         `--operator-role ${manifest.operator.requesterRole}`,
         `--environment ${manifest.environment}`,
         `--release-id ${manifest.releaseIdentifier}`,
@@ -679,7 +770,7 @@ function buildLaunchClosureArtifacts(
         "--probe worker_rollback_drill",
         `--base-url ${manifest.baseUrls.api}`,
         `--operator-id ${manifest.operator.requesterId}`,
-        `--access-token \"$${manifest.operator.accessTokenEnvironmentVariable}\"`,
+        `--access-token \"$${accessTokenEnvironmentVariable}\"`,
         `--operator-role ${manifest.operator.requesterRole}`,
         `--expected-worker-id ${manifest.worker.identifier}`,
         "--expected-min-healthy-workers 1",
@@ -722,7 +813,7 @@ function buildLaunchClosureArtifacts(
         `--base-url ${manifest.baseUrls.api}`,
         `--operator-id ${manifest.operator.requesterId}`,
         `--operator-role ${manifest.operator.requesterRole}`,
-        `--access-token \"$${manifest.operator.accessTokenEnvironmentVariable}\"`
+        `--access-token \"$${accessTokenEnvironmentVariable}\"`
       ])
     },
     {
@@ -759,11 +850,46 @@ function buildLaunchClosureArtifacts(
         `--base-url ${manifest.baseUrls.api}`,
         `--operator-id ${manifest.operator.requesterId}`,
         `--operator-role ${manifest.operator.requesterRole}`,
-        `--access-token \"$${manifest.operator.accessTokenEnvironmentVariable}\"`
+        `--access-token \"$${accessTokenEnvironmentVariable}\"`
       ])
     },
     {
-      filename: "08-final-governed-launch-approval.md",
+      filename: "08-solvency-anchor-registry-deployment.md",
+      title: "Solvency Anchor Registry Deployment",
+      objective:
+        "Record accepted proof that the solvency report anchor registry is deployed, governed, authorized for the launch anchor signer, and bound to the deployment manifest.",
+      runbookPath: "docs/runbooks/solvency-anchor-registry-deployment-proof.md",
+      evidenceType: "solvency_anchor_registry_deployment",
+      requiredInputs: [
+        `Primary API base URL: ${manifest.baseUrls.api}`,
+        `Launch release identifier: ${manifest.releaseIdentifier}`,
+        `Network: ${manifest.chain.networkName} (${manifest.chain.chainId})`,
+        `Registry contract: ${findSolvencyAnchorRegistryContract(manifest)?.address ?? ""}`,
+        `Deployment transaction: ${manifest.solvencyAnchorRegistryDeployment.deploymentTxHash}`,
+        `Governance owner: ${manifest.solvencyAnchorRegistryDeployment.governanceOwner}`,
+        `Authorized anchorer: ${manifest.solvencyAnchorRegistryDeployment.authorizedAnchorer}`,
+        `Manifest path: ${manifest.solvencyAnchorRegistryDeployment.manifestPath}`,
+        `Manifest commit SHA: ${manifest.solvencyAnchorRegistryDeployment.manifestCommitSha}`,
+        `Requester operator: ${manifest.operator.requesterId} (${manifest.operator.requesterRole})`
+      ],
+      steps: [
+        "Confirm the deployed registry address and ABI checksum match the checked-in deployment manifest.",
+        "Read the registry governance owner and authorized anchorer from the accepted chain.",
+        "Confirm the authorized anchorer matches the governed signer inventory for solvency_anchor_execution.",
+        "Record the payload template below as accepted release-readiness evidence."
+      ],
+      expectedOutcome: [
+        "A passed evidence record exists for solvency_anchor_registry_deployment.",
+        "The evidence payload binds chain id, registry address, deployment transaction, owner, authorized anchorer, ABI checksum, and manifest commit.",
+        "Governed launch approval remains blocked if this deployment proof is missing, failed, stale, or recorded for another release."
+      ],
+      exactCommand: buildEvidenceCurlCommand(
+        manifest,
+        "solvency_anchor_registry_deployment"
+      )
+    },
+    {
+      filename: "09-final-governed-launch-approval.md",
       title: "Final Governed Launch Approval",
       objective:
         "Request and complete the dual-control launch approval only after all required evidence and checklist attestations are satisfied.",
@@ -821,7 +947,8 @@ Use this pack to:
 5. Run the worker rollback drill.
 6. Record the secret handling review.
 7. Record the role review.
-8. Submit the governed launch approval request and complete dual-control approval.
+8. Record the solvency anchor registry deployment proof.
+9. Submit the governed launch approval request and complete dual-control approval.
 
 ## Important truth
 
@@ -972,6 +1099,7 @@ export function renderPhase12CompletionChecklist(args?: {
     "5. `worker_rollback_drill`",
     "6. `secret_handling_review`",
     "7. `role_review`",
+    "8. `solvency_anchor_registry_deployment`",
     "",
     "Current external-only check posture:",
     ...renderExternalCheckLines(status),
@@ -1307,6 +1435,34 @@ export function validateLaunchClosureManifest(
     errors
   );
 
+  readString(manifest.chain?.networkName, "chain.networkName", errors);
+  readPositiveInteger(manifest.chain?.chainId, "chain.chainId", errors);
+  readString(
+    manifest.solvencyAnchorRegistryDeployment?.deploymentTxHash,
+    "solvencyAnchorRegistryDeployment.deploymentTxHash",
+    errors
+  );
+  readString(
+    manifest.solvencyAnchorRegistryDeployment?.governanceOwner,
+    "solvencyAnchorRegistryDeployment.governanceOwner",
+    errors
+  );
+  readString(
+    manifest.solvencyAnchorRegistryDeployment?.authorizedAnchorer,
+    "solvencyAnchorRegistryDeployment.authorizedAnchorer",
+    errors
+  );
+  readString(
+    manifest.solvencyAnchorRegistryDeployment?.manifestPath,
+    "solvencyAnchorRegistryDeployment.manifestPath",
+    errors
+  );
+  readString(
+    manifest.solvencyAnchorRegistryDeployment?.manifestCommitSha,
+    "solvencyAnchorRegistryDeployment.manifestCommitSha",
+    errors
+  );
+
   readString(
     manifest.alerting?.expectedTargetName,
     "alerting.expectedTargetName",
@@ -1380,11 +1536,50 @@ export function validateLaunchClosureManifest(
         "Manifest field governedCustody.signerInventory must include at least five governed signers."
       );
     }
+  } else {
+    errors.push(
+      "Manifest field governedCustody is required for launch signer proof."
+    );
   }
 
-  if (manifest.contracts && manifest.contracts.length < 3) {
+  if (!findSolvencyAnchorSigner(manifest)) {
+    errors.push(
+      "Manifest field governedCustody.signerInventory must include a solvency_anchor_execution signer."
+    );
+  }
+
+  if (!Array.isArray(manifest.contracts) || manifest.contracts.length < 3) {
     errors.push(
       "Manifest field contracts must include staking_v1, loan_book_v1, and solvency_report_anchor_registry_v1 entries."
+    );
+  }
+
+  for (const productSurface of [
+    "staking_v1",
+    "loan_book_v1",
+    "solvency_report_anchor_registry_v1"
+  ] as const) {
+    if (
+      !manifest.contracts?.some(
+        (contract) => contract.productSurface === productSurface
+      )
+    ) {
+      errors.push(`Manifest contracts must include ${productSurface}.`);
+    }
+  }
+
+  const registryContract = findSolvencyAnchorRegistryContract(manifest);
+
+  if (!registryContract) {
+    errors.push(
+      "Manifest contracts must include solvency_report_anchor_registry_v1."
+    );
+  } else {
+    readString(registryContract.address, "contracts.solvency.address", errors);
+    readString(
+      registryContract.abiChecksumSha256,
+      "contracts.solvency.abiChecksumSha256",
+      errors
     );
   }
 

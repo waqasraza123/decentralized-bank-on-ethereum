@@ -714,6 +714,7 @@ export async function recordReleaseReadinessEvidence(
     rollbackReleaseIdentifier?: string;
     backupReference?: string;
     observedAt: string;
+    evidenceLinks?: string[];
     evidencePayload: Record<string, unknown>;
   },
   client: AxiosInstance = createClient(session)

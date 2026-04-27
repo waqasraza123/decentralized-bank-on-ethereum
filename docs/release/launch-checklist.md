@@ -25,6 +25,7 @@ Important truth:
 - repo-owned automation can satisfy `contract_invariant_suite`, `backend_integration_suite`, and `end_to_end_finance_flows`
 - local dry-runs for restore and rollback are not accepted launch proof
 - accepted proof for alerting, restore, rollback, secret review, and role review must come from `staging`, `production_like`, or `production`
+- solvency anchor registry deployment proof must come from `staging`, `production_like`, or `production`
 
 ## Release identity
 
@@ -85,6 +86,8 @@ Important truth:
 - contract deployment addresses recorded
 - contract invariant suite evidence recorded in release-readiness evidence
 - backend integration suite evidence recorded in release-readiness evidence
+- solvency anchor registry deployment evidence recorded in release-readiness evidence
+- solvency anchor registry owner and authorized anchorer verified against governed signer inventory
 - RPC endpoint and chain id verified against launch environment
 - managed signer wallet funding and ownership posture verified
 

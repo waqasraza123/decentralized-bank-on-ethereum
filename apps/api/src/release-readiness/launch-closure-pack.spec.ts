@@ -43,6 +43,20 @@ function buildManifest(): LaunchClosureManifest {
       workerRollbackReleaseId: "worker-2026.04.09.4",
       backupReference: "snapshot-2026-04-10T08:00Z"
     },
+    chain: {
+      networkName: "sepolia",
+      chainId: 11155111
+    },
+    solvencyAnchorRegistryDeployment: {
+      deploymentTxHash:
+        "0x1111111111111111111111111111111111111111111111111111111111111111",
+      governanceOwner: "0x1111111111111111111111111111111111111111",
+      authorizedAnchorer: "0x2222222222222222222222222222222222222222",
+      manifestPath: "packages/contracts/deployments/staging.manifest.json",
+      manifestCommitSha: "abc1234",
+      blockExplorerUrl:
+        "https://sepolia.etherscan.io/tx/0x1111111111111111111111111111111111111111111111111111111111111111"
+    },
     alerting: {
       expectedTargetName: "ops-critical",
       expectedTargetHealthStatus: "critical",
@@ -54,6 +68,61 @@ function buildManifest(): LaunchClosureManifest {
       roleReviewReference: "ticket/GOV-12",
       roleReviewRosterReference: "ticket/GOV-12#launch-roster"
     },
+    governedCustody: {
+      governanceSafeAddress: "0x3333333333333333333333333333333333333333",
+      treasurySafeAddress: "0x4444444444444444444444444444444444444444",
+      emergencySafeAddress: "0x5555555555555555555555555555555555555555",
+      signerInventory: [
+        {
+          scope: "deposit_execution",
+          keyReference: "kms://launch/deposit",
+          signerAddress: "0x6666666666666666666666666666666666666666"
+        },
+        {
+          scope: "withdrawal_execution",
+          keyReference: "kms://launch/withdrawal",
+          signerAddress: "0x7777777777777777777777777777777777777777"
+        },
+        {
+          scope: "solvency_anchor_execution",
+          keyReference: "kms://launch/solvency-anchor",
+          signerAddress: "0x2222222222222222222222222222222222222222"
+        },
+        {
+          scope: "incident_package_release",
+          keyReference: "safe://launch/incident-release",
+          signerAddress: "0x8888888888888888888888888888888888888888"
+        },
+        {
+          scope: "governance_admin",
+          keyReference: "safe://launch/governance-admin",
+          signerAddress: "0x9999999999999999999999999999999999999999"
+        }
+      ]
+    },
+    contracts: [
+      {
+        productSurface: "staking_v1",
+        version: "1.0.0",
+        address: "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        abiChecksumSha256:
+          "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      {
+        productSurface: "loan_book_v1",
+        version: "1.0.0",
+        address: "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        abiChecksumSha256:
+          "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      },
+      {
+        productSurface: "solvency_report_anchor_registry_v1",
+        version: "1.0.0",
+        address: "0xcccccccccccccccccccccccccccccccccccccccc",
+        abiChecksumSha256:
+          "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+      }
+    ],
     notes: {
       launchSummary: "Production-like launch candidate ready for final governed review.",
       requestNote: "All accepted evidence must be current before approval.",
@@ -247,7 +316,14 @@ describe("launch-closure-pack", () => {
           content: expect.stringContaining("Approval posture")
         }),
         expect.objectContaining({
-          relativePath: path.join("evidence", "08-final-governed-launch-approval.md"),
+          relativePath: path.join(
+            "evidence",
+            "08-solvency-anchor-registry-deployment.md"
+          ),
+          content: expect.stringContaining("solvency report anchor registry")
+        }),
+        expect.objectContaining({
+          relativePath: path.join("evidence", "09-final-governed-launch-approval.md"),
           content: expect.stringContaining("dual-control launch approval")
         })
       ])
