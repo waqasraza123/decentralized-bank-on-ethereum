@@ -68,6 +68,20 @@ pnpm release:solvency-anchor-proof -- \
   --output artifacts/release-launch/solvency-anchor-registry-evidence.json
 ```
 
+To generate and record in one operator-controlled step:
+
+```bash
+pnpm release:solvency-anchor-proof -- \
+  --manifest packages/contracts/deployments/base-sepolia.manifest.json \
+  --release-id launch-2026.04.10.1 \
+  --manifest-commit <git-sha> \
+  --network-name base-sepolia \
+  --evidence-links https://sepolia.etherscan.io/tx/<deployment-tx>,packages/contracts/deployments/base-sepolia.manifest.json \
+  --record-evidence \
+  --base-url https://prodlike-api.example.com \
+  --access-token "$OPERATOR_ACCESS_TOKEN"
+```
+
 The generator reads:
 
 - `authorities[]` entry with `authorityType: "governance_safe"`
@@ -83,7 +97,7 @@ The contract manifest entry must include:
 - optional `blockExplorerUrl`
 - optional `anchoredSmokeTxHash`
 
-The command refuses to produce accepted proof when the registry owner does not match the governance safe, the authorized anchorer does not match the governed anchor signer, the ABI checksum is still a placeholder, or the deployment transaction hash is missing.
+The command refuses to produce or record accepted proof when the registry owner does not match the governance safe, the authorized anchorer does not match the governed anchor signer, the ABI checksum is still a placeholder, or the deployment transaction hash is missing.
 
 ## Recording Through The CLI
 

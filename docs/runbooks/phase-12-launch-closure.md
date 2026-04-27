@@ -241,7 +241,9 @@ pnpm release:solvency-anchor-proof -- \
   --release-id launch-2026.04.10.1 \
   --manifest-commit <git-sha> \
   --network-name base-sepolia \
-  --output artifacts/release-launch/solvency-anchor-registry-evidence.json
+  --record-evidence \
+  --base-url https://staging-api.example.com \
+  --access-token "$OPERATOR_ACCESS_TOKEN"
 ```
 
 Alternatively, record the proof through the verifier when the payload must be supplied inline:

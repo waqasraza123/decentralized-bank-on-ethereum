@@ -151,7 +151,7 @@ For solvency anchor registry deployment evidence, generate the structured payloa
 pnpm release:solvency-anchor-proof -- --help
 ```
 
-That command refuses placeholder deployment metadata and emits a `POST /release-readiness/internal/evidence` payload for `solvency_anchor_registry_deployment`.
+That command refuses placeholder deployment metadata and emits a `POST /release-readiness/internal/evidence` payload for `solvency_anchor_registry_deployment`. With `--record-evidence --base-url <operator-api-url> --access-token "$OPERATOR_ACCESS_TOKEN"`, it records the generated proof directly through the same evidence API.
 
 ## Launch-closure pack
 

@@ -194,7 +194,7 @@ For solvency anchor registry launch proof, generate the structured evidence payl
 pnpm release:solvency-anchor-proof -- --help
 ~~~
 
-The generator refuses placeholder deployment metadata and checks that `solvency_report_anchor_registry_v1` is owned by the manifest governance safe and authorized for the manifest `solvency_anchor_execution` signer.
+The generator refuses placeholder deployment metadata and checks that `solvency_report_anchor_registry_v1` is owned by the manifest governance safe and authorized for the manifest `solvency_anchor_execution` signer. Add `--record-evidence --base-url <operator-api-url> --access-token "$OPERATOR_ACCESS_TOKEN"` when the generated proof should be persisted immediately.
 
 ## Documentation
 

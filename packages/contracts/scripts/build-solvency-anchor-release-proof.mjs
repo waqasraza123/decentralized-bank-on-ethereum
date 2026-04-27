@@ -31,6 +31,9 @@ Optional:
   --note                   Override evidence note
   --evidence-links         Comma-separated durable evidence links
   --output                 Write JSON evidence payload to this file
+  --record-evidence        POST the generated payload to release-readiness evidence
+  --base-url               Operator API base URL when recording evidence
+  --access-token           Operator bearer token when recording evidence
   --help                   Print this message
 
 The manifest contract entry for ${contractProductSurface} must include:
@@ -89,6 +92,10 @@ function readOptionalStringArg(parsedArgs, key) {
 
   const normalizedValue = value.trim();
   return normalizedValue.length > 0 ? normalizedValue : undefined;
+}
+
+function readOptionalBooleanFlag(parsedArgs, key) {
+  return parsedArgs[key] === true;
 }
 
 function parseEvidenceLinks(value) {
@@ -323,7 +330,50 @@ function buildEvidencePayload({
   };
 }
 
-function main() {
+async function recordReleaseReadinessEvidence({ baseUrl, accessToken, proof }) {
+  if (typeof fetch !== "function") {
+    fail("Global fetch is unavailable; use Node.js 18 or newer to record evidence.");
+  }
+
+  const response = await fetch(
+    `${baseUrl.replace(/\/+$/, "")}/release-readiness/internal/evidence`,
+    {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${accessToken}`,
+        "content-type": "application/json"
+      },
+      body: JSON.stringify(proof)
+    }
+  );
+  const responseText = await response.text();
+  let responseBody = null;
+
+  if (responseText.trim().length > 0) {
+    try {
+      responseBody = JSON.parse(responseText);
+    } catch {
+      responseBody = responseText;
+    }
+  }
+
+  if (!response.ok) {
+    const message =
+      typeof responseBody === "object" &&
+      responseBody !== null &&
+      typeof responseBody.message === "string"
+        ? responseBody.message
+        : responseText;
+
+    fail(
+      `Release-readiness evidence recording failed with HTTP ${response.status}: ${message}`
+    );
+  }
+
+  return responseBody;
+}
+
+async function main() {
   const parsedArgs = parseArgs(process.argv.slice(2));
 
   if (parsedArgs.help === true) {
@@ -379,16 +429,42 @@ function main() {
   });
   const output = JSON.stringify(proof, null, 2) + "\n";
   const outputPath = readOptionalStringArg(parsedArgs, "output");
+  const shouldRecordEvidence = readOptionalBooleanFlag(
+    parsedArgs,
+    "record-evidence"
+  );
 
   if (outputPath) {
     writeFileSync(path.resolve(resolveRepoRoot(), outputPath), output, "utf8");
   }
 
-  process.stdout.write(output);
+  if (!shouldRecordEvidence) {
+    process.stdout.write(output);
+    return;
+  }
+
+  const baseUrl = readRequiredStringArg(parsedArgs, "base-url");
+  const accessToken = readRequiredStringArg(parsedArgs, "access-token");
+  const recordedEvidence = await recordReleaseReadinessEvidence({
+    baseUrl,
+    accessToken,
+    proof
+  });
+
+  process.stdout.write(
+    JSON.stringify(
+      {
+        generatedProof: proof,
+        recordedEvidence
+      },
+      null,
+      2
+    ) + "\n"
+  );
 }
 
 try {
-  main();
+  await main();
 } catch (error) {
   console.error(error instanceof Error ? error.message : error);
   process.exit(1);

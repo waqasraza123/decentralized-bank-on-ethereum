@@ -36,6 +36,14 @@ pnpm release:solvency-anchor-proof -- \
   --output artifacts/release-launch/solvency-anchor-registry-evidence.json
 ```
 
+To record the generated proof immediately, replace `--output ...` with:
+
+```bash
+--record-evidence \
+--base-url https://prodlike-api.example.com \
+--access-token "$OPERATOR_ACCESS_TOKEN"
+```
+
 The generator refuses placeholder deployment proof. The registry contract entry must include a real `deploymentTxHash`, `governanceOwner`, `authorizedAnchorer`, and SHA-256 ABI checksum, and the authorized anchorer must match the manifest `solvency_anchor_execution` signer.
 
 ## Deployment Manifest Proof Fields

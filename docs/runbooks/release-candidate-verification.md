@@ -148,7 +148,7 @@ pnpm release:solvency-anchor-proof -- \
   --output artifacts/release-launch/solvency-anchor-registry-evidence.json
 ```
 
-Then record the generated JSON through the evidence API, or use the verifier directly when the payload must be supplied inline:
+To persist the generated proof immediately, add `--record-evidence --base-url <operator-api-url> --access-token "$OPERATOR_ACCESS_TOKEN"`. You can also use the verifier directly when the payload must be supplied inline:
 
 ```bash
 pnpm release:readiness:verify -- \
