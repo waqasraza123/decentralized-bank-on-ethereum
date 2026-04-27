@@ -24,12 +24,14 @@ for (const relativePath of manifestPaths) {
     fail(`${relativePath} must define exactly three authorities.`);
   }
 
-  if (!Array.isArray(manifest.signers) || manifest.signers.length < 4) {
-    fail(`${relativePath} must define at least four governed signers.`);
+  if (!Array.isArray(manifest.signers) || manifest.signers.length < 5) {
+    fail(`${relativePath} must define at least five governed signers.`);
   }
 
-  if (!Array.isArray(manifest.contracts) || manifest.contracts.length < 2) {
-    fail(`${relativePath} must define staking_v1 and loan_book_v1 contracts.`);
+  if (!Array.isArray(manifest.contracts) || manifest.contracts.length < 3) {
+    fail(
+      `${relativePath} must define staking_v1, loan_book_v1, and solvency_report_anchor_registry_v1 contracts.`
+    );
   }
 
   for (const contract of manifest.contracts) {

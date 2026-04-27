@@ -47,6 +47,8 @@ function resolveAllowedMethods(scope: string): string[] {
       return ["signWithdrawalAuthorization"];
     case "policy_withdrawal_executor":
       return ["executeAuthorizedTransfer"];
+    case "solvency_anchor_execution":
+      return ["anchorSolvencyReport"];
     default:
       return [];
   }

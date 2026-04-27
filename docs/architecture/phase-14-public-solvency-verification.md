@@ -138,6 +138,14 @@ The fifth follow-up now adds worker handoff and confirmation monitoring for repo
 - synthetic local anchor submission and confirmation support
 - RPC-backed confirmation monitoring for externally broadcast or multisig-submitted anchor transactions
 
-## Next follow-up after worker handoff
+The sixth follow-up now adds the repo-owned anchoring contract and managed worker broadcaster:
 
-After worker handoff, the remaining production extension is to implement the approved anchoring contract or multisig executor that reads requested anchors and broadcasts the `anchorPayloadHash` transaction.
+- `SolvencyReportAnchorRegistry` contract with immutable one-time anchor records
+- Ignition deployment module and manifest entries for `solvency_report_anchor_registry_v1`
+- contracts SDK ABI helpers for registry reads and writes
+- managed worker broadcaster gated by `WORKER_SOLVENCY_ANCHOR_CONTRACT_ADDRESS` and `WORKER_SOLVENCY_ANCHOR_SIGNER_PRIVATE_KEY`
+- operator documentation for automatic worker broadcast and external multisig submission
+
+## Next follow-up after contract integration
+
+After contract integration, the remaining production extension is to replace placeholder deployment manifest addresses/checksums with real staged deployment evidence and release-readiness proof.

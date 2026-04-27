@@ -117,13 +117,53 @@ The internal worker API exposes anchor queues for contract or multisig automatio
 
 The worker runtime now polls those queues every iteration:
 
-- `requested` anchors are logged as broadcast-ready handoff items in monitor and managed modes.
+- `requested` anchors are logged as broadcast-ready handoff items when no broadcaster is configured.
+- `requested` anchors are broadcast in managed mode when `WORKER_SOLVENCY_ANCHOR_CONTRACT_ADDRESS` and `WORKER_SOLVENCY_ANCHOR_SIGNER_PRIVATE_KEY` are both configured.
 - `synthetic` mode records a deterministic synthetic transaction hash so local/dev flows can exercise the lifecycle without a chain write.
 - `submitted` anchors are monitored through the configured RPC client.
 - reverted transactions are marked `failed`.
 - successful transactions are marked `confirmed` after `WORKER_CONFIRMATION_BLOCKS`.
 
-The repo still expects the actual production broadcast implementation to be a configured contract or multisig executor that reads requested anchors and submits `anchorPayloadHash` to the approved anchoring contract. The worker confirmation path is intentionally independent of the broadcaster so externally submitted multisig transactions can still be confirmed and exposed publicly.
+The repo-owned contract is `SolvencyReportAnchorRegistry` in `packages/contracts`. It stores one immutable record per `anchorPayloadHash` and emits `SolvencyReportAnchored(anchorPayloadHash, reportIdHash, snapshotIdHash, reportChainId, anchorer, anchoredAt)`.
+
+The registry is owned by the governance safe and has a separate `authorizedAnchorer` address for the managed worker signer. Governance can rotate that signer with `setAuthorizedAnchorer`.
+
+The worker broadcaster calls:
+
+```solidity
+anchorSolvencyReport(
+  bytes32 anchorPayloadHash,
+  bytes32 reportIdHash,
+  bytes32 snapshotIdHash,
+  uint256 reportChainId
+)
+```
+
+`reportIdHash` and `snapshotIdHash` are Keccak-256 hashes of the report and snapshot identifiers embedded in `anchorPayload`.
+
+Externally submitted multisig transactions remain supported: operators can request the anchor, submit the transaction through a safe, then call `record-submitted`. The worker confirmation path will still monitor and confirm that transaction.
+
+## Contract Deployment
+
+The contracts workspace includes:
+
+- `packages/contracts/contracts/SolvencyReportAnchorRegistry.sol`
+- `packages/contracts/ignition/modules/SolvencyReportAnchorRegistry.ts`
+- SDK ABI helper `createSolvencyReportAnchorRegistryContract`
+- deployment manifest entries for `solvency_report_anchor_registry_v1`
+
+Deploy command:
+
+```bash
+pnpm --filter @stealth-trails-bank/contracts deploy:solvency-anchor-registry
+```
+
+After deployment:
+
+1. update the appropriate `packages/contracts/deployments/*.manifest.json` address and ABI checksum
+2. configure `WORKER_SOLVENCY_ANCHOR_CONTRACT_ADDRESS`
+3. configure `WORKER_SOLVENCY_ANCHOR_SIGNER_PRIVATE_KEY` only for the managed worker signer approved as the registry `authorizedAnchorer`
+4. keep `WORKER_EXECUTION_MODE=managed` for automatic broadcasting, or omit the signer pair for manual multisig submission plus worker confirmation monitoring
 
 ## Operator Verification
 
@@ -131,7 +171,7 @@ The repo still expects the actual production broadcast implementation to be a co
 2. Confirm the bundle `report.reportHash` equals the anchor payload `reportHash`.
 3. Recompute `sha256(anchorPayloadText)` and match `anchorPayloadChecksumSha256`.
 4. Recompute `keccak256(anchorPayloadText)` and match `anchorPayloadHash`.
-5. Inspect the chain transaction or contract event and confirm it committed the same `anchorPayloadHash`.
+5. Inspect `SolvencyReportAnchored` and confirm it committed the same `anchorPayloadHash`.
 6. Confirm the public trust center shows `confirmed`, the expected `txHash`, and the expected block metadata.
 
 ## Safety Invariants

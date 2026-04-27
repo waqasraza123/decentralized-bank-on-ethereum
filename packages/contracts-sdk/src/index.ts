@@ -47,6 +47,16 @@ export const POLICY_CONTROLLED_WALLET_ABI = [
   "event WithdrawalExecuted(bytes32 indexed intentId, address indexed asset, address indexed to, uint256 amount, uint256 authorizationNonce, address executor)"
 ] as const;
 
+export const SOLVENCY_REPORT_ANCHOR_REGISTRY_ABI = [
+  "function authorizedAnchorer() view returns (address)",
+  "function setAuthorizedAnchorer(address nextAuthorizedAnchorer) external",
+  "function anchorSolvencyReport(bytes32 anchorPayloadHash, bytes32 reportIdHash, bytes32 snapshotIdHash, uint256 reportChainId) external",
+  "function getAnchorRecord(bytes32 anchorPayloadHash) external view returns (bytes32 reportIdHash, bytes32 snapshotIdHash, uint256 reportChainId, uint256 anchoredAt, address anchorer)",
+  "function isAnchored(bytes32 anchorPayloadHash) external view returns (bool)",
+  "event AuthorizedAnchorerUpdated(address indexed previousAuthorizedAnchorer, address indexed nextAuthorizedAnchorer)",
+  "event SolvencyReportAnchored(bytes32 indexed anchorPayloadHash, bytes32 indexed reportIdHash, bytes32 indexed snapshotIdHash, uint256 reportChainId, address anchorer, uint256 anchoredAt)"
+] as const;
+
 export const STAKING_V1_ABI = [
   "function bindPositionBeneficiary(bytes32 positionId, address beneficiary) external",
   "function recordDeposit(bytes32 positionId, address beneficiary) external payable",
@@ -84,13 +94,17 @@ export type GovernedSignerManifest = {
     | "staking_execution"
     | "loan_execution"
     | "policy_withdrawal_authorization"
-    | "policy_withdrawal_executor";
+    | "policy_withdrawal_executor"
+    | "solvency_anchor_execution";
   keyReference: string;
   signerAddress: string;
 };
 
 export type ContractDeploymentManifestEntry = {
-  productSurface: "staking_v1" | "loan_book_v1";
+  productSurface:
+    | "staking_v1"
+    | "loan_book_v1"
+    | "solvency_report_anchor_registry_v1";
   version: string;
   address: string;
   abiChecksumSha256: string;
@@ -180,6 +194,21 @@ export function createPolicyControlledWalletWriteContract(
   signer: ethers.Signer
 ): ethers.Contract {
   return new ethers.Contract(contractAddress, POLICY_CONTROLLED_WALLET_ABI, signer);
+}
+
+export function createSolvencyReportAnchorRegistryContract(
+  contractAddress: string,
+  providerOrSigner: ethers.Signer | ethers.providers.Provider
+): ethers.Contract {
+  return new ethers.Contract(
+    contractAddress,
+    SOLVENCY_REPORT_ANCHOR_REGISTRY_ABI,
+    providerOrSigner
+  );
+}
+
+export function hashSolvencyAnchorText(value: string): string {
+  return ethers.utils.keccak256(ethers.utils.toUtf8Bytes(value));
 }
 
 export function createStakingV1Contract(

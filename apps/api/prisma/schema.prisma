@@ -2399,6 +2399,7 @@ enum GovernedSignerScope {
   loan_execution
   policy_withdrawal_authorization
   policy_withdrawal_executor
+  solvency_anchor_execution
   governed_execution_package
 }
 
@@ -2411,6 +2412,7 @@ enum GovernedSignerBackendKind {
 enum ContractProductSurface {
   staking_v1
   loan_book_v1
+  solvency_report_anchor_registry_v1
 }
 
 enum ContractDeploymentStatus {

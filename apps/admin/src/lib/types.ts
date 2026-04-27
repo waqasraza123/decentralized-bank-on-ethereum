@@ -1750,7 +1750,10 @@ export type LaunchClosureManifest = {
     }>;
   };
   contracts?: Array<{
-    productSurface: "staking_v1" | "loan_book_v1";
+    productSurface:
+      | "staking_v1"
+      | "loan_book_v1"
+      | "solvency_report_anchor_registry_v1";
     version: string;
     address: string;
     abiChecksumSha256: string;

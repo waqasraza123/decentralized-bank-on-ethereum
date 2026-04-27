@@ -58,6 +58,8 @@ function createManagedRuntime() {
     policyControlledWithdrawalExecutorPrivateKey: null,
     policyControlledWithdrawalPolicySignerPrivateKey: null,
     policyControlledWithdrawalAuthorizationTtlSeconds: 300,
+    solvencyAnchorContractAddress: null,
+    solvencyAnchorSignerPrivateKey: null,
     managedWithdrawalSigners: [],
     depositSignerPrivateKey:
       "0x59c6995e998f97a5a0044966f094538c5f6d4e07f16b8ad8cc7658f0f1b0f9d8"
@@ -76,6 +78,8 @@ function withManagedWithdrawalDefaults<T extends Record<string, unknown>>(
   policyControlledWithdrawalExecutorPrivateKey: null;
   policyControlledWithdrawalPolicySignerPrivateKey: null;
   policyControlledWithdrawalAuthorizationTtlSeconds: number;
+  solvencyAnchorContractAddress: null;
+  solvencyAnchorSignerPrivateKey: null;
   managedWithdrawalSigners: [];
 } {
   return {
@@ -88,6 +92,8 @@ function withManagedWithdrawalDefaults<T extends Record<string, unknown>>(
     policyControlledWithdrawalExecutorPrivateKey: null,
     policyControlledWithdrawalPolicySignerPrivateKey: null,
     policyControlledWithdrawalAuthorizationTtlSeconds: 300,
+    solvencyAnchorContractAddress: null,
+    solvencyAnchorSignerPrivateKey: null,
     managedWithdrawalSigners: [],
     ...runtime
   };

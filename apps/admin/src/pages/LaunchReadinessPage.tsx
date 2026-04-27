@@ -338,6 +338,11 @@ function buildLaunchClosureManifestTemplate(args: {
           scope: "policy_withdrawal_executor",
           keyReference: "kms/base-sepolia/policy-executor",
           signerAddress: "0x0000000000000000000000000000000000002104"
+        },
+        {
+          scope: "solvency_anchor_execution",
+          keyReference: "kms/base-sepolia/solvency-anchor",
+          signerAddress: "0x0000000000000000000000000000000000002105"
         }
       ]
     },
@@ -353,6 +358,13 @@ function buildLaunchClosureManifestTemplate(args: {
         version: "loan_book_v1",
         address: "0x0000000000000000000000000000000000003102",
         abiChecksumSha256: "pending-base-sepolia-loan-checksum"
+      },
+      {
+        productSurface: "solvency_report_anchor_registry_v1",
+        version: "solvency_report_anchor_registry_v1",
+        address: "0x0000000000000000000000000000000000003103",
+        abiChecksumSha256:
+          "pending-base-sepolia-solvency-anchor-registry-checksum"
       }
     ],
     operatorRoster: [

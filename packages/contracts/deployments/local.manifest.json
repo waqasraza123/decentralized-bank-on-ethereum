@@ -41,6 +41,11 @@
       "scope": "policy_withdrawal_executor",
       "keyReference": "local-kms/policy-executor",
       "signerAddress": "0x0000000000000000000000000000000000002004"
+    },
+    {
+      "scope": "solvency_anchor_execution",
+      "keyReference": "local-kms/solvency-anchor",
+      "signerAddress": "0x0000000000000000000000000000000000002005"
     }
   ],
   "contracts": [
@@ -56,6 +61,13 @@
       "version": "loan_book_v1",
       "address": "0x0000000000000000000000000000000000003002",
       "abiChecksumSha256": "pending-local-loan-checksum",
+      "legacyPath": false
+    },
+    {
+      "productSurface": "solvency_report_anchor_registry_v1",
+      "version": "solvency_report_anchor_registry_v1",
+      "address": "0x0000000000000000000000000000000000003003",
+      "abiChecksumSha256": "pending-local-solvency-anchor-registry-checksum",
       "legacyPath": false
     }
   ]

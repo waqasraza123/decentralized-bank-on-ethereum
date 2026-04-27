@@ -214,6 +214,20 @@ export type ManagedDepositBroadcaster = {
   broadcast(intent: WorkerIntentProjection): Promise<DepositBroadcastResult>;
 };
 
+export type SolvencyReportAnchorBroadcastResult = {
+  txHash: string;
+  fromAddress: string;
+  toAddress: string;
+};
+
+export type SolvencyReportAnchorBroadcaster = {
+  readonly signerAddress: string;
+  readonly contractAddress: string;
+  broadcast(
+    anchor: SolvencyReportAnchorProjection
+  ): Promise<SolvencyReportAnchorBroadcastResult>;
+};
+
 export type ManagedWithdrawalBroadcaster = {
   canManageWallet(walletAddress: string | null | undefined): boolean;
   prepare(intent: WorkerIntentProjection): Promise<PreparedManagedWithdrawalTransaction>;

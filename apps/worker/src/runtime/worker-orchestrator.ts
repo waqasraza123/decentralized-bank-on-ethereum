@@ -15,6 +15,7 @@ import type {
   PolicyControlledWithdrawalBroadcaster,
   PreparedManagedWithdrawalTransaction,
   RecordBroadcastPayload,
+  SolvencyReportAnchorBroadcaster,
   WorkerIntentProjection,
   WorkerIterationMetrics,
   WorkerLogger
@@ -33,6 +34,7 @@ type WorkerOrchestratorDeps = {
   depositBroadcaster: ManagedDepositBroadcaster | null;
   withdrawalBroadcaster: ManagedWithdrawalBroadcaster | null;
   policyControlledWithdrawalBroadcaster: PolicyControlledWithdrawalBroadcaster | null;
+  solvencyReportAnchorBroadcaster?: SolvencyReportAnchorBroadcaster | null;
   logger: WorkerLogger;
 };
 
@@ -347,7 +349,25 @@ export class WorkerOrchestrator {
     metrics: WorkerIterationMetrics
   ): Promise<void> {
     for (const anchor of result.anchors) {
-      if (this.deps.runtime.executionMode !== "synthetic") {
+      if (this.deps.runtime.executionMode === "synthetic") {
+        const txHash = buildSyntheticTxHash(anchor.id, "solvency_anchor");
+        await this.deps.internalApiClient.recordSolvencyReportAnchorSubmitted(
+          anchor.id,
+          {
+            txHash,
+            contractAddress: anchor.contractAddress ?? undefined
+          }
+        );
+        metrics.solvencyReportAnchorSubmittedCount += 1;
+        this.deps.logger.info("synthetic_solvency_report_anchor_submitted", {
+          anchorId: anchor.id,
+          reportId: anchor.reportId,
+          txHash
+        });
+        continue;
+      }
+
+      if (!this.deps.solvencyReportAnchorBroadcaster) {
         this.deps.logger.info("solvency_report_anchor_waiting_for_broadcast", {
           anchorId: anchor.id,
           reportId: anchor.reportId,
@@ -359,20 +379,42 @@ export class WorkerOrchestrator {
         continue;
       }
 
-      const txHash = buildSyntheticTxHash(anchor.id, "solvency_anchor");
-      await this.deps.internalApiClient.recordSolvencyReportAnchorSubmitted(
-        anchor.id,
-        {
-          txHash,
-          contractAddress: anchor.contractAddress ?? undefined
-        }
-      );
-      metrics.solvencyReportAnchorSubmittedCount += 1;
-      this.deps.logger.info("synthetic_solvency_report_anchor_submitted", {
-        anchorId: anchor.id,
-        reportId: anchor.reportId,
-        txHash
-      });
+      try {
+        const broadcastResult =
+          await this.deps.solvencyReportAnchorBroadcaster.broadcast(anchor);
+        await this.deps.internalApiClient.recordSolvencyReportAnchorSubmitted(
+          anchor.id,
+          {
+            txHash: broadcastResult.txHash,
+            contractAddress:
+              this.deps.solvencyReportAnchorBroadcaster.contractAddress
+          }
+        );
+        metrics.solvencyReportAnchorSubmittedCount += 1;
+        this.deps.logger.info("solvency_report_anchor_broadcast_submitted", {
+          anchorId: anchor.id,
+          reportId: anchor.reportId,
+          txHash: broadcastResult.txHash,
+          fromAddress: broadcastResult.fromAddress,
+          contractAddress: broadcastResult.toAddress
+        });
+      } catch (error) {
+        await this.deps.internalApiClient.recordSolvencyReportAnchorFailed(
+          anchor.id,
+          {
+            failureReason:
+              error instanceof Error && error.message.trim()
+                ? error.message
+                : "Solvency report anchor broadcast failed."
+          }
+        );
+        metrics.solvencyReportAnchorFailedCount += 1;
+        this.deps.logger.error("solvency_report_anchor_broadcast_failed", {
+          anchorId: anchor.id,
+          reportId: anchor.reportId,
+          error
+        });
+      }
     }
   }
 

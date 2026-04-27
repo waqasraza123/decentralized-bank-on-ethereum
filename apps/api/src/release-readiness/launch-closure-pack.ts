@@ -61,7 +61,10 @@ export type LaunchClosureManifest = {
     }>;
   };
   contracts?: Array<{
-    productSurface: "staking_v1" | "loan_book_v1";
+    productSurface:
+      | "staking_v1"
+      | "loan_book_v1"
+      | "solvency_report_anchor_registry_v1";
     version: string;
     address: string;
     abiChecksumSha256: string;
@@ -1371,17 +1374,17 @@ export function validateLaunchClosureManifest(
 
     if (
       !Array.isArray(manifest.governedCustody.signerInventory) ||
-      manifest.governedCustody.signerInventory.length < 4
+      manifest.governedCustody.signerInventory.length < 5
     ) {
       errors.push(
-        "Manifest field governedCustody.signerInventory must include at least four governed signers."
+        "Manifest field governedCustody.signerInventory must include at least five governed signers."
       );
     }
   }
 
-  if (manifest.contracts && manifest.contracts.length < 2) {
+  if (manifest.contracts && manifest.contracts.length < 3) {
     errors.push(
-      "Manifest field contracts must include staking_v1 and loan_book_v1 entries."
+      "Manifest field contracts must include staking_v1, loan_book_v1, and solvency_report_anchor_registry_v1 entries."
     );
   }
 

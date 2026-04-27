@@ -8,6 +8,7 @@ import {
 import { createGovernedExecutorDispatchClient } from "../runtime/governed-executor-dispatch-client";
 import { createJsonRpcClient } from "../runtime/json-rpc-client";
 import { createPolicyControlledWithdrawalBroadcaster } from "../runtime/policy-controlled-withdrawal-broadcaster";
+import { createSolvencyReportAnchorBroadcaster } from "../runtime/solvency-anchor-broadcaster";
 import { createManagedWithdrawalBroadcaster } from "../runtime/withdrawal-broadcaster";
 import { createWorkerLogger } from "../runtime/worker-logger";
 import { WorkerOrchestrator } from "../runtime/worker-orchestrator";
@@ -97,6 +98,10 @@ function buildRuntimeMetadata(runtime: ReturnType<typeof loadWorkerRuntime>) {
       runtime.policyControlledWithdrawalExecutorPrivateKey &&
         runtime.policyControlledWithdrawalPolicySignerPrivateKey,
     ),
+    solvencyAnchorBroadcasterReady: Boolean(
+      runtime.solvencyAnchorContractAddress &&
+        runtime.solvencyAnchorSignerPrivateKey,
+    ),
   };
 }
 
@@ -133,6 +138,8 @@ function createWorkerExecutionContext() {
     runtime.executionMode === "managed"
       ? createPolicyControlledWithdrawalBroadcaster(runtime)
       : null;
+  const solvencyReportAnchorBroadcaster =
+    createSolvencyReportAnchorBroadcaster(runtime);
   const governedExecutorDispatchClient =
     createGovernedExecutorDispatchClient(runtime);
   const orchestrator = new WorkerOrchestrator({
@@ -143,6 +150,7 @@ function createWorkerExecutionContext() {
     depositBroadcaster,
     withdrawalBroadcaster,
     policyControlledWithdrawalBroadcaster,
+    solvencyReportAnchorBroadcaster,
     logger,
   });
 

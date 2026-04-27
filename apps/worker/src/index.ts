@@ -13,6 +13,7 @@ import { createManagedDepositBroadcaster } from "./runtime/deposit-broadcaster";
 import { createGovernedExecutorDispatchClient } from "./runtime/governed-executor-dispatch-client";
 import { createJsonRpcClient } from "./runtime/json-rpc-client";
 import { createPolicyControlledWithdrawalBroadcaster } from "./runtime/policy-controlled-withdrawal-broadcaster";
+import { createSolvencyReportAnchorBroadcaster } from "./runtime/solvency-anchor-broadcaster";
 import { createManagedWithdrawalBroadcaster } from "./runtime/withdrawal-broadcaster";
 import { createWorkerLogger } from "./runtime/worker-logger";
 import { WorkerOrchestrator } from "./runtime/worker-orchestrator";
@@ -102,6 +103,8 @@ export async function startWorkerRuntime(): Promise<void> {
     runtime.executionMode === "managed"
       ? createPolicyControlledWithdrawalBroadcaster(runtime)
       : null;
+  const solvencyReportAnchorBroadcaster =
+    createSolvencyReportAnchorBroadcaster(runtime);
   const governedExecutorDispatchClient =
     createGovernedExecutorDispatchClient(runtime);
   const orchestrator = new WorkerOrchestrator({
@@ -112,6 +115,7 @@ export async function startWorkerRuntime(): Promise<void> {
     depositBroadcaster,
     withdrawalBroadcaster,
     policyControlledWithdrawalBroadcaster,
+    solvencyReportAnchorBroadcaster,
     logger
   });
   const internalApiStartupState = createInternalApiStartupAvailabilityState();
@@ -202,6 +206,10 @@ export async function startWorkerRuntime(): Promise<void> {
           policyControlledWithdrawalReady: Boolean(
             runtime.policyControlledWithdrawalExecutorPrivateKey &&
               runtime.policyControlledWithdrawalPolicySignerPrivateKey
+          ),
+          solvencyAnchorBroadcasterReady: Boolean(
+            runtime.solvencyAnchorContractAddress &&
+              runtime.solvencyAnchorSignerPrivateKey
           )
         }
       }
@@ -360,6 +368,10 @@ export async function startWorkerRuntime(): Promise<void> {
             policyControlledWithdrawalReady: Boolean(
               runtime.policyControlledWithdrawalExecutorPrivateKey &&
                 runtime.policyControlledWithdrawalPolicySignerPrivateKey
+            ),
+            solvencyAnchorBroadcasterReady: Boolean(
+              runtime.solvencyAnchorContractAddress &&
+                runtime.solvencyAnchorSignerPrivateKey
             )
           },
           latestIterationMetrics: iterationMetrics,
@@ -436,6 +448,10 @@ export async function startWorkerRuntime(): Promise<void> {
             policyControlledWithdrawalReady: Boolean(
               runtime.policyControlledWithdrawalExecutorPrivateKey &&
                 runtime.policyControlledWithdrawalPolicySignerPrivateKey
+            ),
+            solvencyAnchorBroadcasterReady: Boolean(
+              runtime.solvencyAnchorContractAddress &&
+                runtime.solvencyAnchorSignerPrivateKey
             )
           },
           latestIterationMetrics: iterationMetrics ?? undefined,

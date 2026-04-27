@@ -519,10 +519,11 @@ function parseGovernedCustodyManifest(
         scope !== "staking_execution" &&
         scope !== "loan_execution" &&
         scope !== "policy_withdrawal_authorization" &&
-        scope !== "policy_withdrawal_executor"
+        scope !== "policy_withdrawal_executor" &&
+        scope !== "solvency_anchor_execution"
       ) {
         throw new Error(
-          `${name}.signers[${index}].scope must be staking_execution, loan_execution, policy_withdrawal_authorization, or policy_withdrawal_executor.`,
+          `${name}.signers[${index}].scope must be staking_execution, loan_execution, policy_withdrawal_authorization, policy_withdrawal_executor, or solvency_anchor_execution.`,
         );
       }
 
@@ -547,10 +548,11 @@ function parseGovernedCustodyManifest(
 
       if (
         productSurface !== "staking_v1" &&
-        productSurface !== "loan_book_v1"
+        productSurface !== "loan_book_v1" &&
+        productSurface !== "solvency_report_anchor_registry_v1"
       ) {
         throw new Error(
-          `${name}.contracts[${index}].productSurface must be staking_v1 or loan_book_v1.`,
+          `${name}.contracts[${index}].productSurface must be staking_v1, loan_book_v1, or solvency_report_anchor_registry_v1.`,
         );
       }
 
@@ -1136,6 +1138,8 @@ export type WorkerRuntimeConfig = {
   readonly policyControlledWithdrawalExecutorPrivateKey: string | null;
   readonly policyControlledWithdrawalPolicySignerPrivateKey: string | null;
   readonly policyControlledWithdrawalAuthorizationTtlSeconds: number;
+  readonly solvencyAnchorContractAddress: string | null;
+  readonly solvencyAnchorSignerPrivateKey: string | null;
   readonly rpcUrl: string | null;
   readonly depositSignerPrivateKey: string | null;
   readonly managedWithdrawalSigners: readonly ManagedWithdrawalSignerRuntimeConfig[];
@@ -1283,13 +1287,17 @@ export type GovernedSignerRuntimeConfig = {
     | "staking_execution"
     | "loan_execution"
     | "policy_withdrawal_authorization"
-    | "policy_withdrawal_executor";
+    | "policy_withdrawal_executor"
+    | "solvency_anchor_execution";
   readonly keyReference: string;
   readonly signerAddress: string;
 };
 
 export type ContractDeploymentRuntimeConfig = {
-  readonly productSurface: "staking_v1" | "loan_book_v1";
+  readonly productSurface:
+    | "staking_v1"
+    | "loan_book_v1"
+    | "solvency_report_anchor_registry_v1";
   readonly version: string;
   readonly address: string;
   readonly abiChecksumSha256: string;
@@ -1786,6 +1794,14 @@ export function loadWorkerRuntimeConfig(
       env,
       "WORKER_POLICY_CONTROLLED_WITHDRAWAL_POLICY_SIGNER_PRIVATE_KEY",
     );
+  const solvencyAnchorContractAddress = readOptionalRuntimeEnv(
+    env,
+    "WORKER_SOLVENCY_ANCHOR_CONTRACT_ADDRESS",
+  );
+  const solvencyAnchorSignerPrivateKey = readOptionalRuntimeEnv(
+    env,
+    "WORKER_SOLVENCY_ANCHOR_SIGNER_PRIVATE_KEY",
+  );
   const managedWithdrawalSignersJson = readOptionalRuntimeEnv(
     env,
     "WORKER_MANAGED_WITHDRAWAL_SIGNERS_JSON",
@@ -1810,6 +1826,15 @@ export function loadWorkerRuntimeConfig(
   ) {
     throw new Error(
       "WORKER_POLICY_CONTROLLED_WITHDRAWAL_EXECUTOR_PRIVATE_KEY and WORKER_POLICY_CONTROLLED_WITHDRAWAL_POLICY_SIGNER_PRIVATE_KEY must be configured together.",
+    );
+  }
+
+  if (
+    Boolean(solvencyAnchorContractAddress) !==
+    Boolean(solvencyAnchorSignerPrivateKey)
+  ) {
+    throw new Error(
+      "WORKER_SOLVENCY_ANCHOR_CONTRACT_ADDRESS and WORKER_SOLVENCY_ANCHOR_SIGNER_PRIVATE_KEY must be configured together.",
     );
   }
 
@@ -1939,6 +1964,8 @@ export function loadWorkerRuntimeConfig(
         ),
       "WORKER_POLICY_CONTROLLED_WITHDRAWAL_AUTHORIZATION_TTL_SECONDS",
     ),
+    solvencyAnchorContractAddress: solvencyAnchorContractAddress ?? null,
+    solvencyAnchorSignerPrivateKey: solvencyAnchorSignerPrivateKey ?? null,
     rpcUrl: rpcUrl ?? null,
     depositSignerPrivateKey: depositSignerPrivateKey ?? null,
     managedWithdrawalSigners,
