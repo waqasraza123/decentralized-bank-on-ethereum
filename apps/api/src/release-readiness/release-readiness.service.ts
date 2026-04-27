@@ -67,6 +67,16 @@ type SolvencyAnchorRegistryEvidencePayload = {
   governanceOwner: string;
   authorizedAnchorer: string;
   abiChecksumSha256: string;
+  onchainVerification?: {
+    chainId?: number;
+    contractAddress?: string;
+    deploymentTxHash?: string;
+    owner?: string;
+    authorizedAnchorer?: string;
+    bytecodePresent?: boolean;
+    deploymentBlockNumber?: number | null;
+    rpcUrlHost?: string;
+  };
 };
 
 type SolvencyAnchorRegistryDeploymentProofStatus = {
@@ -1864,14 +1874,138 @@ export class ReleaseReadinessService {
       return null;
     }
 
+    const hasOnchainVerification = Object.prototype.hasOwnProperty.call(
+      payload,
+      "onchainVerification"
+    );
+    const onchainVerification =
+      hasOnchainVerification &&
+      payload.onchainVerification &&
+      !Array.isArray(payload.onchainVerification) &&
+      typeof payload.onchainVerification === "object"
+        ? (payload.onchainVerification as Record<string, unknown>)
+        : null;
+    const onchainVerificationPayload = onchainVerification ?? {};
+
     return {
       chainId,
       contractAddress: payload.contractAddress,
       deploymentTxHash: payload.deploymentTxHash,
       governanceOwner: payload.governanceOwner,
       authorizedAnchorer: payload.authorizedAnchorer,
-      abiChecksumSha256: payload.abiChecksumSha256
+      abiChecksumSha256: payload.abiChecksumSha256,
+      onchainVerification: hasOnchainVerification
+        ? {
+            chainId:
+              typeof onchainVerificationPayload.chainId === "number"
+                ? onchainVerificationPayload.chainId
+                : Number(onchainVerificationPayload.chainId),
+            contractAddress:
+              typeof onchainVerificationPayload.contractAddress === "string"
+                ? onchainVerificationPayload.contractAddress
+                : undefined,
+            deploymentTxHash:
+              typeof onchainVerificationPayload.deploymentTxHash === "string"
+                ? onchainVerificationPayload.deploymentTxHash
+                : undefined,
+            owner:
+              typeof onchainVerificationPayload.owner === "string"
+                ? onchainVerificationPayload.owner
+                : undefined,
+            authorizedAnchorer:
+              typeof onchainVerificationPayload.authorizedAnchorer === "string"
+                ? onchainVerificationPayload.authorizedAnchorer
+                : undefined,
+            bytecodePresent:
+              typeof onchainVerificationPayload.bytecodePresent === "boolean"
+                ? onchainVerificationPayload.bytecodePresent
+                : undefined,
+            deploymentBlockNumber:
+              typeof onchainVerificationPayload.deploymentBlockNumber ===
+              "number"
+                ? onchainVerificationPayload.deploymentBlockNumber
+                : null,
+            rpcUrlHost:
+              typeof onchainVerificationPayload.rpcUrlHost === "string"
+                ? onchainVerificationPayload.rpcUrlHost
+                : undefined
+          }
+        : undefined
     };
+  }
+
+  private assertSolvencyAnchorOnchainVerificationMatchesPayload(
+    payload: SolvencyAnchorRegistryEvidencePayload
+  ): void {
+    const verification = payload.onchainVerification;
+
+    if (!verification) {
+      return;
+    }
+
+    const mismatches: string[] = [];
+
+    if (!Number.isInteger(verification.chainId)) {
+      mismatches.push("chain id");
+    } else if (verification.chainId !== payload.chainId) {
+      mismatches.push("chain id");
+    }
+
+    if (
+      !verification.contractAddress ||
+      this.normalizeHex(verification.contractAddress) !==
+        this.normalizeHex(payload.contractAddress)
+    ) {
+      mismatches.push("contract address");
+    }
+
+    if (
+      !verification.deploymentTxHash ||
+      this.normalizeHex(verification.deploymentTxHash) !==
+        this.normalizeHex(payload.deploymentTxHash)
+    ) {
+      mismatches.push("deployment transaction hash");
+    }
+
+    if (
+      !verification.owner ||
+      this.normalizeHex(verification.owner) !==
+        this.normalizeHex(payload.governanceOwner)
+    ) {
+      mismatches.push("owner");
+    }
+
+    if (
+      !verification.authorizedAnchorer ||
+      this.normalizeHex(verification.authorizedAnchorer) !==
+        this.normalizeHex(payload.authorizedAnchorer)
+    ) {
+      mismatches.push("authorized anchorer");
+    }
+
+    if (verification.bytecodePresent !== true) {
+      mismatches.push("deployed bytecode");
+    }
+
+    if (
+      verification.deploymentBlockNumber !== null &&
+      (!Number.isInteger(verification.deploymentBlockNumber) ||
+        verification.deploymentBlockNumber <= 0)
+    ) {
+      mismatches.push("deployment block number");
+    }
+
+    if (!verification.rpcUrlHost?.trim()) {
+      mismatches.push("RPC host");
+    }
+
+    if (mismatches.length > 0) {
+      throw new BadRequestException(
+        `Solvency anchor registry deployment on-chain verification does not match evidence fields: ${mismatches.join(
+          ", "
+        )}.`
+      );
+    }
   }
 
   private async assertSolvencyAnchorRegistryEvidenceMatchesManifest(
@@ -1886,6 +2020,8 @@ export class ReleaseReadinessService {
         "Solvency anchor registry deployment evidence payload could not be parsed for manifest verification."
       );
     }
+
+    this.assertSolvencyAnchorOnchainVerificationMatchesPayload(payload);
 
     const manifest =
       await this.prismaService.contractDeploymentManifest.findFirst({

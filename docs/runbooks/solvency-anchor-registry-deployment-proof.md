@@ -109,6 +109,8 @@ Use `--verify-onchain --rpc-url <url>` before recording production-like or produ
 
 The generated evidence payload includes an `onchainVerification` object with the observed chain id, RPC host, deployment block, registry owner, and authorized anchorer. The RPC URL itself is not persisted.
 
+When present, the API validates `onchainVerification` before it writes evidence. It must match the top-level payload chain id, registry address, deployment transaction hash, governance owner, and authorized anchorer; `bytecodePresent` must be `true`; `deploymentBlockNumber` must be positive when supplied; and `rpcUrlHost` must be present. Malformed `onchainVerification` data is rejected instead of ignored.
+
 The generator reads:
 
 - `authorities[]` entry with `authorityType: "governance_safe"`

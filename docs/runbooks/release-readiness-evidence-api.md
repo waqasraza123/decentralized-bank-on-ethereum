@@ -70,6 +70,7 @@ For `solvency_anchor_registry_deployment`, the API also verifies the payload aga
 - registry deployment fields must match `ContractDeploymentManifest`
 - authorized anchorer must match an active `GovernedSignerInventory` row for `solvency_anchor_execution`
 - governance owner must match the active `GovernanceAuthorityManifest` governance safe
+- optional `onchainVerification` must match the same chain id, registry address, deployment transaction, governance owner, authorized anchorer, deployed bytecode flag, positive deployment block, and RPC host captured by the proof generator
 
 Operators can preflight those same governed manifest bindings before recording evidence:
 
