@@ -80,10 +80,58 @@ export type CustomerLiabilityProofResult = {
       leafIndex: number;
       availableLiabilityAmount: string;
       reservedLiabilityAmount: string;
+      vaultLiabilityAmount: string;
+      pendingVaultReleaseAmount: string;
       pendingCreditAmount: string;
       totalLiabilityAmount: string;
     };
   }>;
+};
+
+export type PublicSolvencyProofBundle = {
+  bundleVersion: number;
+  bundleType: "public_solvency_report";
+  generatedAt: string;
+  artifactName: string;
+  bundleChecksumSha256: string;
+  verification: {
+    reportHashAlgorithm: string;
+    reportChecksumAlgorithm: string;
+    signatureAlgorithm: string;
+    instructions: string[];
+  };
+  report: SolvencyReportSummary;
+  snapshot: SolvencyWorkspaceSummarySnapshot;
+  signedPayload: {
+    canonicalPayload: Record<string, unknown> | null;
+    canonicalPayloadText: string;
+    reportHash: string;
+    reportChecksumSha256: string;
+    signature: string;
+    signerAddress: string;
+    signatureAlgorithm: string;
+  };
+  assetRoots: Array<{
+    assetId: string;
+    symbol: string;
+    displayName: string;
+    chainId: number;
+    liabilityMerkleRoot: string | null;
+    liabilityLeafCount: number;
+    liabilitySetChecksumSha256: string | null;
+    totalLiabilityAmount: string;
+    usableReserveAmount: string;
+    reserveDeltaAmount: string;
+  }>;
+};
+
+export type CustomerSolvencyProofBundle = Omit<
+  PublicSolvencyProofBundle,
+  "bundleType"
+> & {
+  bundleType: "customer_liability_proof";
+  customerAccountId: string;
+  customerProofs: CustomerLiabilityProofResult["proofs"];
 };
 
 export async function listPublicSolvencyReports(
@@ -141,6 +189,63 @@ export async function getLatestCustomerLiabilityProof(
   } catch (error) {
     throw new Error(
       readApiErrorMessage(error, "Failed to load customer liability proof.")
+    );
+  }
+}
+
+export async function getPublicSolvencyProofBundle(
+  snapshotId?: string
+): Promise<PublicSolvencyProofBundle> {
+  const endpoint = snapshotId
+    ? `/solvency/public/reports/${snapshotId}/bundle`
+    : "/solvency/public/reports/latest/bundle";
+  const response = await axios.get<ApiResponse<PublicSolvencyProofBundle>>(
+    `${webRuntimeConfig.serverUrl}${endpoint}`
+  );
+
+  if (response.data.status !== "success" || !response.data.data) {
+    throw new Error(
+      response.data.message || "Failed to load public solvency proof bundle."
+    );
+  }
+
+  return response.data.data;
+}
+
+export async function getCustomerSolvencyProofBundle(
+  snapshotId?: string
+): Promise<CustomerSolvencyProofBundle> {
+  const token = useUserStore.getState().token;
+
+  if (!token) {
+    throw new Error("Auth token is required.");
+  }
+
+  try {
+    const response = await axios.get<ApiResponse<CustomerSolvencyProofBundle>>(
+      `${webRuntimeConfig.serverUrl}/solvency/me/liability-proof/bundle`,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`
+        },
+        params: snapshotId
+          ? {
+              snapshotId
+            }
+          : undefined
+      }
+    );
+
+    if (response.data.status !== "success" || !response.data.data) {
+      throw new Error(
+        response.data.message || "Failed to load customer solvency proof bundle."
+      );
+    }
+
+    return response.data.data;
+  } catch (error) {
+    throw new Error(
+      readApiErrorMessage(error, "Failed to load customer solvency proof bundle.")
     );
   }
 }

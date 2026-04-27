@@ -98,10 +98,18 @@ Shows:
 - public reports must remain snapshot-bound and signature-bound
 - pause/resume state remains governed by the API, not the web client
 
-## Next follow-up after this slice
+## Delivered Follow-Up
 
-After this slice, the next best extension is:
-- public downloadable proof bundles
+The first follow-up now adds downloadable proof bundles:
+
+- public report bundles for latest or snapshot-specific signed solvency reports
+- authenticated customer proof bundles with customer-scoped liability leaves and Merkle paths
+- web download actions on `/trust/solvency` and `/proofs/me`
+- bundle verification guidance in `docs/runbooks/public-solvency-proof-bundles.md`
+
+## Next follow-up after proof bundles
+
+After proof bundles, the next best extensions are:
 - signed reserve attestation packages
 - onchain anchoring of report hashes
 - governed timelock for policy resume

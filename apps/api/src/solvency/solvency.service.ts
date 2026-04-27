@@ -50,6 +50,7 @@ import {
   buildSha256Checksum,
   buildSignedSolvencyReport,
   hashLiabilityLeaf,
+  stableStringify,
   type LiabilityLeafPayload,
   type SolvencyReportPayload
 } from "./solvency-proof";
@@ -298,6 +299,52 @@ export type PublicSolvencyReportListResult = {
     report: SolvencyReportProjection;
     snapshot: SolvencyWorkspaceSummarySnapshot;
   }>;
+};
+
+export type PublicSolvencyProofBundleResult = {
+  bundleVersion: number;
+  bundleType: "public_solvency_report";
+  generatedAt: string;
+  artifactName: string;
+  bundleChecksumSha256: string;
+  verification: {
+    reportHashAlgorithm: string;
+    reportChecksumAlgorithm: string;
+    signatureAlgorithm: string;
+    instructions: string[];
+  };
+  report: SolvencyReportProjection;
+  snapshot: SolvencyWorkspaceSummarySnapshot;
+  signedPayload: {
+    canonicalPayload: Prisma.JsonValue | null;
+    canonicalPayloadText: string;
+    reportHash: string;
+    reportChecksumSha256: string;
+    signature: string;
+    signerAddress: string;
+    signatureAlgorithm: string;
+  };
+  assetRoots: Array<{
+    assetId: string;
+    symbol: string;
+    displayName: string;
+    chainId: number;
+    liabilityMerkleRoot: string | null;
+    liabilityLeafCount: number;
+    liabilitySetChecksumSha256: string | null;
+    totalLiabilityAmount: string;
+    usableReserveAmount: string;
+    reserveDeltaAmount: string;
+  }>;
+};
+
+export type CustomerSolvencyProofBundleResult = Omit<
+  PublicSolvencyProofBundleResult,
+  "bundleType"
+> & {
+  bundleType: "customer_liability_proof";
+  customerAccountId: string;
+  customerProofs: CustomerLiabilityInclusionProofResult["proofs"];
 };
 
 export type GeneratedSolvencySnapshotResult = {
@@ -614,9 +661,10 @@ export class SolvencyService {
   }
 
   async getSnapshotDetail(snapshotId: string): Promise<SolvencySnapshotDetailResult> {
-    const snapshot = await this.prismaService.solvencySnapshot.findUnique({
+    const snapshot = await this.prismaService.solvencySnapshot.findFirst({
       where: {
-        id: snapshotId
+        id: snapshotId,
+        environment: this.environment
       },
       include: {
         reports: {
@@ -1160,9 +1208,10 @@ export class SolvencyService {
     report: SolvencyReportProjection;
     snapshot: SolvencyWorkspaceSummarySnapshot;
   }> {
-    const snapshot = await this.prismaService.solvencySnapshot.findUnique({
+    const snapshot = await this.prismaService.solvencySnapshot.findFirst({
       where: {
-        id: snapshotId
+        id: snapshotId,
+        environment: this.environment
       },
       include: {
         reports: {
@@ -1181,6 +1230,40 @@ export class SolvencyService {
     return {
       report: this.mapReportProjection(snapshot.reports[0]),
       snapshot: this.mapWorkspaceSnapshot(snapshot)
+    };
+  }
+
+  async getPublicSolvencyProofBundle(
+    snapshotId?: string
+  ): Promise<PublicSolvencyProofBundleResult> {
+    const source = snapshotId
+      ? await this.getPublicReportBySnapshotId(snapshotId)
+      : await this.getLatestPublicReport();
+
+    return this.buildPublicSolvencyProofBundle(source);
+  }
+
+  async getCustomerSolvencyProofBundle(
+    supabaseUserId: string,
+    snapshotId?: string
+  ): Promise<CustomerSolvencyProofBundleResult> {
+    const proofResult = await this.getCustomerLiabilityInclusionProof(
+      supabaseUserId,
+      snapshotId
+    );
+    const publicBundle = this.buildPublicSolvencyProofBundle(proofResult);
+    const bundleWithoutChecksum = {
+      ...publicBundle,
+      bundleType: "customer_liability_proof" as const,
+      artifactName: `customer-solvency-proof-${proofResult.snapshot.id}-${proofResult.customerAccountId}.json`,
+      bundleChecksumSha256: null,
+      customerAccountId: proofResult.customerAccountId,
+      customerProofs: proofResult.proofs
+    };
+
+    return {
+      ...bundleWithoutChecksum,
+      bundleChecksumSha256: this.buildBundleChecksum(bundleWithoutChecksum)
     };
   }
 
@@ -1204,9 +1287,10 @@ export class SolvencyService {
     }
 
     const snapshot = snapshotId
-      ? await this.prismaService.solvencySnapshot.findUnique({
+      ? await this.prismaService.solvencySnapshot.findFirst({
           where: {
-            id: snapshotId
+            id: snapshotId,
+            environment: this.environment
           },
           include: {
             reports: {
@@ -1330,6 +1414,88 @@ export class SolvencyService {
       customerAccountId: customerAccount.id,
       proofs
     };
+  }
+
+  private buildPublicSolvencyProofBundle(source: {
+    report: SolvencyReportProjection;
+    snapshot: SolvencyWorkspaceSummarySnapshot;
+  }): PublicSolvencyProofBundleResult {
+    const generatedAt = new Date().toISOString();
+    const bundleWithoutChecksum = {
+      bundleVersion: 1,
+      bundleType: "public_solvency_report" as const,
+      generatedAt,
+      artifactName: `public-solvency-report-${source.snapshot.id}.json`,
+      bundleChecksumSha256: null,
+      verification: {
+        reportHashAlgorithm: "keccak256(canonicalPayloadText)",
+        reportChecksumAlgorithm: "sha256(canonicalPayloadText)",
+        signatureAlgorithm: source.report.signatureAlgorithm,
+        instructions: [
+          "Verify reportChecksumSha256 by SHA-256 hashing canonicalPayloadText.",
+          "Verify reportHash by Keccak-256 hashing canonicalPayloadText.",
+          "Recover signerAddress from reportHash and signature with the declared signatureAlgorithm.",
+          "For each asset, verify liability leaves against liabilityMerkleRoot using customer-specific proof bundles."
+        ]
+      },
+      report: source.report,
+      snapshot: source.snapshot,
+      signedPayload: {
+        canonicalPayload: source.report.canonicalPayload,
+        canonicalPayloadText: source.report.canonicalPayloadText,
+        reportHash: source.report.reportHash,
+        reportChecksumSha256: source.report.reportChecksumSha256,
+        signature: source.report.signature,
+        signerAddress: source.report.signerAddress,
+        signatureAlgorithm: source.report.signatureAlgorithm
+      },
+      assetRoots: this.readPublicReportAssetRoots(source.report)
+    };
+
+    return {
+      ...bundleWithoutChecksum,
+      bundleChecksumSha256: this.buildBundleChecksum(bundleWithoutChecksum)
+    };
+  }
+
+  private readPublicReportAssetRoots(
+    report: SolvencyReportProjection
+  ): PublicSolvencyProofBundleResult["assetRoots"] {
+    const payload =
+      report.canonicalPayload &&
+      typeof report.canonicalPayload === "object" &&
+      !Array.isArray(report.canonicalPayload)
+        ? (report.canonicalPayload as Record<string, unknown>)
+        : null;
+    const assets = Array.isArray(payload?.assets) ? payload.assets : [];
+
+    return assets
+      .filter(
+        (asset): asset is Record<string, unknown> =>
+          typeof asset === "object" && asset !== null && !Array.isArray(asset)
+      )
+      .map((asset) => ({
+        assetId: String(asset.assetId ?? ""),
+        symbol: String(asset.symbol ?? ""),
+        displayName: String(asset.displayName ?? ""),
+        chainId: Number(asset.chainId ?? 0),
+        liabilityMerkleRoot:
+          typeof asset.liabilityMerkleRoot === "string"
+            ? asset.liabilityMerkleRoot
+            : null,
+        liabilityLeafCount: Number(asset.liabilityLeafCount ?? 0),
+        liabilitySetChecksumSha256:
+          typeof asset.liabilitySetChecksumSha256 === "string"
+            ? asset.liabilitySetChecksumSha256
+            : null,
+        totalLiabilityAmount: String(asset.totalLiabilityAmount ?? "0"),
+        usableReserveAmount: String(asset.usableReserveAmount ?? "0"),
+        reserveDeltaAmount: String(asset.reserveDeltaAmount ?? "0")
+      }));
+  }
+
+  private buildBundleChecksum(bundleWithoutChecksum: unknown): string {
+    return buildSha256Checksum(stableStringify(bundleWithoutChecksum));
   }
 
   async requestPolicyResume(
