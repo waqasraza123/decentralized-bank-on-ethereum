@@ -19,12 +19,14 @@ import {
   rejectReleaseReadinessApproval,
   scaffoldLaunchClosurePack,
   validateLaunchClosureManifest,
-  requestReleaseReadinessApproval
+  requestReleaseReadinessApproval,
+  verifyLaunchClosurePackIntegrity
 } from "@/lib/api";
 import type {
   LaunchClosureManifest,
   LaunchClosurePackFile,
   LaunchClosureSolvencyFragment,
+  ReleaseLaunchClosurePackIntegrity,
   ReleaseLaunchClosurePack,
   ReleaseReadinessApproval,
   ReleaseReadinessSolvencyAnchorRegistryDeploymentProof
@@ -708,6 +710,8 @@ export function LaunchReadinessPage() {
   const [launchClosureFiles, setLaunchClosureFiles] = useState<LaunchClosurePackFile[]>(
     []
   );
+  const [launchClosurePackIntegrity, setLaunchClosurePackIntegrity] =
+    useState<ReleaseLaunchClosurePackIntegrity | null>(null);
   const [selectedLaunchClosureFilePath, setSelectedLaunchClosureFilePath] =
     useState<string | null>(null);
 
@@ -1221,6 +1225,7 @@ export function LaunchReadinessPage() {
       setLaunchClosureError(null);
       setLaunchClosureOutputSubpath(result.outputSubpath);
       setLaunchClosureFiles(result.files);
+      setLaunchClosurePackIntegrity(null);
       setSelectedLaunchClosureFilePath(result.files[0]?.relativePath ?? null);
       setApprovalDraft((current) => ({
         ...current,
@@ -1232,6 +1237,28 @@ export function LaunchReadinessPage() {
     onError: (error) => {
       setLaunchClosureError(
         readApiErrorMessage(error, "Failed to generate launch-closure pack.")
+      );
+    }
+  });
+
+  const verifyLaunchClosurePackIntegrityMutation = useMutation({
+    mutationFn: () =>
+      verifyLaunchClosurePackIntegrity(session!, latestScopedLaunchClosurePack!.id),
+    onSuccess: (result) => {
+      setLaunchClosurePackIntegrity(result);
+      setLaunchClosureFlash(
+        result.valid
+          ? "Stored launch-closure pack integrity verified."
+          : "Stored launch-closure pack integrity drift detected."
+      );
+      setLaunchClosureError(null);
+    },
+    onError: (error) => {
+      setLaunchClosureError(
+        readApiErrorMessage(
+          error,
+          "Failed to verify stored launch-closure pack integrity."
+        )
       );
     }
   });
@@ -1401,7 +1428,8 @@ export function LaunchReadinessPage() {
   );
   const launchClosurePending =
     validateLaunchClosureMutation.isPending ||
-    scaffoldLaunchClosureMutation.isPending;
+    scaffoldLaunchClosureMutation.isPending ||
+    verifyLaunchClosurePackIntegrityMutation.isPending;
   const requiredEvidenceMetadataFields = listRequiredEvidenceMetadataFields(
     evidenceDraft.evidenceType
   );
@@ -1421,6 +1449,9 @@ export function LaunchReadinessPage() {
   );
   const latestScopedLaunchClosurePack: ReleaseLaunchClosurePack | null =
     scopedLaunchClosurePacksQuery.data?.packs[0] ?? null;
+  const latestPackIntegrityApplies =
+    Boolean(launchClosurePackIntegrity && latestScopedLaunchClosurePack) &&
+    launchClosurePackIntegrity?.pack.id === latestScopedLaunchClosurePack?.id;
   const solvencyAnchorPayloadStillMatchesPreflight =
     isSolvencyAnchorRegistryEvidence &&
     solvencyAnchorPayloadMatchesPreflight(
@@ -2560,6 +2591,13 @@ export function LaunchReadinessPage() {
                               latestScopedLaunchClosurePack.artifactManifest
                                 ?.fileCount ?? "Unavailable"
                             }`,
+                            `Integrity: ${
+                              latestPackIntegrityApplies
+                                ? launchClosurePackIntegrity?.valid
+                                  ? "Verified"
+                                  : "Drift detected"
+                                : "Not checked"
+                            }`,
                             `Generated: ${formatDateTime(
                               latestScopedLaunchClosurePack.createdAt
                             )}`,
@@ -2587,6 +2625,69 @@ export function LaunchReadinessPage() {
                   }
                   tone={latestScopedLaunchClosurePack ? "positive" : "warning"}
                 />
+                <div className="admin-action-buttons">
+                  <button
+                    type="button"
+                    className="admin-secondary-button"
+                    disabled={!latestScopedLaunchClosurePack || launchClosurePending}
+                    onClick={() =>
+                      verifyLaunchClosurePackIntegrityMutation.mutate()
+                    }
+                  >
+                    {verifyLaunchClosurePackIntegrityMutation.isPending
+                      ? "Verifying..."
+                      : "Verify stored pack"}
+                  </button>
+                </div>
+                {latestPackIntegrityApplies && launchClosurePackIntegrity ? (
+                  <InlineNotice
+                    title={
+                      launchClosurePackIntegrity.valid
+                        ? "Stored pack verified"
+                        : "Stored pack drift detected"
+                    }
+                    description={
+                      launchClosurePackIntegrity.valid
+                        ? `Payload checksum and ${formatCount(
+                            launchClosurePackIntegrity.checkedFileCount
+                          )} generated file checks passed.`
+                        : launchClosurePackIntegrity.issues
+                            .map((issue) => issue.message)
+                            .join(" ")
+                    }
+                    tone={launchClosurePackIntegrity.valid ? "positive" : "critical"}
+                  />
+                ) : null}
+                {latestPackIntegrityApplies && launchClosurePackIntegrity ? (
+                  <DetailList
+                    items={[
+                      {
+                        label: "Payload checksum",
+                        value: launchClosurePackIntegrity.artifactChecksumMatches
+                          ? "Matched"
+                          : "Mismatch"
+                      },
+                      {
+                        label: "Manifest checksum",
+                        value:
+                          launchClosurePackIntegrity.manifestChecksumSha256 ??
+                          "Unavailable",
+                        mono: Boolean(
+                          launchClosurePackIntegrity.manifestChecksumSha256
+                        )
+                      },
+                      {
+                        label: "Checked files",
+                        value: `${formatCount(
+                          launchClosurePackIntegrity.checkedFileCount
+                        )} / ${
+                          launchClosurePackIntegrity.expectedFileCount ??
+                          "Unavailable"
+                        }`
+                      }
+                    ]}
+                  />
+                ) : null}
                 {scopedLaunchClosurePacksQuery.isError ? (
                   <InlineNotice
                     title="Stored packs unavailable"

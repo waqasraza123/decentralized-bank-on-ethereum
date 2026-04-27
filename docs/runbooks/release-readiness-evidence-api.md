@@ -233,7 +233,7 @@ Stored launch-closure packs include:
 
 The generated file set also includes `artifact-manifest.json`, which mirrors `artifactManifest` from the stored API response. Its file list intentionally excludes `artifact-manifest.json` itself to avoid a recursive checksum. Use `verify-artifact-manifest --pack-dir <path>` to detect missing, unexpected, or modified local files before comparing CLI scaffolds, browser-downloaded files, stored pack records, and approval-bound pack references during launch review.
 
-Stored pack integrity can be checked without downloading files:
+Stored pack integrity can be checked without downloading files. The admin Launch Readiness workspace calls this endpoint from `Verify stored pack`, and the same check is available directly:
 
 ```bash
 curl -sS \

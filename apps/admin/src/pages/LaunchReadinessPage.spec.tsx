@@ -19,7 +19,8 @@ import {
   listReleaseReadinessEvidence,
   listReleasedReleases,
   rebindReleaseReadinessApprovalPack,
-  rejectReleaseReadinessApproval
+  rejectReleaseReadinessApproval,
+  verifyLaunchClosurePackIntegrity
 } from "@/lib/api";
 
 vi.mock("@/lib/api", () => ({
@@ -39,7 +40,8 @@ vi.mock("@/lib/api", () => ({
   approveReleaseReadinessApproval: vi.fn(),
   rejectReleaseReadinessApproval: vi.fn(),
   validateLaunchClosureManifest: vi.fn(),
-  scaffoldLaunchClosurePack: vi.fn()
+  scaffoldLaunchClosurePack: vi.fn(),
+  verifyLaunchClosurePackIntegrity: vi.fn()
 }));
 
 function buildSummary(releaseIdentifier: string | null) {
@@ -510,6 +512,48 @@ describe("LaunchReadinessPage", () => {
         totalCount: 1
       };
     });
+    vi.mocked(verifyLaunchClosurePackIntegrity).mockImplementation(
+      async (_session, packId) => ({
+        pack: {
+          id: packId,
+          releaseIdentifier: packId.replace(/-pack$/, ""),
+          environment: "production_like",
+          version: 3,
+          generatedByOperatorId: "ops_1",
+          generatedByOperatorRole: "operations_admin",
+          artifactChecksumSha256: `checksum-${packId.replace(/-pack$/, "")}`,
+          manifestChecksumSha256: `manifest-checksum-${packId.replace(
+            /-pack$/,
+            ""
+          )}`,
+          artifactManifest: {
+            manifestChecksumSha256: `manifest-checksum-${packId.replace(
+              /-pack$/,
+              ""
+            )}`,
+            fileCount: 0,
+            files: []
+          },
+          artifactPayload: {},
+          createdAt: "2026-04-14T10:00:00.000Z",
+          updatedAt: "2026-04-14T10:00:00.000Z"
+        },
+        valid: true,
+        artifactChecksumSha256: `checksum-${packId.replace(/-pack$/, "")}`,
+        recomputedArtifactChecksumSha256: `checksum-${packId.replace(
+          /-pack$/,
+          ""
+        )}`,
+        artifactChecksumMatches: true,
+        manifestChecksumSha256: `manifest-checksum-${packId.replace(
+          /-pack$/,
+          ""
+        )}`,
+        expectedFileCount: 0,
+        checkedFileCount: 0,
+        issues: []
+      })
+    );
     vi.mocked(getReleaseReadinessSummary).mockImplementation(
       async (_session, params = {}) =>
         buildSummary(
@@ -706,6 +750,30 @@ describe("LaunchReadinessPage", () => {
     );
     expect(screen.getByRole("button", { name: "Approve release" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Reject release" })).toBeEnabled();
+  });
+
+  it("verifies the latest stored launch-closure pack from the approval rail", async () => {
+    renderPage("/launch-readiness?release=launch-2026.04.13.1");
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: "Verify stored pack" })
+      ).toBeEnabled();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Verify stored pack" }));
+
+    await waitFor(() => {
+      expect(vi.mocked(verifyLaunchClosurePackIntegrity)).toHaveBeenCalledWith(
+        expect.objectContaining({
+          operatorId: "ops_1"
+        }),
+        "launch-2026.04.13.1-pack"
+      );
+    });
+
+    expect(screen.getByText("Stored pack verified")).toBeInTheDocument();
+    expect(screen.getByText("Payload checksum")).toBeInTheDocument();
   });
 
   it("rebinds a blocked approval to the latest stored pack from the console", async () => {
