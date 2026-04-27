@@ -9,6 +9,11 @@ export type ReleaseReadinessEvidenceMetadataField =
 
 export type ReleaseReadinessEvidencePayloadField =
   | "proofKind"
+  | "service"
+  | "approvalRollbackReleaseIdentifier"
+  | "currentArtifact"
+  | "rollbackArtifact"
+  | "artifactManifestPath"
   | "networkName"
   | "chainId"
   | "contractProductSurface"
@@ -75,11 +80,26 @@ const solvencyAnchorRegistryDeploymentPayloadFields: readonly ReleaseReadinessEv
     "manifestCommitSha"
   ];
 
+const rollbackDrillPayloadFields: readonly ReleaseReadinessEvidencePayloadField[] =
+  [
+    "proofKind",
+    "service",
+    "approvalRollbackReleaseIdentifier",
+    "currentArtifact",
+    "rollbackArtifact",
+    "artifactManifestPath"
+  ];
+
 const payloadFieldLabels: Record<
   ReleaseReadinessEvidencePayloadField,
   string
 > = {
   proofKind: "proof kind",
+  service: "service",
+  approvalRollbackReleaseIdentifier: "approval rollback release identifier",
+  currentArtifact: "current deployment artifact",
+  rollbackArtifact: "rollback deployment artifact",
+  artifactManifestPath: "artifact manifest path",
   networkName: "network name",
   chainId: "chain id",
   contractProductSurface: "contract product surface",
@@ -137,6 +157,13 @@ function hasExactValue(
   return payload[field] === expectedValue;
 }
 
+function hasPlainObjectField(
+  payload: Record<string, unknown>,
+  field: ReleaseReadinessEvidencePayloadField
+): boolean {
+  return isPlainObject(payload[field]);
+}
+
 export function listReleaseReadinessEvidenceMetadataRequirements(
   evidenceType: ReleaseReadinessEvidenceType
 ): ReleaseReadinessEvidenceMetadataField[] {
@@ -186,9 +213,11 @@ export function validateReleaseReadinessEvidenceMetadata(
 export function listReleaseReadinessEvidencePayloadRequirements(
   evidenceType: ReleaseReadinessEvidenceType
 ): readonly ReleaseReadinessEvidencePayloadField[] {
-  if (
-    evidenceType === solvencyAnchorRegistryDeploymentEvidenceType
-  ) {
+  if (rollbackReleaseIdentifierRequiredEvidenceTypes.has(evidenceType)) {
+    return rollbackDrillPayloadFields;
+  }
+
+  if (evidenceType === solvencyAnchorRegistryDeploymentEvidenceType) {
     return solvencyAnchorRegistryDeploymentPayloadFields;
   }
 
@@ -222,6 +251,42 @@ export function validateReleaseReadinessEvidencePayload(
   const missingOrInvalidFields: ReleaseReadinessEvidencePayloadField[] = [];
 
   for (const field of requiredFields) {
+    if (field === "currentArtifact" || field === "rollbackArtifact") {
+      if (!hasPlainObjectField(payload, field)) {
+        missingOrInvalidFields.push(field);
+      }
+      continue;
+    }
+
+    if (
+      field === "artifactManifestPath" &&
+      !hasExactValue(payload, field, "payloads/release-artifacts.json")
+    ) {
+      missingOrInvalidFields.push(field);
+      continue;
+    }
+
+    if (field === "service") {
+      const expectedService =
+        input.evidenceType === ReleaseReadinessEvidenceType.api_rollback_drill
+          ? "api"
+          : input.evidenceType === ReleaseReadinessEvidenceType.worker_rollback_drill
+            ? "worker"
+            : null;
+
+      if (!expectedService || !hasExactValue(payload, field, expectedService)) {
+        missingOrInvalidFields.push(field);
+      }
+      continue;
+    }
+
+    if (field === "approvalRollbackReleaseIdentifier") {
+      if (!hasNonEmptyString(payload, field)) {
+        missingOrInvalidFields.push(field);
+      }
+      continue;
+    }
+
     if (field === "chainId") {
       if (!hasPositiveIntegerLikeChainId(payload)) {
         missingOrInvalidFields.push(field);
@@ -266,7 +331,13 @@ export function validateReleaseReadinessEvidencePayload(
 
     if (
       field === "proofKind" &&
-      !hasExactValue(payload, field, "manual_attestation")
+      !hasExactValue(
+        payload,
+        field,
+        rollbackReleaseIdentifierRequiredEvidenceTypes.has(input.evidenceType)
+          ? "deployment_artifact_manifest"
+          : "manual_attestation"
+      )
     ) {
       missingOrInvalidFields.push(field);
       continue;

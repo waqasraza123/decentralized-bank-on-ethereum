@@ -14,6 +14,7 @@ Prove the prior known-good API artifact can be restored against the current sche
 ## Required Inputs
 
 - release identifier
+- governed launch rollback release identifier
 - environment
 - API base URL
 - current API release id
@@ -28,12 +29,12 @@ Prove the prior known-good API artifact can be restored against the current sche
 2. compare the current and rollback provider artifacts against `payloads/release-artifacts.json`
 3. deploy the rollback API artifact
 4. confirm the API is serving against the current schema
-5. run `pnpm release:readiness:probe -- --probe api_rollback_drill ... --record-evidence`
+5. run `pnpm release:readiness:probe -- --probe api_rollback_drill ... --release-artifacts payloads/release-artifacts.json --record-evidence`
 
 ## Expected Outcome
 
 - probe returns `passed`
-- evidence payload includes current and rollback API artifact records
+- evidence payload includes current and rollback API artifact records and the governed launch rollback identifier
 - required operator reads remain available after rollback
 - accepted evidence is recorded for `api_rollback_drill`
 

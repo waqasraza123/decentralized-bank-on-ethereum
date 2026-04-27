@@ -1080,6 +1080,7 @@ function buildDeploymentArtifactPayload(
     },
     releaseIdBindings: {
       apiReleaseId: manifest.artifacts.apiReleaseId,
+      approvalRollbackReleaseId: manifest.artifacts.approvalRollbackReleaseId,
       apiRollbackReleaseId: manifest.artifacts.apiRollbackReleaseId,
       workerReleaseId: manifest.artifacts.workerReleaseId,
       workerRollbackReleaseId: manifest.artifacts.workerRollbackReleaseId
@@ -1103,6 +1104,8 @@ function buildRollbackArtifactEvidencePayload(
   return {
     proofKind: "deployment_artifact_manifest",
     service,
+    approvalRollbackReleaseIdentifier:
+      manifest.artifacts.approvalRollbackReleaseId,
     currentArtifact,
     rollbackArtifact,
     artifactManifestPath: "payloads/release-artifacts.json"
@@ -1356,9 +1359,7 @@ function buildEvidencePayloadTemplate(
     artifact.evidenceType === "worker_rollback_drill"
   ) {
     basePayload.rollbackReleaseIdentifier =
-      artifact.evidenceType === "api_rollback_drill"
-        ? manifest.artifacts.apiRollbackReleaseId
-        : manifest.artifacts.workerRollbackReleaseId;
+      manifest.artifacts.approvalRollbackReleaseId;
     basePayload.evidencePayload = buildRollbackArtifactEvidencePayload(
       manifest,
       artifact.evidenceType === "api_rollback_drill" ? "api" : "worker"
@@ -1639,7 +1640,7 @@ function buildLaunchClosureArtifacts(
         "Capture the currently deployed API release id and confirm it matches deploymentArtifacts.apiCurrent.",
         "Confirm the rollback API artifact digest, source commit, provider id, and URI match deploymentArtifacts.apiRollback.",
         "Deploy the rollback API artifact against the current database schema in the accepted environment.",
-        "Run the repo-owned rollback probe below with --record-evidence."
+        "Run the repo-owned rollback probe below with --release-artifacts and --record-evidence."
       ],
       expectedOutcome: [
         "The probe returns passed status.",
@@ -1655,7 +1656,8 @@ function buildLaunchClosureArtifacts(
         `--operator-role ${manifest.operator.requesterRole}`,
         `--environment ${manifest.environment}`,
         `--release-id ${manifest.releaseIdentifier}`,
-        `--rollback-release-id ${manifest.artifacts.apiRollbackReleaseId}`,
+        `--rollback-release-id ${manifest.artifacts.approvalRollbackReleaseId}`,
+        "--release-artifacts payloads/release-artifacts.json",
         "--record-evidence"
       ])
     },
@@ -1681,7 +1683,7 @@ function buildLaunchClosureArtifacts(
         "Confirm the rollback worker artifact digest, source commit, provider id, and URI match deploymentArtifacts.workerRollback.",
         "Deploy the prior worker artifact in the accepted environment.",
         "Confirm the reverted worker is using the expected worker identifier and the intended execution mode.",
-        "Run the repo-owned rollback probe below with --record-evidence."
+        "Run the repo-owned rollback probe below with --release-artifacts and --record-evidence."
       ],
       expectedOutcome: [
         "The probe returns passed status.",
@@ -1699,7 +1701,8 @@ function buildLaunchClosureArtifacts(
         "--expected-min-healthy-workers 1",
         `--environment ${manifest.environment}`,
         `--release-id ${manifest.releaseIdentifier}`,
-        `--rollback-release-id ${manifest.artifacts.workerRollbackReleaseId}`,
+        `--rollback-release-id ${manifest.artifacts.approvalRollbackReleaseId}`,
+        "--release-artifacts payloads/release-artifacts.json",
         "--record-evidence"
       ])
     },

@@ -15,6 +15,7 @@ Prove the prior worker artifact resumes heartbeat and safe queue processing with
 ## Required Inputs
 
 - release identifier
+- governed launch rollback release identifier
 - environment
 - API base URL
 - current worker release id
@@ -30,12 +31,12 @@ Prove the prior worker artifact resumes heartbeat and safe queue processing with
 2. compare the current and rollback provider artifacts against `payloads/release-artifacts.json`
 3. deploy the rollback worker artifact
 4. confirm heartbeat resumes for the expected worker identifier
-5. run `pnpm release:readiness:probe -- --probe worker_rollback_drill ... --record-evidence`
+5. run `pnpm release:readiness:probe -- --probe worker_rollback_drill ... --release-artifacts payloads/release-artifacts.json --record-evidence`
 
 ## Expected Outcome
 
 - probe returns `passed`
-- evidence payload includes current and rollback worker artifact records
+- evidence payload includes current and rollback worker artifact records and the governed launch rollback identifier
 - worker heartbeat and health recover within the expected window
 - accepted evidence is recorded for `worker_rollback_drill`
 

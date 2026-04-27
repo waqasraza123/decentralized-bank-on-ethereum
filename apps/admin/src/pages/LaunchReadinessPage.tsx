@@ -259,8 +259,19 @@ function listRequiredEvidenceMetadataFields(
 function listRequiredEvidencePayloadFields(
   evidenceType: EvidenceDraft["evidenceType"]
 ): string[] {
-  return evidenceType === "solvency_anchor_registry_deployment"
-    ? [
+  switch (evidenceType) {
+    case "api_rollback_drill":
+    case "worker_rollback_drill":
+      return [
+        "proofKind",
+        "service",
+        "approvalRollbackReleaseIdentifier",
+        "currentArtifact",
+        "rollbackArtifact",
+        "artifactManifestPath"
+      ];
+    case "solvency_anchor_registry_deployment":
+      return [
         "proofKind",
         "networkName",
         "chainId",
@@ -273,8 +284,10 @@ function listRequiredEvidencePayloadFields(
         "abiChecksumSha256",
         "manifestPath",
         "manifestCommitSha"
-      ]
-    : [];
+      ];
+    default:
+      return [];
+  }
 }
 
 function parseEvidencePayloadJson(

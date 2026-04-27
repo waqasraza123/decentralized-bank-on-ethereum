@@ -171,6 +171,44 @@ function buildVerifiableLaunchClosurePackRecord(
   return buildLaunchClosurePackRecord(overrides);
 }
 
+function buildRollbackArtifactEvidencePayload(
+  service: "api" | "worker",
+  environment = "staging"
+) {
+  return {
+    proofKind: "deployment_artifact_manifest",
+    service,
+    approvalRollbackReleaseIdentifier: "release-2026-04-07.3",
+    currentArtifact: {
+      releaseId: `${service}-release-2026-04-08.1`,
+      service,
+      environment,
+      artifactKind: service === "api" ? "vercel_deployment" : "worker_bundle",
+      artifactUri: `vercel://${service}/${service}-release-2026-04-08.1`,
+      artifactDigestSha256:
+        service === "api"
+          ? "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          : "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      sourceCommitSha: "abc1234",
+      runtime: "nodejs20.x"
+    },
+    rollbackArtifact: {
+      releaseId: `${service}-release-2026-04-07.3`,
+      service,
+      environment,
+      artifactKind: service === "api" ? "vercel_deployment" : "worker_bundle",
+      artifactUri: `vercel://${service}/${service}-release-2026-04-07.3`,
+      artifactDigestSha256:
+        service === "api"
+          ? "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+          : "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      sourceCommitSha: "def5678",
+      runtime: "nodejs20.x"
+    },
+    artifactManifestPath: "payloads/release-artifacts.json"
+  };
+}
+
 function buildPassedRequiredEvidenceRecords() {
   return [
     buildEvidenceRecord({
@@ -190,13 +228,15 @@ function buildPassedRequiredEvidenceRecords() {
       id: "evidence_4",
       evidenceType: ReleaseReadinessEvidenceType.api_rollback_drill,
       rollbackReleaseIdentifier: "release-2026-04-07.3",
-      runbookPath: "docs/runbooks/restore-and-rollback-drills.md"
+      runbookPath: "docs/runbooks/restore-and-rollback-drills.md",
+      evidencePayload: buildRollbackArtifactEvidencePayload("api")
     }),
     buildEvidenceRecord({
       id: "evidence_5",
       evidenceType: ReleaseReadinessEvidenceType.worker_rollback_drill,
       rollbackReleaseIdentifier: "release-2026-04-07.3",
-      runbookPath: "docs/runbooks/restore-and-rollback-drills.md"
+      runbookPath: "docs/runbooks/restore-and-rollback-drills.md",
+      evidencePayload: buildRollbackArtifactEvidencePayload("worker")
     }),
     buildEvidenceRecord({
       id: "evidence_6",
@@ -458,6 +498,104 @@ describe("ReleaseReadinessService", () => {
     );
 
     expect(transactionClient.releaseReadinessEvidence.create).not.toHaveBeenCalled();
+  });
+
+  it("rejects rollback drill evidence without deployment artifact binding", async () => {
+    const { service, transactionClient } = createService();
+
+    await expect(
+      service.recordEvidence(
+        {
+          evidenceType: "worker_rollback_drill",
+          environment: "production_like",
+          status: "passed",
+          releaseIdentifier: "launch-2026.04.14.1",
+          rollbackReleaseIdentifier: "launch-rollback-2026.04.13.4",
+          summary: "Worker rollback drill completed."
+        },
+        "ops_1",
+        "operations_admin"
+      )
+    ).rejects.toThrow(
+      "Release readiness evidence for worker_rollback_drill requires valid payload fields: proof kind, service, approval rollback release identifier, current deployment artifact, rollback deployment artifact, artifact manifest path."
+    );
+
+    expect(transactionClient.releaseReadinessEvidence.create).not.toHaveBeenCalled();
+  });
+
+  it("rejects rollback drill artifact payloads with the wrong environment", async () => {
+    const { service, transactionClient } = createService();
+
+    await expect(
+      service.recordEvidence(
+        {
+          evidenceType: "api_rollback_drill",
+          environment: "production_like",
+          status: "passed",
+          releaseIdentifier: "launch-2026.04.14.1",
+          rollbackReleaseIdentifier: "launch-rollback-2026.04.13.4",
+          summary: "API rollback drill completed.",
+          evidencePayload: {
+            ...buildRollbackArtifactEvidencePayload("api", "staging"),
+            approvalRollbackReleaseIdentifier: "launch-rollback-2026.04.13.4"
+          }
+        },
+        "ops_1",
+        "operations_admin"
+      )
+    ).rejects.toThrow(
+      "Rollback drill evidence artifact binding is invalid: currentArtifact.environment, rollbackArtifact.environment."
+    );
+
+    expect(transactionClient.releaseReadinessEvidence.create).not.toHaveBeenCalled();
+  });
+
+  it("records rollback drill evidence with deployment artifact binding", async () => {
+    const { service, transactionClient } = createService();
+    (transactionClient.releaseReadinessEvidence.create as jest.Mock).mockResolvedValue(
+      buildEvidenceRecord({
+        evidenceType: ReleaseReadinessEvidenceType.api_rollback_drill,
+        environment: ReleaseReadinessEnvironment.production_like,
+        rollbackReleaseIdentifier: "launch-rollback-2026.04.13.4",
+        evidencePayload: {
+          ...buildRollbackArtifactEvidencePayload("api", "production_like"),
+          approvalRollbackReleaseIdentifier: "launch-rollback-2026.04.13.4"
+        }
+      })
+    );
+
+    const result = await service.recordEvidence(
+      {
+        evidenceType: "api_rollback_drill",
+        environment: "production_like",
+        status: "passed",
+        releaseIdentifier: "launch-2026.04.14.1",
+        rollbackReleaseIdentifier: "launch-rollback-2026.04.13.4",
+        summary: "API rollback drill completed.",
+        evidencePayload: {
+          ...buildRollbackArtifactEvidencePayload("api", "production_like"),
+          approvalRollbackReleaseIdentifier: "launch-rollback-2026.04.13.4"
+        }
+      },
+      "ops_1",
+      "operations_admin"
+    );
+
+    expect(
+      transactionClient.releaseReadinessEvidence.create
+    ).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          evidenceType: "api_rollback_drill",
+          rollbackReleaseIdentifier: "launch-rollback-2026.04.13.4",
+          evidencePayload: expect.objectContaining({
+            proofKind: "deployment_artifact_manifest",
+            service: "api"
+          })
+        })
+      })
+    );
+    expect(result.evidence.evidenceType).toBe("api_rollback_drill");
   });
 
   it("rejects solvency anchor deployment evidence that drifts from the active manifest", async () => {

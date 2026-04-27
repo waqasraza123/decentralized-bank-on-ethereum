@@ -333,6 +333,7 @@ describe("launch-closure-pack", () => {
       expect(executionPlan).toContain("--probe worker_rollback_drill");
       expect(executionPlan).toContain("--release-id launch-2026.04.10.1");
       expect(executionPlan).toContain("payloads/release-artifacts.json");
+      expect(executionPlan).toContain("--release-artifacts payloads/release-artifacts.json");
       expect(executionPlan).toContain("pnpm release:readiness:verify --");
       expect(executionPlan).toContain("curl -sS -X POST");
       expect(approvalRequest).toContain('"releaseIdentifier": "launch-2026.04.10.1"');
@@ -353,6 +354,7 @@ describe("launch-closure-pack", () => {
       expect(criticalAlertPayload).toContain('"environment": "production_like"');
       expect(releaseArtifactsPayload).toContain('"apiRollback"');
       expect(releaseArtifactsPayload).toContain('"workerRollback"');
+      expect(releaseArtifactsPayload).toContain('"approvalRollbackReleaseId"');
       expect(artifactManifest.manifestChecksumSha256).toEqual(expect.any(String));
       expect(artifactManifest.files).toEqual(
         expect.arrayContaining([

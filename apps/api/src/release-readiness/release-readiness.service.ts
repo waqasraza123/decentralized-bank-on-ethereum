@@ -87,6 +87,26 @@ type SolvencyAnchorRegistryEvidencePayload = {
   };
 };
 
+type RollbackDeploymentArtifactRecord = {
+  releaseId: string;
+  service: "api" | "worker";
+  environment: ReleaseReadinessEnvironment;
+  artifactKind: string;
+  artifactUri: string;
+  artifactDigestSha256: string;
+  sourceCommitSha: string;
+  runtime: string;
+};
+
+type RollbackDeploymentArtifactEvidencePayload = {
+  proofKind: "deployment_artifact_manifest";
+  service: "api" | "worker";
+  approvalRollbackReleaseIdentifier: string;
+  currentArtifact: RollbackDeploymentArtifactRecord;
+  rollbackArtifact: RollbackDeploymentArtifactRecord;
+  artifactManifestPath: "payloads/release-artifacts.json";
+};
+
 type SolvencyAnchorRegistryDeploymentProofStatus = {
   generatedAt: string;
   evidenceType: "solvency_anchor_registry_deployment";
@@ -535,6 +555,8 @@ const rollbackScopedEvidenceTypes = new Set<ReleaseReadinessEvidenceType>([
   ReleaseReadinessEvidenceType.api_rollback_drill,
   ReleaseReadinessEvidenceType.worker_rollback_drill
 ]);
+const deploymentArtifactChecksumPattern = /^(sha256:)?[a-fA-F0-9]{64}$/;
+const deploymentArtifactCommitShaPattern = /^[a-fA-F0-9]{7,40}$/;
 const onchainVerifiedSolvencyAnchorEvidenceEnvironments =
   new Set<ReleaseReadinessEnvironment>([
     ReleaseReadinessEnvironment.production_like,
@@ -899,6 +921,21 @@ export class ReleaseReadinessService {
         continue;
       }
 
+      const missingPayloadFields = validateReleaseReadinessEvidencePayload({
+        evidenceType: check.evidenceType,
+        evidencePayload: latestEvidence.evidencePayload
+      });
+
+      if (missingPayloadFields.length > 0) {
+        mismatches.push({
+          evidenceType: check.evidenceType,
+          reason: `Latest ${check.evidenceType} evidence is missing valid payload fields: ${describeReleaseReadinessEvidencePayloadRequirements(
+            check.evidenceType
+          ).join(", ")}.`
+        });
+        continue;
+      }
+
       if (
         rollbackScopedEvidenceTypes.has(check.evidenceType) &&
         !rollbackReleaseIdentifier
@@ -908,6 +945,26 @@ export class ReleaseReadinessService {
           reason: `Approval is missing rollback release identifier required for ${check.evidenceType}.`
         });
         continue;
+      }
+
+      if (rollbackScopedEvidenceTypes.has(check.evidenceType)) {
+        try {
+          this.assertRollbackDrillEvidenceArtifactBinding(
+            check.evidenceType,
+            latestEvidence.environment,
+            rollbackReleaseIdentifier,
+            latestEvidence.evidencePayload ?? undefined
+          );
+        } catch (error) {
+          mismatches.push({
+            evidenceType: check.evidenceType,
+            reason:
+              error instanceof Error
+                ? error.message
+                : "Latest rollback drill evidence artifact binding is invalid."
+          });
+          continue;
+        }
       }
 
       if (
@@ -2025,6 +2082,210 @@ export class ReleaseReadinessService {
     return createHash("sha256").update(value).digest("hex");
   }
 
+  private readRollbackDeploymentArtifactRecord(
+    value: unknown
+  ): RollbackDeploymentArtifactRecord | null {
+    if (!value || Array.isArray(value) || typeof value !== "object") {
+      return null;
+    }
+
+    const artifact = value as Record<string, unknown>;
+    const releaseId = artifact.releaseId;
+    const service = artifact.service;
+    const environment = artifact.environment;
+    const artifactKind = artifact.artifactKind;
+    const artifactUri = artifact.artifactUri;
+    const artifactDigestSha256 = artifact.artifactDigestSha256;
+    const sourceCommitSha = artifact.sourceCommitSha;
+    const runtime = artifact.runtime;
+
+    if (
+      typeof releaseId !== "string" ||
+      (service !== "api" && service !== "worker") ||
+      (environment !== ReleaseReadinessEnvironment.staging &&
+        environment !== ReleaseReadinessEnvironment.production_like &&
+        environment !== ReleaseReadinessEnvironment.production) ||
+      typeof artifactKind !== "string" ||
+      typeof artifactUri !== "string" ||
+      typeof artifactDigestSha256 !== "string" ||
+      typeof sourceCommitSha !== "string" ||
+      typeof runtime !== "string"
+    ) {
+      return null;
+    }
+
+    return {
+      releaseId,
+      service,
+      environment,
+      artifactKind,
+      artifactUri,
+      artifactDigestSha256,
+      sourceCommitSha,
+      runtime
+    };
+  }
+
+  private readRollbackDeploymentArtifactEvidencePayload(
+    evidencePayload: PrismaJsonValue | undefined
+  ): RollbackDeploymentArtifactEvidencePayload | null {
+    if (
+      !evidencePayload ||
+      Array.isArray(evidencePayload) ||
+      typeof evidencePayload !== "object"
+    ) {
+      return null;
+    }
+
+    const payload = evidencePayload as Record<string, unknown>;
+    const currentArtifact = this.readRollbackDeploymentArtifactRecord(
+      payload.currentArtifact
+    );
+    const rollbackArtifact = this.readRollbackDeploymentArtifactRecord(
+      payload.rollbackArtifact
+    );
+
+    if (
+      payload.proofKind !== "deployment_artifact_manifest" ||
+      (payload.service !== "api" && payload.service !== "worker") ||
+      typeof payload.approvalRollbackReleaseIdentifier !== "string" ||
+      payload.artifactManifestPath !== "payloads/release-artifacts.json" ||
+      !currentArtifact ||
+      !rollbackArtifact
+    ) {
+      return null;
+    }
+
+    return {
+      proofKind: "deployment_artifact_manifest",
+      service: payload.service,
+      approvalRollbackReleaseIdentifier:
+        payload.approvalRollbackReleaseIdentifier,
+      currentArtifact,
+      rollbackArtifact,
+      artifactManifestPath: "payloads/release-artifacts.json"
+    };
+  }
+
+  private assertRollbackDeploymentArtifactRecord(
+    artifact: RollbackDeploymentArtifactRecord,
+    key: string,
+    expectedService: "api" | "worker",
+    expectedEnvironment: ReleaseReadinessEnvironment
+  ): string[] {
+    const mismatches: string[] = [];
+
+    if (artifact.service !== expectedService) {
+      mismatches.push(`${key}.service`);
+    }
+
+    if (artifact.environment !== expectedEnvironment) {
+      mismatches.push(`${key}.environment`);
+    }
+
+    if (artifact.releaseId.trim().length === 0) {
+      mismatches.push(`${key}.releaseId`);
+    }
+
+    if (artifact.artifactKind.trim().length === 0) {
+      mismatches.push(`${key}.artifactKind`);
+    }
+
+    if (artifact.artifactUri.trim().length === 0) {
+      mismatches.push(`${key}.artifactUri`);
+    }
+
+    if (
+      !deploymentArtifactChecksumPattern.test(
+        artifact.artifactDigestSha256.trim()
+      )
+    ) {
+      mismatches.push(`${key}.artifactDigestSha256`);
+    }
+
+    if (
+      !deploymentArtifactCommitShaPattern.test(artifact.sourceCommitSha.trim())
+    ) {
+      mismatches.push(`${key}.sourceCommitSha`);
+    }
+
+    if (artifact.runtime.trim().length === 0) {
+      mismatches.push(`${key}.runtime`);
+    }
+
+    return mismatches;
+  }
+
+  private assertRollbackDrillEvidenceArtifactBinding(
+    evidenceType: ReleaseReadinessEvidenceType,
+    environment: ReleaseReadinessEnvironment,
+    rollbackReleaseIdentifier: string | null,
+    evidencePayload: PrismaJsonValue | undefined
+  ): void {
+    if (!rollbackScopedEvidenceTypes.has(evidenceType)) {
+      return;
+    }
+
+    const expectedService =
+      evidenceType === ReleaseReadinessEvidenceType.api_rollback_drill
+        ? "api"
+        : "worker";
+    const payload =
+      this.readRollbackDeploymentArtifactEvidencePayload(evidencePayload);
+
+    if (!payload) {
+      throw new BadRequestException(
+        `Release readiness evidence for ${evidenceType} requires a deployment_artifact_manifest payload from payloads/release-artifacts.json.`
+      );
+    }
+
+    const mismatches = [
+      ...this.assertRollbackDeploymentArtifactRecord(
+        payload.currentArtifact,
+        "currentArtifact",
+        expectedService,
+        environment
+      ),
+      ...this.assertRollbackDeploymentArtifactRecord(
+        payload.rollbackArtifact,
+        "rollbackArtifact",
+        expectedService,
+        environment
+      )
+    ];
+
+    if (payload.service !== expectedService) {
+      mismatches.push("service");
+    }
+
+    if (
+      payload.approvalRollbackReleaseIdentifier !== rollbackReleaseIdentifier
+    ) {
+      mismatches.push("approvalRollbackReleaseIdentifier");
+    }
+
+    if (
+      payload.currentArtifact.releaseId === payload.rollbackArtifact.releaseId
+    ) {
+      mismatches.push("artifact release ids must differ");
+    }
+
+    if (
+      this.normalizeChecksum(payload.currentArtifact.artifactDigestSha256) ===
+      this.normalizeChecksum(payload.rollbackArtifact.artifactDigestSha256)
+    ) {
+      mismatches.push("artifact digests must differ");
+    }
+
+    if (mismatches.length > 0) {
+      throw new BadRequestException(
+        `Rollback drill evidence artifact binding is invalid: ${mismatches.join(
+          ", "
+        )}.`
+      );
+    }
+  }
+
   private buildSolvencyAnchorRegistryEvidenceDraft(
     query: GetSolvencyAnchorRegistryDeploymentProofDto,
     manifest: ContractDeploymentManifestRecord | null,
@@ -2626,6 +2887,13 @@ export class ReleaseReadinessService {
         ).join(", ")}.`
       );
     }
+
+    this.assertRollbackDrillEvidenceArtifactBinding(
+      dto.evidenceType,
+      dto.environment,
+      rollbackReleaseIdentifier,
+      evidencePayload
+    );
 
     if (
       dto.evidenceType === solvencyAnchorRegistryDeploymentEvidenceType

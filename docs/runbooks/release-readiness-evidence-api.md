@@ -64,7 +64,8 @@ Field requirements by evidence type:
 
 - external-only launch proofs require `releaseIdentifier`
 - `database_restore_drill` also requires `backupReference`
-- `api_rollback_drill` and `worker_rollback_drill` also require `rollbackReleaseIdentifier`; launch-closure generated evidence payloads also include the matching current and rollback records from `payloads/release-artifacts.json`
+- `api_rollback_drill` and `worker_rollback_drill` also require `rollbackReleaseIdentifier`; the value must be the governed launch rollback identifier, while service-specific API/worker artifact release ids live in the structured payload
+- rollback drill evidence also requires an `evidencePayload` with `proofKind: "deployment_artifact_manifest"`, `service`, `approvalRollbackReleaseIdentifier`, `currentArtifact`, `rollbackArtifact`, and `artifactManifestPath: "payloads/release-artifacts.json"`; the API rejects missing payloads, wrong service/environment bindings, rollback-id mismatches, invalid digests, invalid source commits, or current/rollback artifacts that resolve to the same release or checksum
 - `solvency_anchor_registry_deployment` also requires structured `evidencePayload` fields for chain id, registry address, deployment transaction, owner, authorized anchorer, ABI checksum, manifest path, manifest commit SHA, and production-like or production on-chain verification metadata
 
 For `solvency_anchor_registry_deployment`, the API also verifies the payload against active governed manifest records before it writes evidence:
@@ -167,7 +168,7 @@ For staging or production-like drills, prefer the repo-owned probe runner:
 pnpm release:readiness:probe -- --help
 ```
 
-The command validates the relevant operator endpoints for a chosen evidence type, prints structured JSON proof, and can persist that result through `POST /release-readiness/internal/evidence` when `--record-evidence` is supplied.
+The command validates the relevant operator endpoints for a chosen evidence type, prints structured JSON proof, and can persist that result through `POST /release-readiness/internal/evidence` when `--record-evidence` is supplied. For `api_rollback_drill` and `worker_rollback_drill`, pass `--release-artifacts payloads/release-artifacts.json` so the recorded payload carries the artifact manifest records required by the API write gate.
 
 For repo-owned verification suites and manual review attestations, use:
 

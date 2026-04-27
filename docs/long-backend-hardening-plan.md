@@ -86,6 +86,7 @@
   - `pnpm release:readiness:probe -- --probe notification_cutover_verification`
 - Launch-closure packs now carry immutable API and worker deployment artifact manifests:
   - `payloads/release-artifacts.json`
+- Rollback drill recording and approval gating now reject API/worker rollback evidence unless its payload binds the governed launch rollback id to the matching current and rollback deployment artifact records.
 
 ### Next frontier
 

@@ -28,6 +28,18 @@ describe("release-readiness-evidence-requirements", () => {
         ReleaseReadinessEvidenceType.api_rollback_drill
       )
     ).toEqual(["releaseIdentifier", "rollbackReleaseIdentifier"]);
+    expect(
+      describeReleaseReadinessEvidencePayloadRequirements(
+        ReleaseReadinessEvidenceType.api_rollback_drill
+      )
+    ).toEqual([
+      "proof kind",
+      "service",
+      "approval rollback release identifier",
+      "current deployment artifact",
+      "rollback deployment artifact",
+      "artifact manifest path"
+    ]);
   });
 
   it("requires backup metadata for restore drill evidence", () => {
@@ -84,6 +96,26 @@ describe("release-readiness-evidence-requirements", () => {
             "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
           manifestPath: "packages/contracts/deployments/staging.manifest.json",
           manifestCommitSha: "abc1234"
+        }
+      })
+    ).toEqual([]);
+  });
+
+  it("accepts rollback drill deployment artifact payload envelopes", () => {
+    expect(
+      validateReleaseReadinessEvidencePayload({
+        evidenceType: ReleaseReadinessEvidenceType.worker_rollback_drill,
+        evidencePayload: {
+          proofKind: "deployment_artifact_manifest",
+          service: "worker",
+          approvalRollbackReleaseIdentifier: "launch-rollback-2026.04.13.4",
+          currentArtifact: {
+            releaseId: "worker-2026.04.14.1"
+          },
+          rollbackArtifact: {
+            releaseId: "worker-2026.04.13.4"
+          },
+          artifactManifestPath: "payloads/release-artifacts.json"
         }
       })
     ).toEqual([]);

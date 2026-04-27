@@ -234,11 +234,12 @@ pnpm release:readiness:probe -- \
   --access-token "$OPERATOR_ACCESS_TOKEN" \
   --environment production_like \
   --release-id launch-2026.04.10.1 \
-  --rollback-release-id api-2026.04.09.4 \
+  --rollback-release-id launch-rollback-2026.04.09.4 \
+  --release-artifacts payloads/release-artifacts.json \
   --record-evidence
 ```
 
-Before running the API rollback probe, compare the deployed provider artifact URI and digest against `payloads/release-artifacts.json`. The generated evidence payload for `api_rollback_drill` binds both the current and rollback API artifact records to the recorded drill result.
+Before running the API rollback probe, compare the deployed provider artifact URI and digest against `payloads/release-artifacts.json`. The rollback release identifier is the governed launch rollback identifier; the service-specific API rollback artifact id remains inside the evidence payload. The API write gate requires the generated evidence payload for `api_rollback_drill` to bind both the current and rollback API artifact records to the recorded drill result.
 
 Worker rollback:
 
@@ -251,11 +252,12 @@ pnpm release:readiness:probe -- \
   --expected-min-healthy-workers 1 \
   --environment production_like \
   --release-id launch-2026.04.10.1 \
-  --rollback-release-id worker-2026.04.09.4 \
+  --rollback-release-id launch-rollback-2026.04.09.4 \
+  --release-artifacts payloads/release-artifacts.json \
   --record-evidence
 ```
 
-Before running the worker rollback probe, compare the deployed provider artifact URI and digest against `payloads/release-artifacts.json`. The generated evidence payload for `worker_rollback_drill` binds both the current and rollback worker artifact records to the recorded drill result.
+Before running the worker rollback probe, compare the deployed provider artifact URI and digest against `payloads/release-artifacts.json`. The rollback release identifier is the governed launch rollback identifier; the service-specific worker rollback artifact id remains inside the evidence payload. The API write gate requires the generated evidence payload for `worker_rollback_drill` to bind both the current and rollback worker artifact records to the recorded drill result.
 
 ### 4. Record the manual review evidence
 
