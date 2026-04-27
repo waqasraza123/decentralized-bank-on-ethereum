@@ -40,6 +40,7 @@ export type SolvencyReportAnchorSummary = {
   requestedAt: string;
   submittedByOperatorId: string | null;
   submittedByOperatorRole: string | null;
+  submittedByWorkerId: string | null;
   submittedAt: string | null;
   txHash: string | null;
   contractAddress: string | null;
@@ -47,9 +48,11 @@ export type SolvencyReportAnchorSummary = {
   logIndex: number | null;
   confirmedByOperatorId: string | null;
   confirmedByOperatorRole: string | null;
+  confirmedByWorkerId: string | null;
   confirmedAt: string | null;
   failedByOperatorId: string | null;
   failedByOperatorRole: string | null;
+  failedByWorkerId: string | null;
   failureReason: string | null;
   failedAt: string | null;
   createdAt: string;

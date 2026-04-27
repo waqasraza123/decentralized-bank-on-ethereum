@@ -10,6 +10,7 @@ import type {
   BroadcastReceipt,
   ManagedDepositBroadcaster,
   ListIntentsResult,
+  ListSolvencyReportAnchorsResult,
   ManagedWithdrawalBroadcaster,
   PolicyControlledWithdrawalBroadcaster,
   PreparedManagedWithdrawalTransaction,
@@ -39,7 +40,7 @@ const SYNTHETIC_TREASURY_ADDRESS = "0x000000000000000000000000000000000000dEaD";
 
 function buildSyntheticTxHash(
   intentId: string,
-  phase: "deposit" | "withdrawal"
+  phase: "deposit" | "withdrawal" | "solvency_anchor"
 ): string {
   const hash = createHash("sha256")
     .update(`${phase}:${intentId}:${Date.now().toString(10)}`)
@@ -94,7 +95,12 @@ function createEmptyIterationMetrics(): WorkerIterationMetrics {
     graceExpiredLoanCount: 0,
     defaultEscalatedLoanCount: 0,
     liquidationCandidateCount: 0,
-    reEscalatedCriticalAlertCount: 0
+    reEscalatedCriticalAlertCount: 0,
+    requestedSolvencyReportAnchorCount: 0,
+    submittedSolvencyReportAnchorCount: 0,
+    solvencyReportAnchorSubmittedCount: 0,
+    solvencyReportAnchorConfirmedCount: 0,
+    solvencyReportAnchorFailedCount: 0
   };
 }
 
@@ -298,6 +304,28 @@ export class WorkerOrchestrator {
       });
     }
 
+    const requestedSolvencyReportAnchors =
+      await this.deps.internalApiClient.listRequestedSolvencyReportAnchors(
+        this.deps.runtime.batchLimit
+      );
+    metrics.requestedSolvencyReportAnchorCount =
+      requestedSolvencyReportAnchors.anchors.length;
+    await this.processRequestedSolvencyReportAnchors(
+      requestedSolvencyReportAnchors,
+      metrics
+    );
+
+    const submittedSolvencyReportAnchors =
+      await this.deps.internalApiClient.listSubmittedSolvencyReportAnchors(
+        this.deps.runtime.batchLimit
+      );
+    metrics.submittedSolvencyReportAnchorCount =
+      submittedSolvencyReportAnchors.anchors.length;
+    await this.processSubmittedSolvencyReportAnchors(
+      submittedSolvencyReportAnchors,
+      metrics
+    );
+
     return metrics;
   }
 
@@ -310,6 +338,135 @@ export class WorkerOrchestrator {
       metrics.fundedLoanCount += 1;
       this.deps.logger.info("loan_funding_completed", {
         loanAgreementId: agreement.loanAgreementId
+      });
+    }
+  }
+
+  private async processRequestedSolvencyReportAnchors(
+    result: ListSolvencyReportAnchorsResult,
+    metrics: WorkerIterationMetrics
+  ): Promise<void> {
+    for (const anchor of result.anchors) {
+      if (this.deps.runtime.executionMode !== "synthetic") {
+        this.deps.logger.info("solvency_report_anchor_waiting_for_broadcast", {
+          anchorId: anchor.id,
+          reportId: anchor.reportId,
+          chainId: anchor.chainId,
+          contractAddress: anchor.contractAddress,
+          anchorPayloadHash: anchor.anchorPayloadHash,
+          executionMode: this.deps.runtime.executionMode
+        });
+        continue;
+      }
+
+      const txHash = buildSyntheticTxHash(anchor.id, "solvency_anchor");
+      await this.deps.internalApiClient.recordSolvencyReportAnchorSubmitted(
+        anchor.id,
+        {
+          txHash,
+          contractAddress: anchor.contractAddress ?? undefined
+        }
+      );
+      metrics.solvencyReportAnchorSubmittedCount += 1;
+      this.deps.logger.info("synthetic_solvency_report_anchor_submitted", {
+        anchorId: anchor.id,
+        reportId: anchor.reportId,
+        txHash
+      });
+    }
+  }
+
+  private async processSubmittedSolvencyReportAnchors(
+    result: ListSolvencyReportAnchorsResult,
+    metrics: WorkerIterationMetrics
+  ): Promise<void> {
+    for (const anchor of result.anchors) {
+      const txHash = anchor.txHash;
+
+      if (!txHash) {
+        this.deps.logger.warn("submitted_solvency_report_anchor_missing_tx_hash", {
+          anchorId: anchor.id,
+          reportId: anchor.reportId
+        });
+        continue;
+      }
+
+      if (this.deps.runtime.executionMode === "synthetic") {
+        await this.deps.internalApiClient.recordSolvencyReportAnchorConfirmed(
+          anchor.id,
+          {
+            txHash,
+            contractAddress: anchor.contractAddress ?? undefined
+          }
+        );
+        metrics.solvencyReportAnchorConfirmedCount += 1;
+        this.deps.logger.info("synthetic_solvency_report_anchor_confirmed", {
+          anchorId: anchor.id,
+          reportId: anchor.reportId,
+          txHash
+        });
+        continue;
+      }
+
+      if (!this.deps.rpcClient) {
+        throw new Error("RPC client is required for solvency anchor monitoring.");
+      }
+
+      const receipt = await this.deps.rpcClient.getTransactionReceipt(txHash);
+
+      if (!receipt) {
+        this.deps.logger.info("solvency_report_anchor_pending_confirmation", {
+          anchorId: anchor.id,
+          reportId: anchor.reportId,
+          txHash
+        });
+        continue;
+      }
+
+      if (!receipt.succeeded) {
+        await this.deps.internalApiClient.recordSolvencyReportAnchorFailed(
+          anchor.id,
+          {
+            failureReason: "Anchor transaction reverted on chain."
+          }
+        );
+        metrics.solvencyReportAnchorFailedCount += 1;
+        this.deps.logger.warn("solvency_report_anchor_marked_failed", {
+          anchorId: anchor.id,
+          reportId: anchor.reportId,
+          txHash
+        });
+        continue;
+      }
+
+      const latestBlockNumber = await this.deps.rpcClient.getBlockNumber();
+      const confirmations = latestBlockNumber - receipt.blockNumber + 1n;
+
+      if (confirmations < BigInt(this.deps.runtime.confirmationBlocks)) {
+        this.deps.logger.info("solvency_report_anchor_waiting_confirmations", {
+          anchorId: anchor.id,
+          reportId: anchor.reportId,
+          txHash,
+          confirmations: confirmations.toString(),
+          requiredConfirmations: this.deps.runtime.confirmationBlocks
+        });
+        continue;
+      }
+
+      await this.deps.internalApiClient.recordSolvencyReportAnchorConfirmed(
+        anchor.id,
+        {
+          txHash,
+          contractAddress: anchor.contractAddress ?? undefined,
+          blockNumber: Number(receipt.blockNumber)
+        }
+      );
+      metrics.solvencyReportAnchorConfirmedCount += 1;
+      this.deps.logger.info("solvency_report_anchor_confirmed", {
+        anchorId: anchor.id,
+        reportId: anchor.reportId,
+        txHash,
+        confirmations: confirmations.toString()
       });
     }
   }

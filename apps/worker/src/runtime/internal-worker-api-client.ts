@@ -16,11 +16,16 @@ import type {
   FailIntentPayload,
   GeneratedSolvencySnapshotResult,
   ListIntentsResult,
+  ListSolvencyReportAnchorsResult,
   ListWorkerLoanAgreementsResult,
   ListWorkerLoanInstallmentsResult,
   RecordBroadcastPayload,
   RecordSignedWithdrawalPayload,
   RecordSignedWithdrawalResult,
+  RecordSolvencyReportAnchorConfirmedPayload,
+  RecordSolvencyReportAnchorFailedPayload,
+  RecordSolvencyReportAnchorMutationResult,
+  RecordSolvencyReportAnchorSubmittedPayload,
   SweepRetirementVaultReleaseRequestsResult,
   SweepRetirementVaultRuleChangeRequestsResult,
   SettleIntentPayload,
@@ -582,6 +587,73 @@ export function createInternalWorkerApiClient(runtime: WorkerRuntime) {
       return readResponseData(
         httpClient.post<ApiEnvelope<GeneratedSolvencySnapshotResult>>(
           "/solvency/internal/worker/snapshots/run"
+        ),
+        baseUrl
+      );
+    },
+
+    async listRequestedSolvencyReportAnchors(
+      limit: number
+    ): Promise<ListSolvencyReportAnchorsResult> {
+      return readResponseData(
+        httpClient.get<ApiEnvelope<ListSolvencyReportAnchorsResult>>(
+          "/solvency/internal/worker/report-anchors/requested",
+          {
+            params: { limit }
+          }
+        ),
+        baseUrl
+      );
+    },
+
+    async listSubmittedSolvencyReportAnchors(
+      limit: number
+    ): Promise<ListSolvencyReportAnchorsResult> {
+      return readResponseData(
+        httpClient.get<ApiEnvelope<ListSolvencyReportAnchorsResult>>(
+          "/solvency/internal/worker/report-anchors/submitted",
+          {
+            params: { limit }
+          }
+        ),
+        baseUrl
+      );
+    },
+
+    async recordSolvencyReportAnchorSubmitted(
+      anchorId: string,
+      payload: RecordSolvencyReportAnchorSubmittedPayload
+    ): Promise<RecordSolvencyReportAnchorMutationResult> {
+      return readResponseData(
+        httpClient.post<ApiEnvelope<RecordSolvencyReportAnchorMutationResult>>(
+          `/solvency/internal/worker/report-anchors/${anchorId}/record-submitted`,
+          payload
+        ),
+        baseUrl
+      );
+    },
+
+    async recordSolvencyReportAnchorConfirmed(
+      anchorId: string,
+      payload: RecordSolvencyReportAnchorConfirmedPayload
+    ): Promise<RecordSolvencyReportAnchorMutationResult> {
+      return readResponseData(
+        httpClient.post<ApiEnvelope<RecordSolvencyReportAnchorMutationResult>>(
+          `/solvency/internal/worker/report-anchors/${anchorId}/record-confirmed`,
+          payload
+        ),
+        baseUrl
+      );
+    },
+
+    async recordSolvencyReportAnchorFailed(
+      anchorId: string,
+      payload: RecordSolvencyReportAnchorFailedPayload
+    ): Promise<RecordSolvencyReportAnchorMutationResult> {
+      return readResponseData(
+        httpClient.post<ApiEnvelope<RecordSolvencyReportAnchorMutationResult>>(
+          `/solvency/internal/worker/report-anchors/${anchorId}/record-failed`,
+          payload
         ),
         baseUrl
       );

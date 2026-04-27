@@ -221,6 +221,7 @@ type SolvencyReportAnchorProjection = {
   requestedAt: string;
   submittedByOperatorId: string | null;
   submittedByOperatorRole: string | null;
+  submittedByWorkerId: string | null;
   submittedAt: string | null;
   txHash: string | null;
   contractAddress: string | null;
@@ -228,9 +229,11 @@ type SolvencyReportAnchorProjection = {
   logIndex: number | null;
   confirmedByOperatorId: string | null;
   confirmedByOperatorRole: string | null;
+  confirmedByWorkerId: string | null;
   confirmedAt: string | null;
   failedByOperatorId: string | null;
   failedByOperatorRole: string | null;
+  failedByWorkerId: string | null;
   failureReason: string | null;
   failedAt: string | null;
   createdAt: string;
@@ -240,6 +243,11 @@ type SolvencyReportAnchorProjection = {
 type SolvencyReportAnchorMutationResult = {
   anchor: SolvencyReportAnchorProjection;
   stateReused: boolean;
+};
+
+type SolvencyReportAnchorWorkerQueueResult = {
+  anchors: SolvencyReportAnchorProjection[];
+  limit: number;
 };
 
 type SolvencyWorkspaceSummarySnapshot = {
@@ -2352,6 +2360,16 @@ export class SolvencyService {
 
     if (
       anchor.status === SolvencyReportAnchorStatus.submitted &&
+      anchor.txHash &&
+      anchor.txHash !== txHash
+    ) {
+      throw new ConflictException(
+        "Submitted report anchors cannot switch transaction hashes. Mark the current anchor failed before resubmitting."
+      );
+    }
+
+    if (
+      anchor.status === SolvencyReportAnchorStatus.submitted &&
       anchor.txHash === txHash &&
       anchor.contractAddress === contractAddress &&
       anchor.blockNumber === (dto.blockNumber ?? anchor.blockNumber) &&
@@ -2374,6 +2392,7 @@ export class SolvencyService {
             status: SolvencyReportAnchorStatus.submitted,
             submittedByOperatorId: operatorId,
             submittedByOperatorRole: normalizedOperatorRole,
+            submittedByWorkerId: null,
             submittedAt,
             txHash,
             contractAddress: contractAddress ?? undefined,
@@ -2470,9 +2489,14 @@ export class SolvencyService {
           },
           data: {
             status: SolvencyReportAnchorStatus.confirmed,
-            submittedByOperatorId: anchor.submittedByOperatorId ?? operatorId,
+            submittedByOperatorId: anchor.submittedAt
+              ? anchor.submittedByOperatorId
+              : operatorId,
             submittedByOperatorRole:
-              anchor.submittedByOperatorRole ?? normalizedOperatorRole,
+              anchor.submittedAt
+                ? anchor.submittedByOperatorRole
+                : normalizedOperatorRole,
+            submittedByWorkerId: anchor.submittedByWorkerId,
             submittedAt: anchor.submittedAt ?? confirmedAt,
             txHash,
             contractAddress: contractAddress ?? undefined,
@@ -2480,6 +2504,7 @@ export class SolvencyService {
             logIndex: dto.logIndex ?? anchor.logIndex ?? undefined,
             confirmedByOperatorId: operatorId,
             confirmedByOperatorRole: normalizedOperatorRole,
+            confirmedByWorkerId: null,
             confirmedAt,
             failedByOperatorId: null,
             failedByOperatorRole: null,
@@ -2556,6 +2581,7 @@ export class SolvencyService {
             status: SolvencyReportAnchorStatus.failed,
             failedByOperatorId: operatorId,
             failedByOperatorRole: normalizedOperatorRole,
+            failedByWorkerId: null,
             failureReason,
             failedAt
           }
@@ -2573,6 +2599,321 @@ export class SolvencyService {
               reportId: nextAnchor.reportId,
               failureReason,
               operatorRole: normalizedOperatorRole
+            } as PrismaJsonValue
+          }
+        });
+
+        return nextAnchor;
+      }
+    );
+
+    return {
+      anchor: this.mapReportAnchorProjection(updatedAnchor),
+      stateReused: false
+    };
+  }
+
+  async listRequestedReportAnchorsForWorker(
+    limit = DEFAULT_PUBLIC_REPORT_LIMIT
+  ): Promise<SolvencyReportAnchorWorkerQueueResult> {
+    const normalizedLimit = Math.min(Math.max(limit, 1), 100);
+    const anchors = await this.prismaService.solvencyReportAnchor.findMany({
+      where: {
+        environment: this.environment,
+        status: SolvencyReportAnchorStatus.requested
+      },
+      orderBy: {
+        requestedAt: "asc"
+      },
+      take: normalizedLimit
+    });
+
+    return {
+      anchors: anchors.map((anchor) => this.mapReportAnchorProjection(anchor)),
+      limit: normalizedLimit
+    };
+  }
+
+  async listSubmittedReportAnchorsForWorker(
+    limit = DEFAULT_PUBLIC_REPORT_LIMIT
+  ): Promise<SolvencyReportAnchorWorkerQueueResult> {
+    const normalizedLimit = Math.min(Math.max(limit, 1), 100);
+    const anchors = await this.prismaService.solvencyReportAnchor.findMany({
+      where: {
+        environment: this.environment,
+        status: SolvencyReportAnchorStatus.submitted,
+        txHash: {
+          not: null
+        }
+      },
+      orderBy: {
+        submittedAt: "asc"
+      },
+      take: normalizedLimit
+    });
+
+    return {
+      anchors: anchors.map((anchor) => this.mapReportAnchorProjection(anchor)),
+      limit: normalizedLimit
+    };
+  }
+
+  async recordReportAnchorSubmittedByWorker(
+    anchorId: string,
+    dto: RecordSolvencyReportAnchorSubmittedDto,
+    workerId: string
+  ): Promise<SolvencyReportAnchorMutationResult> {
+    const anchor = await this.findReportAnchorForMutation(anchorId);
+    const txHash = this.normalizeTransactionHash(dto.txHash);
+    const contractAddress =
+      this.normalizeOptionalEvmAddress(dto.contractAddress) ??
+      anchor.contractAddress;
+
+    if (anchor.status === SolvencyReportAnchorStatus.confirmed) {
+      throw new ConflictException("Confirmed report anchors cannot be resubmitted.");
+    }
+
+    if (
+      anchor.contractAddress &&
+      contractAddress &&
+      anchor.contractAddress !== contractAddress
+    ) {
+      throw new ConflictException(
+        "Submitted contract address does not match the requested anchor contract address."
+      );
+    }
+
+    if (
+      anchor.status === SolvencyReportAnchorStatus.submitted &&
+      anchor.txHash &&
+      anchor.txHash !== txHash
+    ) {
+      throw new ConflictException(
+        "Submitted report anchors cannot switch transaction hashes. Mark the current anchor failed before resubmitting."
+      );
+    }
+
+    if (
+      anchor.status === SolvencyReportAnchorStatus.submitted &&
+      anchor.txHash === txHash &&
+      anchor.contractAddress === contractAddress &&
+      anchor.blockNumber === (dto.blockNumber ?? anchor.blockNumber) &&
+      anchor.logIndex === (dto.logIndex ?? anchor.logIndex)
+    ) {
+      return {
+        anchor: this.mapReportAnchorProjection(anchor),
+        stateReused: true
+      };
+    }
+
+    const submittedAt = new Date();
+    const updatedAnchor = await this.prismaService.$transaction(
+      async (transaction) => {
+        const nextAnchor = await transaction.solvencyReportAnchor.update({
+          where: {
+            id: anchor.id
+          },
+          data: {
+            status: SolvencyReportAnchorStatus.submitted,
+            submittedByOperatorId: null,
+            submittedByOperatorRole: null,
+            submittedByWorkerId: workerId,
+            submittedAt,
+            txHash,
+            contractAddress: contractAddress ?? undefined,
+            blockNumber: dto.blockNumber ?? undefined,
+            logIndex: dto.logIndex ?? undefined,
+            failedByOperatorId: null,
+            failedByOperatorRole: null,
+            failedByWorkerId: null,
+            failureReason: null,
+            failedAt: null
+          }
+        });
+
+        await this.appendAuditEvent(transaction, {
+          data: {
+            customerId: null,
+            actorType: "worker",
+            actorId: workerId,
+            action: "solvency.report_anchor.submitted",
+            targetType: "SolvencyReportAnchor",
+            targetId: nextAnchor.id,
+            metadata: {
+              reportId: nextAnchor.reportId,
+              txHash,
+              contractAddress: contractAddress ?? null,
+              blockNumber: dto.blockNumber ?? null,
+              logIndex: dto.logIndex ?? null
+            } as PrismaJsonValue
+          }
+        });
+
+        return nextAnchor;
+      }
+    );
+
+    return {
+      anchor: this.mapReportAnchorProjection(updatedAnchor),
+      stateReused: false
+    };
+  }
+
+  async recordReportAnchorConfirmedByWorker(
+    anchorId: string,
+    dto: RecordSolvencyReportAnchorConfirmedDto,
+    workerId: string
+  ): Promise<SolvencyReportAnchorMutationResult> {
+    const anchor = await this.findReportAnchorForMutation(anchorId);
+    const txHash = this.normalizeTransactionHash(dto.txHash);
+    const contractAddress =
+      this.normalizeOptionalEvmAddress(dto.contractAddress) ??
+      anchor.contractAddress;
+
+    if (anchor.status === SolvencyReportAnchorStatus.failed) {
+      throw new ConflictException("Failed report anchors must be resubmitted before confirmation.");
+    }
+
+    if (
+      anchor.contractAddress &&
+      contractAddress &&
+      anchor.contractAddress !== contractAddress
+    ) {
+      throw new ConflictException(
+        "Confirmed contract address does not match the requested anchor contract address."
+      );
+    }
+
+    if (anchor.txHash && anchor.txHash !== txHash) {
+      throw new ConflictException(
+        "Submitted transaction hash does not match the confirmation transaction hash."
+      );
+    }
+
+    if (
+      anchor.status === SolvencyReportAnchorStatus.confirmed &&
+      anchor.txHash === txHash &&
+      anchor.blockNumber === (dto.blockNumber ?? anchor.blockNumber) &&
+      anchor.logIndex === (dto.logIndex ?? anchor.logIndex)
+    ) {
+      return {
+        anchor: this.mapReportAnchorProjection(anchor),
+        stateReused: true
+      };
+    }
+
+    const confirmedAt = new Date();
+    const updatedAnchor = await this.prismaService.$transaction(
+      async (transaction) => {
+        const nextAnchor = await transaction.solvencyReportAnchor.update({
+          where: {
+            id: anchor.id
+          },
+          data: {
+            status: SolvencyReportAnchorStatus.confirmed,
+            submittedAt: anchor.submittedAt ?? confirmedAt,
+            submittedByOperatorId: anchor.submittedByOperatorId,
+            submittedByOperatorRole: anchor.submittedByOperatorRole,
+            submittedByWorkerId: anchor.submittedAt
+              ? anchor.submittedByWorkerId
+              : workerId,
+            txHash,
+            contractAddress: contractAddress ?? undefined,
+            blockNumber: dto.blockNumber ?? anchor.blockNumber ?? undefined,
+            logIndex: dto.logIndex ?? anchor.logIndex ?? undefined,
+            confirmedByOperatorId: null,
+            confirmedByOperatorRole: null,
+            confirmedByWorkerId: workerId,
+            confirmedAt,
+            failedByOperatorId: null,
+            failedByOperatorRole: null,
+            failedByWorkerId: null,
+            failureReason: null,
+            failedAt: null
+          }
+        });
+
+        await this.appendAuditEvent(transaction, {
+          data: {
+            customerId: null,
+            actorType: "worker",
+            actorId: workerId,
+            action: "solvency.report_anchor.confirmed",
+            targetType: "SolvencyReportAnchor",
+            targetId: nextAnchor.id,
+            metadata: {
+              reportId: nextAnchor.reportId,
+              txHash,
+              blockNumber: dto.blockNumber ?? anchor.blockNumber ?? null,
+              logIndex: dto.logIndex ?? anchor.logIndex ?? null
+            } as PrismaJsonValue
+          }
+        });
+
+        return nextAnchor;
+      }
+    );
+
+    return {
+      anchor: this.mapReportAnchorProjection(updatedAnchor),
+      stateReused: false
+    };
+  }
+
+  async recordReportAnchorFailedByWorker(
+    anchorId: string,
+    dto: RecordSolvencyReportAnchorFailedDto,
+    workerId: string
+  ): Promise<SolvencyReportAnchorMutationResult> {
+    const anchor = await this.findReportAnchorForMutation(anchorId);
+    const failureReason = this.normalizeOptionalString(dto.failureReason);
+
+    if (anchor.status === SolvencyReportAnchorStatus.confirmed) {
+      throw new ConflictException("Confirmed report anchors cannot be marked failed.");
+    }
+
+    if (!failureReason) {
+      throw new BadRequestException("Failure reason is required.");
+    }
+
+    if (
+      anchor.status === SolvencyReportAnchorStatus.failed &&
+      anchor.failureReason === failureReason
+    ) {
+      return {
+        anchor: this.mapReportAnchorProjection(anchor),
+        stateReused: true
+      };
+    }
+
+    const failedAt = new Date();
+    const updatedAnchor = await this.prismaService.$transaction(
+      async (transaction) => {
+        const nextAnchor = await transaction.solvencyReportAnchor.update({
+          where: {
+            id: anchor.id
+          },
+          data: {
+            status: SolvencyReportAnchorStatus.failed,
+            failedByOperatorId: null,
+            failedByOperatorRole: null,
+            failedByWorkerId: workerId,
+            failureReason,
+            failedAt
+          }
+        });
+
+        await this.appendAuditEvent(transaction, {
+          data: {
+            customerId: null,
+            actorType: "worker",
+            actorId: workerId,
+            action: "solvency.report_anchor.failed",
+            targetType: "SolvencyReportAnchor",
+            targetId: nextAnchor.id,
+            metadata: {
+              reportId: nextAnchor.reportId,
+              failureReason
             } as PrismaJsonValue
           }
         });
@@ -2788,6 +3129,7 @@ export class SolvencyService {
         requestedAt: Date;
         submittedByOperatorId: string | null;
         submittedByOperatorRole: string | null;
+        submittedByWorkerId: string | null;
         submittedAt: Date | null;
         txHash: string | null;
         contractAddress: string | null;
@@ -2795,9 +3137,11 @@ export class SolvencyService {
         logIndex: number | null;
         confirmedByOperatorId: string | null;
         confirmedByOperatorRole: string | null;
+        confirmedByWorkerId: string | null;
         confirmedAt: Date | null;
         failedByOperatorId: string | null;
         failedByOperatorRole: string | null;
+        failedByWorkerId: string | null;
         failureReason: string | null;
         failedAt: Date | null;
         createdAt: Date;
@@ -2841,6 +3185,7 @@ export class SolvencyService {
     requestedAt: Date;
     submittedByOperatorId: string | null;
     submittedByOperatorRole: string | null;
+    submittedByWorkerId: string | null;
     submittedAt: Date | null;
     txHash: string | null;
     contractAddress: string | null;
@@ -2848,9 +3193,11 @@ export class SolvencyService {
     logIndex: number | null;
     confirmedByOperatorId: string | null;
     confirmedByOperatorRole: string | null;
+    confirmedByWorkerId: string | null;
     confirmedAt: Date | null;
     failedByOperatorId: string | null;
     failedByOperatorRole: string | null;
+    failedByWorkerId: string | null;
     failureReason: string | null;
     failedAt: Date | null;
     createdAt: Date;
@@ -2872,6 +3219,7 @@ export class SolvencyService {
       requestedAt: record.requestedAt.toISOString(),
       submittedByOperatorId: record.submittedByOperatorId ?? null,
       submittedByOperatorRole: record.submittedByOperatorRole ?? null,
+      submittedByWorkerId: record.submittedByWorkerId ?? null,
       submittedAt: record.submittedAt?.toISOString() ?? null,
       txHash: record.txHash ?? null,
       contractAddress: record.contractAddress ?? null,
@@ -2879,9 +3227,11 @@ export class SolvencyService {
       logIndex: record.logIndex ?? null,
       confirmedByOperatorId: record.confirmedByOperatorId ?? null,
       confirmedByOperatorRole: record.confirmedByOperatorRole ?? null,
+      confirmedByWorkerId: record.confirmedByWorkerId ?? null,
       confirmedAt: record.confirmedAt?.toISOString() ?? null,
       failedByOperatorId: record.failedByOperatorId ?? null,
       failedByOperatorRole: record.failedByOperatorRole ?? null,
+      failedByWorkerId: record.failedByWorkerId ?? null,
       failureReason: record.failureReason ?? null,
       failedAt: record.failedAt?.toISOString() ?? null,
       createdAt: record.createdAt.toISOString(),

@@ -13,7 +13,8 @@ Solvency report hash anchoring records the lifecycle of publishing a signed solv
 - optional `contractAddress`
 - lifecycle status: `requested`, `submitted`, `confirmed`, or `failed`
 - transaction evidence: `txHash`, `blockNumber`, and `logIndex`
-- operator identity and role fields for request, submission, confirmation, and failure
+- operator identity and role fields for manual request, submission, confirmation, and failure
+- worker identity fields for automated submission, confirmation, and failure
 
 The unique key is `(reportId, anchorPayloadHash)`. Re-requesting the same report, chain, and contract payload returns the existing anchor instead of creating duplicate records.
 
@@ -104,6 +105,26 @@ Public solvency report responses include `report.anchors`, ordered newest first.
 
 The public surface does not create or mutate anchor records.
 
+## Worker Handoff
+
+The internal worker API exposes anchor queues for contract or multisig automation:
+
+- `GET /solvency/internal/worker/report-anchors/requested`
+- `GET /solvency/internal/worker/report-anchors/submitted`
+- `POST /solvency/internal/worker/report-anchors/:anchorId/record-submitted`
+- `POST /solvency/internal/worker/report-anchors/:anchorId/record-confirmed`
+- `POST /solvency/internal/worker/report-anchors/:anchorId/record-failed`
+
+The worker runtime now polls those queues every iteration:
+
+- `requested` anchors are logged as broadcast-ready handoff items in monitor and managed modes.
+- `synthetic` mode records a deterministic synthetic transaction hash so local/dev flows can exercise the lifecycle without a chain write.
+- `submitted` anchors are monitored through the configured RPC client.
+- reverted transactions are marked `failed`.
+- successful transactions are marked `confirmed` after `WORKER_CONFIRMATION_BLOCKS`.
+
+The repo still expects the actual production broadcast implementation to be a configured contract or multisig executor that reads requested anchors and submits `anchorPayloadHash` to the approved anchoring contract. The worker confirmation path is intentionally independent of the broadcaster so externally submitted multisig transactions can still be confirmed and exposed publicly.
+
 ## Operator Verification
 
 1. Download the public solvency proof bundle for the same snapshot.
@@ -117,6 +138,7 @@ The public surface does not create or mutate anchor records.
 
 - Anchor records never replace the signed solvency report or report signature.
 - Anchor mutations are internal-operator-only and audit logged.
+- Worker anchor mutations require the internal worker API key and write worker actor identity.
 - The public API exposes anchor evidence but never grants anchoring write access.
 - Idempotent requests prevent duplicate anchor rows for the same canonical payload.
 - Confirmation cannot switch transaction hashes after submission.

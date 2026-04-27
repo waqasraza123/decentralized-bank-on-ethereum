@@ -130,6 +130,14 @@ The fourth follow-up now adds on-chain report hash anchoring records:
 - public report anchor projection and trust-center anchor visibility
 - operator guidance in `docs/runbooks/solvency-report-hash-anchoring.md`
 
-## Next follow-up after report anchoring
+The fifth follow-up now adds worker handoff and confirmation monitoring for report anchors:
 
-After report anchoring, the remaining production extension is to connect the recorded anchor lifecycle to the actual contract or multisig automation that broadcasts and confirms the chain transaction.
+- internal worker queues for requested and submitted report anchors
+- worker-key-protected submitted, confirmed, and failed lifecycle mutations
+- worker actor fields on anchor records for automated lifecycle evidence
+- synthetic local anchor submission and confirmation support
+- RPC-backed confirmation monitoring for externally broadcast or multisig-submitted anchor transactions
+
+## Next follow-up after worker handoff
+
+After worker handoff, the remaining production extension is to implement the approved anchoring contract or multisig executor that reads requested anchors and broadcasts the `anchorPayloadHash` transaction.

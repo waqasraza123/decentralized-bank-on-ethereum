@@ -1185,6 +1185,7 @@ model SolvencyReportAnchor {
   requestedAt                 DateTime                   @default(now())
   submittedByOperatorId       String?
   submittedByOperatorRole     String?
+  submittedByWorkerId         String?
   submittedAt                 DateTime?
   txHash                      String?
   contractAddress             String?
@@ -1192,9 +1193,11 @@ model SolvencyReportAnchor {
   logIndex                    Int?
   confirmedByOperatorId       String?
   confirmedByOperatorRole     String?
+  confirmedByWorkerId         String?
   confirmedAt                 DateTime?
   failedByOperatorId          String?
   failedByOperatorRole        String?
+  failedByWorkerId            String?
   failureReason               String?
   failedAt                    DateTime?
   createdAt                   DateTime                   @default(now())
