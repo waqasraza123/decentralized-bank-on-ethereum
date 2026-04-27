@@ -114,8 +114,15 @@ The second follow-up now adds signed reserve attestation packages:
 - web reserve-attestation downloads on `/trust/solvency`
 - verification guidance in `docs/runbooks/public-reserve-attestation-packages.md`
 
-## Next follow-up after reserve attestations
+The third follow-up now adds governed resume timelock enforcement:
 
-After reserve attestations, the next best extensions are:
+- runtime-configured `SOLVENCY_RESUME_APPROVAL_TIMELOCK_SECONDS`
+- API-enforced approval eligibility based on persisted resume-request `requestedAt`
+- admin visibility for approval eligibility and remaining delay
+- audit metadata proving the configured delay was observed
+- operator guidance in `docs/runbooks/solvency-policy-resume-timelock.md`
+
+## Next follow-up after resume timelock
+
+After resume timelock, the next best extension is:
 - onchain anchoring of report hashes
-- governed timelock for policy resume

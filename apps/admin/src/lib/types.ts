@@ -865,6 +865,7 @@ export type SolvencyWorkspace = {
   resumeGovernance: {
     requestAllowedOperatorRoles: string[];
     approverAllowedOperatorRoles: string[];
+    approvalTimelockSeconds: number;
     currentOperator: {
       operatorId: string | null;
       operatorRole: string | null;
@@ -882,6 +883,9 @@ export type SolvencyWorkspace = {
     requestNote: string | null;
     expectedPolicyUpdatedAt: string;
     requestedAt: string;
+    approvalEligibleAt: string;
+    approvalTimelockSeconds: number;
+    approvalTimelockRemainingSeconds: number;
     approvedByOperatorId: string | null;
     approvedByOperatorRole: string | null;
     approvalNote: string | null;

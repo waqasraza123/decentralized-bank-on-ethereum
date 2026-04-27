@@ -132,6 +132,7 @@ const DEFAULT_SOLVENCY_RESUME_APPROVER_ALLOWED_OPERATOR_ROLES = [
   "compliance_lead",
   "risk_manager",
 ] as const;
+const DEFAULT_SOLVENCY_RESUME_APPROVAL_TIMELOCK_SECONDS = 900;
 const DEFAULT_GOVERNED_EXECUTION_REQUEST_ALLOWED_OPERATOR_ROLES = [
   "operations_admin",
   "risk_manager",
@@ -1393,6 +1394,7 @@ export type SolvencyRuntimeConfig = {
   readonly reportSignerPrivateKey: string;
   readonly resumeRequestAllowedOperatorRoles: readonly string[];
   readonly resumeApproverAllowedOperatorRoles: readonly string[];
+  readonly resumeApprovalTimelockSeconds: number;
 };
 
 export type GovernedTreasuryExecutionMode =
@@ -2838,6 +2840,15 @@ export function loadSolvencyRuntimeConfig(
     env,
     "SOLVENCY_RESUME_APPROVER_ALLOWED_OPERATOR_ROLES",
   );
+  const resumeApprovalTimelockSeconds = parseIntegerInRange(
+    Number(
+      readOptionalRuntimeEnv(env, "SOLVENCY_RESUME_APPROVAL_TIMELOCK_SECONDS") ??
+        String(DEFAULT_SOLVENCY_RESUME_APPROVAL_TIMELOCK_SECONDS),
+    ),
+    "SOLVENCY_RESUME_APPROVAL_TIMELOCK_SECONDS",
+    0,
+    86_400,
+  );
   const reportSignerPrivateKey =
     configuredReportSignerPrivateKey?.trim() ||
     (environment === "production"
@@ -2868,6 +2879,7 @@ export function loadSolvencyRuntimeConfig(
           "SOLVENCY_RESUME_APPROVER_ALLOWED_OPERATOR_ROLES",
         )
       : [...DEFAULT_SOLVENCY_RESUME_APPROVER_ALLOWED_OPERATOR_ROLES],
+    resumeApprovalTimelockSeconds,
   };
 }
 

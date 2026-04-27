@@ -141,6 +141,7 @@ type SolvencyPolicyProjection = {
 type SolvencyResumeGovernanceProjection = {
   requestAllowedOperatorRoles: string[];
   approverAllowedOperatorRoles: string[];
+  approvalTimelockSeconds: number;
   currentOperator: {
     operatorId: string | null;
     operatorRole: string | null;
@@ -159,6 +160,9 @@ type SolvencyPolicyResumeRequestProjection = {
   requestNote: string | null;
   expectedPolicyUpdatedAt: string;
   requestedAt: string;
+  approvalEligibleAt: string;
+  approvalTimelockSeconds: number;
+  approvalTimelockRemainingSeconds: number;
   approvedByOperatorId: string | null;
   approvedByOperatorRole: string | null;
   approvalNote: string | null;
@@ -587,6 +591,7 @@ export class SolvencyService {
   private readonly reportSignerPrivateKey: string;
   private readonly resumeRequestAllowedOperatorRoles: string[];
   private readonly resumeApproverAllowedOperatorRoles: string[];
+  private readonly resumeApprovalTimelockSeconds: number;
   private readonly provider: ethers.providers.JsonRpcProvider | null;
   private readonly infrastructureDisabledReason: string | null;
 
@@ -608,6 +613,7 @@ export class SolvencyService {
       "0x59c6995e998f97a5a0044966f094538c5f6d4e07f16b8ad8cc7658f0f1b0f9d8";
     this.resumeRequestAllowedOperatorRoles = [];
     this.resumeApproverAllowedOperatorRoles = [];
+    this.resumeApprovalTimelockSeconds = 900;
     this.provider = null;
     this.infrastructureDisabledReason = null;
 
@@ -626,6 +632,8 @@ export class SolvencyService {
       this.resumeApproverAllowedOperatorRoles = [
         ...runtimeConfig.resumeApproverAllowedOperatorRoles
       ];
+      this.resumeApprovalTimelockSeconds =
+        runtimeConfig.resumeApprovalTimelockSeconds;
       this.provider = createJsonRpcProvider(chainRuntimeConfig.rpcUrl);
     } catch (error) {
       this.infrastructureDisabledReason =
@@ -1859,6 +1867,10 @@ export class SolvencyService {
             metadata: {
               snapshotId: snapshot.id,
               operatorRole: normalizedOperatorRole,
+              approvalEligibleAt: this.buildResumeApprovalEligibleAt(
+                nextRequest.requestedAt
+              ).toISOString(),
+              approvalTimelockSeconds: this.resumeApprovalTimelockSeconds,
               requestNote: normalizedRequestNote ?? null
             } as PrismaJsonValue
           }
@@ -1970,6 +1982,15 @@ export class SolvencyService {
         }
 
         const approvedAt = new Date();
+        const approvalEligibleAt = this.buildResumeApprovalEligibleAt(
+          currentRequest.requestedAt
+        );
+        if (approvedAt.getTime() < approvalEligibleAt.getTime()) {
+          throw new ConflictException(
+            `Solvency resume approval is timelocked until ${approvalEligibleAt.toISOString()}.`
+          );
+        }
+
         const nextRequest = await transaction.solvencyPolicyResumeRequest.update({
           where: {
             id: currentRequest.id
@@ -2007,6 +2028,8 @@ export class SolvencyService {
             metadata: this.toNullableJsonInput({
               approvedResumeRequestId: currentRequest.id,
               approvedSnapshotId: snapshot.id,
+              approvalEligibleAt: approvalEligibleAt.toISOString(),
+              approvalTimelockSeconds: this.resumeApprovalTimelockSeconds,
               signerAddress: snapshot.reports[0].signerAddress,
               reportHash: snapshot.reports[0].reportHash
             })
@@ -2024,6 +2047,8 @@ export class SolvencyService {
             metadata: {
               snapshotId: snapshot.id,
               operatorRole: approvedOperatorRole,
+              approvalEligibleAt: approvalEligibleAt.toISOString(),
+              approvalTimelockSeconds: this.resumeApprovalTimelockSeconds,
               approvalNote: normalizedApprovalNote ?? null
             } as PrismaJsonValue
           }
@@ -2215,6 +2240,7 @@ export class SolvencyService {
     return {
       requestAllowedOperatorRoles: [...this.resumeRequestAllowedOperatorRoles],
       approverAllowedOperatorRoles: [...this.resumeApproverAllowedOperatorRoles],
+      approvalTimelockSeconds: this.resumeApprovalTimelockSeconds,
       currentOperator: {
         operatorId: operator?.operatorId ?? null,
         operatorRole,
@@ -2239,6 +2265,14 @@ export class SolvencyService {
         : T
       : never
   ): SolvencyPolicyResumeRequestProjection {
+    const approvalEligibleAt = this.buildResumeApprovalEligibleAt(
+      record.requestedAt
+    );
+    const approvalTimelockRemainingSeconds = Math.max(
+      0,
+      Math.ceil((approvalEligibleAt.getTime() - Date.now()) / 1000)
+    );
+
     return {
       id: record.id,
       environment: record.environment,
@@ -2249,6 +2283,9 @@ export class SolvencyService {
       requestNote: record.requestNote ?? null,
       expectedPolicyUpdatedAt: record.expectedPolicyUpdatedAt.toISOString(),
       requestedAt: record.requestedAt.toISOString(),
+      approvalEligibleAt: approvalEligibleAt.toISOString(),
+      approvalTimelockSeconds: this.resumeApprovalTimelockSeconds,
+      approvalTimelockRemainingSeconds,
       approvedByOperatorId: record.approvedByOperatorId ?? null,
       approvedByOperatorRole: record.approvedByOperatorRole ?? null,
       approvalNote: record.approvalNote ?? null,
@@ -2293,6 +2330,12 @@ export class SolvencyService {
       signerAddress: record.signerAddress,
       publishedAt: record.publishedAt.toISOString()
     };
+  }
+
+  private buildResumeApprovalEligibleAt(requestedAt: Date): Date {
+    return new Date(
+      requestedAt.getTime() + this.resumeApprovalTimelockSeconds * 1000
+    );
   }
 
   private mapWorkspaceSnapshot(
