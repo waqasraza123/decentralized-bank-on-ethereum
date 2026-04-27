@@ -44,6 +44,8 @@ To record the generated proof immediately, replace `--output ...` with:
 --access-token "$OPERATOR_ACCESS_TOKEN"
 ```
 
+Passed `--record-evidence` first checks `GET /release-readiness/internal/solvency-anchor-registry-deployment-proof` and refuses to post if the API-side deployment manifest, governance safe, or anchor signer inventory is not recordable. Use `--preflight-only --base-url ... --access-token ...` to inspect that gate without writing evidence. `--skip-preflight` is reserved for documented break-glass recording.
+
 The generator refuses placeholder deployment proof. The registry contract entry must include a real `deploymentTxHash`, `governanceOwner`, `authorizedAnchorer`, and SHA-256 ABI checksum, and the authorized anchorer must match the manifest `solvency_anchor_execution` signer.
 
 ## Deployment Manifest Proof Fields

@@ -256,6 +256,8 @@ pnpm release:solvency-anchor-proof -- \
   --access-token "$OPERATOR_ACCESS_TOKEN"
 ```
 
+The manifest proof generator now preflights passed recordings against the API governed manifest state before posting. If the operator wants to inspect that gate without writing evidence, replace `--record-evidence` with `--preflight-only` and keep the same API URL and token.
+
 Alternatively, record the proof through the verifier when the payload must be supplied inline:
 
 ```bash

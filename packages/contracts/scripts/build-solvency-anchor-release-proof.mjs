@@ -31,7 +31,10 @@ Optional:
   --note                   Override evidence note
   --evidence-links         Comma-separated durable evidence links
   --output                 Write JSON evidence payload to this file
+  --preflight              Check API governed manifest bindings before printing output
+  --preflight-only         Check API governed manifest bindings and exit without recording
   --record-evidence        POST the generated payload to release-readiness evidence
+  --skip-preflight         Record without API manifest preflight (break-glass only)
   --base-url               Operator API base URL when recording evidence
   --access-token           Operator bearer token when recording evidence
   --help                   Print this message
@@ -373,6 +376,152 @@ async function recordReleaseReadinessEvidence({ baseUrl, accessToken, proof }) {
   return responseBody;
 }
 
+function buildPreflightUrl(baseUrl, proof) {
+  const normalizedBaseUrl = baseUrl.replace(/\/+$/, "");
+  const endpoint =
+    "/release-readiness/internal/solvency-anchor-registry-deployment-proof";
+  const params = new URLSearchParams({
+    environment: proof.environment,
+    chainId: String(proof.evidencePayload.chainId),
+    networkName: proof.evidencePayload.networkName,
+    manifestPath: proof.evidencePayload.manifestPath,
+    manifestCommitSha: proof.evidencePayload.manifestCommitSha,
+    releaseIdentifier: proof.releaseIdentifier
+  });
+
+  return `${normalizedBaseUrl}${endpoint}?${params.toString()}`;
+}
+
+async function fetchSolvencyAnchorRegistryPreflight({
+  baseUrl,
+  accessToken,
+  proof
+}) {
+  if (typeof fetch !== "function") {
+    fail("Global fetch is unavailable; use Node.js 18 or newer to preflight evidence.");
+  }
+
+  const response = await fetch(buildPreflightUrl(baseUrl, proof), {
+    method: "GET",
+    headers: {
+      authorization: `Bearer ${accessToken}`
+    }
+  });
+  const responseText = await response.text();
+  let responseBody = null;
+
+  if (responseText.trim().length > 0) {
+    try {
+      responseBody = JSON.parse(responseText);
+    } catch {
+      responseBody = responseText;
+    }
+  }
+
+  if (!response.ok) {
+    const message =
+      typeof responseBody === "object" &&
+      responseBody !== null &&
+      typeof responseBody.message === "string"
+        ? responseBody.message
+        : responseText;
+
+    fail(
+      `Solvency anchor registry proof preflight failed with HTTP ${response.status}: ${message}`
+    );
+  }
+
+  if (
+    !responseBody ||
+    typeof responseBody !== "object" ||
+    !responseBody.data ||
+    typeof responseBody.data !== "object"
+  ) {
+    fail("Solvency anchor registry proof preflight response did not include data.");
+  }
+
+  return responseBody.data;
+}
+
+function describePreflightBlockers(preflight) {
+  const blockers = Array.isArray(preflight.blockers) ? preflight.blockers : [];
+  const requiredOperatorInputs = Array.isArray(preflight.requiredOperatorInputs)
+    ? preflight.requiredOperatorInputs
+    : [];
+
+  return [
+    ...blockers.map((blocker) => `- ${blocker}`),
+    ...requiredOperatorInputs.map((input) => `- Missing operator input: ${input}.`)
+  ];
+}
+
+function assertDraftFieldMatches(errors, draft, proof, field) {
+  if (draft[field] !== proof[field]) {
+    errors.push(`draft ${field} does not match generated proof ${field}.`);
+  }
+}
+
+function assertDraftPayloadFieldMatches(errors, draftPayload, proofPayload, field) {
+  if (String(draftPayload[field]) !== String(proofPayload[field])) {
+    errors.push(
+      `draft evidencePayload.${field} does not match generated proof evidencePayload.${field}.`
+    );
+  }
+}
+
+function assertPreflightMatchesProof(preflight, proof) {
+  const errors = [];
+  const draft = preflight.evidenceRequestDraft?.body;
+
+  if (!preflight.ready || !preflight.evidenceRequestDraft?.recordable) {
+    fail(
+      [
+        "Solvency anchor registry proof preflight is not recordable:",
+        ...describePreflightBlockers(preflight)
+      ].join("\n")
+    );
+  }
+
+  if (!draft || typeof draft !== "object") {
+    fail("Solvency anchor registry proof preflight did not return a draft body.");
+  }
+
+  assertDraftFieldMatches(errors, draft, proof, "evidenceType");
+  assertDraftFieldMatches(errors, draft, proof, "environment");
+  assertDraftFieldMatches(errors, draft, proof, "releaseIdentifier");
+
+  for (const field of [
+    "proofKind",
+    "networkName",
+    "chainId",
+    "contractProductSurface",
+    "signerScope",
+    "contractAddress",
+    "deploymentTxHash",
+    "governanceOwner",
+    "authorizedAnchorer",
+    "abiChecksumSha256",
+    "manifestPath",
+    "manifestCommitSha"
+  ]) {
+    assertDraftPayloadFieldMatches(
+      errors,
+      draft.evidencePayload ?? {},
+      proof.evidencePayload,
+      field
+    );
+  }
+
+  if (errors.length > 0) {
+    fail(
+      [
+        "Solvency anchor registry proof preflight drifted from generated proof:",
+        ...errors.map((error) => `- ${error}`)
+      ].join("\n")
+    );
+  }
+}
+
 async function main() {
   const parsedArgs = parseArgs(process.argv.slice(2));
 
@@ -433,13 +582,63 @@ async function main() {
     parsedArgs,
     "record-evidence"
   );
+  const shouldPreflightEvidence =
+    readOptionalBooleanFlag(parsedArgs, "preflight") ||
+    readOptionalBooleanFlag(parsedArgs, "preflight-only") ||
+    (shouldRecordEvidence &&
+      !readOptionalBooleanFlag(parsedArgs, "skip-preflight"));
+  const shouldPreflightOnly = readOptionalBooleanFlag(
+    parsedArgs,
+    "preflight-only"
+  );
+  let preflight = null;
+
+  if (shouldPreflightEvidence) {
+    const baseUrl = readRequiredStringArg(parsedArgs, "base-url");
+    const accessToken = readRequiredStringArg(parsedArgs, "access-token");
+
+    preflight = await fetchSolvencyAnchorRegistryPreflight({
+      baseUrl,
+      accessToken,
+      proof
+    });
+
+    if (status === "passed") {
+      assertPreflightMatchesProof(preflight, proof);
+    }
+  }
 
   if (outputPath) {
     writeFileSync(path.resolve(resolveRepoRoot(), outputPath), output, "utf8");
   }
 
+  if (shouldPreflightOnly) {
+    process.stdout.write(
+      JSON.stringify(
+        {
+          generatedProof: proof,
+          preflight
+        },
+        null,
+        2
+      ) + "\n"
+    );
+    return;
+  }
+
   if (!shouldRecordEvidence) {
-    process.stdout.write(output);
+    process.stdout.write(
+      preflight
+        ? JSON.stringify(
+            {
+              generatedProof: proof,
+              preflight
+            },
+            null,
+            2
+          ) + "\n"
+        : output
+    );
     return;
   }
 
@@ -455,6 +654,7 @@ async function main() {
     JSON.stringify(
       {
         generatedProof: proof,
+        preflight,
         recordedEvidence
       },
       null,

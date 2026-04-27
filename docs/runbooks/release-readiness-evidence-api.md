@@ -179,6 +179,8 @@ pnpm release:solvency-anchor-proof -- --help
 
 That command refuses placeholder deployment metadata and emits a `POST /release-readiness/internal/evidence` payload for `solvency_anchor_registry_deployment`. With `--record-evidence --base-url <operator-api-url> --access-token "$OPERATOR_ACCESS_TOKEN"`, it records the generated proof directly through the same evidence API.
 
+Passed `--record-evidence` runs `GET /release-readiness/internal/solvency-anchor-registry-deployment-proof` first and refuses to post when the active API manifest, governed signer, or governance safe bindings are not recordable. Use `--preflight-only` with the same `--base-url` and `--access-token` to inspect the generated proof and API preflight response without creating evidence. `--skip-preflight` is a break-glass override and should be paired with an explicit governance note when used.
+
 ## Launch-closure pack
 
 For the remaining staging-like Phase 12 work, prefer the repo-owned launch-closure helper:

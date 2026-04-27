@@ -82,6 +82,21 @@ pnpm release:solvency-anchor-proof -- \
   --access-token "$OPERATOR_ACCESS_TOKEN"
 ```
 
+For API-side manifest preflight without recording:
+
+```bash
+pnpm release:solvency-anchor-proof -- \
+  --manifest packages/contracts/deployments/base-sepolia.manifest.json \
+  --release-id launch-2026.04.10.1 \
+  --manifest-commit <git-sha> \
+  --network-name base-sepolia \
+  --preflight-only \
+  --base-url https://prodlike-api.example.com \
+  --access-token "$OPERATOR_ACCESS_TOKEN"
+```
+
+When `--record-evidence` is used for a passed proof, the generator runs the same API preflight automatically before it posts evidence. It refuses to record when the preflight is not `recordable`, when the API reports blockers, or when the API draft differs from the generated proof. `--skip-preflight` exists only for break-glass recording after the governance approver explicitly accepts the risk in the evidence note.
+
 The generator reads:
 
 - `authorities[]` entry with `authorityType: "governance_safe"`
