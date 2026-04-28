@@ -14,6 +14,7 @@ import { MotionSurface, ScreenTransition } from "@/components/motion/primitives"
 import { StatusBadge } from "@/components/customer/StatusBadge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { InlineLoader } from "@/components/ui/loading-panel";
 import { useLocale } from "@/i18n/use-locale";
 import { useT } from "@/i18n/use-t";
 import { useMyBalances } from "@/hooks/balances/useMyBalances";
@@ -99,7 +100,11 @@ const Index = () => {
                       {locale === "ar" ? "الأصول المتاحة" : "Available assets"}
                     </p>
                     <p className="mt-3 text-3xl font-semibold text-slate-950">
-                      {balancesQuery.isLoading ? "..." : balances.length}
+                      {balancesQuery.isLoading ? (
+                        <InlineLoader label={locale === "ar" ? "جارٍ التحميل" : "Loading"} />
+                      ) : (
+                        balances.length
+                      )}
                     </p>
                   </div>
                   <div className="stb-section-frame p-4">
@@ -107,7 +112,11 @@ const Index = () => {
                       {locale === "ar" ? "الحالات المعلقة" : "Pending states"}
                     </p>
                     <p className="mt-3 text-3xl font-semibold text-slate-950">
-                      {balancesQuery.isLoading ? "..." : pendingAssetCount}
+                      {balancesQuery.isLoading ? (
+                        <InlineLoader label={locale === "ar" ? "جارٍ التحميل" : "Loading"} />
+                      ) : (
+                        pendingAssetCount
+                      )}
                     </p>
                   </div>
                   <div className="rounded-[1.4rem] bg-slate-950 p-4 text-white">
@@ -115,7 +124,14 @@ const Index = () => {
                       {locale === "ar" ? "سجل الأموال" : "Money movement"}
                     </p>
                     <p className="mt-3 text-3xl font-semibold">
-                      {historyQuery.isLoading ? "..." : intents.length}
+                      {historyQuery.isLoading ? (
+                        <InlineLoader
+                          className="text-white/70"
+                          label={locale === "ar" ? "جارٍ التحميل" : "Loading"}
+                        />
+                      ) : (
+                        intents.length
+                      )}
                     </p>
                   </div>
                 </div>
@@ -281,11 +297,13 @@ const Index = () => {
                     <p className="text-xs uppercase tracking-[0.14em] text-slate-500">
                       {locale === "ar" ? "إجمالي المقفل" : "Total locked"}
                     </p>
-                    <p className="mt-2 text-2xl font-semibold text-slate-950">
-                      {retirementVaultsQuery.isLoading
-                        ? "..."
-                        : formatTokenAmount(String(lockedVaultBalance), locale)}
-                    </p>
+                    <div className="mt-2 text-2xl font-semibold text-slate-950">
+                      {retirementVaultsQuery.isLoading ? (
+                        <InlineLoader label={t("common.loading")} />
+                      ) : (
+                        formatTokenAmount(String(lockedVaultBalance), locale)
+                      )}
+                    </div>
                   </div>
                   <div className="rounded-[1.15rem] border border-slate-200/80 bg-white px-4 py-4">
                     <p className="text-xs uppercase tracking-[0.14em] text-slate-500">

@@ -27,6 +27,7 @@ import {
   ListCard,
   LoadingState,
   MetricCard,
+  PendingLabel,
   SectionPanel,
   WorkspaceLayout
 } from "@/components/console/primitives";
@@ -475,7 +476,11 @@ export function MfaRecoveryPage() {
                   disabled={!selectedRequest || !governedConfirm || mutationPending || !canApprove}
                   onClick={() => approveMutation.mutate()}
                 >
-                  {approveMutation.isPending ? "Approving..." : "Approve request"}
+                  <PendingLabel
+                    idle="Approve request"
+                    pending={approveMutation.isPending}
+                    pendingLabel="Approving..."
+                  />
                 </button>
                 <button
                   type="button"
@@ -489,7 +494,11 @@ export function MfaRecoveryPage() {
                   }
                   onClick={() => rejectMutation.mutate()}
                 >
-                  {rejectMutation.isPending ? "Rejecting..." : "Reject request"}
+                  <PendingLabel
+                    idle="Reject request"
+                    pending={rejectMutation.isPending}
+                    pendingLabel="Rejecting..."
+                  />
                 </button>
                 <button
                   type="button"
@@ -497,7 +506,11 @@ export function MfaRecoveryPage() {
                   disabled={!selectedRequest || !governedConfirm || mutationPending || !canExecute}
                   onClick={() => executeMutation.mutate()}
                 >
-                  {executeMutation.isPending ? "Executing..." : "Execute recovery"}
+                  <PendingLabel
+                    idle="Execute recovery"
+                    pending={executeMutation.isPending}
+                    pendingLabel="Executing..."
+                  />
                 </button>
               </div>
 
@@ -551,7 +564,11 @@ export function MfaRecoveryPage() {
                   disabled={mutationPending || requestSupabaseUserId.trim().length === 0}
                   onClick={() => requestRecoveryMutation.mutate()}
                 >
-                  {requestRecoveryMutation.isPending ? "Opening..." : "Open recovery request"}
+                  <PendingLabel
+                    idle="Open recovery request"
+                    pending={requestRecoveryMutation.isPending}
+                    pendingLabel="Opening..."
+                  />
                 </button>
               </div>
             </ActionRail>

@@ -36,6 +36,7 @@ import {
   ListCard,
   LoadingState,
   MetricCard,
+  PendingLabel,
   SectionPanel,
   TimelinePanel,
   WorkspaceLayout
@@ -1049,9 +1050,11 @@ export function IncidentPackagesPage() {
                     disabled={requestDisabled}
                     onClick={() => requestReleaseMutation.mutate()}
                   >
-                    {requestReleaseMutation.isPending
-                      ? "Creating request..."
-                      : "Create release request"}
+                    <PendingLabel
+                      idle="Create release request"
+                      pending={requestReleaseMutation.isPending}
+                      pendingLabel="Creating request..."
+                    />
                   </button>
                 </div>
               </ActionRail>
@@ -1113,7 +1116,11 @@ export function IncidentPackagesPage() {
                     disabled={!decisionConfirm || actionPending || !canApproveOrReject}
                     onClick={() => approveMutation.mutate()}
                   >
-                    {approveMutation.isPending ? "Approving..." : "Approve request"}
+                    <PendingLabel
+                      idle="Approve request"
+                      pending={approveMutation.isPending}
+                      pendingLabel="Approving..."
+                    />
                   </button>
                   <button
                     type="button"
@@ -1121,7 +1128,11 @@ export function IncidentPackagesPage() {
                     disabled={!decisionConfirm || actionPending || !canApproveOrReject}
                     onClick={() => rejectMutation.mutate()}
                   >
-                    {rejectMutation.isPending ? "Rejecting..." : "Reject request"}
+                    <PendingLabel
+                      idle="Reject request"
+                      pending={rejectMutation.isPending}
+                      pendingLabel="Rejecting..."
+                    />
                   </button>
                   <button
                     type="button"
@@ -1129,7 +1140,11 @@ export function IncidentPackagesPage() {
                     disabled={!decisionConfirm || actionPending || !canRelease}
                     onClick={() => releaseMutation.mutate()}
                   >
-                    {releaseMutation.isPending ? "Releasing..." : "Release package"}
+                    <PendingLabel
+                      idle="Release package"
+                      pending={releaseMutation.isPending}
+                      pendingLabel="Releasing..."
+                    />
                   </button>
                 </div>
               </ActionRail>

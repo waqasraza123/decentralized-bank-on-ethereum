@@ -1,4 +1,4 @@
-import { Pressable, View } from "react-native";
+import { ActivityIndicator, Pressable, View } from "react-native";
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -13,6 +13,8 @@ type AppButtonProps = {
   disabled?: boolean;
   variant?: "primary" | "secondary" | "ghost" | "danger";
   fullWidth?: boolean;
+  loading?: boolean;
+  loadingLabel?: string;
 };
 
 export function AppButton({
@@ -20,7 +22,9 @@ export function AppButton({
   onPress,
   disabled = false,
   variant = "primary",
-  fullWidth = true
+  fullWidth = true,
+  loading = false,
+  loadingLabel
 }: AppButtonProps) {
   const variantClasses =
     variant === "secondary"
@@ -39,13 +43,22 @@ export function AppButton({
     transform: [{ scale: scale.value }]
   }));
 
+  const isDisabled = disabled || loading;
+  const renderedLabel = loading ? (loadingLabel ?? label) : label;
+  const indicatorColor =
+    variant === "secondary" || variant === "ghost" ? "#14212b" : "#fffdf8";
+
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityState={{ disabled }}
-      disabled={disabled}
+      accessibilityState={{ busy: loading, disabled: isDisabled }}
+      disabled={isDisabled}
       onPress={onPress}
       onPressIn={() => {
+        if (isDisabled) {
+          return;
+        }
+
         scale.value = withTiming(motionProfiles.mobile.pressScale, {
           duration: motionDurations.fastMs
         });
@@ -56,13 +69,14 @@ export function AppButton({
         });
       }}
       className={`${fullWidth ? "w-full" : ""} rounded-full px-4 py-3 ${variantClasses} ${
-        disabled ? "opacity-50" : ""
+        isDisabled ? "opacity-50" : ""
       }`}
     >
       <Animated.View style={animatedStyle}>
-        <View className="items-center">
+        <View className="flex-row items-center justify-center gap-2">
+          {loading ? <ActivityIndicator color={indicatorColor} size="small" /> : null}
           <AppText className={`${textClasses} text-sm`} weight="semibold">
-            {label}
+            {renderedLabel}
           </AppText>
         </View>
       </Animated.View>

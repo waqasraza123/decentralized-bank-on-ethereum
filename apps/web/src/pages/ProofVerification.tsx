@@ -10,6 +10,7 @@ import {
 import { Layout } from "@/components/Layout";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { LoadingPanel } from "@/components/ui/loading-panel";
 import { useLocale } from "@/i18n/use-locale";
 import { readApiErrorMessage } from "@/lib/api";
 import {
@@ -127,9 +128,15 @@ const ProofVerification = () => {
         ) : null}
 
         {proofQuery.isLoading ? (
-          <Card className="stb-surface rounded-[1.8rem] border-0 p-6 text-sm text-slate-600">
-            {locale === "ar" ? "جارٍ تحميل إثباتك..." : "Loading your liability proof..."}
-          </Card>
+          <LoadingPanel
+            compact
+            description={
+              locale === "ar"
+                ? "نسترجع حزمة التحقق الخاصة بحسابك."
+                : "Retrieving the verification package for your account."
+            }
+            title={locale === "ar" ? "جارٍ تحميل إثباتك" : "Loading your liability proof"}
+          />
         ) : null}
 
         {proofQuery.isError ? (

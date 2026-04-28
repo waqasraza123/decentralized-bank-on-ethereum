@@ -9,6 +9,7 @@ import {
 import { TimelineList } from "@/components/customer/TimelineList";
 import { StatusBadge } from "@/components/customer/StatusBadge";
 import { Card } from "@/components/ui/card";
+import { InlineLoader } from "@/components/ui/loading-panel";
 import {
   Sheet,
   SheetContent,
@@ -222,7 +223,10 @@ const Transactions = () => {
                 {historyQuery.isLoading ? (
                   <tr>
                     <td colSpan={6} className="px-4 py-8 text-center text-sm text-slate-500">
-                      {t("transactions.loading")}
+                      <InlineLoader
+                        className="justify-center"
+                        label={t("transactions.loading")}
+                      />
                     </td>
                   </tr>
                 ) : historyQuery.isError ? (

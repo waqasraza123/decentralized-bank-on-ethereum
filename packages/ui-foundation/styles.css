@@ -29,9 +29,9 @@
   --stb-focus-ring: 0 0 0 4px rgba(17, 128, 106, 0.14);
   --stb-focus-ring-strong: 0 0 0 5px rgba(17, 128, 106, 0.18);
   --stb-motion-fast: 120ms;
-  --stb-motion-base: 180ms;
-  --stb-motion-slow: 280ms;
-  --stb-motion-page: 520ms;
+  --stb-motion-base: 160ms;
+  --stb-motion-slow: 240ms;
+  --stb-motion-page: 360ms;
   --stb-premium-gradient:
     linear-gradient(135deg, rgba(255, 255, 255, 0.82), rgba(255, 255, 255, 0.62)),
     linear-gradient(180deg, rgba(255, 255, 255, 0.54), rgba(255, 255, 255, 0.18));
@@ -101,7 +101,7 @@
 .stb-surface:focus-within {
   border-color: var(--stb-line-strong);
   box-shadow: var(--stb-shadow-xl);
-  transform: translateY(-2px);
+  transform: translateY(-1px);
 }
 
 .stb-surface-strong {
@@ -139,7 +139,7 @@
 
 .stb-inverse-surface:hover,
 .stb-inverse-surface:focus-within {
-  transform: translateY(-2px);
+  transform: translateY(-1px);
   box-shadow: 0 48px 140px rgba(4, 10, 20, 0.42);
 }
 
@@ -414,7 +414,7 @@
 @keyframes stb-fade-up {
   0% {
     opacity: 0;
-    transform: translateY(18px);
+    transform: translateY(8px);
   }
   100% {
     opacity: 1;
@@ -428,7 +428,7 @@
     transform: translate3d(0, 0, 0) scale(1);
   }
   50% {
-    transform: translate3d(0, -10px, 0) scale(1.05);
+    transform: translate3d(0, -4px, 0) scale(1.015);
   }
 }
 

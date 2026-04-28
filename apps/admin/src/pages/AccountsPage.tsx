@@ -31,6 +31,7 @@ import {
   InlineNotice,
   ListCard,
   LoadingState,
+  PendingLabel,
   SectionPanel,
   TimelinePanel,
   WorkspaceLayout
@@ -735,7 +736,11 @@ export function AccountsPage() {
                       disabled={startIncidentMutation.isPending}
                       onClick={() => startIncidentMutation.mutate()}
                     >
-                      {startIncidentMutation.isPending ? "Starting..." : "Start incident"}
+                      <PendingLabel
+                        idle="Start incident"
+                        pending={startIncidentMutation.isPending}
+                        pendingLabel="Starting..."
+                      />
                     </button>
                     <button
                       type="button"
@@ -743,7 +748,11 @@ export function AccountsPage() {
                       disabled={addNoteMutation.isPending || actionNote.trim().length === 0}
                       onClick={() => addNoteMutation.mutate()}
                     >
-                      {addNoteMutation.isPending ? "Recording..." : "Record note"}
+                      <PendingLabel
+                        idle="Record note"
+                        pending={addNoteMutation.isPending}
+                        pendingLabel="Recording..."
+                      />
                     </button>
                     <button
                       type="button"
@@ -755,7 +764,11 @@ export function AccountsPage() {
                       }
                       onClick={() => applyRestrictionMutation.mutate()}
                     >
-                      {applyRestrictionMutation.isPending ? "Applying..." : "Apply account hold"}
+                      <PendingLabel
+                        idle="Apply account hold"
+                        pending={applyRestrictionMutation.isPending}
+                        pendingLabel="Applying..."
+                      />
                     </button>
                     <button
                       type="button"
@@ -763,7 +776,11 @@ export function AccountsPage() {
                       disabled={!governedConfirm || pendingGovernedAction}
                       onClick={() => resolveIncidentMutation.mutate()}
                     >
-                      {resolveIncidentMutation.isPending ? "Resolving..." : "Resolve incident"}
+                      <PendingLabel
+                        idle="Resolve incident"
+                        pending={resolveIncidentMutation.isPending}
+                        pendingLabel="Resolving..."
+                      />
                     </button>
                     <button
                       type="button"
@@ -771,7 +788,11 @@ export function AccountsPage() {
                       disabled={!governedConfirm || pendingGovernedAction}
                       onClick={() => dismissIncidentMutation.mutate()}
                     >
-                      {dismissIncidentMutation.isPending ? "Dismissing..." : "Dismiss incident"}
+                      <PendingLabel
+                        idle="Dismiss incident"
+                        pending={dismissIncidentMutation.isPending}
+                        pendingLabel="Dismissing..."
+                      />
                     </button>
                   </div>
                 </>

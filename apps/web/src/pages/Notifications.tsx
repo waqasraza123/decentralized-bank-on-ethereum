@@ -1,10 +1,11 @@
 import { useMemo, useState } from "react";
 import type { NotificationCategory, NotificationFeedItem } from "@stealth-trails-bank/types";
-import { Archive, Bell, ChevronRight, Filter, Inbox, Loader2 } from "lucide-react";
+import { Archive, Bell, ChevronRight, Filter, Inbox } from "lucide-react";
 import { Layout } from "@/components/Layout";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { InlineLoader } from "@/components/ui/loading-panel";
 import {
   useArchiveNotifications,
   useMarkAllNotificationsRead,
@@ -158,8 +159,7 @@ export default function Notifications() {
           <CardContent className="space-y-5">
             {notificationsQuery.isLoading ? (
               <div className="flex items-center gap-2 rounded-[1.5rem] border border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-600">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                Loading notifications
+                <InlineLoader label="Loading notifications" />
               </div>
             ) : null}
 

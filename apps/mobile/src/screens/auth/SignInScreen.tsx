@@ -97,6 +97,7 @@ export function SignInScreen() {
           <AppButton
             disabled={loading}
             label={t("auth.signIn")}
+            loading={loading}
             onPress={() => {
               void handleSubmit();
             }}

@@ -26,6 +26,7 @@ import {
   ListCard,
   LoadingState,
   MetricCard,
+  PendingLabel,
   SectionPanel,
   WorkspaceLayout
 } from "@/components/console/primitives";
@@ -231,9 +232,11 @@ export function SolvencyPage() {
                     }}
                     type="button"
                   >
-                    {requestResumeMutation.isPending
-                      ? "Requesting..."
-                      : "Request manual resume"}
+                    <PendingLabel
+                      idle="Request manual resume"
+                      pending={requestResumeMutation.isPending}
+                      pendingLabel="Requesting..."
+                    />
                   </button>
                 ) : null}
                 {workspaceQuery.data?.latestPendingResumeRequest &&
@@ -247,11 +250,11 @@ export function SolvencyPage() {
                       }}
                       type="button"
                     >
-                      {approveResumeMutation.isPending
-                        ? "Approving..."
-                        : resumeApprovalIsTimelocked
-                          ? "Resume timelocked"
-                          : "Approve resume"}
+                      <PendingLabel
+                        idle={resumeApprovalIsTimelocked ? "Resume timelocked" : "Approve resume"}
+                        pending={approveResumeMutation.isPending}
+                        pendingLabel="Approving..."
+                      />
                     </button>
                     <button
                       className="admin-secondary-button"
@@ -260,7 +263,11 @@ export function SolvencyPage() {
                       }}
                       type="button"
                     >
-                      {rejectResumeMutation.isPending ? "Rejecting..." : "Reject resume"}
+                      <PendingLabel
+                        idle="Reject resume"
+                        pending={rejectResumeMutation.isPending}
+                        pendingLabel="Rejecting..."
+                      />
                     </button>
                   </>
                 ) : null}
@@ -271,7 +278,11 @@ export function SolvencyPage() {
                   }}
                   type="button"
                 >
-                  {runSnapshotMutation.isPending ? "Running..." : "Run snapshot"}
+                  <PendingLabel
+                    idle="Run snapshot"
+                    pending={runSnapshotMutation.isPending}
+                    pendingLabel="Running..."
+                  />
                 </button>
               </ActionRail>
             }

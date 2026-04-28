@@ -66,8 +66,8 @@ export function EthereumBrandPanel({
 
   const markStyle = useAnimatedStyle(() => ({
     transform: [
-      { translateY: drift.value * -6 },
-      { scale: 1 + drift.value * 0.03 }
+      { translateY: drift.value * -2 },
+      { scale: 1 + drift.value * 0.01 }
     ]
   }));
 

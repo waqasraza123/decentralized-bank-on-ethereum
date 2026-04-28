@@ -136,12 +136,12 @@
   }
 
   .auth-hero-art {
-    animation: authFloat 14s ease-in-out infinite;
+    animation: authFloat 22s ease-in-out infinite;
   }
 
   .stb-page-stack {
     @apply space-y-6;
-    animation: fadeIn 0.55s ease-out;
+    animation: fadeIn 0.32s ease-out;
   }
 
   .stb-panel-shell {
@@ -189,7 +189,7 @@
 
   .stb-premium-row:hover {
     background: rgba(255, 255, 255, 0.92);
-    transform: translateY(-1px);
+    transform: translateY(-0.5px);
   }
 
   .stb-empty-panel {
@@ -218,11 +218,11 @@
 }
 
 .animate-in {
-  animation: fadeIn 0.5s ease-out;
+  animation: fadeIn 0.32s ease-out;
 }
 
 .slide-in {
-  animation: slideIn 0.3s ease-out;
+  animation: slideIn 0.24s ease-out;
 }
 
 .ltr-content {
@@ -291,7 +291,7 @@
     transform: translateY(0px);
   }
   50% {
-    transform: translateY(-6px);
+    transform: translateY(-2px);
   }
 }
 

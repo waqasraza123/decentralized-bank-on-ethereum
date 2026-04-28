@@ -43,25 +43,25 @@ export function AppScreen({
 
   const orbOneStyle = useAnimatedStyle(() => ({
     transform: [
-      { translateY: drift.value * -12 },
-      { translateX: drift.value * -8 },
-      { scale: 1 + drift.value * 0.05 }
+      { translateY: drift.value * -4 },
+      { translateX: drift.value * -3 },
+      { scale: 1 + drift.value * 0.012 }
     ]
   }));
 
   const orbTwoStyle = useAnimatedStyle(() => ({
     transform: [
-      { translateY: drift.value * 10 },
-      { translateX: drift.value * 6 },
-      { scale: 1 - drift.value * 0.04 }
+      { translateY: drift.value * 3 },
+      { translateX: drift.value * 2 },
+      { scale: 1 - drift.value * 0.01 }
     ]
   }));
 
   const orbThreeStyle = useAnimatedStyle(() => ({
     transform: [
-      { translateY: drift.value * -8 },
-      { translateX: drift.value * 10 },
-      { scale: 1 + drift.value * 0.03 }
+      { translateY: drift.value * -3 },
+      { translateX: drift.value * 4 },
+      { scale: 1 + drift.value * 0.01 }
     ]
   }));
 

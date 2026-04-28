@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
+import { LoadingButton } from "@/components/ui/loading-button";
 import { Textarea } from "@/components/ui/textarea";
 import { useLocale } from "@/i18n/use-locale";
 import { formatDateLabel, formatTokenAmount } from "@/lib/customer-finance";
@@ -443,21 +444,25 @@ const Loans = () => {
               ) : null}
 
               <div className="flex flex-wrap gap-3">
-                <Button
+                <LoadingButton
                   type="button"
                   variant="outline"
                   onClick={() => void handlePreviewQuote()}
                   disabled={!canPreview || previewQuoteMutation.isPending}
+                  loading={previewQuoteMutation.isPending}
+                  loadingLabel={locale === "ar" ? "جارٍ المعاينة..." : "Previewing..."}
                 >
                   {locale === "ar" ? "معاينة العرض" : "Preview quote"}
-                </Button>
-                <Button
+                </LoadingButton>
+                <LoadingButton
                   type="button"
                   onClick={() => void handleSubmitApplication()}
                   disabled={!canSubmit || createApplicationMutation.isPending}
+                  loading={createApplicationMutation.isPending}
+                  loadingLabel={locale === "ar" ? "جارٍ الإرسال..." : "Submitting..."}
                 >
                   {locale === "ar" ? "إرسال الطلب للمراجعة" : "Submit for review"}
-                </Button>
+                </LoadingButton>
               </div>
             </CardContent>
           </Card>

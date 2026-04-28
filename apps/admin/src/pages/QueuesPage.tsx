@@ -28,6 +28,7 @@ import {
   ListCard,
   LoadingState,
   MetricCard,
+  PendingLabel,
   SectionPanel,
   TimelinePanel,
   WorkspaceLayout
@@ -592,9 +593,11 @@ export function QueuesPage() {
                       disabled={pendingGovernedAction || !selectedTransferId}
                       onClick={() => approveTransferMutation.mutate()}
                     >
-                      {approveTransferMutation.isPending
-                        ? "Approving..."
-                        : "Approve transfer"}
+                      <PendingLabel
+                        idle="Approve transfer"
+                        pending={approveTransferMutation.isPending}
+                        pendingLabel="Approving..."
+                      />
                     </button>
                     <button
                       type="button"
@@ -602,7 +605,11 @@ export function QueuesPage() {
                       disabled={pendingGovernedAction || !selectedTransferId}
                       onClick={() => denyTransferMutation.mutate()}
                     >
-                      {denyTransferMutation.isPending ? "Denying..." : "Deny transfer"}
+                      <PendingLabel
+                        idle="Deny transfer"
+                        pending={denyTransferMutation.isPending}
+                        pendingLabel="Denying..."
+                      />
                     </button>
                   </div>
                 </ListCard>
@@ -885,7 +892,11 @@ export function QueuesPage() {
                       disabled={startCaseMutation.isPending}
                       onClick={() => startCaseMutation.mutate()}
                     >
-                      {startCaseMutation.isPending ? "Starting..." : "Start case"}
+                      <PendingLabel
+                        idle="Start case"
+                        pending={startCaseMutation.isPending}
+                        pendingLabel="Starting..."
+                      />
                     </button>
                     <button
                       type="button"
@@ -893,7 +904,11 @@ export function QueuesPage() {
                       disabled={addNoteMutation.isPending || actionNote.trim().length === 0}
                       onClick={() => addNoteMutation.mutate()}
                     >
-                      {addNoteMutation.isPending ? "Recording..." : "Record note"}
+                      <PendingLabel
+                        idle="Record note"
+                        pending={addNoteMutation.isPending}
+                        pendingLabel="Recording..."
+                      />
                     </button>
                     <button
                       type="button"
@@ -901,7 +916,11 @@ export function QueuesPage() {
                       disabled={handoffMutation.isPending || handoffOperatorId.trim().length === 0}
                       onClick={() => handoffMutation.mutate()}
                     >
-                      {handoffMutation.isPending ? "Handing off..." : "Handoff case"}
+                      <PendingLabel
+                        idle="Handoff case"
+                        pending={handoffMutation.isPending}
+                        pendingLabel="Handing off..."
+                      />
                     </button>
                     <button
                       type="button"
@@ -913,9 +932,11 @@ export function QueuesPage() {
                       }
                       onClick={() => manualResolutionMutation.mutate()}
                     >
-                      {manualResolutionMutation.isPending
-                        ? "Applying..."
-                        : "Apply manual resolution"}
+                      <PendingLabel
+                        idle="Apply manual resolution"
+                        pending={manualResolutionMutation.isPending}
+                        pendingLabel="Applying..."
+                      />
                     </button>
                     <button
                       type="button"
@@ -923,9 +944,11 @@ export function QueuesPage() {
                       disabled={!governedConfirm || hasPendingReleaseReview || pendingGovernedAction}
                       onClick={() => requestReleaseMutation.mutate()}
                     >
-                      {requestReleaseMutation.isPending
-                        ? "Requesting..."
-                        : "Request account release review"}
+                      <PendingLabel
+                        idle="Request account release review"
+                        pending={requestReleaseMutation.isPending}
+                        pendingLabel="Requesting..."
+                      />
                     </button>
                     <button
                       type="button"
@@ -933,9 +956,11 @@ export function QueuesPage() {
                       disabled={!governedConfirm || !hasPendingReleaseReview || pendingGovernedAction}
                       onClick={() => approveReleaseMutation.mutate()}
                     >
-                      {approveReleaseMutation.isPending
-                        ? "Approving..."
-                        : "Approve account release"}
+                      <PendingLabel
+                        idle="Approve account release"
+                        pending={approveReleaseMutation.isPending}
+                        pendingLabel="Approving..."
+                      />
                     </button>
                     <button
                       type="button"
@@ -943,7 +968,11 @@ export function QueuesPage() {
                       disabled={!governedConfirm || !hasPendingReleaseReview || pendingGovernedAction}
                       onClick={() => denyReleaseMutation.mutate()}
                     >
-                      {denyReleaseMutation.isPending ? "Denying..." : "Deny account release"}
+                      <PendingLabel
+                        idle="Deny account release"
+                        pending={denyReleaseMutation.isPending}
+                        pendingLabel="Denying..."
+                      />
                     </button>
                     <button
                       type="button"
@@ -951,7 +980,11 @@ export function QueuesPage() {
                       disabled={!governedConfirm || pendingGovernedAction}
                       onClick={() => resolveCaseMutation.mutate()}
                     >
-                      {resolveCaseMutation.isPending ? "Resolving..." : "Resolve case"}
+                      <PendingLabel
+                        idle="Resolve case"
+                        pending={resolveCaseMutation.isPending}
+                        pendingLabel="Resolving..."
+                      />
                     </button>
                     <button
                       type="button"
@@ -959,7 +992,11 @@ export function QueuesPage() {
                       disabled={!governedConfirm || pendingGovernedAction}
                       onClick={() => dismissCaseMutation.mutate()}
                     >
-                      {dismissCaseMutation.isPending ? "Dismissing..." : "Dismiss case"}
+                      <PendingLabel
+                        idle="Dismiss case"
+                        pending={dismissCaseMutation.isPending}
+                        pendingLabel="Dismissing..."
+                      />
                     </button>
                   </div>
                 </>

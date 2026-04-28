@@ -9,7 +9,7 @@ const Card = React.forwardRef<
   <div
     ref={ref}
     className={cn(
-      "relative overflow-hidden rounded-[1.75rem] border border-white/50 bg-card text-card-foreground shadow-[0_22px_58px_rgba(10,18,28,0.1)] backdrop-blur-xl transition-[transform,box-shadow,border-color] duration-200 before:pointer-events-none before:absolute before:inset-0 before:bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.86),transparent_32%),linear-gradient(180deg,rgba(255,255,255,0.18),transparent_34%)] hover:-translate-y-0.5 hover:border-white/70 hover:shadow-[0_28px_72px_rgba(10,18,28,0.14)] focus-within:-translate-y-0.5 focus-within:border-emerald-200/80 focus-within:shadow-[0_28px_72px_rgba(10,18,28,0.14)]",
+      "relative overflow-hidden rounded-[1.75rem] border border-white/50 bg-card text-card-foreground shadow-[0_22px_58px_rgba(10,18,28,0.1)] backdrop-blur-xl transition-[box-shadow,border-color] duration-150 before:pointer-events-none before:absolute before:inset-0 before:bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.86),transparent_32%),linear-gradient(180deg,rgba(255,255,255,0.18),transparent_34%)] hover:border-white/70 hover:shadow-[0_24px_64px_rgba(10,18,28,0.12)] focus-within:border-emerald-200/80 focus-within:shadow-[0_24px_64px_rgba(10,18,28,0.12)]",
       className
     )}
     {...props}

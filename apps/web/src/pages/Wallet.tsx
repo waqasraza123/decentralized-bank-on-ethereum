@@ -2,6 +2,7 @@ import { Layout } from "@/components/Layout";
 import { MotionSurface, ScreenTransition } from "@/components/motion/primitives";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { InlineLoader } from "@/components/ui/loading-panel";
 import { Link } from "react-router-dom";
 import { useT } from "@/i18n/use-t";
 import { useLocale } from "@/i18n/use-locale";
@@ -65,9 +66,11 @@ const Wallet = () => {
                     {locale === "ar" ? "الأصول المدعومة" : "Supported assets"}
                   </p>
                   <p className="mt-3 text-3xl font-semibold text-slate-950">
-                    {supportedAssetsQuery.isLoading
-                      ? "..."
-                      : supportedAssetsQuery.data?.assets.length ?? 0}
+                    {supportedAssetsQuery.isLoading ? (
+                      <InlineLoader label={locale === "ar" ? "جارٍ التحميل" : "Loading"} />
+                    ) : (
+                      supportedAssetsQuery.data?.assets.length ?? 0
+                    )}
                   </p>
                 </div>
                 <div className="rounded-[1.4rem] bg-white/80 p-4">
@@ -211,9 +214,11 @@ const Wallet = () => {
                       {locale === "ar" ? "إجمالي المقفل" : "Total locked"}
                     </p>
                     <p className="mt-3 text-3xl font-semibold text-slate-950">
-                      {retirementVaultsQuery.isLoading
-                        ? "..."
-                        : formatTokenAmount(String(totalLockedBalance), locale)}
+                      {retirementVaultsQuery.isLoading ? (
+                        <InlineLoader label={locale === "ar" ? "جارٍ التحميل" : "Loading"} />
+                      ) : (
+                        formatTokenAmount(String(totalLockedBalance), locale)
+                      )}
                     </p>
                   </div>
                   <div className="stb-section-frame p-4">

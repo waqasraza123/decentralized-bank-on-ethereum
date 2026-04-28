@@ -8,6 +8,7 @@ import { AppText } from "../components/ui/AppText";
 import { AnimatedSection } from "../components/ui/AnimatedSection";
 import { FieldInput } from "../components/ui/FieldInput";
 import { InlineNotice } from "../components/ui/InlineNotice";
+import { InlineLoader } from "../components/ui/LoadingPanel";
 import { ScreenHeaderActions } from "../components/ui/ScreenHeaderActions";
 import { OptionChips } from "../components/ui/OptionChips";
 import { SectionCard } from "../components/ui/SectionCard";
@@ -498,11 +499,16 @@ export function RetirementVaultScreen({
               >
                 {locale === "ar" ? "أموال محمية" : "Protected funds"}
               </AppText>
-              <AppText className="text-3xl text-white" weight="bold">
-                {retirementVaultsQuery.isLoading
-                  ? "..."
-                  : formatTokenAmount(String(lockedVaultBalance), locale)}
-              </AppText>
+              {retirementVaultsQuery.isLoading ? (
+                <InlineLoader
+                  label={locale === "ar" ? "جاري التحميل" : "Loading"}
+                  tone="dark"
+                />
+              ) : (
+                <AppText className="text-3xl text-white" weight="bold">
+                  {formatTokenAmount(String(lockedVaultBalance), locale)}
+                </AppText>
+              )}
               <AppText className="text-sm leading-6 text-sand">
                 {nextVaultUnlock
                   ? locale === "ar"
@@ -635,15 +641,9 @@ export function RetirementVaultScreen({
               />
               <AppButton
                 disabled={createRetirementVaultMutation.isPending}
-                label={
-                  createRetirementVaultMutation.isPending
-                    ? locale === "ar"
-                      ? "جارٍ إنشاء القبو..."
-                      : "Creating vault..."
-                    : locale === "ar"
-                      ? "إنشاء القبو"
-                      : "Create vault"
-                }
+                label={locale === "ar" ? "إنشاء القبو" : "Create vault"}
+                loading={createRetirementVaultMutation.isPending}
+                loadingLabel={locale === "ar" ? "جارٍ إنشاء القبو..." : "Creating vault..."}
                 onPress={() => {
                   void handleCreateVault();
                 }}
@@ -688,15 +688,9 @@ export function RetirementVaultScreen({
               />
               <AppButton
                 disabled={fundRetirementVaultMutation.isPending || vaults.length === 0}
-                label={
-                  fundRetirementVaultMutation.isPending
-                    ? locale === "ar"
-                      ? "جارٍ تمويل القبو..."
-                      : "Funding vault..."
-                    : locale === "ar"
-                      ? "تمويل القبو"
-                      : "Fund vault"
-                }
+                label={locale === "ar" ? "تمويل القبو" : "Fund vault"}
+                loading={fundRetirementVaultMutation.isPending}
+                loadingLabel={locale === "ar" ? "جارٍ تمويل القبو..." : "Funding vault..."}
                 onPress={() => {
                   void handleFundVault();
                 }}
@@ -791,15 +785,9 @@ export function RetirementVaultScreen({
                   !selectedReleaseVault ||
                   selectedReleaseVault.status !== "active"
                 }
-                label={
-                  requestRetirementVaultReleaseMutation.isPending
-                    ? locale === "ar"
-                      ? "جارٍ تسجيل الإفراج..."
-                      : "Recording release..."
-                    : locale === "ar"
-                      ? "طلب الإفراج المحكوم"
-                      : "Request governed release"
-                }
+                label={locale === "ar" ? "طلب الإفراج المحكوم" : "Request governed release"}
+                loading={requestRetirementVaultReleaseMutation.isPending}
+                loadingLabel={locale === "ar" ? "جارٍ تسجيل الإفراج..." : "Recording release..."}
                 onPress={() => {
                   void handleRequestRelease();
                 }}
@@ -897,15 +885,9 @@ export function RetirementVaultScreen({
                   !selectedRuleChangeVault ||
                   selectedRuleChangeVault.status !== "active"
                 }
-                label={
-                  requestRetirementVaultRuleChangeMutation.isPending
-                    ? locale === "ar"
-                      ? "جارٍ تسجيل التعديل..."
-                      : "Recording rule change..."
-                    : locale === "ar"
-                      ? "طلب تعديل القاعدة"
-                      : "Request rule change"
-                }
+                label={locale === "ar" ? "طلب تعديل القاعدة" : "Request rule change"}
+                loading={requestRetirementVaultRuleChangeMutation.isPending}
+                loadingLabel={locale === "ar" ? "جارٍ تسجيل التعديل..." : "Recording rule change..."}
                 onPress={() => {
                   void handleRequestRuleChange();
                 }}
@@ -974,15 +956,9 @@ export function RetirementVaultScreen({
                 {canCancelReleaseStatus(request.status) ? (
                   <AppButton
                     disabled={cancelRetirementVaultReleaseMutation.isPending}
-                    label={
-                      cancelRetirementVaultReleaseMutation.isPending
-                        ? locale === "ar"
-                          ? "جارٍ الإلغاء..."
-                          : "Cancelling..."
-                        : locale === "ar"
-                          ? "إلغاء الطلب"
-                          : "Cancel request"
-                    }
+                    label={locale === "ar" ? "إلغاء الطلب" : "Cancel request"}
+                    loading={cancelRetirementVaultReleaseMutation.isPending}
+                    loadingLabel={locale === "ar" ? "جارٍ الإلغاء..." : "Cancelling..."}
                     onPress={() => {
                       void handleCancelRelease(request.id);
                     }}
@@ -1029,15 +1005,9 @@ export function RetirementVaultScreen({
                 {canCancelRuleChangeStatus(request.status) ? (
                   <AppButton
                     disabled={cancelRetirementVaultRuleChangeMutation.isPending}
-                    label={
-                      cancelRetirementVaultRuleChangeMutation.isPending
-                        ? locale === "ar"
-                          ? "جارٍ الإلغاء..."
-                          : "Cancelling..."
-                        : locale === "ar"
-                          ? "إلغاء التعديل"
-                          : "Cancel rule change"
-                    }
+                    label={locale === "ar" ? "إلغاء التعديل" : "Cancel rule change"}
+                    loading={cancelRetirementVaultRuleChangeMutation.isPending}
+                    loadingLabel={locale === "ar" ? "جارٍ الإلغاء..." : "Cancelling..."}
                     onPress={() => {
                       void handleCancelRuleChange(request.id);
                     }}
