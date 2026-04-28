@@ -25,6 +25,7 @@ import {
   InlineNotice,
   ListCard,
   LoadingState,
+  PendingLabel,
   SectionPanel,
   TimelinePanel,
   WorkspaceLayout
@@ -668,9 +669,7 @@ export function ReconciliationPage() {
                       }
                       onClick={() => requestConfirmApprovalMutation.mutate()}
                     >
-                      {requestConfirmApprovalMutation.isPending
-                        ? "Requesting..."
-                        : "Request confirm approval"}
+                      <PendingLabel idle="Request confirm approval" pending={requestConfirmApprovalMutation.isPending} pendingLabel="Requesting..." />
                     </button>
                     <button
                       type="button"
@@ -682,9 +681,7 @@ export function ReconciliationPage() {
                       }
                       onClick={() => requestSettleApprovalMutation.mutate()}
                     >
-                      {requestSettleApprovalMutation.isPending
-                        ? "Requesting..."
-                        : "Request settle approval"}
+                      <PendingLabel idle="Request settle approval" pending={requestSettleApprovalMutation.isPending} pendingLabel="Requesting..." />
                     </button>
                     <button
                       type="button"
@@ -696,7 +693,7 @@ export function ReconciliationPage() {
                       }
                       onClick={() => replayConfirmMutation.mutate()}
                     >
-                      {replayConfirmMutation.isPending ? "Submitting..." : "Replay confirm"}
+                      <PendingLabel idle="Replay confirm" pending={replayConfirmMutation.isPending} pendingLabel="Submitting..." />
                     </button>
                     <button
                       type="button"
@@ -708,7 +705,7 @@ export function ReconciliationPage() {
                       }
                       onClick={() => replaySettleMutation.mutate()}
                     >
-                      {replaySettleMutation.isPending ? "Submitting..." : "Replay settle"}
+                      <PendingLabel idle="Replay settle" pending={replaySettleMutation.isPending} pendingLabel="Submitting..." />
                     </button>
                     <button
                       type="button"
@@ -716,7 +713,7 @@ export function ReconciliationPage() {
                       disabled={!governedConfirm || mutationPending}
                       onClick={() => openReviewCaseMutation.mutate()}
                     >
-                      {openReviewCaseMutation.isPending ? "Opening..." : "Open review case"}
+                      <PendingLabel idle="Open review case" pending={openReviewCaseMutation.isPending} pendingLabel="Opening..." />
                     </button>
                     <button
                       type="button"
@@ -724,7 +721,7 @@ export function ReconciliationPage() {
                       disabled={!governedConfirm || mutationPending}
                       onClick={() => repairBalanceMutation.mutate()}
                     >
-                      {repairBalanceMutation.isPending ? "Repairing..." : "Repair balance"}
+                      <PendingLabel idle="Repair balance" pending={repairBalanceMutation.isPending} pendingLabel="Repairing..." />
                     </button>
                     <button
                       type="button"
@@ -732,7 +729,7 @@ export function ReconciliationPage() {
                       disabled={!governedConfirm || mutationPending}
                       onClick={() => dismissMismatchMutation.mutate()}
                     >
-                      {dismissMismatchMutation.isPending ? "Dismissing..." : "Dismiss mismatch"}
+                      <PendingLabel idle="Dismiss mismatch" pending={dismissMismatchMutation.isPending} pendingLabel="Dismissing..." />
                     </button>
                   </div>
 
@@ -750,9 +747,7 @@ export function ReconciliationPage() {
                       disabled={!governedConfirm || mutationPending || !canReviewQueueApproval()}
                       onClick={() => approveReplayApprovalMutation.mutate()}
                     >
-                      {approveReplayApprovalMutation.isPending
-                        ? "Approving..."
-                        : "Approve queue request"}
+                      <PendingLabel idle="Approve queue request" pending={approveReplayApprovalMutation.isPending} pendingLabel="Approving..." />
                     </button>
                     <button
                       type="button"
@@ -765,9 +760,7 @@ export function ReconciliationPage() {
                       }
                       onClick={() => rejectReplayApprovalMutation.mutate()}
                     >
-                      {rejectReplayApprovalMutation.isPending
-                        ? "Rejecting..."
-                        : "Reject queue request"}
+                      <PendingLabel idle="Reject queue request" pending={rejectReplayApprovalMutation.isPending} pendingLabel="Rejecting..." />
                     </button>
                     <button
                       type="button"
@@ -775,9 +768,7 @@ export function ReconciliationPage() {
                       disabled={!governedConfirm || mutationPending || !canExecuteQueueApproval()}
                       onClick={() => executeReplayApprovalMutation.mutate()}
                     >
-                      {executeReplayApprovalMutation.isPending
-                        ? "Executing..."
-                        : "Execute approved replay"}
+                      <PendingLabel idle="Execute approved replay" pending={executeReplayApprovalMutation.isPending} pendingLabel="Executing..." />
                     </button>
                   </div>
                 </>

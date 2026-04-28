@@ -8,6 +8,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { InlineLoader } from "@/components/ui/loading-panel";
 import { LoadingButton } from "@/components/ui/loading-button";
 import { toast } from "@/components/ui/use-toast";
 import { TimelineList } from "@/components/customer/TimelineList";
@@ -474,9 +475,9 @@ const WithdrawCard = ({
                 {locale === "ar" ? "متاح:" : "Available:"}{" "}
                 <span className="font-semibold text-slate-950">
                   {isBalancesLoading
-                    ? locale === "ar"
-                      ? "جاري التحميل..."
-                      : "Loading..."
+                    ? (
+                      <InlineLoader label={locale === "ar" ? "جارٍ التحميل" : "Loading"} />
+                    )
                     : `${formatTokenAmount(
                         selectedBalance?.availableBalance ?? "0",
                         locale,
@@ -487,9 +488,9 @@ const WithdrawCard = ({
                 {locale === "ar" ? "معلّق:" : "Pending:"}{" "}
                 <span className="font-semibold text-slate-950">
                   {isBalancesLoading
-                    ? locale === "ar"
-                      ? "جاري التحميل..."
-                      : "Loading..."
+                    ? (
+                      <InlineLoader label={locale === "ar" ? "جارٍ التحميل" : "Loading"} />
+                    )
                     : `${formatTokenAmount(
                         selectedBalance?.pendingBalance ?? "0",
                         locale,

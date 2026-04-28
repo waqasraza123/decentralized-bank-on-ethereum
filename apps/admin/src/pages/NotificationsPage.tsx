@@ -11,6 +11,7 @@ import {
   EmptyState,
   ErrorState,
   LoadingState,
+  PendingLabel,
   SectionPanel
 } from "@/components/console/primitives";
 import {
@@ -384,9 +385,11 @@ export function NotificationsPage() {
               }}
               disabled={!preferenceDraft || updatePreferencesMutation.isPending}
             >
-              {updatePreferencesMutation.isPending
-                ? "Saving preferences..."
-                : "Save preferences"}
+              <PendingLabel
+                idle="Save preferences"
+                pending={updatePreferencesMutation.isPending}
+                pendingLabel="Saving preferences..."
+              />
             </button>
           </div>
         )}

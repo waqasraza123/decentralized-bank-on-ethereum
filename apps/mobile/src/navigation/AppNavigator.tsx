@@ -36,6 +36,7 @@ import { SignInScreen } from "../screens/auth/SignInScreen";
 import { SignUpScreen } from "../screens/auth/SignUpScreen";
 import { AppButton } from "../components/ui/AppButton";
 import { EthereumBrandPanel } from "../components/ui/EthereumBrandPanel";
+import { LoadingPanel } from "../components/ui/LoadingPanel";
 import { NotificationRealtimeBridge } from "../components/system/NotificationRealtimeBridge";
 import { NotificationsScreen } from "../screens/NotificationsScreen";
 
@@ -52,9 +53,7 @@ function LoadingGate({ message }: { message: string }) {
           subtitle="Stealth Trails Bank"
           testID="ethereum-loading-panel"
         />
-        <AppText className="text-center text-base text-ink" weight="semibold">
-          {message}
-        </AppText>
+        <LoadingPanel compact title={message} />
       </View>
     </View>
   );

@@ -14,10 +14,11 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
+import { LoadingPanel } from "@/components/ui/loading-panel";
+import { LoadingButton } from "@/components/ui/loading-button";
 import {
   MonitorSmartphone,
   CheckCircle2,
-  Loader2,
   LogOut,
   Mail,
   Shield,
@@ -430,8 +431,12 @@ const Profile = () => {
 
   if (profileQuery.isLoading) {
     return (
-      <div className="flex h-screen w-screen items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-mint-600" />
+      <div className="flex h-screen w-screen items-center justify-center bg-background px-6">
+        <LoadingPanel
+          className="w-full max-w-sm"
+          description={t("app.loadingDescription")}
+          title={t("app.loadingTitle")}
+        />
       </div>
     );
   }
@@ -1048,14 +1053,14 @@ const Profile = () => {
                     <p className="text-sm font-medium text-foreground">
                       Start authenticator setup
                     </p>
-                    <Button
+                    <LoadingButton
                       onClick={handleStartTotp}
                       disabled={startTotpEnrollment.isPending}
+                      loading={startTotpEnrollment.isPending}
+                      loadingLabel="Preparing authenticator..."
                     >
-                      {startTotpEnrollment.isPending
-                        ? "Preparing authenticator..."
-                        : "Start authenticator enrollment"}
-                    </Button>
+                      Start authenticator enrollment
+                    </LoadingButton>
                     {totpSecret ? (
                       <>
                         <div className="stb-section-frame p-4">
@@ -1098,14 +1103,14 @@ const Profile = () => {
                             placeholder="123456"
                           />
                         </div>
-                        <Button
+                        <LoadingButton
                           onClick={handleVerifyTotp}
                           disabled={verifyTotpEnrollment.isPending}
+                          loading={verifyTotpEnrollment.isPending}
+                          loadingLabel="Verifying..."
                         >
-                          {verifyTotpEnrollment.isPending
-                            ? "Verifying..."
-                            : "Verify authenticator"}
-                        </Button>
+                          Verify authenticator
+                        </LoadingButton>
                       </>
                     ) : null}
                   </div>
@@ -1116,14 +1121,14 @@ const Profile = () => {
                     <p className="text-sm font-medium text-foreground">
                       Add email backup factor
                     </p>
-                    <Button
+                    <LoadingButton
                       onClick={handleStartEmail}
                       disabled={startEmailEnrollment.isPending}
+                      loading={startEmailEnrollment.isPending}
+                      loadingLabel="Sending code..."
                     >
-                      {startEmailEnrollment.isPending
-                        ? "Sending code..."
-                        : "Send email verification code"}
-                    </Button>
+                      Send email verification code
+                    </LoadingButton>
                     {emailChallengeId ? (
                       <>
                         {emailPreviewCode ? (
@@ -1146,14 +1151,14 @@ const Profile = () => {
                             placeholder="123456"
                           />
                         </div>
-                        <Button
+                        <LoadingButton
                           onClick={handleVerifyEmail}
                           disabled={verifyEmailEnrollment.isPending}
+                          loading={verifyEmailEnrollment.isPending}
+                          loadingLabel="Verifying..."
                         >
-                          {verifyEmailEnrollment.isPending
-                            ? "Verifying..."
-                            : "Verify email backup"}
-                        </Button>
+                          Verify email backup
+                        </LoadingButton>
                       </>
                     ) : null}
                   </div>
@@ -1199,14 +1204,14 @@ const Profile = () => {
                             placeholder="123456"
                           />
                         </div>
-                        <Button
+                        <LoadingButton
                           onClick={handleVerifyEmailRecovery}
                           disabled={verifyEmailRecovery.isPending}
+                          loading={verifyEmailRecovery.isPending}
+                          loadingLabel="Verifying..."
                         >
-                          {verifyEmailRecovery.isPending
-                            ? "Verifying..."
-                            : "Verify recovery code"}
-                        </Button>
+                          Verify recovery code
+                        </LoadingButton>
                       </>
                     ) : null}
                   </div>
@@ -1259,14 +1264,14 @@ const Profile = () => {
                             placeholder="123456"
                           />
                         </div>
-                        <Button
+                        <LoadingButton
                           onClick={handleVerifyPasswordStepUp}
                           disabled={verifyMfaChallenge.isPending}
+                          loading={verifyMfaChallenge.isPending}
+                          loadingLabel="Verifying..."
                         >
-                          {verifyMfaChallenge.isPending
-                            ? "Verifying..."
-                            : "Verify MFA challenge"}
-                        </Button>
+                          Verify MFA challenge
+                        </LoadingButton>
                       </>
                     ) : null}
                   </div>
@@ -1420,16 +1425,16 @@ const Profile = () => {
                           }
                         />
                       </div>
-                      <Button
+                      <LoadingButton
                         onClick={handlePasswordSubmit}
                         disabled={
                           rotatePasswordMutation.isPending || !stepUpFresh
                         }
+                        loading={rotatePasswordMutation.isPending}
+                        loadingLabel="Updating password..."
                       >
-                        {rotatePasswordMutation.isPending
-                          ? "Updating password..."
-                          : "Update password"}
-                      </Button>
+                        Update password
+                      </LoadingButton>
                     </>
                   ) : (
                     <div className="stb-section-frame p-4">
@@ -1509,17 +1514,17 @@ const Profile = () => {
                         </p>
                       </div>
                       <div className="flex flex-col gap-3 sm:flex-row">
-                        <Button
+                        <LoadingButton
                           variant="outline"
                           onClick={handleStartSessionTrustChallenge}
                           disabled={
                             startSessionTrustChallengeMutation.isPending
                           }
+                          loading={startSessionTrustChallengeMutation.isPending}
+                          loadingLabel="Sending code..."
                         >
-                          {startSessionTrustChallengeMutation.isPending
-                            ? "Sending code..."
-                            : "Send verification code"}
-                        </Button>
+                          Send verification code
+                        </LoadingButton>
                         <Input
                           value={sessionTrustCode}
                           onChange={(event) =>
@@ -1529,17 +1534,17 @@ const Profile = () => {
                           inputMode="numeric"
                           maxLength={6}
                         />
-                        <Button
+                        <LoadingButton
                           onClick={handleVerifySessionTrust}
                           disabled={
                             verifyCurrentSessionTrustMutation.isPending ||
                             sessionTrustCode.trim().length !== 6
                           }
+                          loading={verifyCurrentSessionTrustMutation.isPending}
+                          loadingLabel="Verifying..."
                         >
-                          {verifyCurrentSessionTrustMutation.isPending
-                            ? "Verifying..."
-                            : "Verify session"}
-                        </Button>
+                          Verify session
+                        </LoadingButton>
                       </div>
                       {sessionTrustPreviewCode ? (
                         <p className="text-xs text-muted-foreground">
@@ -1549,15 +1554,15 @@ const Profile = () => {
                     </div>
                   ) : null}
 
-                  <Button
+                  <LoadingButton
                     variant="outline"
                     onClick={handleRevokeAllSessions}
                     disabled={revokeAllSessionsMutation.isPending}
+                    loading={revokeAllSessionsMutation.isPending}
+                    loadingLabel="Revoking sessions..."
                   >
-                    {revokeAllSessionsMutation.isPending
-                      ? "Revoking sessions..."
-                      : "Revoke all other sessions"}
-                  </Button>
+                    Revoke all other sessions
+                  </LoadingButton>
 
                   <div className="space-y-3">
                     <div className="stb-trust-note text-sm text-muted-foreground">
@@ -1571,9 +1576,7 @@ const Profile = () => {
                     </div>
 
                     {customerSessionsQuery.isLoading ? (
-                      <div className="stb-section-frame p-4 text-sm text-muted-foreground">
-                        Loading active sessions...
-                      </div>
+                      <LoadingPanel compact title="Loading active sessions" />
                     ) : customerSessionsQuery.isError ? (
                       <Alert variant="destructive">
                         <ShieldAlert className="h-4 w-4" />
@@ -1628,19 +1631,21 @@ const Profile = () => {
                               </div>
 
                               {!session.current ? (
-                                <Button
+                                <LoadingButton
                                   variant="outline"
                                   onClick={() =>
                                     void handleRevokeSession(session.id)
                                   }
+                                  loading={
+                                    revokeCustomerSessionMutation.isPending
+                                  }
+                                  loadingLabel="Revoking..."
                                   disabled={
                                     revokeCustomerSessionMutation.isPending
                                   }
                                 >
-                                  {revokeCustomerSessionMutation.isPending
-                                    ? "Revoking..."
-                                    : "Revoke session"}
-                                </Button>
+                                  Revoke session
+                                </LoadingButton>
                               ) : null}
                             </div>
                           </div>
@@ -1665,9 +1670,7 @@ const Profile = () => {
                     </div>
 
                     {securityActivityQuery.isLoading ? (
-                      <div className="stb-section-frame p-4 text-sm text-muted-foreground">
-                        Loading security activity...
-                      </div>
+                      <LoadingPanel compact title="Loading security activity" />
                     ) : securityActivityQuery.isError ? (
                       <Alert variant="destructive">
                         <ShieldAlert className="h-4 w-4" />
@@ -1826,17 +1829,17 @@ const Profile = () => {
                           </div>
                         </div>
                       ))}
-                      <Button
+                      <LoadingButton
                         onClick={handleNotificationPreferencesSubmit}
                         disabled={
                           updateNotificationPreferencesMutation.isPending ||
                           !notificationPreferencesChanged
                         }
+                        loading={updateNotificationPreferencesMutation.isPending}
+                        loadingLabel="Saving preferences..."
                       >
-                        {updateNotificationPreferencesMutation.isPending
-                          ? "Saving preferences..."
-                          : "Save preferences"}
-                      </Button>
+                        Save preferences
+                      </LoadingButton>
                     </>
                   ) : (
                     <div className="stb-section-frame p-4">
@@ -1951,17 +1954,17 @@ const Profile = () => {
                         />
                       </div>
                       <div className="flex flex-wrap gap-3">
-                        <Button
+                        <LoadingButton
                           onClick={handleAgeProfileSubmit}
                           disabled={
                             updateCustomerAgeProfileMutation.isPending ||
                             !ageProfileChanged
                           }
+                          loading={updateCustomerAgeProfileMutation.isPending}
+                          loadingLabel="Saving age profile..."
                         >
-                          {updateCustomerAgeProfileMutation.isPending
-                            ? "Saving age profile..."
-                            : "Save date of birth"}
-                        </Button>
+                          Save date of birth
+                        </LoadingButton>
                         <Button
                           variant="outline"
                           onClick={() => {
@@ -2232,20 +2235,22 @@ const Profile = () => {
                         </div>
 
                         <div className="flex flex-wrap gap-3">
-                          <Button
+                          <LoadingButton
                             onClick={handleTrustedContactSubmit}
                             disabled={
                               createTrustedContactMutation.isPending ||
                               updateTrustedContactMutation.isPending
                             }
+                            loading={
+                              createTrustedContactMutation.isPending ||
+                              updateTrustedContactMutation.isPending
+                            }
+                            loadingLabel="Saving trusted contact..."
                           >
-                            {createTrustedContactMutation.isPending ||
-                            updateTrustedContactMutation.isPending
-                              ? "Saving trusted contact..."
-                              : editingTrustedContactId
-                                ? "Update trusted contact"
-                                : "Add trusted contact"}
-                          </Button>
+                            {editingTrustedContactId
+                              ? "Update trusted contact"
+                              : "Add trusted contact"}
+                          </LoadingButton>
                           {editingTrustedContactId ? (
                             <Button
                               variant="outline"

@@ -11,6 +11,7 @@ import { StatusBadge } from "@/components/customer/StatusBadge";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { InlineLoader } from "@/components/ui/loading-panel";
 import { useLocale } from "@/i18n/use-locale";
 import { useT } from "@/i18n/use-t";
 import { useToast } from "@/hooks/use-toast";
@@ -175,7 +176,11 @@ const Yield = () => {
                     {locale === "ar" ? "المجمعات" : "Pools"}
                   </p>
                   <p className="mt-3 text-3xl font-semibold text-slate-950">
-                    {stakingQuery.isLoading ? "..." : pools.length}
+                    {stakingQuery.isLoading ? (
+                      <InlineLoader label={locale === "ar" ? "جارٍ التحميل" : "Loading"} />
+                    ) : (
+                      pools.length
+                    )}
                   </p>
                 </div>
                 <div className="rounded-[1.4rem] bg-white/80 p-4">

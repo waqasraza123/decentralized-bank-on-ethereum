@@ -8,6 +8,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { InlineLoader } from "@/components/ui/loading-panel";
 import { LoadingButton } from "@/components/ui/loading-button";
 import { toast } from "@/components/ui/use-toast";
 import { TimelineList } from "@/components/customer/TimelineList";
@@ -536,9 +537,9 @@ const InternalTransferCard = ({
                   {locale === "ar" ? "متاح للإرسال:" : "Available to send:"}{" "}
                   <span className="font-semibold text-slate-950">
                     {isBalancesLoading
-                      ? locale === "ar"
-                        ? "جاري التحميل..."
-                        : "Loading..."
+                      ? (
+                        <InlineLoader label={locale === "ar" ? "جارٍ التحميل" : "Loading"} />
+                      )
                       : `${formatTokenAmount(availableBalance, locale)} ${selectedAssetSymbol || ""}`.trim()}
                   </span>
                 </div>

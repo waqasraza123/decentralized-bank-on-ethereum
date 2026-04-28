@@ -24,6 +24,7 @@ import {
   ListCard,
   LoadingState,
   MetricCard,
+  PendingLabel,
   SectionPanel,
   TimelinePanel,
   WorkspaceLayout
@@ -758,7 +759,11 @@ export function AlertsPage() {
                     disabled={!governedConfirm || mutationPending}
                     onClick={() => routeCriticalMutation.mutate()}
                   >
-                    {routeCriticalMutation.isPending ? "Routing critical alerts..." : "Route critical alerts"}
+                    <PendingLabel
+                      idle="Route critical alerts"
+                      pending={routeCriticalMutation.isPending}
+                      pendingLabel="Routing critical alerts..."
+                    />
                   </button>
                 </div>
               </ListCard>
@@ -792,7 +797,11 @@ export function AlertsPage() {
                       disabled={!governedConfirm || mutationPending || ownerOperatorId.trim().length === 0}
                       onClick={() => assignOwnerMutation.mutate()}
                     >
-                      {assignOwnerMutation.isPending ? "Assigning owner..." : "Assign owner"}
+                      <PendingLabel
+                        idle="Assign owner"
+                        pending={assignOwnerMutation.isPending}
+                        pendingLabel="Assigning owner..."
+                      />
                     </button>
 
                     <button
@@ -801,7 +810,11 @@ export function AlertsPage() {
                       disabled={!governedConfirm || mutationPending}
                       onClick={() => acknowledgeMutation.mutate()}
                     >
-                      {acknowledgeMutation.isPending ? "Acknowledging..." : "Acknowledge alert"}
+                      <PendingLabel
+                        idle="Acknowledge alert"
+                        pending={acknowledgeMutation.isPending}
+                        pendingLabel="Acknowledging..."
+                      />
                     </button>
 
                     <button
@@ -810,7 +823,11 @@ export function AlertsPage() {
                       disabled={!governedConfirm || mutationPending}
                       onClick={() => routeMutation.mutate()}
                     >
-                      {routeMutation.isPending ? "Routing..." : "Route to review case"}
+                      <PendingLabel
+                        idle="Route to review case"
+                        pending={routeMutation.isPending}
+                        pendingLabel="Routing..."
+                      />
                     </button>
 
                     <button
@@ -819,7 +836,11 @@ export function AlertsPage() {
                       disabled={!governedConfirm || mutationPending}
                       onClick={() => retryMutation.mutate()}
                     >
-                      {retryMutation.isPending ? "Retrying..." : "Retry deliveries"}
+                      <PendingLabel
+                        idle="Retry deliveries"
+                        pending={retryMutation.isPending}
+                        pendingLabel="Retrying..."
+                      />
                     </button>
 
                     <button
@@ -828,7 +849,11 @@ export function AlertsPage() {
                       disabled={!governedConfirm || mutationPending || suppressedUntil.trim().length === 0}
                       onClick={() => suppressMutation.mutate()}
                     >
-                      {suppressMutation.isPending ? "Saving suppression..." : "Suppress alert"}
+                      <PendingLabel
+                        idle="Suppress alert"
+                        pending={suppressMutation.isPending}
+                        pendingLabel="Saving suppression..."
+                      />
                     </button>
 
                     <button
@@ -837,9 +862,11 @@ export function AlertsPage() {
                       disabled={!governedConfirm || mutationPending || !selectedAlert.hasActiveSuppression}
                       onClick={() => clearSuppressionMutation.mutate()}
                     >
-                      {clearSuppressionMutation.isPending
-                        ? "Clearing suppression..."
-                        : "Clear suppression"}
+                      <PendingLabel
+                        idle="Clear suppression"
+                        pending={clearSuppressionMutation.isPending}
+                        pendingLabel="Clearing suppression..."
+                      />
                     </button>
                   </div>
                 </>

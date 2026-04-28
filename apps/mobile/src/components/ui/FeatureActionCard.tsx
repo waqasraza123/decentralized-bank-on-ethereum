@@ -42,7 +42,7 @@ export function FeatureActionCard({
     if (active) {
       ambient.value = withRepeat(
         withTiming(1, {
-          duration: motionDurations.heroMs + 1200,
+          duration: motionDurations.ambientMs,
           easing: Easing.inOut(Easing.quad)
         }),
         -1,
@@ -56,14 +56,14 @@ export function FeatureActionCard({
 
   const animatedStyle = useAnimatedStyle(() => ({
     transform: [
-      { translateY: active ? ambient.value * -5 : 0 },
-      { scale: pressScale.value * (active ? 1 + ambient.value * 0.012 : 1) }
+      { translateY: active ? ambient.value * -2 : 0 },
+      { scale: pressScale.value * (active ? 1 + ambient.value * 0.004 : 1) }
     ]
   }));
 
   const glowStyle = useAnimatedStyle(() => ({
-    opacity: active ? 0.18 + ambient.value * 0.22 : 0,
-    transform: [{ scale: 0.92 + ambient.value * 0.15 }]
+    opacity: active ? 0.14 + ambient.value * 0.08 : 0,
+    transform: [{ scale: 0.98 + ambient.value * 0.04 }]
   }));
 
   const isDark = tone === "dark";

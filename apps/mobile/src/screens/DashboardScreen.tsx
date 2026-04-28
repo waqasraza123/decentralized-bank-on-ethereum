@@ -10,6 +10,7 @@ import { AppButton } from "../components/ui/AppButton";
 import { AppText } from "../components/ui/AppText";
 import { FeatureActionCard } from "../components/ui/FeatureActionCard";
 import { InlineNotice } from "../components/ui/InlineNotice";
+import { InlineLoader } from "../components/ui/LoadingPanel";
 import { ScreenHeaderActions } from "../components/ui/ScreenHeaderActions";
 import { SectionCard } from "../components/ui/SectionCard";
 import { StatusChip } from "../components/ui/StatusChip";
@@ -150,11 +151,15 @@ export function DashboardScreen() {
               <AppText className="text-xs uppercase tracking-[1.2px] text-slate">
                 {locale === "ar" ? "الأموال المقفلة" : "Locked funds"}
               </AppText>
-              <AppText className="mt-2 text-3xl text-ink" weight="bold">
-                {retirementVaultsQuery.isLoading
-                  ? "..."
-                  : formatTokenAmount(String(lockedVaultBalance), locale)}
-              </AppText>
+              {retirementVaultsQuery.isLoading ? (
+                <View className="mt-2">
+                  <InlineLoader label={t("common.loading")} />
+                </View>
+              ) : (
+                <AppText className="mt-2 text-3xl text-ink" weight="bold">
+                  {formatTokenAmount(String(lockedVaultBalance), locale)}
+                </AppText>
+              )}
             </View>
             <View className="min-w-[46%] flex-1 rounded-[24px] bg-white px-4 py-4">
               <AppText className="text-xs uppercase tracking-[1.2px] text-slate">

@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { ShieldCheck, FileCheck2, Scale, ShieldAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { LoadingPanel } from "@/components/ui/loading-panel";
 import { useLocale } from "@/i18n/use-locale";
 import { listPublicSolvencyReports } from "@/lib/solvency-api";
 import { readApiErrorMessage } from "@/lib/api";
@@ -92,9 +93,15 @@ const TrustCenter = () => {
         </Card>
 
         {reportsQuery.isLoading ? (
-          <Card className="stb-surface rounded-[1.8rem] border-0 p-6 text-sm text-slate-600">
-            {locale === "ar" ? "جارٍ تحميل تقارير الملاءة..." : "Loading solvency reports..."}
-          </Card>
+          <LoadingPanel
+            compact
+            description={
+              locale === "ar"
+                ? "نجهز سجل التقارير العامة والتحقق من الاحتياطي."
+                : "Preparing the public report index and reserve proof status."
+            }
+            title={locale === "ar" ? "جارٍ تحميل تقارير الملاءة" : "Loading solvency reports"}
+          />
         ) : null}
 
         {reportsQuery.isError ? (

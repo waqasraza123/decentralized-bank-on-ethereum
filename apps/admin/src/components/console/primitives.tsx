@@ -1,4 +1,5 @@
 import { ReactNode } from "react";
+import { Loader2 } from "lucide-react";
 import type { TimelineEvent } from "@stealth-trails-bank/ui-foundation";
 import {
   AdminReveal,
@@ -98,16 +99,58 @@ export function EmptyState({
 
 export function LoadingState({
   title,
-  description
+  description,
+  compact = false
 }: {
   title: string;
   description: string;
+  compact?: boolean;
 }) {
   return (
-    <div className="admin-empty-state admin-state-card" aria-live="polite" role="status">
-      <h3>{title}</h3>
-      <p>{description}</p>
+    <div
+      className="admin-empty-state admin-state-card admin-loading-state"
+      aria-busy="true"
+      aria-live="polite"
+      role="status"
+    >
+      <div className="admin-loading-state-header">
+        <span className="admin-loading-spinner" aria-hidden="true">
+          <Loader2 className="h-5 w-5 animate-spin" />
+        </span>
+        <div>
+          <h3>{title}</h3>
+          <p>{description}</p>
+        </div>
+      </div>
+      {!compact ? (
+        <div className="admin-loading-lines" aria-hidden="true">
+          <span />
+          <span />
+          <span />
+        </div>
+      ) : null}
     </div>
+  );
+}
+
+export function PendingLabel({
+  pending,
+  idle,
+  pendingLabel
+}: {
+  pending: boolean;
+  idle: string;
+  pendingLabel: string;
+}) {
+  if (!pending) {
+    return idle;
+  }
+
+  return (
+    <span className="admin-pending-label">
+      <Loader2 className="h-4 w-4 animate-spin" />
+      {pendingLabel}
+    </span>
   );
 }
 

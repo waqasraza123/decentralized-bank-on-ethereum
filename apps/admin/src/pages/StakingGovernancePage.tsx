@@ -31,6 +31,7 @@ import {
   ListCard,
   LoadingState,
   MetricCard,
+  PendingLabel,
   SectionPanel,
   TimelinePanel,
   WorkspaceLayout
@@ -739,9 +740,11 @@ export function StakingGovernancePage() {
                   disabled={!requestConfirm || createRequestMutation.isPending}
                   onClick={submitGovernanceRequest}
                 >
-                  {createRequestMutation.isPending
-                    ? "Creating..."
-                    : "Create governance request"}
+                  <PendingLabel
+                    idle="Create governance request"
+                    pending={createRequestMutation.isPending}
+                    pendingLabel="Creating..."
+                  />
                 </button>
               </ActionRail>
 
@@ -802,9 +805,11 @@ export function StakingGovernancePage() {
                         disabled={!governedConfirm || mutationPending || !allowApproveReject}
                         onClick={approveRequest}
                       >
-                        {approveRequestMutation.isPending
-                          ? "Approving..."
-                          : "Approve request"}
+                        <PendingLabel
+                          idle="Approve request"
+                          pending={approveRequestMutation.isPending}
+                          pendingLabel="Approving..."
+                        />
                       </button>
                       <button
                         type="button"
@@ -812,9 +817,11 @@ export function StakingGovernancePage() {
                         disabled={!governedConfirm || mutationPending || !allowApproveReject}
                         onClick={rejectRequest}
                       >
-                        {rejectRequestMutation.isPending
-                          ? "Rejecting..."
-                          : "Reject request"}
+                        <PendingLabel
+                          idle="Reject request"
+                          pending={rejectRequestMutation.isPending}
+                          pendingLabel="Rejecting..."
+                        />
                       </button>
                       <button
                         type="button"
@@ -822,9 +829,11 @@ export function StakingGovernancePage() {
                         disabled={!governedConfirm || mutationPending || !allowExecute}
                         onClick={executeRequest}
                       >
-                        {executeRequestMutation.isPending
-                          ? "Executing..."
-                          : "Execute pool creation"}
+                        <PendingLabel
+                          idle="Execute pool creation"
+                          pending={executeRequestMutation.isPending}
+                          pendingLabel="Executing..."
+                        />
                       </button>
                     </div>
                   </>

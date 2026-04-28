@@ -25,8 +25,8 @@ export function AnimatedSection({
   const delay = delayOrder * motionDelays.staggerMs;
   const entering =
     variant === "up"
-      ? FadeInUp.duration(motionDurations.enterMs).delay(delay).springify()
-      : FadeInDown.duration(motionDurations.enterMs).delay(delay).springify();
+      ? FadeInUp.duration(motionDurations.enterMs).delay(delay)
+      : FadeInDown.duration(motionDurations.enterMs).delay(delay);
 
   return (
     <Animated.View

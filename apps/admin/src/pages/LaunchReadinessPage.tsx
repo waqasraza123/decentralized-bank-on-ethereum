@@ -43,6 +43,7 @@ import {
   ListCard,
   LoadingState,
   MetricCard,
+  PendingLabel,
   SectionPanel,
   TimelinePanel,
   WorkspaceLayout
@@ -1509,9 +1510,11 @@ export function LaunchReadinessPage() {
                   disabled={recordEvidenceDisabled}
                   onClick={() => recordEvidenceMutation.mutate()}
                 >
-                  {recordEvidenceMutation.isPending
-                    ? "Recording..."
-                    : "Record evidence"}
+                  <PendingLabel
+                    idle="Record evidence"
+                    pending={recordEvidenceMutation.isPending}
+                    pendingLabel="Recording"
+                  />
                 </button>
               </div>
             </ActionRail>
@@ -2156,9 +2159,11 @@ export function LaunchReadinessPage() {
                     disabled={requestApprovalDisabled}
                     onClick={() => requestApprovalMutation.mutate()}
                   >
-                    {requestApprovalMutation.isPending
-                      ? "Requesting..."
-                      : "Request approval"}
+                    <PendingLabel
+                      idle="Request approval"
+                      pending={requestApprovalMutation.isPending}
+                      pendingLabel="Requesting"
+                    />
                   </button>
                 </div>
               </ActionRail>
@@ -2266,9 +2271,11 @@ export function LaunchReadinessPage() {
                               disabled={decisionPending || approvalLineageBlocksDecision}
                               onClick={() => rebindApprovalPackMutation.mutate()}
                             >
-                              {rebindApprovalPackMutation.isPending
-                                ? "Rebinding..."
-                                : "Rebind to latest pack"}
+                              <PendingLabel
+                                idle="Rebind to latest pack"
+                                pending={rebindApprovalPackMutation.isPending}
+                                pendingLabel="Rebinding"
+                              />
                             </button>
                           </div>
                         ) : null}
@@ -2496,7 +2503,11 @@ export function LaunchReadinessPage() {
                           }
                           onClick={() => approveMutation.mutate()}
                         >
-                          {approveMutation.isPending ? "Approving..." : "Approve release"}
+                          <PendingLabel
+                            idle="Approve release"
+                            pending={approveMutation.isPending}
+                            pendingLabel="Approving"
+                          />
                         </button>
                         <button
                           type="button"
@@ -2508,7 +2519,11 @@ export function LaunchReadinessPage() {
                           }
                           onClick={() => rejectMutation.mutate()}
                         >
-                          {rejectMutation.isPending ? "Rejecting..." : "Reject release"}
+                          <PendingLabel
+                            idle="Reject release"
+                            pending={rejectMutation.isPending}
+                            pendingLabel="Rejecting"
+                          />
                         </button>
                       </div>
                     ) : null}
@@ -2885,9 +2900,11 @@ export function LaunchReadinessPage() {
                   disabled={launchClosurePending}
                   onClick={() => runLaunchClosureAction("validate")}
                 >
-                  {validateLaunchClosureMutation.isPending
-                    ? "Validating..."
-                    : "Validate manifest"}
+                  <PendingLabel
+                    idle="Validate manifest"
+                    pending={validateLaunchClosureMutation.isPending}
+                    pendingLabel="Validating"
+                  />
                 </button>
                 <button
                   type="button"
@@ -2895,9 +2912,11 @@ export function LaunchReadinessPage() {
                   disabled={launchClosurePending}
                   onClick={() => runLaunchClosureAction("scaffold")}
                 >
-                  {scaffoldLaunchClosureMutation.isPending
-                    ? "Generating..."
-                    : "Generate pack"}
+                  <PendingLabel
+                    idle="Generate pack"
+                    pending={scaffoldLaunchClosureMutation.isPending}
+                    pendingLabel="Generating"
+                  />
                 </button>
               </div>
             </ActionRail>

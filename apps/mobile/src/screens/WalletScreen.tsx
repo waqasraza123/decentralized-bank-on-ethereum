@@ -17,6 +17,7 @@ import { AppText } from "../components/ui/AppText";
 import { FeatureActionCard } from "../components/ui/FeatureActionCard";
 import { FieldInput } from "../components/ui/FieldInput";
 import { InlineNotice } from "../components/ui/InlineNotice";
+import { InlineLoader } from "../components/ui/LoadingPanel";
 import { ScreenHeaderActions } from "../components/ui/ScreenHeaderActions";
 import { LtrValue } from "../components/ui/LtrValue";
 import { OptionChips } from "../components/ui/OptionChips";
@@ -741,11 +742,15 @@ export function WalletScreen({ initialFocus }: WalletScreenProps = {}) {
               <AppText className="text-xs uppercase tracking-[1.2px] text-slate">
                 {locale === "ar" ? "الأموال المقفلة" : "Locked funds"}
               </AppText>
-              <AppText className="mt-2 text-3xl text-ink" weight="bold">
-                {retirementVaultsQuery.isLoading
-                  ? "..."
-                  : formatTokenAmount(String(lockedVaultBalance), locale)}
-              </AppText>
+              {retirementVaultsQuery.isLoading ? (
+                <View className="mt-2">
+                  <InlineLoader label={t("common.loading")} />
+                </View>
+              ) : (
+                <AppText className="mt-2 text-3xl text-ink" weight="bold">
+                  {formatTokenAmount(String(lockedVaultBalance), locale)}
+                </AppText>
+              )}
             </View>
             <View className="min-w-[46%] flex-1 rounded-[24px] bg-white px-4 py-4">
               <AppText className="text-xs uppercase tracking-[1.2px] text-slate">
@@ -858,15 +863,9 @@ export function WalletScreen({ initialFocus }: WalletScreenProps = {}) {
           />
           <AppButton
             disabled={createRetirementVaultMutation.isPending}
-            label={
-              createRetirementVaultMutation.isPending
-                ? locale === "ar"
-                  ? "جارٍ إنشاء القبو..."
-                  : "Creating vault..."
-                : locale === "ar"
-                  ? "إنشاء القبو"
-                  : "Create vault"
-            }
+            label={locale === "ar" ? "إنشاء القبو" : "Create vault"}
+            loading={createRetirementVaultMutation.isPending}
+            loadingLabel={locale === "ar" ? "جارٍ إنشاء القبو..." : "Creating vault..."}
             onPress={() => {
               void handleCreateRetirementVault();
             }}
@@ -908,15 +907,9 @@ export function WalletScreen({ initialFocus }: WalletScreenProps = {}) {
           />
           <AppButton
             disabled={fundRetirementVaultMutation.isPending || vaults.length === 0}
-            label={
-              fundRetirementVaultMutation.isPending
-                ? locale === "ar"
-                  ? "جارٍ تمويل القبو..."
-                  : "Funding vault..."
-                : locale === "ar"
-                  ? "تمويل القبو"
-                  : "Fund vault"
-            }
+            label={locale === "ar" ? "تمويل القبو" : "Fund vault"}
+            loading={fundRetirementVaultMutation.isPending}
+            loadingLabel={locale === "ar" ? "جارٍ تمويل القبو..." : "Funding vault..."}
             onPress={() => {
               void handleFundRetirementVault();
             }}
@@ -969,6 +962,7 @@ export function WalletScreen({ initialFocus }: WalletScreenProps = {}) {
               <AppButton
                 disabled={depositMutation.isPending}
                 label={t("wallet.createDepositRequest")}
+                loading={depositMutation.isPending}
                 onPress={() => {
                   void handleDeposit();
                 }}
@@ -1029,8 +1023,10 @@ export function WalletScreen({ initialFocus }: WalletScreenProps = {}) {
                   />
                   <View className="flex-row gap-3">
                     <AppButton
+                      disabled={startMfaChallengeMutation.isPending}
                       fullWidth={false}
                       label={t("wallet.mfaUseAuthenticator")}
+                      loading={startMfaChallengeMutation.isPending}
                       onPress={() => {
                         void startWithdrawalStepUp("totp");
                       }}
@@ -1038,8 +1034,10 @@ export function WalletScreen({ initialFocus }: WalletScreenProps = {}) {
                     />
                     {user?.mfa?.emailOtpEnrolled ? (
                       <AppButton
+                        disabled={startMfaChallengeMutation.isPending}
                         fullWidth={false}
                         label={t("wallet.mfaUseEmail")}
+                        loading={startMfaChallengeMutation.isPending}
                         onPress={() => {
                           void startWithdrawalStepUp("email_otp");
                         }}
@@ -1063,6 +1061,7 @@ export function WalletScreen({ initialFocus }: WalletScreenProps = {}) {
                       <AppButton
                         disabled={verifyMfaChallengeMutation.isPending}
                         label={t("wallet.mfaVerifyStepUp")}
+                        loading={verifyMfaChallengeMutation.isPending}
                         onPress={() => {
                           void verifyWithdrawalStepUp();
                         }}
@@ -1123,6 +1122,7 @@ export function WalletScreen({ initialFocus }: WalletScreenProps = {}) {
               <AppButton
                 disabled={previewSendRecipientMutation.isPending || !sendEmail.trim()}
                 label={locale === "ar" ? "تحقق من المستلم" : "Verify recipient"}
+                loading={previewSendRecipientMutation.isPending}
                 onPress={() => {
                   void handlePreviewSendRecipient();
                 }}
@@ -1179,6 +1179,7 @@ export function WalletScreen({ initialFocus }: WalletScreenProps = {}) {
               <AppButton
                 disabled={sendSubmitDisabled}
                 label={t("wallet.createSendRequest")}
+                loading={sendMutation.isPending}
                 onPress={() => {
                   void handleInternalTransfer();
                 }}
@@ -1260,8 +1261,10 @@ export function WalletScreen({ initialFocus }: WalletScreenProps = {}) {
                   />
                   <View className="flex-row gap-3">
                     <AppButton
+                      disabled={startMfaChallengeMutation.isPending}
                       fullWidth={false}
                       label={t("wallet.mfaUseAuthenticator")}
+                      loading={startMfaChallengeMutation.isPending}
                       onPress={() => {
                         void startWithdrawalStepUp("totp");
                       }}
@@ -1269,8 +1272,10 @@ export function WalletScreen({ initialFocus }: WalletScreenProps = {}) {
                     />
                     {user?.mfa?.emailOtpEnrolled ? (
                       <AppButton
+                        disabled={startMfaChallengeMutation.isPending}
                         fullWidth={false}
                         label={t("wallet.mfaUseEmail")}
+                        loading={startMfaChallengeMutation.isPending}
                         onPress={() => {
                           void startWithdrawalStepUp("email_otp");
                         }}
@@ -1294,6 +1299,7 @@ export function WalletScreen({ initialFocus }: WalletScreenProps = {}) {
                       <AppButton
                         disabled={verifyMfaChallengeMutation.isPending}
                         label={t("wallet.mfaVerifyStepUp")}
+                        loading={verifyMfaChallengeMutation.isPending}
                         onPress={() => {
                           void verifyWithdrawalStepUp();
                         }}
@@ -1341,6 +1347,7 @@ export function WalletScreen({ initialFocus }: WalletScreenProps = {}) {
                   !stepUpFresh
                 }
                 label={t("wallet.createWithdrawalRequest")}
+                loading={withdrawalMutation.isPending}
                 onPress={() => {
                   void handleWithdrawal();
                 }}

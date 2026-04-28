@@ -8,6 +8,7 @@ import { AppButton } from "../components/ui/AppButton";
 import { AppScreen } from "../components/ui/AppScreen";
 import { AppText } from "../components/ui/AppText";
 import { LanguageToggle } from "../components/ui/LanguageToggle";
+import { LoadingPanel } from "../components/ui/LoadingPanel";
 import {
   useArchiveNotificationsMutation,
   useMarkAllNotificationsReadMutation,
@@ -124,12 +125,16 @@ export function NotificationsScreen() {
             />
             <AppButton
               label="Mark all read"
+              loading={markAllReadMutation.isPending}
               onPress={() => {
                 void markAllReadMutation.mutateAsync();
               }}
               variant="secondary"
               fullWidth={false}
-              disabled={(unreadSummaryQuery.data?.unreadCount ?? 0) === 0}
+              disabled={
+                markAllReadMutation.isPending ||
+                (unreadSummaryQuery.data?.unreadCount ?? 0) === 0
+              }
             />
           </View>
           <View className="flex-row flex-wrap gap-2">
@@ -160,9 +165,7 @@ export function NotificationsScreen() {
       <AnimatedSection delayOrder={2} variant="up">
         <View className="gap-4">
           {notificationsQuery.isLoading ? (
-            <View className="rounded-[28px] border border-border bg-white/92 p-5">
-              <AppText className="text-sm text-slate">Loading notifications...</AppText>
-            </View>
+            <LoadingPanel compact title="Loading notifications..." />
           ) : null}
           {notificationsQuery.isError ? (
             <View className="rounded-[28px] border border-danger/30 bg-danger/10 p-5">
@@ -237,6 +240,7 @@ export function NotificationsScreen() {
                       {!item.readAt ? (
                         <AppButton
                           label="Mark read"
+                          loading={markReadMutation.isPending}
                           onPress={() => {
                             void markReadMutation.mutateAsync([item.id]);
                           }}
@@ -246,6 +250,7 @@ export function NotificationsScreen() {
                       ) : null}
                       <AppButton
                         label="Archive"
+                        loading={archiveMutation.isPending}
                         onPress={() => {
                           void archiveMutation.mutateAsync([item.id]);
                         }}

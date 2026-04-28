@@ -163,7 +163,7 @@ export const Layout = ({ children }: LayoutProps) => {
                         "rounded-[1rem] px-4 py-3 text-sm font-semibold transition-[background-color,color,transform,box-shadow] duration-200",
                         isActive
                           ? "bg-slate-950 text-white shadow-[0_14px_34px_rgba(10,18,28,0.18)]"
-                          : "text-slate-600 hover:-translate-y-0.5 hover:bg-white/75 hover:text-slate-950"
+                          : "text-slate-600 hover:bg-white/75 hover:text-slate-950"
                       )}
                     >
                       {item.label}

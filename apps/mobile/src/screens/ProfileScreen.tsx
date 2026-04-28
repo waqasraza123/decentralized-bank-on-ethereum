@@ -800,6 +800,7 @@ export function ProfileScreen() {
                 <AppButton
                   disabled={startTotpEnrollmentMutation.isPending}
                   label={t("profile.mfaStartAuthenticator")}
+                  loading={startTotpEnrollmentMutation.isPending}
                   onPress={() => {
                     void handleStartTotpEnrollment();
                   }}
@@ -827,6 +828,7 @@ export function ProfileScreen() {
                     <AppButton
                       disabled={verifyTotpEnrollmentMutation.isPending}
                       label={t("profile.mfaVerifyAuthenticator")}
+                      loading={verifyTotpEnrollmentMutation.isPending}
                       onPress={() => {
                         void handleVerifyTotpEnrollment();
                       }}
@@ -840,6 +842,7 @@ export function ProfileScreen() {
                 <AppButton
                   disabled={startEmailEnrollmentMutation.isPending}
                   label={t("profile.mfaStartEmail")}
+                  loading={startEmailEnrollmentMutation.isPending}
                   onPress={() => {
                     void handleStartEmailEnrollment();
                   }}
@@ -864,6 +867,7 @@ export function ProfileScreen() {
                     <AppButton
                       disabled={verifyEmailEnrollmentMutation.isPending}
                       label={t("profile.mfaVerifyEmail")}
+                      loading={verifyEmailEnrollmentMutation.isPending}
                       onPress={() => {
                         void handleVerifyEmailEnrollment();
                       }}
@@ -880,6 +884,7 @@ export function ProfileScreen() {
                 <AppButton
                   disabled={startEmailRecoveryMutation.isPending}
                   label={t("profile.mfaStartRecovery")}
+                  loading={startEmailRecoveryMutation.isPending}
                   onPress={() => {
                     void handleStartEmailRecovery();
                   }}
@@ -901,6 +906,7 @@ export function ProfileScreen() {
                     <AppButton
                       disabled={verifyEmailRecoveryMutation.isPending}
                       label={t("profile.mfaVerifyRecovery")}
+                      loading={verifyEmailRecoveryMutation.isPending}
                       onPress={() => {
                         void handleVerifyEmailRecovery();
                       }}
@@ -916,8 +922,10 @@ export function ProfileScreen() {
                 </AppText>
                 <View className="flex-row gap-3">
                   <AppButton
+                    disabled={startMfaChallengeMutation.isPending}
                     fullWidth={false}
                     label={t("profile.mfaUseAuthenticator")}
+                    loading={startMfaChallengeMutation.isPending}
                     onPress={() => {
                       void startPasswordStepUp("totp");
                     }}
@@ -925,8 +933,10 @@ export function ProfileScreen() {
                   />
                   {mfa?.emailOtpEnrolled ? (
                     <AppButton
+                      disabled={startMfaChallengeMutation.isPending}
                       fullWidth={false}
                       label={t("profile.mfaUseEmail")}
+                      loading={startMfaChallengeMutation.isPending}
                       onPress={() => {
                         void startPasswordStepUp("email_otp");
                       }}
@@ -950,6 +960,7 @@ export function ProfileScreen() {
                     <AppButton
                       disabled={verifyMfaChallengeMutation.isPending}
                       label={t("profile.mfaVerifyStepUp")}
+                      loading={verifyMfaChallengeMutation.isPending}
                       onPress={() => {
                         void handleVerifyPasswordStepUp();
                       }}
@@ -1008,6 +1019,7 @@ export function ProfileScreen() {
                 <AppButton
                   disabled={rotatePasswordMutation.isPending || !stepUpFresh}
                   label={t("profile.updatePassword")}
+                  loading={rotatePasswordMutation.isPending}
                   onPress={() => {
                     void handlePasswordUpdate();
                   }}
@@ -1094,6 +1106,7 @@ export function ProfileScreen() {
                 <AppButton
                   disabled={updatePreferencesMutation.isPending}
                   label={t("profile.savePreferences")}
+                  loading={updatePreferencesMutation.isPending}
                   onPress={() => {
                     void handlePreferencesSave();
                   }}
@@ -1174,6 +1187,7 @@ export function ProfileScreen() {
                   <AppButton
                     disabled={updateAgeProfileMutation.isPending}
                     label="Save date of birth"
+                    loading={updateAgeProfileMutation.isPending}
                     onPress={() => {
                       void handleAgeProfileSave();
                     }}

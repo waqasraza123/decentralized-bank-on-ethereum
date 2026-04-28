@@ -312,6 +312,7 @@ export function LoansScreen() {
             <AppButton
               disabled={!dashboard.eligibility.eligible || quotePreviewMutation.isPending}
               label={t("loans.quotePreview")}
+              loading={quotePreviewMutation.isPending}
               onPress={() => {
                 void previewQuote();
               }}
@@ -324,6 +325,7 @@ export function LoansScreen() {
                 applicationMutation.isPending
               }
               label={t("loans.submitApplication")}
+              loading={applicationMutation.isPending}
               onPress={() => {
                 void submitApplication();
               }}

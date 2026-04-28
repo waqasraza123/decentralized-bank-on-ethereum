@@ -294,6 +294,7 @@ export function YieldScreen({ initialFocus }: YieldScreenProps = {}) {
                   <AppButton
                     disabled={!executionEnabled || actionBusy}
                     label={t("yield.deposit")}
+                    loading={depositMutation.isPending}
                     onPress={() => {
                       if (!isPositiveDecimalString(depositAmount)) {
                         feedback.warning(t("wallet.amountInvalid"));
@@ -324,6 +325,7 @@ export function YieldScreen({ initialFocus }: YieldScreenProps = {}) {
                   <AppButton
                     disabled={!executionEnabled || actionBusy}
                     label={t("yield.withdraw")}
+                    loading={withdrawMutation.isPending}
                     onPress={() => {
                       if (!isPositiveDecimalString(withdrawAmount)) {
                         feedback.warning(t("wallet.amountInvalid"));
@@ -347,6 +349,7 @@ export function YieldScreen({ initialFocus }: YieldScreenProps = {}) {
                 <AppButton
                   disabled={!executionEnabled || actionBusy}
                   label={t("yield.claimReward")}
+                  loading={claimMutation.isPending}
                   onPress={() => {
                     void runAction(() =>
                       claimMutation.mutateAsync({ poolId: selectedPool.id })
@@ -405,6 +408,7 @@ export function YieldScreen({ initialFocus }: YieldScreenProps = {}) {
           <AppButton
             disabled={!executionEnabled || actionBusy || !selectedPool}
             label={t("yield.emergencyWithdraw")}
+            loading={emergencyMutation.isPending}
             onPress={() => {
               if (!selectedPool) {
                 return;

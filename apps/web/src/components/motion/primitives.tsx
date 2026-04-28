@@ -21,14 +21,12 @@ export function ScreenTransition({
   className?: string;
 }) {
   const y = useMotionDistance(motionDistance.medium);
-  const reduceMotion = useReducedMotion();
 
   return (
     <motion.div
-      animate={{ filter: "blur(0px)", opacity: 1, y: 0 }}
+      animate={{ opacity: 1, y: 0 }}
       className={className}
       initial={{
-        filter: reduceMotion ? "blur(0px)" : "blur(10px)",
         opacity: 0,
         y
       }}
