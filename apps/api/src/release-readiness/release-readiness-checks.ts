@@ -2,6 +2,10 @@ import {
   ReleaseReadinessEnvironment,
   ReleaseReadinessEvidenceType
 } from "@prisma/client";
+import {
+  notificationCutoverVerificationEvidenceType,
+  solvencyAnchorRegistryDeploymentEvidenceType
+} from "./dto/create-release-readiness-evidence.dto";
 
 export type RequiredReleaseReadinessCheck = {
   evidenceType: ReleaseReadinessEvidenceType;
@@ -132,6 +136,30 @@ export const requiredReleaseReadinessChecks: RequiredReleaseReadinessCheck[] = [
     description:
       "Record the approved operator roster, role mappings, and any scoped exceptions for launch.",
     runbookPath: "docs/security/role-review.md",
+    acceptedEnvironments: [
+      ReleaseReadinessEnvironment.staging,
+      ReleaseReadinessEnvironment.production_like,
+      ReleaseReadinessEnvironment.production
+    ]
+  },
+  {
+    evidenceType: solvencyAnchorRegistryDeploymentEvidenceType,
+    label: "Solvency Anchor Registry Deployment",
+    description:
+      "Prove the solvency report anchor registry is deployed, governed, and bound to the launch signer manifest before public report anchors can be trusted.",
+    runbookPath: "docs/runbooks/solvency-anchor-registry-deployment-proof.md",
+    acceptedEnvironments: [
+      ReleaseReadinessEnvironment.staging,
+      ReleaseReadinessEnvironment.production_like,
+      ReleaseReadinessEnvironment.production
+    ]
+  },
+  {
+    evidenceType: notificationCutoverVerificationEvidenceType,
+    label: "Notification Cutover Verification",
+    description:
+      "Prove customer and operator notification inboxes, unread summaries, preference matrices, and websocket resume sessions are live in the accepted launch environment.",
+    runbookPath: "docs/runbooks/notification-cutover-verification.md",
     acceptedEnvironments: [
       ReleaseReadinessEnvironment.staging,
       ReleaseReadinessEnvironment.production_like,

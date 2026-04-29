@@ -24,8 +24,10 @@ Still externally required:
 - `database_restore_drill` in `staging`, `production_like`, or `production`
 - `api_rollback_drill` in `staging`, `production_like`, or `production`
 - `worker_rollback_drill` in `staging`, `production_like`, or `production`
+- `notification_cutover_verification` in `staging`, `production_like`, or `production`
 - `secret_handling_review`
 - `role_review`
+- `solvency_anchor_registry_deployment`
 - final governed launch approval
 
 Important truth:
@@ -51,14 +53,18 @@ Required input classes:
 - web, admin, API, and restore-validation API base URLs
 - live smoke URLs and credentials when rerunning `end_to_end_finance_flows` in `staging`, `production_like`, or `production`
 - worker identifier
+- current and rollback API/worker deployment artifact manifests
 - requester and approver identities
 - requester and approver roles
 - operator API key environment variable name
 - current release ids and rollback release ids
 - backup or snapshot reference
+- chain id, network name, and solvency anchor registry deployment transaction
+- registry owner, authorized anchorer, ABI checksum, manifest path, and manifest commit SHA
 - alert delivery target name and expected degraded health status
 - critical alert identifier or dedupe key
 - minimum expected re-escalation count
+- launch smoke customer token environment variable for notification cutover verification
 - secret review references
 - role review references
 - approved role roster reference
@@ -68,7 +74,9 @@ Execution must not start if:
 - requester and approver are the same person
 - the environment is `development` or `ci`
 - rollback identifiers are missing
+- API or worker deployment artifact manifests are missing, unchecksummed, or not bound to the rollback identifiers
 - backup reference is missing
+- solvency anchor registry deployment proof fields are missing
 - no critical alert identifier or dedupe key is available for re-escalation proof
 
 ## Operator program
@@ -79,6 +87,7 @@ Execution must not start if:
 - approver: independently approves or rejects the governed launch request
 - secret reviewer: owns the secret-handling review evidence
 - access reviewer: owns the operator roster and role review evidence
+- contract reviewer: owns the solvency anchor registry deployment proof
 
 The requester and approver must be different identities.
 
@@ -93,13 +102,17 @@ Run the remaining accepted proofs in this order:
 5. `worker_rollback_drill`
 6. `secret_handling_review`
 7. `role_review`
-8. final governed launch approval
+8. `solvency_anchor_registry_deployment`
+9. `notification_cutover_verification`
+10. final governed launch approval
 
 Why this order:
 
 - alerting proof validates operator visibility before rollback work starts
 - restore and rollback drills validate recovery posture before approval is requested
 - manual reviews stay late so they reference the final launch candidate and operator roster
+- solvency anchor deployment proof stays after role review so the signer inventory and on-chain registry owner are reviewed together
+- notification cutover proof stays last among evidence probes so it validates the final API and realtime surfaces immediately before approval
 - approval stays last so it snapshots the current evidence set instead of an earlier incomplete state
 
 ## Exact staging-like execution flow
@@ -110,10 +123,38 @@ Why this order:
 pnpm release:launch-closure -- validate --manifest ./launch-manifest.json
 ```
 
+When solvency anchor registry deployment proof was generated from the governed contract manifest, merge that fragment into the launch manifest before validation:
+
+```bash
+pnpm release:launch-closure -- merge-solvency-fragment \
+  --manifest ./launch-manifest.json \
+  --solvency-fragment ./artifacts/release-launch/solvency-anchor-launch-fragment.json \
+  --output ./launch-manifest.merged.json
+
+pnpm release:launch-closure -- validate \
+  --manifest ./launch-manifest.json \
+  --solvency-fragment ./artifacts/release-launch/solvency-anchor-launch-fragment.json
+```
+
+The merge replaces the solvency registry deployment block, updates the `chain` scope, replaces or appends the `solvency_report_anchor_registry_v1` contract entry, and replaces or appends the governed `solvency_anchor_execution` signer while preserving the rest of the manifest. For `production_like` and `production`, validation still requires the fragment to carry RPC-verified `onchainVerification` metadata.
+
+In the admin Launch Readiness workspace, paste the same fragment into `Solvency launch fragment JSON` next to the manifest editor. `Validate manifest` and `Generate pack` send the base manifest plus the fragment to the API, and the API validates/scaffolds the merged manifest.
+
 ### 2. Generate the launch-closure pack
 
 ```bash
-pnpm release:launch-closure -- scaffold --manifest ./launch-manifest.json --output-dir ./artifacts/release-launch/current --force
+pnpm release:launch-closure -- scaffold \
+  --manifest ./launch-manifest.json \
+  --solvency-fragment ./artifacts/release-launch/solvency-anchor-launch-fragment.json \
+  --output-dir ./artifacts/release-launch/current \
+  --force
+```
+
+Before distributing or attaching the pack, verify that the generated files still match the artifact manifest:
+
+```bash
+pnpm release:launch-closure -- verify-artifact-manifest \
+  --pack-dir ./artifacts/release-launch/current
 ```
 
 The generated pack contains:
@@ -121,7 +162,25 @@ The generated pack contains:
 - execution plan
 - local-versus-accepted truth summary
 - approval request body template
+- `payloads/release-artifacts.json` with current and rollback API/worker artifact bindings
 - one evidence template per remaining Phase 12 item
+- `artifact-manifest.json` with byte lengths and SHA-256 checksums for each generated pack file, excluding `artifact-manifest.json` itself to avoid a recursive checksum, plus the merged `manifest.json` checksum
+
+Preserve the stored pack checksum, merged manifest checksum, `artifact-manifest.json`, and per-file checksums with the launch evidence. The admin Launch Readiness workspace displays the pack checksum, manifest checksum, and generated file count after pack generation.
+
+`verify-artifact-manifest` exits non-zero when a listed file is missing, an unexpected file is present, a byte length or SHA-256 checksum differs, the file count is stale, or the top-level merged manifest checksum no longer matches the listed `manifest.json` entry.
+
+After generating a stored pack through the admin workspace or API, check the persisted payload before requesting approval. The admin Launch Readiness workspace exposes this as `Verify stored pack` beside the bound pack summary, or operators can call the API directly:
+
+```bash
+curl -sS \
+  'https://staging-api.example.com/release-readiness/internal/launch-closure/packs/<pack-id>/integrity' \
+  -H "authorization: Bearer $OPERATOR_ACCESS_TOKEN"
+```
+
+The integrity response must report `valid: true`, `artifactChecksumMatches: true`, and an empty `issues` array. A failed response means the stored pack payload, its `artifactManifest`, or the generated file snapshot no longer agree and the pack must not be used for governed approval.
+
+The governed approval endpoints enforce the same check. A launch-closure pack with any stored integrity issue cannot be bound to a new approval request, cannot be used as a rebind target, and cannot pass final dual-control approval.
 
 ### 3. Run the staging-like probes
 
@@ -175,9 +234,12 @@ pnpm release:readiness:probe -- \
   --access-token "$OPERATOR_ACCESS_TOKEN" \
   --environment production_like \
   --release-id launch-2026.04.10.1 \
-  --rollback-release-id api-2026.04.09.4 \
+  --rollback-release-id launch-rollback-2026.04.09.4 \
+  --release-artifacts payloads/release-artifacts.json \
   --record-evidence
 ```
+
+Before running the API rollback probe, compare the deployed provider artifact URI and digest against `payloads/release-artifacts.json`. The rollback release identifier is the governed launch rollback identifier; the service-specific API rollback artifact id remains inside the evidence payload. The API write gate requires the generated evidence payload for `api_rollback_drill` to bind both the current and rollback API artifact records to the recorded drill result.
 
 Worker rollback:
 
@@ -190,9 +252,12 @@ pnpm release:readiness:probe -- \
   --expected-min-healthy-workers 1 \
   --environment production_like \
   --release-id launch-2026.04.10.1 \
-  --rollback-release-id worker-2026.04.09.4 \
+  --rollback-release-id launch-rollback-2026.04.09.4 \
+  --release-artifacts payloads/release-artifacts.json \
   --record-evidence
 ```
+
+Before running the worker rollback probe, compare the deployed provider artifact URI and digest against `payloads/release-artifacts.json`. The rollback release identifier is the governed launch rollback identifier; the service-specific worker rollback artifact id remains inside the evidence payload. The API write gate requires the generated evidence payload for `worker_rollback_drill` to bind both the current and rollback worker artifact records to the recorded drill result.
 
 ### 4. Record the manual review evidence
 
@@ -224,7 +289,67 @@ pnpm release:readiness:verify -- \
   --access-token "$OPERATOR_ACCESS_TOKEN"
 ```
 
-### 5. Review the release-readiness summary
+### 5. Record the solvency anchor registry deployment proof
+
+Preflight the active API-side manifest state before writing evidence:
+
+```bash
+curl -sS \
+  -H "Authorization: Bearer $OPERATOR_ACCESS_TOKEN" \
+  "https://staging-api.example.com/release-readiness/internal/solvency-anchor-registry-deployment-proof?environment=production_like&chainId=84532&networkName=base-sepolia&manifestPath=packages/contracts/deployments/base-sepolia.manifest.json&manifestCommitSha=<git-sha>&releaseIdentifier=launch-2026.04.10.1"
+```
+
+Proceed only when `ready` is `true`, `blockers` is empty, and `evidenceRequestDraft.recordable` is `true`.
+
+Use the generated `payloads/solvency_anchor_registry_deployment.json` from the launch-closure pack. For `production_like` and `production`, the launch-closure manifest must include `solvencyAnchorRegistryDeployment.onchainVerification`; pack validation checks that it matches the registry contract entry, deployment transaction, governance owner, authorized anchorer, chain id, deployed bytecode observation, RPC host, and deployment block before writing the payload. When the governed custody manifest already contains the final registry deployment metadata, prefer generating the evidence payload directly from that manifest:
+
+```bash
+pnpm release:solvency-anchor-proof -- \
+  --manifest packages/contracts/deployments/base-sepolia.manifest.json \
+  --release-id launch-2026.04.10.1 \
+  --manifest-commit <git-sha> \
+  --network-name base-sepolia \
+  --verify-onchain \
+  --rpc-url "$BASE_SEPOLIA_RPC_URL" \
+  --launch-closure-fragment-output artifacts/release-launch/solvency-anchor-launch-fragment.json \
+  --record-evidence \
+  --base-url https://staging-api.example.com \
+  --access-token "$OPERATOR_ACCESS_TOKEN"
+```
+
+The manifest proof generator now preflights passed recordings against the API governed manifest state before posting. `--verify-onchain` also reads the registry owner, authorized anchorer, deployed bytecode, and deployment receipt from the accepted chain before the proof is recorded. The API requires `onchainVerification` metadata for passed `production_like` and `production` solvency anchor registry deployment evidence. `--launch-closure-fragment-output` writes a launch-manifest patch containing the checked registry deployment fields and on-chain verification object so operators can update the launch-closure manifest before scaffolding the pack. If the operator wants to inspect the API gate without writing evidence, replace `--record-evidence` with `--preflight-only` and keep the same API URL and token.
+
+Alternatively, record the proof through the verifier when the payload must be supplied inline:
+
+```bash
+pnpm release:readiness:verify -- \
+  --proof solvency_anchor_registry_deployment \
+  --environment production_like \
+  --release-id launch-2026.04.10.1 \
+  --summary "Solvency anchor registry deployment verified for launch-2026.04.10.1." \
+  --evidence-links docs/runbooks/solvency-anchor-registry-deployment-proof.md,https://sepolia.etherscan.io/tx/<deployment-tx> \
+  --evidence-payload-json '{"proofKind":"manual_attestation","networkName":"sepolia","chainId":11155111,"contractProductSurface":"solvency_report_anchor_registry_v1","signerScope":"solvency_anchor_execution","contractAddress":"0x0000000000000000000000000000000000000000","deploymentTxHash":"0x0000000000000000000000000000000000000000000000000000000000000000","governanceOwner":"0x0000000000000000000000000000000000000000","authorizedAnchorer":"0x0000000000000000000000000000000000000000","abiChecksumSha256":"0000000000000000000000000000000000000000000000000000000000000000","manifestPath":"packages/contracts/deployments/staging.manifest.json","manifestCommitSha":"0000000"}' \
+  --record-evidence \
+  --base-url https://staging-api.example.com \
+  --access-token "$OPERATOR_ACCESS_TOKEN"
+```
+
+### 6. Record notification cutover verification
+
+```bash
+pnpm release:readiness:probe -- \
+  --probe notification_cutover_verification \
+  --base-url https://staging-api.example.com \
+  --access-token "$OPERATOR_ACCESS_TOKEN" \
+  --customer-access-token "$CUSTOMER_ACCESS_TOKEN" \
+  --environment production_like \
+  --release-id launch-2026.04.10.1 \
+  --record-evidence
+```
+
+Use `--require-notification-feed-item` when the launch smoke explicitly emits at least one customer and one operator notification before the probe.
+
+### 7. Review the release-readiness summary
 
 Confirm that every required proof now shows a latest accepted `passed` record:
 
@@ -234,7 +359,7 @@ curl -sS \
   https://staging-api.example.com/release-readiness/internal/summary
 ```
 
-### 6. Submit the governed launch request
+### 8. Submit the governed launch request
 
 Populate the generated `approval-request.template.json` truthfully, then submit:
 
@@ -246,9 +371,15 @@ curl -sS -X POST \
   --data @approval-request.template.json
 ```
 
-### 7. Complete dual-control approval
+The request fails closed if the referenced pack fails stored integrity verification or belongs to a different release identifier or environment.
+
+### 9. Complete dual-control approval
 
 The separate approver must review the generated approval record and then approve or reject it through the governed approval endpoints defined in [`docs/runbooks/release-launch-approval.md`](/Users/mc/development/blockchain/ethereum/stealth-trails-bank/docs/runbooks/release-launch-approval.md).
+
+Final approval rechecks the approval-bound launch-closure pack. Approval is blocked if the pack is missing, if its id, release identifier, environment, version, or checksum no longer match the approval snapshot, or if its stored integrity result is no longer valid.
+
+After approval, export `GET /release-readiness/internal/approvals/<approval-id>/decision-receipt` and archive the returned `receiptChecksumSha256` with the launch evidence. The receipt binds the final decision, approval snapshot, pack integrity result, lineage state, and release-readiness audit trail under one checksum. Treat a receipt with `launchReady: false` or non-empty `blockers` as not launch-ready.
 
 ## Pass and fail criteria
 
@@ -321,6 +452,23 @@ Fail:
 - queue safety is uncertain or duplicate effects are observed
 - evidence recording is rejected
 
+### `notification_cutover_verification`
+
+Pass:
+
+- customer notification feed, unread summary, preferences, and socket-session endpoints are reachable
+- operator notification feed, unread summary, preferences, and socket-session endpoints are reachable
+- customer and operator preference matrices expose `in_app` and `email`
+- websocket resume sessions issue non-empty tokens with future expiration and coherent latest sequence values
+- the probe records accepted evidence with `passed`
+
+Fail:
+
+- either customer or operator notification API reads fail
+- preference matrix channels are missing
+- socket-session issuance is disabled, expired, or behind feed sequence state
+- evidence recording is rejected
+
 ### `secret_handling_review`
 
 Pass:
@@ -348,6 +496,24 @@ Fail:
 - roster is incomplete
 - role assignments are not approved
 - approval identity separation is unclear
+
+### `solvency_anchor_registry_deployment`
+
+Pass:
+
+- registry address and ABI checksum match the accepted deployment manifest
+- deployment transaction and manifest commit SHA are durable and reviewable
+- registry governance owner is the expected governance owner
+- registry authorized anchorer matches the governed `solvency_anchor_execution` signer
+- production-like or production payloads include on-chain verification metadata copied from the accepted RPC observation
+
+Fail:
+
+- registry address, deployment transaction, or ABI checksum is missing
+- owner or authorized anchorer cannot be read from the accepted chain
+- authorized anchorer does not match the governed signer inventory
+- production-like or production launch-closure manifest omits `solvencyAnchorRegistryDeployment.onchainVerification`
+- evidence is recorded without the required structured payload fields
 
 ### final governed launch approval
 

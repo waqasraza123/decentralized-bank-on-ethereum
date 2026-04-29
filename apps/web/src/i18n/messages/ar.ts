@@ -9,6 +9,9 @@ export const webMessagesAr: WebMessages = {
       "واجهت مساحة العميل عطلاً غير متوقع أثناء التشغيل. أعد تحميل المساحة لإعادة إنشاء جلسة نظيفة.",
     reloadAction: "إعادة تحميل المساحة"
   },
+  common: {
+    loading: "جارٍ التحميل"
+  },
   locale: {
     switcherLabel: "اللغة",
     switchToEnglish: "English",

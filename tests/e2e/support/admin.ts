@@ -345,7 +345,7 @@ function launchClosureScaffold() {
         content: '{\n  "releaseIdentifier": "2026.04.10-rc1"\n}\n'
       },
       {
-        relativePath: "evidence/08-final-governed-launch-approval.md",
+        relativePath: "evidence/10-final-governed-launch-approval.md",
         content: "# Final Governed Launch Approval\n"
       }
     ]

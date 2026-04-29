@@ -43,7 +43,6 @@ This slice is intentionally narrow and production-useful:
 
 - public Merkle download bundles
 - third-party attestor integration
-- onchain report anchoring
 - multisig-enforced treasury execution redesign
 - public historical CSV/PDF export
 - external notarization pipeline
@@ -98,10 +97,91 @@ Shows:
 - public reports must remain snapshot-bound and signature-bound
 - pause/resume state remains governed by the API, not the web client
 
-## Next follow-up after this slice
+## Delivered Follow-Up
 
-After this slice, the next best extension is:
-- public downloadable proof bundles
-- signed reserve attestation packages
-- onchain anchoring of report hashes
-- governed timelock for policy resume
+The first follow-up now adds downloadable proof bundles:
+
+- public report bundles for latest or snapshot-specific signed solvency reports
+- authenticated customer proof bundles with customer-scoped liability leaves and Merkle paths
+- web download actions on `/trust/solvency` and `/proofs/me`
+- bundle verification guidance in `docs/runbooks/public-solvency-proof-bundles.md`
+
+The second follow-up now adds signed reserve attestation packages:
+
+- public reserve attestation packages for latest or snapshot-specific signed solvency reports
+- attestation signatures over persisted reserve evidence, per-asset reserve summaries, and report binding fields
+- web reserve-attestation downloads on `/trust/solvency`
+- verification guidance in `docs/runbooks/public-reserve-attestation-packages.md`
+
+The third follow-up now adds governed resume timelock enforcement:
+
+- runtime-configured `SOLVENCY_RESUME_APPROVAL_TIMELOCK_SECONDS`
+- API-enforced approval eligibility based on persisted resume-request `requestedAt`
+- admin visibility for approval eligibility and remaining delay
+- audit metadata proving the configured delay was observed
+- operator guidance in `docs/runbooks/solvency-policy-resume-timelock.md`
+
+The fourth follow-up now adds on-chain report hash anchoring records:
+
+- durable `SolvencyReportAnchor` rows bound to signed solvency reports
+- deterministic anchor payload text, Keccak-256 anchor hash, and SHA-256 payload checksum
+- internal operator lifecycle routes for requested, submitted, confirmed, and failed anchors
+- audit events for each anchor lifecycle transition
+- public report anchor projection and trust-center anchor visibility
+- operator guidance in `docs/runbooks/solvency-report-hash-anchoring.md`
+
+The fifth follow-up now adds worker handoff and confirmation monitoring for report anchors:
+
+- internal worker queues for requested and submitted report anchors
+- worker-key-protected submitted, confirmed, and failed lifecycle mutations
+- worker actor fields on anchor records for automated lifecycle evidence
+- synthetic local anchor submission and confirmation support
+- RPC-backed confirmation monitoring for externally broadcast or multisig-submitted anchor transactions
+
+The sixth follow-up now adds the repo-owned anchoring contract and managed worker broadcaster:
+
+- `SolvencyReportAnchorRegistry` contract with immutable one-time anchor records
+- Ignition deployment module and manifest entries for `solvency_report_anchor_registry_v1`
+- contracts SDK ABI helpers for registry reads and writes
+- managed worker broadcaster gated by `WORKER_SOLVENCY_ANCHOR_CONTRACT_ADDRESS` and `WORKER_SOLVENCY_ANCHOR_SIGNER_PRIVATE_KEY`
+- operator documentation for automatic worker broadcast and external multisig submission
+
+The seventh follow-up now adds launch-readiness deployment proof for the anchor registry:
+
+- required `solvency_anchor_registry_deployment` release-readiness evidence
+- API-side structured payload validation for chain id, registry address, deployment transaction, owner, authorized anchorer, ABI checksum, manifest path, and manifest commit SHA
+- launch-closure manifest validation for `solvency_report_anchor_registry_v1` and the governed `solvency_anchor_execution` signer
+- operator guidance in `docs/runbooks/solvency-anchor-registry-deployment-proof.md`
+
+The eighth follow-up now adds manifest-derived release evidence:
+
+- `pnpm release:solvency-anchor-proof` builds the exact release-readiness evidence payload from the governed custody deployment manifest
+- the same generator can now write the launch-closure manifest fragment and standalone `onchainVerification` object after RPC verification, avoiding hand-copied production-like pack metadata
+- the manifest validator checks optional registry deployment proof fields when operators add real deployment metadata
+- generated proof refuses placeholder or mismatched owner/authorized-anchorer data before launch approval evidence is recorded
+
+The ninth follow-up now adds API-side manifest integrity checks for deployment proof:
+
+- `solvency_anchor_registry_deployment` evidence must match the active `ContractDeploymentManifest`
+- the authorized anchorer must match active `GovernedSignerInventory` for `solvency_anchor_execution`
+- the governance owner must match the active `GovernanceAuthorityManifest` governance safe
+
+The tenth follow-up now hardens launch-closure pack traceability:
+
+- launch-closure packs persist an `artifactManifest` alongside the full stored pack payload
+- `manifestChecksumSha256` exposes the exact checksum for the merged `manifest.json`
+- generated packs include `artifact-manifest.json`, matching the API response file list and excluding itself to avoid recursive checksum semantics
+- `verify-artifact-manifest --pack-dir <path>` checks missing, unexpected, byte-length-mismatched, checksum-mismatched, and stale-count file drift before approval review
+- `GET /release-readiness/internal/launch-closure/packs/:packId/integrity` performs the same integrity comparison against persisted API pack payloads
+- approval request and rebind audit metadata carry the bound pack manifest checksum when the pack record is available
+- approval request, approval rebind, and final dual-control approval now enforce the stored-pack integrity result before binding or approving launch posture
+
+The eleventh follow-up adds launch approval decision receipts:
+
+- `GET /release-readiness/internal/approvals/:approvalId/decision-receipt` exports a checksum-bound archive payload for the final approval state
+- receipts include the final decision, approval snapshot, bound pack record, stored-pack integrity result, lineage integrity, and approval audit trail
+- `launchReady` is true only when the decision is approved and the receipt has no pack, lineage, or decision blockers
+
+## Remaining External Launch Work
+
+After manifest-integrity proof enforcement, launch-pack traceability, and approval decision receipts, the remaining production extension is to replace placeholder deployment manifest addresses/checksums with real staged deployment values and record accepted `solvency_anchor_registry_deployment` evidence for the launch candidate.

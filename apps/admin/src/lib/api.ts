@@ -46,6 +46,7 @@ import type {
   LedgerReconciliationScanRunList,
   LedgerReconciliationWorkspace,
   LaunchClosureManifest,
+  LaunchClosureSolvencyFragment,
   LaunchClosureScaffoldResponse,
   LaunchClosureStatus,
   LaunchClosureValidationResponse,
@@ -57,12 +58,15 @@ import type {
   OversightIncidentList,
   PlatformAlertDeliveryTargetHealthList,
   PlatformAlertList,
+  ReleaseReadinessApprovalDecisionReceipt,
+  ReleaseLaunchClosurePackIntegrity,
   ReleaseLaunchClosurePackList,
   ReleaseReadinessApprovalLineage,
   ReleaseReadinessApprovalLineageIncidentList,
   ReleaseReadinessApprovalRecoveryTarget,
   ReleaseReadinessApprovalList,
   ReleaseReadinessEvidenceList,
+  ReleaseReadinessSolvencyAnchorRegistryDeploymentProof,
   ReleaseReadinessSummary,
   PlatformAlertGovernanceMutationResult,
   PlatformAlertRouteResult,
@@ -1072,6 +1076,24 @@ export async function createReleaseReadinessEvidence(
   });
 }
 
+export async function getSolvencyAnchorRegistryDeploymentProof(
+  session: OperatorSession,
+  params: {
+    environment: string;
+    chainId: number;
+    networkName?: string;
+    manifestPath?: string;
+    manifestCommitSha?: string;
+    releaseIdentifier?: string;
+  }
+): Promise<ReleaseReadinessSolvencyAnchorRegistryDeploymentProof> {
+  return requestData(session, {
+    method: "GET",
+    url: "/release-readiness/internal/solvency-anchor-registry-deployment-proof",
+    params
+  });
+}
+
 export async function listReleaseReadinessApprovals(
   session: OperatorSession,
   params: Record<string, string | number | undefined>
@@ -1111,6 +1133,16 @@ export async function getReleaseReadinessApprovalRecoveryTarget(
   return requestData(session, {
     method: "GET",
     url: `/release-readiness/internal/approvals/${approvalId}/recovery-target`
+  });
+}
+
+export async function getReleaseReadinessApprovalDecisionReceipt(
+  session: OperatorSession,
+  approvalId: string
+): Promise<ReleaseReadinessApprovalDecisionReceipt> {
+  return requestData(session, {
+    method: "GET",
+    url: `/release-readiness/internal/approvals/${approvalId}/decision-receipt`
   });
 }
 
@@ -1183,26 +1215,30 @@ export async function getLaunchClosureStatus(
 
 export async function validateLaunchClosureManifest(
   session: OperatorSession,
-  manifest: LaunchClosureManifest
+  manifest: LaunchClosureManifest,
+  solvencyFragment?: LaunchClosureSolvencyFragment
 ): Promise<LaunchClosureValidationResponse> {
   return requestData(session, {
     method: "POST",
     url: "/release-readiness/internal/launch-closure/validate",
     data: {
-      manifest
+      manifest,
+      ...(solvencyFragment ? { solvencyFragment } : {})
     }
   });
 }
 
 export async function scaffoldLaunchClosurePack(
   session: OperatorSession,
-  manifest: LaunchClosureManifest
+  manifest: LaunchClosureManifest,
+  solvencyFragment?: LaunchClosureSolvencyFragment
 ): Promise<LaunchClosureScaffoldResponse> {
   return requestData(session, {
     method: "POST",
     url: "/release-readiness/internal/launch-closure/scaffold",
     data: {
-      manifest
+      manifest,
+      ...(solvencyFragment ? { solvencyFragment } : {})
     }
   });
 }
@@ -1215,6 +1251,16 @@ export async function listLaunchClosurePacks(
     method: "GET",
     url: "/release-readiness/internal/launch-closure/packs",
     params
+  });
+}
+
+export async function verifyLaunchClosurePackIntegrity(
+  session: OperatorSession,
+  packId: string
+): Promise<ReleaseLaunchClosurePackIntegrity> {
+  return requestData(session, {
+    method: "GET",
+    url: `/release-readiness/internal/launch-closure/packs/${packId}/integrity`
   });
 }
 

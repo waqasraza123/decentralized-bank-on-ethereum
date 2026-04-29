@@ -10,7 +10,7 @@ Use these commands to produce durable proof for:
 - `backend_integration_suite`
 - `end_to_end_finance_flows`
 
-These proofs complement, but do not replace, the staging or production-like drill evidence required for alerting, restore, rollback, secret handling, and role review.
+These proofs complement, but do not replace, the staging or production-like drill evidence required for alerting, restore, rollback, secret handling, role review, and solvency anchor registry deployment.
 
 For `end_to_end_finance_flows`, the verifier runs in two modes:
 
@@ -130,6 +130,37 @@ pnpm release:readiness:verify -- \
   --summary "Launch operator roster and role mappings reviewed." \
   --note "Approved roster stored in access-governance ticket GOV-12." \
   --evidence-links docs/security/role-review.md,ticket/GOV-12 \
+  --record-evidence \
+  --base-url http://localhost:9101 \
+  --access-token "$OPERATOR_ACCESS_TOKEN"
+```
+
+Solvency anchor registry deployment:
+
+Prefer generating the payload from the governed custody manifest first:
+
+```bash
+pnpm release:solvency-anchor-proof -- \
+  --manifest packages/contracts/deployments/base-sepolia.manifest.json \
+  --release-id launch-2026.04.10.1 \
+  --manifest-commit <git-sha> \
+  --network-name base-sepolia \
+  --verify-onchain \
+  --rpc-url "$BASE_SEPOLIA_RPC_URL" \
+  --launch-closure-fragment-output artifacts/release-launch/solvency-anchor-launch-fragment.json \
+  --output artifacts/release-launch/solvency-anchor-registry-evidence.json
+```
+
+To persist the generated proof immediately, add `--record-evidence --base-url <operator-api-url> --access-token "$OPERATOR_ACCESS_TOKEN"`. For production-like and production launch candidates, keep `--verify-onchain` and merge the generated launch-closure fragment into the manifest before scaffolding the final pack. You can also use the verifier directly when the payload must be supplied inline:
+
+```bash
+pnpm release:readiness:verify -- \
+  --proof solvency_anchor_registry_deployment \
+  --environment production_like \
+  --release-id launch-2026.04.10.1 \
+  --summary "Solvency anchor registry deployment verified for launch." \
+  --evidence-links docs/runbooks/solvency-anchor-registry-deployment-proof.md,https://sepolia.etherscan.io/tx/<deployment-tx> \
+  --evidence-payload-json '{"proofKind":"manual_attestation","networkName":"sepolia","chainId":11155111,"contractProductSurface":"solvency_report_anchor_registry_v1","signerScope":"solvency_anchor_execution","contractAddress":"0x0000000000000000000000000000000000000000","deploymentTxHash":"0x0000000000000000000000000000000000000000000000000000000000000000","governanceOwner":"0x0000000000000000000000000000000000000000","authorizedAnchorer":"0x0000000000000000000000000000000000000000","abiChecksumSha256":"0000000000000000000000000000000000000000000000000000000000000000","manifestPath":"packages/contracts/deployments/staging.manifest.json","manifestCommitSha":"0000000"}' \
   --record-evidence \
   --base-url http://localhost:9101 \
   --access-token "$OPERATOR_ACCESS_TOKEN"

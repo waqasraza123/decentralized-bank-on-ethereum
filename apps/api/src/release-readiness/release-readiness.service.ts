@@ -23,7 +23,11 @@ import { NotificationsService } from "../notifications/notifications.service";
 import { PrismaService } from "../prisma/prisma.service";
 import type { PrismaJsonValue } from "../prisma/prisma-json";
 import { CreateReleaseReadinessApprovalDto } from "./dto/create-release-readiness-approval.dto";
-import { CreateReleaseReadinessEvidenceDto } from "./dto/create-release-readiness-evidence.dto";
+import {
+  CreateReleaseReadinessEvidenceDto,
+  solvencyAnchorRegistryDeploymentEvidenceType
+} from "./dto/create-release-readiness-evidence.dto";
+import { GetSolvencyAnchorRegistryDeploymentProofDto } from "./dto/get-solvency-anchor-registry-deployment-proof.dto";
 import { ListReleaseLaunchClosurePacksDto } from "./dto/list-release-launch-closure-packs.dto";
 import { ListReleaseReadinessApprovalLineageIncidentsDto } from "./dto/list-release-readiness-approval-lineage-incidents.dto";
 import { ListReleaseReadinessApprovalsDto } from "./dto/list-release-readiness-approvals.dto";
@@ -34,18 +38,24 @@ import {
 } from "./release-readiness-checks";
 import {
   describeReleaseReadinessEvidenceMetadataRequirements,
-  validateReleaseReadinessEvidenceMetadata
+  describeReleaseReadinessEvidencePayloadRequirements,
+  validateReleaseReadinessEvidenceMetadata,
+  validateReleaseReadinessEvidencePayload
 } from "./release-readiness-evidence-requirements";
 import {
   ApproveReleaseReadinessApprovalDto,
   RejectReleaseReadinessApprovalDto
 } from "./dto/release-readiness-approval.dto";
 import {
+  buildLaunchClosureArtifactManifest,
   previewLaunchClosurePack,
   renderLaunchClosureStatusSummary,
   renderLaunchClosureValidationSummary,
   validateLaunchClosureManifest,
-  type LaunchClosureManifest
+  type LaunchClosureArtifactManifest,
+  type LaunchClosureArtifactManifestFile,
+  type LaunchClosureManifest,
+  type LaunchClosurePackFile
 } from "./launch-closure-pack";
 
 type ReleaseReadinessEvidenceRecord =
@@ -54,6 +64,119 @@ type ReleaseReadinessApprovalRecord =
   Prisma.ReleaseReadinessApprovalGetPayload<{}>;
 type ReleaseLaunchClosurePackRecord =
   Prisma.ReleaseLaunchClosurePackGetPayload<{}>;
+type AuditEventRecord = Prisma.AuditEventGetPayload<{}>;
+type ContractDeploymentManifestRecord =
+  Prisma.ContractDeploymentManifestGetPayload<{}>;
+
+type SolvencyAnchorRegistryEvidencePayload = {
+  chainId: number;
+  contractAddress: string;
+  deploymentTxHash: string;
+  governanceOwner: string;
+  authorizedAnchorer: string;
+  abiChecksumSha256: string;
+  onchainVerification?: {
+    chainId?: number;
+    contractAddress?: string;
+    deploymentTxHash?: string;
+    owner?: string;
+    authorizedAnchorer?: string;
+    bytecodePresent?: boolean;
+    deploymentBlockNumber?: number | null;
+    rpcUrlHost?: string;
+  };
+};
+
+type RollbackDeploymentArtifactRecord = {
+  releaseId: string;
+  service: "api" | "worker";
+  environment: ReleaseReadinessEnvironment;
+  artifactKind: string;
+  artifactUri: string;
+  artifactDigestSha256: string;
+  sourceCommitSha: string;
+  runtime: string;
+};
+
+type RollbackDeploymentArtifactEvidencePayload = {
+  proofKind: "deployment_artifact_manifest";
+  service: "api" | "worker";
+  approvalRollbackReleaseIdentifier: string;
+  currentArtifact: RollbackDeploymentArtifactRecord;
+  rollbackArtifact: RollbackDeploymentArtifactRecord;
+  artifactManifestPath: "payloads/release-artifacts.json";
+};
+
+type SolvencyAnchorRegistryDeploymentProofStatus = {
+  generatedAt: string;
+  evidenceType: "solvency_anchor_registry_deployment";
+  environment: ReleaseReadinessEnvironment;
+  chainId: number;
+  ready: boolean;
+  blockers: string[];
+  requiredOperatorInputs: string[];
+  recordEvidenceEndpoint: "/release-readiness/internal/evidence";
+  registryContract: {
+    id: string;
+    productSurface: "solvency_report_anchor_registry_v1";
+    contractVersion: string;
+    contractAddress: string;
+    abiChecksumSha256: string;
+    deploymentTxHash: string | null;
+    governanceOwner: string | null;
+    authorizedAnchorer: string | null;
+    blockExplorerUrl: string | null;
+    anchoredSmokeTxHash: string | null;
+    manifestStatus: string;
+    legacyPath: boolean;
+    updatedAt: string;
+  } | null;
+  governedSigner: {
+    id: string;
+    signerScope: "solvency_anchor_execution";
+    backendKind: string;
+    keyReferenceSha256: string;
+    signerAddress: string;
+    allowedMethods: string[];
+    manifestVersion: string | null;
+    environmentBinding: string | null;
+    active: boolean;
+    updatedAt: string;
+  } | null;
+  governanceAuthority: {
+    id: string;
+    authorityType: "governance_safe";
+    address: string;
+    ownerLabel: string | null;
+    manifestStatus: string;
+    updatedAt: string;
+  } | null;
+  evidenceRequestDraft: {
+    recordable: boolean;
+    body: {
+      evidenceType: "solvency_anchor_registry_deployment";
+      environment: ReleaseReadinessEnvironment;
+      status: "passed";
+      releaseIdentifier: string;
+      summary: string;
+      runbookPath: string;
+      evidencePayload: {
+        proofKind: "manual_attestation";
+        networkName: string;
+        chainId: number;
+        contractProductSurface: "solvency_report_anchor_registry_v1";
+        signerScope: "solvency_anchor_execution";
+        contractAddress: string;
+        deploymentTxHash: string;
+        governanceOwner: string;
+        authorizedAnchorer: string;
+        abiChecksumSha256: string;
+        manifestPath: string;
+        manifestCommitSha: string;
+      };
+    } | null;
+  };
+};
 
 type ReleaseReadinessEvidenceProjection = {
   id: string;
@@ -183,6 +306,7 @@ type ReleaseReadinessApprovalProjection = {
     id: string;
     version: number;
     artifactChecksumSha256: string;
+    manifestChecksumSha256: string | null;
   } | null;
   rollbackReleaseIdentifier: string | null;
   status: ReleaseReadinessApprovalStatus;
@@ -224,6 +348,7 @@ type ReleaseReadinessApprovalProjection = {
       id: string;
       version: number;
       artifactChecksumSha256: string;
+      manifestChecksumSha256: string | null;
     } | null;
   } | null;
   lineageSummary: {
@@ -293,6 +418,43 @@ type ReleaseReadinessApprovalRecoveryTargetResult = {
   integrity: ReleaseReadinessApprovalLineageIntegrity;
 };
 
+type ReleaseReadinessApprovalDecisionReceiptAuditEvent = {
+  id: string;
+  actorType: string;
+  actorId: string | null;
+  action: string;
+  targetType: string;
+  targetId: string | null;
+  metadata: Prisma.JsonValue | null;
+  createdAt: string;
+};
+
+type ReleaseReadinessApprovalDecisionReceipt = {
+  receiptVersion: "release-readiness-approval-decision/v1";
+  generatedAt: string;
+  receiptChecksumSha256: string;
+  releaseIdentifier: string;
+  environment: ReleaseReadinessEnvironment;
+  finalDecision: boolean;
+  launchReady: boolean;
+  blockers: string[];
+  decision: {
+    status: ReleaseReadinessApprovalStatus;
+    decidedAt: string | null;
+    decidedByOperatorId: string | null;
+    decidedByOperatorRole: string | null;
+    note: string | null;
+  };
+  approval: ReleaseReadinessApprovalProjection;
+  launchClosurePack: {
+    snapshotMatchesApproval: boolean;
+    record: ReleaseLaunchClosurePackProjection | null;
+    integrity: ReleaseLaunchClosurePackIntegrityResult | null;
+  };
+  lineage: ReleaseReadinessApprovalLineageIntegrity;
+  auditTrail: ReleaseReadinessApprovalDecisionReceiptAuditEvent[];
+};
+
 type ReleaseReadinessApprovalLookupClient = {
   releaseReadinessApproval: {
     findUnique(args: Prisma.ReleaseReadinessApprovalFindUniqueArgs): Promise<ReleaseReadinessApprovalRecord | null>;
@@ -310,6 +472,8 @@ type ReleaseLaunchClosurePackProjection = {
   generatedByOperatorId: string;
   generatedByOperatorRole: string | null;
   artifactChecksumSha256: string;
+  manifestChecksumSha256: string | null;
+  artifactManifest: LaunchClosureArtifactManifest | null;
   artifactPayload: Prisma.JsonValue;
   createdAt: string;
   updatedAt: string;
@@ -323,6 +487,35 @@ type ReleaseLaunchClosurePackList = {
   packs: ReleaseLaunchClosurePackProjection[];
   limit: number;
   totalCount: number;
+};
+
+type ReleaseLaunchClosurePackIntegrityIssue = {
+  code:
+    | "artifact_payload_invalid"
+    | "artifact_checksum_mismatch"
+    | "artifact_manifest_missing"
+    | "file_missing"
+    | "file_unexpected"
+    | "byte_length_mismatch"
+    | "content_checksum_mismatch"
+    | "manifest_checksum_mismatch"
+    | "file_count_mismatch";
+  relativePath: string | null;
+  expected: string | number | null;
+  actual: string | number | null;
+  message: string;
+};
+
+type ReleaseLaunchClosurePackIntegrityResult = {
+  pack: ReleaseLaunchClosurePackProjection;
+  valid: boolean;
+  artifactChecksumSha256: string;
+  recomputedArtifactChecksumSha256: string;
+  artifactChecksumMatches: boolean;
+  manifestChecksumSha256: string | null;
+  expectedFileCount: number | null;
+  checkedFileCount: number;
+  issues: ReleaseLaunchClosurePackIntegrityIssue[];
 };
 
 type StoredLaunchClosurePackResult = {
@@ -362,6 +555,13 @@ const rollbackScopedEvidenceTypes = new Set<ReleaseReadinessEvidenceType>([
   ReleaseReadinessEvidenceType.api_rollback_drill,
   ReleaseReadinessEvidenceType.worker_rollback_drill
 ]);
+const deploymentArtifactChecksumPattern = /^(sha256:)?[a-fA-F0-9]{64}$/;
+const deploymentArtifactCommitShaPattern = /^[a-fA-F0-9]{7,40}$/;
+const onchainVerifiedSolvencyAnchorEvidenceEnvironments =
+  new Set<ReleaseReadinessEnvironment>([
+    ReleaseReadinessEnvironment.production_like,
+    ReleaseReadinessEnvironment.production
+  ]);
 
 @Injectable()
 export class ReleaseReadinessService {
@@ -507,6 +707,21 @@ export class ReleaseReadinessService {
       observedAt: record.observedAt.toISOString(),
       createdAt: record.createdAt.toISOString(),
       updatedAt: record.updatedAt.toISOString()
+    };
+  }
+
+  private mapDecisionReceiptAuditEvent(
+    record: AuditEventRecord
+  ): ReleaseReadinessApprovalDecisionReceiptAuditEvent {
+    return {
+      id: record.id,
+      actorType: record.actorType,
+      actorId: record.actorId ?? null,
+      action: record.action,
+      targetType: record.targetType,
+      targetId: record.targetId ?? null,
+      metadata: record.metadata ?? null,
+      createdAt: record.createdAt.toISOString()
     };
   }
 
@@ -706,6 +921,21 @@ export class ReleaseReadinessService {
         continue;
       }
 
+      const missingPayloadFields = validateReleaseReadinessEvidencePayload({
+        evidenceType: check.evidenceType,
+        evidencePayload: latestEvidence.evidencePayload
+      });
+
+      if (missingPayloadFields.length > 0) {
+        mismatches.push({
+          evidenceType: check.evidenceType,
+          reason: `Latest ${check.evidenceType} evidence is missing valid payload fields: ${describeReleaseReadinessEvidencePayloadRequirements(
+            check.evidenceType
+          ).join(", ")}.`
+        });
+        continue;
+      }
+
       if (
         rollbackScopedEvidenceTypes.has(check.evidenceType) &&
         !rollbackReleaseIdentifier
@@ -715,6 +945,26 @@ export class ReleaseReadinessService {
           reason: `Approval is missing rollback release identifier required for ${check.evidenceType}.`
         });
         continue;
+      }
+
+      if (rollbackScopedEvidenceTypes.has(check.evidenceType)) {
+        try {
+          this.assertRollbackDrillEvidenceArtifactBinding(
+            check.evidenceType,
+            latestEvidence.environment,
+            rollbackReleaseIdentifier,
+            latestEvidence.evidencePayload ?? undefined
+          );
+        } catch (error) {
+          mismatches.push({
+            evidenceType: check.evidenceType,
+            reason:
+              error instanceof Error
+                ? error.message
+                : "Latest rollback drill evidence artifact binding is invalid."
+          });
+          continue;
+        }
       }
 
       if (
@@ -932,14 +1182,20 @@ export class ReleaseReadinessService {
         ? {
             id: latestPack.id,
             version: latestPack.version,
-            artifactChecksumSha256: latestPack.artifactChecksumSha256
+            artifactChecksumSha256: latestPack.artifactChecksumSha256,
+            manifestChecksumSha256:
+              this.readLaunchClosureArtifactManifest(latestPack.artifactPayload)
+                ?.manifestChecksumSha256 ?? null
           }
         : latestPack &&
             latestPack.version !== record.launchClosurePackVersion
           ? {
               id: latestPack.id,
               version: latestPack.version,
-              artifactChecksumSha256: latestPack.artifactChecksumSha256
+              artifactChecksumSha256: latestPack.artifactChecksumSha256,
+              manifestChecksumSha256:
+                this.readLaunchClosureArtifactManifest(latestPack.artifactPayload)
+                  ?.manifestChecksumSha256 ?? null
             }
           : latestPack &&
               latestPack.artifactChecksumSha256 !==
@@ -947,7 +1203,11 @@ export class ReleaseReadinessService {
             ? {
                 id: latestPack.id,
                 version: latestPack.version,
-                artifactChecksumSha256: latestPack.artifactChecksumSha256
+                artifactChecksumSha256: latestPack.artifactChecksumSha256,
+                manifestChecksumSha256:
+                  this.readLaunchClosureArtifactManifest(
+                    latestPack.artifactPayload
+                  )?.manifestChecksumSha256 ?? null
               }
             : null;
     const summaryDelta = {
@@ -1072,6 +1332,15 @@ export class ReleaseReadinessService {
     latestPack?: ReleaseLaunchClosurePackRecord | null,
     lineageSummary?: ReleaseReadinessApprovalProjection["lineageSummary"]
   ): ReleaseReadinessApprovalProjection {
+    const boundLaunchClosurePackManifestChecksum =
+      latestPack &&
+      latestPack.id === record.launchClosurePackId &&
+      latestPack.version === record.launchClosurePackVersion &&
+      latestPack.artifactChecksumSha256 ===
+        record.launchClosurePackChecksumSha256
+        ? this.readLaunchClosureArtifactManifest(latestPack.artifactPayload)
+            ?.manifestChecksumSha256 ?? null
+        : null;
     const checklist = this.mapApprovalChecklist(record);
     const evidenceSnapshot =
       record.status === ReleaseReadinessApprovalStatus.pending_approval &&
@@ -1101,7 +1370,8 @@ export class ReleaseReadinessService {
         ? {
             id: record.launchClosurePackId,
             version: record.launchClosurePackVersion,
-            artifactChecksumSha256: record.launchClosurePackChecksumSha256
+            artifactChecksumSha256: record.launchClosurePackChecksumSha256,
+            manifestChecksumSha256: boundLaunchClosurePackManifestChecksum
           }
         : null,
       rollbackReleaseIdentifier: record.rollbackReleaseIdentifier ?? null,
@@ -1139,6 +1409,318 @@ export class ReleaseReadinessService {
     return createHash("sha256")
       .update(JSON.stringify(value))
       .digest("hex");
+  }
+
+  private readLaunchClosureArtifactManifest(
+    artifactPayload: Prisma.JsonValue
+  ): LaunchClosureArtifactManifest | null {
+    if (
+      !artifactPayload ||
+      Array.isArray(artifactPayload) ||
+      typeof artifactPayload !== "object"
+    ) {
+      return null;
+    }
+
+    const payload = artifactPayload as Record<string, unknown>;
+    const artifactManifest = payload.artifactManifest;
+
+    if (
+      !artifactManifest ||
+      Array.isArray(artifactManifest) ||
+      typeof artifactManifest !== "object"
+    ) {
+      return null;
+    }
+
+    const manifest = artifactManifest as Record<string, unknown>;
+    const files = Array.isArray(manifest.files)
+      ? manifest.files
+          .filter(
+            (file): file is LaunchClosureArtifactManifestFile =>
+              Boolean(file) &&
+              !Array.isArray(file) &&
+              typeof file === "object" &&
+              typeof (file as Record<string, unknown>).relativePath ===
+                "string" &&
+              typeof (file as Record<string, unknown>).byteLength ===
+                "number" &&
+              typeof (file as Record<string, unknown>).contentSha256 ===
+                "string"
+          )
+          .map((file) => ({
+            relativePath: file.relativePath,
+            byteLength: file.byteLength,
+            contentSha256: file.contentSha256
+          }))
+      : [];
+
+    return {
+      manifestChecksumSha256:
+        typeof manifest.manifestChecksumSha256 === "string"
+          ? manifest.manifestChecksumSha256
+          : null,
+      fileCount:
+        typeof manifest.fileCount === "number"
+          ? manifest.fileCount
+          : files.length,
+      files
+    };
+  }
+
+  private readLaunchClosurePackFiles(
+    artifactPayload: Prisma.JsonValue
+  ): LaunchClosurePackFile[] | null {
+    if (
+      !artifactPayload ||
+      Array.isArray(artifactPayload) ||
+      typeof artifactPayload !== "object"
+    ) {
+      return null;
+    }
+
+    const payload = artifactPayload as Record<string, unknown>;
+
+    if (!Array.isArray(payload.files)) {
+      return null;
+    }
+
+    const files: LaunchClosurePackFile[] = [];
+
+    for (const file of payload.files) {
+      if (
+        !file ||
+        Array.isArray(file) ||
+        typeof file !== "object" ||
+        typeof (file as Record<string, unknown>).relativePath !== "string" ||
+        typeof (file as Record<string, unknown>).content !== "string"
+      ) {
+        return null;
+      }
+
+      files.push({
+        relativePath: (file as Record<string, unknown>).relativePath as string,
+        content: (file as Record<string, unknown>).content as string
+      });
+    }
+
+    return files;
+  }
+
+  private verifyStoredLaunchClosurePackIntegrity(
+    record: ReleaseLaunchClosurePackRecord
+  ): ReleaseLaunchClosurePackIntegrityResult {
+    const issues: ReleaseLaunchClosurePackIntegrityIssue[] = [];
+    const pack = this.mapLaunchClosurePackProjection(record);
+    const recomputedArtifactChecksumSha256 = this.buildChecksum(
+      record.artifactPayload
+    );
+    const artifactChecksumMatches =
+      recomputedArtifactChecksumSha256 === record.artifactChecksumSha256;
+
+    if (!artifactChecksumMatches) {
+      issues.push({
+        code: "artifact_checksum_mismatch",
+        relativePath: null,
+        expected: record.artifactChecksumSha256,
+        actual: recomputedArtifactChecksumSha256,
+        message:
+          "Stored launch-closure pack checksum does not match its persisted artifact payload."
+      });
+    }
+
+    const artifactManifest = this.readLaunchClosureArtifactManifest(
+      record.artifactPayload
+    );
+    const files = this.readLaunchClosurePackFiles(record.artifactPayload);
+
+    if (!artifactManifest) {
+      issues.push({
+        code: "artifact_manifest_missing",
+        relativePath: null,
+        expected: "artifactManifest",
+        actual: null,
+        message:
+          "Stored launch-closure pack payload does not include an artifact manifest."
+      });
+    }
+
+    if (!files) {
+      issues.push({
+        code: "artifact_payload_invalid",
+        relativePath: null,
+        expected: "files[] with relativePath and content",
+        actual: null,
+        message:
+          "Stored launch-closure pack payload does not include a valid generated files array."
+      });
+    }
+
+    if (!artifactManifest || !files) {
+      return {
+        pack,
+        valid: false,
+        artifactChecksumSha256: record.artifactChecksumSha256,
+        recomputedArtifactChecksumSha256,
+        artifactChecksumMatches,
+        manifestChecksumSha256: artifactManifest?.manifestChecksumSha256 ?? null,
+        expectedFileCount: artifactManifest?.fileCount ?? null,
+        checkedFileCount: files?.length ?? 0,
+        issues
+      };
+    }
+
+    const actualManifest = buildLaunchClosureArtifactManifest(files);
+    const actualFiles = new Map(
+      actualManifest.files.map((file) => [file.relativePath, file])
+    );
+    const expectedFiles = new Map(
+      artifactManifest.files.map((file) => [file.relativePath, file])
+    );
+
+    for (const expectedFile of artifactManifest.files) {
+      const actualFile = actualFiles.get(expectedFile.relativePath);
+
+      if (!actualFile) {
+        issues.push({
+          code: "file_missing",
+          relativePath: expectedFile.relativePath,
+          expected: expectedFile.relativePath,
+          actual: null,
+          message: `Stored launch-closure pack payload is missing generated file ${expectedFile.relativePath}.`
+        });
+        continue;
+      }
+
+      if (actualFile.byteLength !== expectedFile.byteLength) {
+        issues.push({
+          code: "byte_length_mismatch",
+          relativePath: expectedFile.relativePath,
+          expected: expectedFile.byteLength,
+          actual: actualFile.byteLength,
+          message: `Stored generated file byte length differs for ${expectedFile.relativePath}.`
+        });
+      }
+
+      if (actualFile.contentSha256 !== expectedFile.contentSha256) {
+        issues.push({
+          code: "content_checksum_mismatch",
+          relativePath: expectedFile.relativePath,
+          expected: expectedFile.contentSha256,
+          actual: actualFile.contentSha256,
+          message: `Stored generated file SHA-256 checksum differs for ${expectedFile.relativePath}.`
+        });
+      }
+    }
+
+    for (const actualFile of actualManifest.files) {
+      if (!expectedFiles.has(actualFile.relativePath)) {
+        issues.push({
+          code: "file_unexpected",
+          relativePath: actualFile.relativePath,
+          expected: null,
+          actual: actualFile.relativePath,
+          message: `Stored launch-closure pack payload contains an unlisted generated file ${actualFile.relativePath}.`
+        });
+      }
+    }
+
+    if (artifactManifest.fileCount !== artifactManifest.files.length) {
+      issues.push({
+        code: "file_count_mismatch",
+        relativePath: null,
+        expected: artifactManifest.fileCount,
+        actual: artifactManifest.files.length,
+        message:
+          "Stored artifact manifest fileCount does not match its listed file count."
+      });
+    }
+
+    if (
+      artifactManifest.manifestChecksumSha256 !==
+      actualManifest.manifestChecksumSha256
+    ) {
+      issues.push({
+        code: "manifest_checksum_mismatch",
+        relativePath: "manifest.json",
+        expected: artifactManifest.manifestChecksumSha256,
+        actual: actualManifest.manifestChecksumSha256,
+        message:
+          "Stored artifact manifest checksum does not match the generated manifest.json content."
+      });
+    }
+
+    return {
+      pack,
+      valid: issues.length === 0,
+      artifactChecksumSha256: record.artifactChecksumSha256,
+      recomputedArtifactChecksumSha256,
+      artifactChecksumMatches,
+      manifestChecksumSha256: artifactManifest.manifestChecksumSha256,
+      expectedFileCount: artifactManifest.fileCount,
+      checkedFileCount: actualManifest.files.length,
+      issues
+    };
+  }
+
+  private assertLaunchClosurePackIntegrityDoesNotBlock(
+    integrity: ReleaseLaunchClosurePackIntegrityResult
+  ): void {
+    if (integrity.valid) {
+      return;
+    }
+
+    const issueSummary = integrity.issues
+      .map((issue) => issue.message)
+      .join(" ");
+
+    throw new ConflictException(
+      [
+        "Launch approval is blocked until the bound launch-closure pack integrity is repaired or regenerated.",
+        issueSummary
+      ]
+        .filter(Boolean)
+        .join(" ")
+    );
+  }
+
+  private assertLaunchClosurePackMatchesApprovalSnapshot(
+    pack: ReleaseLaunchClosurePackRecord | null,
+    approval: ReleaseReadinessApprovalRecord
+  ): ReleaseLaunchClosurePackRecord {
+    if (!pack) {
+      throw new ConflictException(
+        "Launch approval is blocked because the bound launch-closure pack could not be found."
+      );
+    }
+
+    if (
+      pack.id !== approval.launchClosurePackId ||
+      pack.releaseIdentifier !== approval.releaseIdentifier ||
+      pack.environment !== approval.environment ||
+      pack.version !== approval.launchClosurePackVersion ||
+      pack.artifactChecksumSha256 !== approval.launchClosurePackChecksumSha256
+    ) {
+      throw new ConflictException(
+        "Launch approval is blocked because the bound launch-closure pack no longer matches the approval snapshot."
+      );
+    }
+
+    return pack;
+  }
+
+  private launchClosurePackMatchesApprovalSnapshot(
+    pack: ReleaseLaunchClosurePackRecord | null,
+    approval: ReleaseReadinessApprovalRecord
+  ): boolean {
+    return Boolean(
+      pack &&
+        pack.id === approval.launchClosurePackId &&
+        pack.releaseIdentifier === approval.releaseIdentifier &&
+        pack.environment === approval.environment &&
+        pack.version === approval.launchClosurePackVersion &&
+        pack.artifactChecksumSha256 === approval.launchClosurePackChecksumSha256
+    );
   }
 
   private assertExpectedApprovalVersion(
@@ -1430,6 +2012,10 @@ export class ReleaseReadinessService {
   private mapLaunchClosurePackProjection(
     record: ReleaseLaunchClosurePackRecord
   ): ReleaseLaunchClosurePackProjection {
+    const artifactManifest = this.readLaunchClosureArtifactManifest(
+      record.artifactPayload
+    );
+
     return {
       id: record.id,
       releaseIdentifier: record.releaseIdentifier,
@@ -1438,6 +2024,8 @@ export class ReleaseReadinessService {
       generatedByOperatorId: record.generatedByOperatorId,
       generatedByOperatorRole: record.generatedByOperatorRole ?? null,
       artifactChecksumSha256: record.artifactChecksumSha256,
+      manifestChecksumSha256: artifactManifest?.manifestChecksumSha256 ?? null,
+      artifactManifest,
       artifactPayload: record.artifactPayload,
       createdAt: record.createdAt.toISOString(),
       updatedAt: record.updatedAt.toISOString()
@@ -1482,6 +2070,772 @@ export class ReleaseReadinessService {
     });
   }
 
+  private normalizeHex(value: string): string {
+    return value.trim().toLowerCase();
+  }
+
+  private normalizeChecksum(value: string): string {
+    return value.trim().toLowerCase().replace(/^sha256:/, "");
+  }
+
+  private fingerprintString(value: string): string {
+    return createHash("sha256").update(value).digest("hex");
+  }
+
+  private readRollbackDeploymentArtifactRecord(
+    value: unknown
+  ): RollbackDeploymentArtifactRecord | null {
+    if (!value || Array.isArray(value) || typeof value !== "object") {
+      return null;
+    }
+
+    const artifact = value as Record<string, unknown>;
+    const releaseId = artifact.releaseId;
+    const service = artifact.service;
+    const environment = artifact.environment;
+    const artifactKind = artifact.artifactKind;
+    const artifactUri = artifact.artifactUri;
+    const artifactDigestSha256 = artifact.artifactDigestSha256;
+    const sourceCommitSha = artifact.sourceCommitSha;
+    const runtime = artifact.runtime;
+
+    if (
+      typeof releaseId !== "string" ||
+      (service !== "api" && service !== "worker") ||
+      (environment !== ReleaseReadinessEnvironment.staging &&
+        environment !== ReleaseReadinessEnvironment.production_like &&
+        environment !== ReleaseReadinessEnvironment.production) ||
+      typeof artifactKind !== "string" ||
+      typeof artifactUri !== "string" ||
+      typeof artifactDigestSha256 !== "string" ||
+      typeof sourceCommitSha !== "string" ||
+      typeof runtime !== "string"
+    ) {
+      return null;
+    }
+
+    return {
+      releaseId,
+      service,
+      environment,
+      artifactKind,
+      artifactUri,
+      artifactDigestSha256,
+      sourceCommitSha,
+      runtime
+    };
+  }
+
+  private readRollbackDeploymentArtifactEvidencePayload(
+    evidencePayload: PrismaJsonValue | undefined
+  ): RollbackDeploymentArtifactEvidencePayload | null {
+    if (
+      !evidencePayload ||
+      Array.isArray(evidencePayload) ||
+      typeof evidencePayload !== "object"
+    ) {
+      return null;
+    }
+
+    const payload = evidencePayload as Record<string, unknown>;
+    const currentArtifact = this.readRollbackDeploymentArtifactRecord(
+      payload.currentArtifact
+    );
+    const rollbackArtifact = this.readRollbackDeploymentArtifactRecord(
+      payload.rollbackArtifact
+    );
+
+    if (
+      payload.proofKind !== "deployment_artifact_manifest" ||
+      (payload.service !== "api" && payload.service !== "worker") ||
+      typeof payload.approvalRollbackReleaseIdentifier !== "string" ||
+      payload.artifactManifestPath !== "payloads/release-artifacts.json" ||
+      !currentArtifact ||
+      !rollbackArtifact
+    ) {
+      return null;
+    }
+
+    return {
+      proofKind: "deployment_artifact_manifest",
+      service: payload.service,
+      approvalRollbackReleaseIdentifier:
+        payload.approvalRollbackReleaseIdentifier,
+      currentArtifact,
+      rollbackArtifact,
+      artifactManifestPath: "payloads/release-artifacts.json"
+    };
+  }
+
+  private assertRollbackDeploymentArtifactRecord(
+    artifact: RollbackDeploymentArtifactRecord,
+    key: string,
+    expectedService: "api" | "worker",
+    expectedEnvironment: ReleaseReadinessEnvironment
+  ): string[] {
+    const mismatches: string[] = [];
+
+    if (artifact.service !== expectedService) {
+      mismatches.push(`${key}.service`);
+    }
+
+    if (artifact.environment !== expectedEnvironment) {
+      mismatches.push(`${key}.environment`);
+    }
+
+    if (artifact.releaseId.trim().length === 0) {
+      mismatches.push(`${key}.releaseId`);
+    }
+
+    if (artifact.artifactKind.trim().length === 0) {
+      mismatches.push(`${key}.artifactKind`);
+    }
+
+    if (artifact.artifactUri.trim().length === 0) {
+      mismatches.push(`${key}.artifactUri`);
+    }
+
+    if (
+      !deploymentArtifactChecksumPattern.test(
+        artifact.artifactDigestSha256.trim()
+      )
+    ) {
+      mismatches.push(`${key}.artifactDigestSha256`);
+    }
+
+    if (
+      !deploymentArtifactCommitShaPattern.test(artifact.sourceCommitSha.trim())
+    ) {
+      mismatches.push(`${key}.sourceCommitSha`);
+    }
+
+    if (artifact.runtime.trim().length === 0) {
+      mismatches.push(`${key}.runtime`);
+    }
+
+    return mismatches;
+  }
+
+  private assertRollbackDrillEvidenceArtifactBinding(
+    evidenceType: ReleaseReadinessEvidenceType,
+    environment: ReleaseReadinessEnvironment,
+    rollbackReleaseIdentifier: string | null,
+    evidencePayload: PrismaJsonValue | undefined
+  ): void {
+    if (!rollbackScopedEvidenceTypes.has(evidenceType)) {
+      return;
+    }
+
+    const expectedService =
+      evidenceType === ReleaseReadinessEvidenceType.api_rollback_drill
+        ? "api"
+        : "worker";
+    const payload =
+      this.readRollbackDeploymentArtifactEvidencePayload(evidencePayload);
+
+    if (!payload) {
+      throw new BadRequestException(
+        `Release readiness evidence for ${evidenceType} requires a deployment_artifact_manifest payload from payloads/release-artifacts.json.`
+      );
+    }
+
+    const mismatches = [
+      ...this.assertRollbackDeploymentArtifactRecord(
+        payload.currentArtifact,
+        "currentArtifact",
+        expectedService,
+        environment
+      ),
+      ...this.assertRollbackDeploymentArtifactRecord(
+        payload.rollbackArtifact,
+        "rollbackArtifact",
+        expectedService,
+        environment
+      )
+    ];
+
+    if (payload.service !== expectedService) {
+      mismatches.push("service");
+    }
+
+    if (
+      payload.approvalRollbackReleaseIdentifier !== rollbackReleaseIdentifier
+    ) {
+      mismatches.push("approvalRollbackReleaseIdentifier");
+    }
+
+    if (
+      payload.currentArtifact.releaseId === payload.rollbackArtifact.releaseId
+    ) {
+      mismatches.push("artifact release ids must differ");
+    }
+
+    if (
+      this.normalizeChecksum(payload.currentArtifact.artifactDigestSha256) ===
+      this.normalizeChecksum(payload.rollbackArtifact.artifactDigestSha256)
+    ) {
+      mismatches.push("artifact digests must differ");
+    }
+
+    if (mismatches.length > 0) {
+      throw new BadRequestException(
+        `Rollback drill evidence artifact binding is invalid: ${mismatches.join(
+          ", "
+        )}.`
+      );
+    }
+  }
+
+  private buildSolvencyAnchorRegistryEvidenceDraft(
+    query: GetSolvencyAnchorRegistryDeploymentProofDto,
+    manifest: ContractDeploymentManifestRecord | null,
+    ready: boolean,
+    requiredOperatorInputs: string[]
+  ): SolvencyAnchorRegistryDeploymentProofStatus["evidenceRequestDraft"] {
+    const networkName =
+      this.normalizeOptionalString(query.networkName) ?? "<networkName>";
+    const manifestPath =
+      this.normalizeOptionalString(query.manifestPath) ??
+      "<deploymentManifestPath>";
+    const manifestCommitSha =
+      this.normalizeOptionalString(query.manifestCommitSha) ??
+      "<manifestCommitSha>";
+    const releaseIdentifier =
+      this.normalizeOptionalString(query.releaseIdentifier) ??
+      "<releaseIdentifier>";
+
+    if (
+      !manifest ||
+      !manifest.deploymentTxHash ||
+      !manifest.governanceOwner ||
+      !manifest.authorizedAnchorer
+    ) {
+      return {
+        recordable: false,
+        body: null
+      };
+    }
+
+    return {
+      recordable: ready && requiredOperatorInputs.length === 0,
+      body: {
+        evidenceType: "solvency_anchor_registry_deployment",
+        environment: query.environment,
+        status: "passed",
+        releaseIdentifier,
+        summary:
+          "Solvency report anchor registry deployment is active, governed, and bound to the authorized anchor signer.",
+        runbookPath:
+          "docs/runbooks/solvency-anchor-registry-deployment-proof.md",
+        evidencePayload: {
+          proofKind: "manual_attestation",
+          networkName,
+          chainId: query.chainId,
+          contractProductSurface: "solvency_report_anchor_registry_v1",
+          signerScope: "solvency_anchor_execution",
+          contractAddress: manifest.contractAddress,
+          deploymentTxHash: manifest.deploymentTxHash,
+          governanceOwner: manifest.governanceOwner,
+          authorizedAnchorer: manifest.authorizedAnchorer,
+          abiChecksumSha256: manifest.abiChecksumSha256,
+          manifestPath,
+          manifestCommitSha
+        }
+      }
+    };
+  }
+
+  async getSolvencyAnchorRegistryDeploymentProof(
+    query: GetSolvencyAnchorRegistryDeploymentProofDto
+  ): Promise<SolvencyAnchorRegistryDeploymentProofStatus> {
+    const manifest =
+      await this.prismaService.contractDeploymentManifest.findFirst({
+        where: {
+          environment: query.environment,
+          chainId: query.chainId,
+          productSurface: "solvency_report_anchor_registry_v1",
+          manifestStatus: "active"
+        },
+        orderBy: [{ updatedAt: "desc" }]
+      });
+    const governedSigner = manifest?.authorizedAnchorer
+      ? await this.prismaService.governedSignerInventory.findFirst({
+          where: {
+            environment: query.environment,
+            chainId: query.chainId,
+            signerScope: "solvency_anchor_execution",
+            signerAddress: {
+              equals: manifest.authorizedAnchorer,
+              mode: Prisma.QueryMode.insensitive
+            },
+            active: true
+          },
+          orderBy: [{ updatedAt: "desc" }]
+        })
+      : await this.prismaService.governedSignerInventory.findFirst({
+          where: {
+            environment: query.environment,
+            chainId: query.chainId,
+            signerScope: "solvency_anchor_execution",
+            active: true
+          },
+          orderBy: [{ updatedAt: "desc" }]
+        });
+    const governanceAuthority = manifest?.governanceOwner
+      ? await this.prismaService.governanceAuthorityManifest.findFirst({
+          where: {
+            environment: query.environment,
+            chainId: query.chainId,
+            authorityType: "governance_safe",
+            address: {
+              equals: manifest.governanceOwner,
+              mode: Prisma.QueryMode.insensitive
+            },
+            manifestStatus: "active"
+          },
+          orderBy: [{ updatedAt: "desc" }]
+        })
+      : await this.prismaService.governanceAuthorityManifest.findFirst({
+          where: {
+            environment: query.environment,
+            chainId: query.chainId,
+            authorityType: "governance_safe",
+            manifestStatus: "active"
+          },
+          orderBy: [{ updatedAt: "desc" }]
+        });
+    const blockers: string[] = [];
+
+    if (!manifest) {
+      blockers.push(
+        "No active solvency_report_anchor_registry_v1 deployment manifest exists for the requested environment and chain."
+      );
+    } else {
+      if (manifest.legacyPath) {
+        blockers.push(
+          "The active solvency anchor registry deployment manifest is marked as a legacy path."
+        );
+      }
+
+      if (!manifest.deploymentTxHash) {
+        blockers.push(
+          "The active solvency anchor registry deployment manifest is missing deploymentTxHash."
+        );
+      }
+
+      if (!manifest.governanceOwner) {
+        blockers.push(
+          "The active solvency anchor registry deployment manifest is missing governanceOwner."
+        );
+      }
+
+      if (!manifest.authorizedAnchorer) {
+        blockers.push(
+          "The active solvency anchor registry deployment manifest is missing authorizedAnchorer."
+        );
+      }
+
+      if (!manifest.abiChecksumSha256) {
+        blockers.push(
+          "The active solvency anchor registry deployment manifest is missing abiChecksumSha256."
+        );
+      }
+
+      if (!governedSigner) {
+        blockers.push(
+          "No active governed signer inventory entry matches solvency_anchor_execution for the manifest authorizedAnchorer."
+        );
+      } else if (
+        manifest.authorizedAnchorer &&
+        this.normalizeHex(governedSigner.signerAddress) !==
+          this.normalizeHex(manifest.authorizedAnchorer)
+      ) {
+        blockers.push(
+          "The active governed solvency_anchor_execution signer does not match the manifest authorizedAnchorer."
+        );
+      }
+
+      if (!governanceAuthority) {
+        blockers.push(
+          "No active governance_safe authority manifest matches the manifest governanceOwner."
+        );
+      } else if (
+        manifest.governanceOwner &&
+        this.normalizeHex(governanceAuthority.address) !==
+          this.normalizeHex(manifest.governanceOwner)
+      ) {
+        blockers.push(
+          "The active governance_safe authority does not match the manifest governanceOwner."
+        );
+      }
+    }
+
+    const operatorInputs: Array<[string, string | undefined]> = [
+      ["networkName", query.networkName],
+      ["manifestPath", query.manifestPath],
+      ["manifestCommitSha", query.manifestCommitSha],
+      ["releaseIdentifier", query.releaseIdentifier]
+    ];
+    const requiredOperatorInputs = operatorInputs
+      .filter(([, value]) => !this.normalizeOptionalString(value))
+      .map(([field]) => field);
+    const ready = blockers.length === 0;
+
+    return {
+      generatedAt: new Date().toISOString(),
+      evidenceType: solvencyAnchorRegistryDeploymentEvidenceType,
+      environment: query.environment,
+      chainId: query.chainId,
+      ready,
+      blockers,
+      requiredOperatorInputs,
+      recordEvidenceEndpoint: "/release-readiness/internal/evidence",
+      registryContract: manifest
+        ? {
+            id: manifest.id,
+            productSurface: "solvency_report_anchor_registry_v1",
+            contractVersion: manifest.contractVersion,
+            contractAddress: manifest.contractAddress,
+            abiChecksumSha256: manifest.abiChecksumSha256,
+            deploymentTxHash: manifest.deploymentTxHash ?? null,
+            governanceOwner: manifest.governanceOwner ?? null,
+            authorizedAnchorer: manifest.authorizedAnchorer ?? null,
+            blockExplorerUrl: manifest.blockExplorerUrl ?? null,
+            anchoredSmokeTxHash: manifest.anchoredSmokeTxHash ?? null,
+            manifestStatus: manifest.manifestStatus,
+            legacyPath: manifest.legacyPath,
+            updatedAt: manifest.updatedAt.toISOString()
+          }
+        : null,
+      governedSigner: governedSigner
+        ? {
+            id: governedSigner.id,
+            signerScope: "solvency_anchor_execution",
+            backendKind: governedSigner.backendKind,
+            keyReferenceSha256: this.fingerprintString(
+              governedSigner.keyReference
+            ),
+            signerAddress: governedSigner.signerAddress,
+            allowedMethods: [...governedSigner.allowedMethods],
+            manifestVersion: governedSigner.manifestVersion ?? null,
+            environmentBinding: governedSigner.environmentBinding ?? null,
+            active: governedSigner.active,
+            updatedAt: governedSigner.updatedAt.toISOString()
+          }
+        : null,
+      governanceAuthority: governanceAuthority
+        ? {
+            id: governanceAuthority.id,
+            authorityType: "governance_safe",
+            address: governanceAuthority.address,
+            ownerLabel: governanceAuthority.ownerLabel ?? null,
+            manifestStatus: governanceAuthority.manifestStatus,
+            updatedAt: governanceAuthority.updatedAt.toISOString()
+          }
+        : null,
+      evidenceRequestDraft: this.buildSolvencyAnchorRegistryEvidenceDraft(
+        query,
+        manifest,
+        ready,
+        requiredOperatorInputs
+      )
+    };
+  }
+
+  private readSolvencyAnchorRegistryEvidencePayload(
+    evidencePayload: PrismaJsonValue | undefined
+  ): SolvencyAnchorRegistryEvidencePayload | null {
+    if (
+      !evidencePayload ||
+      Array.isArray(evidencePayload) ||
+      typeof evidencePayload !== "object"
+    ) {
+      return null;
+    }
+
+    const payload = evidencePayload as Record<string, unknown>;
+    const chainId =
+      typeof payload.chainId === "number"
+        ? payload.chainId
+        : Number(payload.chainId);
+
+    if (
+      !Number.isInteger(chainId) ||
+      typeof payload.contractAddress !== "string" ||
+      typeof payload.deploymentTxHash !== "string" ||
+      typeof payload.governanceOwner !== "string" ||
+      typeof payload.authorizedAnchorer !== "string" ||
+      typeof payload.abiChecksumSha256 !== "string"
+    ) {
+      return null;
+    }
+
+    const hasOnchainVerification = Object.prototype.hasOwnProperty.call(
+      payload,
+      "onchainVerification"
+    );
+    const onchainVerification =
+      hasOnchainVerification &&
+      payload.onchainVerification &&
+      !Array.isArray(payload.onchainVerification) &&
+      typeof payload.onchainVerification === "object"
+        ? (payload.onchainVerification as Record<string, unknown>)
+        : null;
+    const onchainVerificationPayload = onchainVerification ?? {};
+
+    return {
+      chainId,
+      contractAddress: payload.contractAddress,
+      deploymentTxHash: payload.deploymentTxHash,
+      governanceOwner: payload.governanceOwner,
+      authorizedAnchorer: payload.authorizedAnchorer,
+      abiChecksumSha256: payload.abiChecksumSha256,
+      onchainVerification: hasOnchainVerification
+        ? {
+            chainId:
+              typeof onchainVerificationPayload.chainId === "number"
+                ? onchainVerificationPayload.chainId
+                : Number(onchainVerificationPayload.chainId),
+            contractAddress:
+              typeof onchainVerificationPayload.contractAddress === "string"
+                ? onchainVerificationPayload.contractAddress
+                : undefined,
+            deploymentTxHash:
+              typeof onchainVerificationPayload.deploymentTxHash === "string"
+                ? onchainVerificationPayload.deploymentTxHash
+                : undefined,
+            owner:
+              typeof onchainVerificationPayload.owner === "string"
+                ? onchainVerificationPayload.owner
+                : undefined,
+            authorizedAnchorer:
+              typeof onchainVerificationPayload.authorizedAnchorer === "string"
+                ? onchainVerificationPayload.authorizedAnchorer
+                : undefined,
+            bytecodePresent:
+              typeof onchainVerificationPayload.bytecodePresent === "boolean"
+                ? onchainVerificationPayload.bytecodePresent
+                : undefined,
+            deploymentBlockNumber:
+              typeof onchainVerificationPayload.deploymentBlockNumber ===
+              "number"
+                ? onchainVerificationPayload.deploymentBlockNumber
+                : null,
+            rpcUrlHost:
+              typeof onchainVerificationPayload.rpcUrlHost === "string"
+                ? onchainVerificationPayload.rpcUrlHost
+                : undefined
+          }
+        : undefined
+    };
+  }
+
+  private assertSolvencyAnchorOnchainVerificationMatchesPayload(
+    payload: SolvencyAnchorRegistryEvidencePayload,
+    environment: ReleaseReadinessEnvironment,
+    status: ReleaseReadinessEvidenceStatus
+  ): void {
+    const verification = payload.onchainVerification;
+
+    if (!verification) {
+      if (
+        status === ReleaseReadinessEvidenceStatus.passed &&
+        onchainVerifiedSolvencyAnchorEvidenceEnvironments.has(environment)
+      ) {
+        throw new BadRequestException(
+          "Passed production-like or production solvency anchor registry deployment evidence requires on-chain verification metadata."
+        );
+      }
+      return;
+    }
+
+    const mismatches: string[] = [];
+
+    if (!Number.isInteger(verification.chainId)) {
+      mismatches.push("chain id");
+    } else if (verification.chainId !== payload.chainId) {
+      mismatches.push("chain id");
+    }
+
+    if (
+      !verification.contractAddress ||
+      this.normalizeHex(verification.contractAddress) !==
+        this.normalizeHex(payload.contractAddress)
+    ) {
+      mismatches.push("contract address");
+    }
+
+    if (
+      !verification.deploymentTxHash ||
+      this.normalizeHex(verification.deploymentTxHash) !==
+        this.normalizeHex(payload.deploymentTxHash)
+    ) {
+      mismatches.push("deployment transaction hash");
+    }
+
+    if (
+      !verification.owner ||
+      this.normalizeHex(verification.owner) !==
+        this.normalizeHex(payload.governanceOwner)
+    ) {
+      mismatches.push("owner");
+    }
+
+    if (
+      !verification.authorizedAnchorer ||
+      this.normalizeHex(verification.authorizedAnchorer) !==
+        this.normalizeHex(payload.authorizedAnchorer)
+    ) {
+      mismatches.push("authorized anchorer");
+    }
+
+    if (verification.bytecodePresent !== true) {
+      mismatches.push("deployed bytecode");
+    }
+
+    if (
+      verification.deploymentBlockNumber !== null &&
+      (!Number.isInteger(verification.deploymentBlockNumber) ||
+        verification.deploymentBlockNumber <= 0)
+    ) {
+      mismatches.push("deployment block number");
+    }
+
+    if (!verification.rpcUrlHost?.trim()) {
+      mismatches.push("RPC host");
+    }
+
+    if (mismatches.length > 0) {
+      throw new BadRequestException(
+        `Solvency anchor registry deployment on-chain verification does not match evidence fields: ${mismatches.join(
+          ", "
+        )}.`
+      );
+    }
+  }
+
+  private async assertSolvencyAnchorRegistryEvidenceMatchesManifest(
+    environment: ReleaseReadinessEnvironment,
+    status: ReleaseReadinessEvidenceStatus,
+    evidencePayload: PrismaJsonValue | undefined
+  ): Promise<void> {
+    const payload =
+      this.readSolvencyAnchorRegistryEvidencePayload(evidencePayload);
+
+    if (!payload) {
+      throw new BadRequestException(
+        "Solvency anchor registry deployment evidence payload could not be parsed for manifest verification."
+      );
+    }
+
+    this.assertSolvencyAnchorOnchainVerificationMatchesPayload(
+      payload,
+      environment,
+      status
+    );
+
+    const manifest =
+      await this.prismaService.contractDeploymentManifest.findFirst({
+        where: {
+          environment,
+          chainId: payload.chainId,
+          productSurface: "solvency_report_anchor_registry_v1",
+          contractAddress: {
+            equals: payload.contractAddress,
+            mode: Prisma.QueryMode.insensitive
+          },
+          manifestStatus: "active"
+        }
+      });
+
+    if (!manifest) {
+      throw new BadRequestException(
+        "Solvency anchor registry deployment evidence must match an active contract deployment manifest."
+      );
+    }
+
+    const mismatches: string[] = [];
+
+    if (
+      !manifest.deploymentTxHash ||
+      this.normalizeHex(manifest.deploymentTxHash) !==
+        this.normalizeHex(payload.deploymentTxHash)
+    ) {
+      mismatches.push("deployment transaction hash");
+    }
+
+    if (
+      !manifest.governanceOwner ||
+      this.normalizeHex(manifest.governanceOwner) !==
+        this.normalizeHex(payload.governanceOwner)
+    ) {
+      mismatches.push("governance owner");
+    }
+
+    if (
+      !manifest.authorizedAnchorer ||
+      this.normalizeHex(manifest.authorizedAnchorer) !==
+        this.normalizeHex(payload.authorizedAnchorer)
+    ) {
+      mismatches.push("authorized anchorer");
+    }
+
+    if (
+      this.normalizeChecksum(manifest.abiChecksumSha256) !==
+      this.normalizeChecksum(payload.abiChecksumSha256)
+    ) {
+      mismatches.push("ABI checksum");
+    }
+
+    if (mismatches.length > 0) {
+      throw new BadRequestException(
+        `Solvency anchor registry deployment evidence does not match the active manifest fields: ${mismatches.join(
+          ", "
+        )}.`
+      );
+    }
+
+    const governedSigner =
+      await this.prismaService.governedSignerInventory.findFirst({
+        where: {
+          environment,
+          chainId: payload.chainId,
+          signerScope: "solvency_anchor_execution",
+          signerAddress: {
+            equals: payload.authorizedAnchorer,
+            mode: Prisma.QueryMode.insensitive
+          },
+          active: true
+        }
+      });
+
+    if (!governedSigner) {
+      throw new BadRequestException(
+        "Solvency anchor registry deployment evidence authorized anchorer must match an active governed solvency_anchor_execution signer."
+      );
+    }
+
+    const governanceAuthority =
+      await this.prismaService.governanceAuthorityManifest.findFirst({
+        where: {
+          environment,
+          chainId: payload.chainId,
+          authorityType: "governance_safe",
+          address: {
+            equals: payload.governanceOwner,
+            mode: Prisma.QueryMode.insensitive
+          },
+          manifestStatus: "active"
+        }
+      });
+
+    if (!governanceAuthority) {
+      throw new BadRequestException(
+        "Solvency anchor registry deployment evidence governance owner must match the active governance_safe manifest authority."
+      );
+    }
+  }
+
   async recordEvidence(
     dto: CreateReleaseReadinessEvidenceDto,
     operatorId: string,
@@ -1513,12 +2867,41 @@ export class ReleaseReadinessService {
     const evidenceLinks = this.normalizeEvidenceLinks(dto.evidenceLinks);
     const evidencePayload =
       (dto.evidencePayload as PrismaJsonValue | undefined) ?? undefined;
+    const missingPayloadFields = validateReleaseReadinessEvidencePayload({
+      evidenceType: dto.evidenceType,
+      evidencePayload
+    });
 
     if (missingMetadata.length > 0) {
       throw new BadRequestException(
         `Release readiness evidence for ${dto.evidenceType} requires ${describeReleaseReadinessEvidenceMetadataRequirements(
           dto.evidenceType
         ).join(", ")}.`
+      );
+    }
+
+    if (missingPayloadFields.length > 0) {
+      throw new BadRequestException(
+        `Release readiness evidence for ${dto.evidenceType} requires valid payload fields: ${describeReleaseReadinessEvidencePayloadRequirements(
+          dto.evidenceType
+        ).join(", ")}.`
+      );
+    }
+
+    this.assertRollbackDrillEvidenceArtifactBinding(
+      dto.evidenceType,
+      dto.environment,
+      rollbackReleaseIdentifier,
+      evidencePayload
+    );
+
+    if (
+      dto.evidenceType === solvencyAnchorRegistryDeploymentEvidenceType
+    ) {
+      await this.assertSolvencyAnchorRegistryEvidenceMatchesManifest(
+        dto.environment,
+        dto.status,
+        evidencePayload
       );
     }
 
@@ -1895,11 +3278,13 @@ export class ReleaseReadinessService {
         : null
     });
     const summaryMarkdown = renderLaunchClosureValidationSummary(manifest);
+    const artifactManifest = buildLaunchClosureArtifactManifest(preview.files);
     const artifactPayload = {
       manifest,
       validation,
       summaryMarkdown,
       outputSubpath: preview.outputSubpath,
+      artifactManifest,
       files: preview.files
     } as Prisma.JsonValue;
     const artifactChecksumSha256 = this.buildChecksum(artifactPayload);
@@ -1939,6 +3324,8 @@ export class ReleaseReadinessService {
             environment: createdPack.environment,
             version: createdPack.version,
             artifactChecksumSha256,
+            manifestChecksumSha256: artifactManifest.manifestChecksumSha256,
+            artifactFileCount: artifactManifest.fileCount,
             operatorRole: normalizedOperatorRole
           } as PrismaJsonValue
         }
@@ -1972,6 +3359,22 @@ export class ReleaseReadinessService {
     return {
       pack: this.mapLaunchClosurePackProjection(pack)
     };
+  }
+
+  async verifyLaunchClosurePackIntegrity(
+    packId: string
+  ): Promise<ReleaseLaunchClosurePackIntegrityResult> {
+    const pack = await this.prismaService.releaseLaunchClosurePack.findUnique({
+      where: {
+        id: packId
+      }
+    });
+
+    if (!pack) {
+      throw new NotFoundException("Launch-closure pack was not found.");
+    }
+
+    return this.verifyStoredLaunchClosurePackIntegrity(pack);
   }
 
   async listLaunchClosurePacks(
@@ -2057,6 +3460,12 @@ export class ReleaseReadinessService {
       );
     }
 
+    const launchClosurePackIntegrity =
+      this.verifyStoredLaunchClosurePackIntegrity(launchClosurePack);
+    this.assertLaunchClosurePackIntegrityDoesNotBlock(
+      launchClosurePackIntegrity
+    );
+
     const evidenceSnapshot = this.buildApprovalEvidenceSnapshot(readinessSummary);
     const gate = this.evaluateApprovalGate(
       readinessSummary,
@@ -2064,6 +3473,9 @@ export class ReleaseReadinessService {
       ReleaseReadinessApprovalStatus.pending_approval,
       rollbackReleaseIdentifier
     );
+    const launchClosurePackManifestChecksumSha256 =
+      this.readLaunchClosureArtifactManifest(launchClosurePack.artifactPayload)
+        ?.manifestChecksumSha256 ?? null;
 
     const approval = await this.prismaService.$transaction(async (transaction) => {
       const createdApproval = await transaction.releaseReadinessApproval.create({
@@ -2109,6 +3521,14 @@ export class ReleaseReadinessService {
             launchClosurePackVersion: launchClosurePack.version,
             launchClosurePackChecksumSha256:
               launchClosurePack.artifactChecksumSha256,
+            launchClosurePackManifestChecksumSha256,
+            launchClosurePackIntegrity: {
+              valid: launchClosurePackIntegrity.valid,
+              artifactChecksumMatches:
+                launchClosurePackIntegrity.artifactChecksumMatches,
+              expectedFileCount: launchClosurePackIntegrity.expectedFileCount,
+              checkedFileCount: launchClosurePackIntegrity.checkedFileCount
+            },
             rollbackReleaseIdentifier,
             summary: summaryText,
             operatorRole: normalizedOperatorRole,
@@ -2121,7 +3541,11 @@ export class ReleaseReadinessService {
     });
 
     return {
-      approval: this.mapApprovalProjection(approval, readinessSummary)
+      approval: this.mapApprovalProjection(
+        approval,
+        readinessSummary,
+        launchClosurePack
+      )
     };
   }
 
@@ -2181,6 +3605,29 @@ export class ReleaseReadinessService {
     }
 
     this.assertApprovalDriftDoesNotBlock(launchClosureDrift);
+
+    const boundLaunchClosurePack =
+      latestPack?.id === approval.launchClosurePackId
+        ? latestPack
+        : approval.launchClosurePackId
+          ? await this.prismaService.releaseLaunchClosurePack.findUnique({
+              where: {
+                id: approval.launchClosurePackId
+              }
+            })
+          : null;
+    const verifiedBoundLaunchClosurePack =
+      this.assertLaunchClosurePackMatchesApprovalSnapshot(
+        boundLaunchClosurePack,
+        approval
+      );
+    const launchClosurePackIntegrity =
+      this.verifyStoredLaunchClosurePackIntegrity(
+        verifiedBoundLaunchClosurePack
+      );
+    this.assertLaunchClosurePackIntegrityDoesNotBlock(
+      launchClosurePackIntegrity
+    );
 
     const approvalNote = this.normalizeOptionalString(dto.approvalNote);
     const evidenceSnapshot = this.buildApprovalEvidenceSnapshot(readinessSummary);
@@ -2257,6 +3704,13 @@ export class ReleaseReadinessService {
               approvedByOperatorRole: approvedOperatorRole,
               approvalNote,
               gate: approvedGate,
+              launchClosurePackIntegrity: {
+                valid: launchClosurePackIntegrity.valid,
+                artifactChecksumMatches:
+                  launchClosurePackIntegrity.artifactChecksumMatches,
+                expectedFileCount: launchClosurePackIntegrity.expectedFileCount,
+                checkedFileCount: launchClosurePackIntegrity.checkedFileCount
+              },
               launchClosureDrift,
               decisionDriftCapturedAt: decisionDriftCapturedAt.toISOString()
             } as PrismaJsonValue
@@ -2329,6 +3783,12 @@ export class ReleaseReadinessService {
       );
     }
 
+    const launchClosurePackIntegrity =
+      this.verifyStoredLaunchClosurePackIntegrity(launchClosurePack);
+    this.assertLaunchClosurePackIntegrityDoesNotBlock(
+      launchClosurePackIntegrity
+    );
+
     const checklist = this.mapApprovalChecklist(approval);
     const evidenceSnapshot = this.buildApprovalEvidenceSnapshot(readinessSummary);
     const gate = this.evaluateApprovalGate(
@@ -2337,6 +3797,9 @@ export class ReleaseReadinessService {
       ReleaseReadinessApprovalStatus.pending_approval,
       approval.rollbackReleaseIdentifier ?? null
     );
+    const launchClosurePackManifestChecksumSha256 =
+      this.readLaunchClosureArtifactManifest(launchClosurePack.artifactPayload)
+        ?.manifestChecksumSha256 ?? null;
 
     const updatedApproval = await this.prismaService.$transaction(
       async (transaction) => {
@@ -2464,6 +3927,15 @@ export class ReleaseReadinessService {
               nextLaunchClosurePackVersion: launchClosurePack.version,
               nextLaunchClosurePackChecksumSha256:
                 launchClosurePack.artifactChecksumSha256,
+              nextLaunchClosurePackManifestChecksumSha256:
+                launchClosurePackManifestChecksumSha256,
+              nextLaunchClosurePackIntegrity: {
+                valid: launchClosurePackIntegrity.valid,
+                artifactChecksumMatches:
+                  launchClosurePackIntegrity.artifactChecksumMatches,
+                expectedFileCount: launchClosurePackIntegrity.expectedFileCount,
+                checkedFileCount: launchClosurePackIntegrity.checkedFileCount
+              },
               operatorRole: normalizedOperatorRole,
               gate
             } as PrismaJsonValue
@@ -2632,6 +4104,146 @@ export class ReleaseReadinessService {
 
     return {
       approval: projection
+    };
+  }
+
+  async getApprovalDecisionReceipt(
+    approvalId: string
+  ): Promise<ReleaseReadinessApprovalDecisionReceipt> {
+    const approval = await this.prismaService.releaseReadinessApproval.findUnique({
+      where: {
+        id: approvalId
+      }
+    });
+
+    if (!approval) {
+      throw new NotFoundException("Release readiness approval request was not found.");
+    }
+
+    const { lineageRecords, issues } = await this.collectApprovalLineageRecords(
+      this.prismaService,
+      approval
+    );
+    const lineage = this.buildApprovalLineageIntegrityFromRecords(
+      lineageRecords,
+      issues
+    );
+    const lineageIds = [...new Set(lineageRecords.map((record) => record.id))];
+
+    const [boundLaunchClosurePack, auditTrailRecords] = await Promise.all([
+      approval.launchClosurePackId
+        ? this.prismaService.releaseLaunchClosurePack.findUnique({
+            where: {
+              id: approval.launchClosurePackId
+            }
+          })
+        : Promise.resolve(null),
+      this.prismaService.auditEvent.findMany({
+        where: {
+          targetType: "ReleaseReadinessApproval",
+          targetId: {
+            in: lineageIds.length > 0 ? lineageIds : [approval.id]
+          },
+          action: {
+            startsWith: "release_readiness."
+          }
+        },
+        orderBy: {
+          createdAt: "asc"
+        }
+      })
+    ]);
+
+    const snapshotMatchesApproval =
+      this.launchClosurePackMatchesApprovalSnapshot(
+        boundLaunchClosurePack,
+        approval
+      );
+    const launchClosurePackIntegrity = boundLaunchClosurePack
+      ? this.verifyStoredLaunchClosurePackIntegrity(boundLaunchClosurePack)
+      : null;
+    const projection = this.mapApprovalProjection(
+      approval,
+      undefined,
+      boundLaunchClosurePack,
+      {
+        status: lineage.status,
+        issueCount: lineage.issues.length,
+        actionableApprovalId: lineage.actionableApprovalId,
+        isActionable: lineage.actionableApprovalId === approval.id
+      }
+    );
+    const blockers = [
+      ...(!boundLaunchClosurePack
+        ? ["The approval-bound launch-closure pack record is missing."]
+        : []),
+      ...(boundLaunchClosurePack && !snapshotMatchesApproval
+        ? [
+            "The approval-bound launch-closure pack no longer matches the approval snapshot."
+          ]
+        : []),
+      ...(launchClosurePackIntegrity && !launchClosurePackIntegrity.valid
+        ? [
+            "The approval-bound launch-closure pack has stored integrity issues."
+          ]
+        : []),
+      ...(lineage.status !== "healthy"
+        ? ["The approval lineage has unresolved integrity issues."]
+        : []),
+      ...(approval.status !== ReleaseReadinessApprovalStatus.approved
+        ? ["The approval decision is not an approved launch decision."]
+        : [])
+    ];
+    const decidedAt =
+      approval.approvedAt?.toISOString() ??
+      approval.rejectedAt?.toISOString() ??
+      null;
+    const decidedByOperatorId =
+      approval.approvedByOperatorId ?? approval.rejectedByOperatorId ?? null;
+    const decidedByOperatorRole =
+      approval.approvedByOperatorRole ?? approval.rejectedByOperatorRole ?? null;
+    const note = approval.approvalNote ?? approval.rejectionNote ?? null;
+    const receiptPayload = {
+      receiptVersion: "release-readiness-approval-decision/v1",
+      generatedAt: approval.updatedAt.toISOString(),
+      releaseIdentifier: approval.releaseIdentifier,
+      environment: approval.environment,
+      finalDecision:
+        approval.status === ReleaseReadinessApprovalStatus.approved ||
+        approval.status === ReleaseReadinessApprovalStatus.rejected,
+      launchReady:
+        approval.status === ReleaseReadinessApprovalStatus.approved &&
+        blockers.length === 0,
+      blockers,
+      decision: {
+        status: approval.status,
+        decidedAt,
+        decidedByOperatorId,
+        decidedByOperatorRole,
+        note
+      },
+      approval: projection,
+      launchClosurePack: {
+        snapshotMatchesApproval,
+        record: boundLaunchClosurePack
+          ? this.mapLaunchClosurePackProjection(boundLaunchClosurePack)
+          : null,
+        integrity: launchClosurePackIntegrity
+      },
+      lineage,
+      auditTrail: auditTrailRecords.map((record) =>
+        this.mapDecisionReceiptAuditEvent(record)
+      )
+    } satisfies Omit<
+      ReleaseReadinessApprovalDecisionReceipt,
+      "receiptChecksumSha256"
+    >;
+
+    return {
+      ...receiptPayload,
+      receiptChecksumSha256: this.buildChecksum(
+        receiptPayload as unknown as Prisma.JsonValue
+      )
     };
   }
 

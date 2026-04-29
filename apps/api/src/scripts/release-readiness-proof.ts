@@ -15,14 +15,19 @@ import {
 import {
   automatedReleaseReadinessProofTypes,
   defaultReleaseReadinessEnvironmentForProof,
+  isManualReleaseReadinessProofType,
   isReleaseReadinessProofType,
+  manualReleaseReadinessProofTypes,
   runReleaseReadinessProof,
+  type ManualReleaseReadinessProofType,
   type ReleaseReadinessProofResult,
   type ReleaseReadinessProofType
 } from "../release-readiness/release-readiness-proof-runner";
 import {
   describeReleaseReadinessEvidenceMetadataRequirements,
-  validateReleaseReadinessEvidenceMetadata
+  describeReleaseReadinessEvidencePayloadRequirements,
+  validateReleaseReadinessEvidenceMetadata,
+  validateReleaseReadinessEvidencePayload
 } from "../release-readiness/release-readiness-evidence-requirements";
 
 type ParsedArgs = {
@@ -49,8 +54,7 @@ function printUsage(): void {
 Proof types:
   ${[
     ...automatedReleaseReadinessProofTypes,
-    "secret_handling_review",
-    "role_review"
+    ...manualReleaseReadinessProofTypes
   ].join(", ")}
 
 Required:
@@ -212,18 +216,11 @@ async function runSingleProof(
   proofType: ReleaseReadinessProofType,
   parsedArgs: ParsedArgs
 ): Promise<ReleaseReadinessProofResult> {
-  if (
-    proofType === "secret_handling_review" ||
-    proofType === "role_review"
-  ) {
+  if (isManualReleaseReadinessProofType(proofType as ReleaseReadinessEvidenceType)) {
     return runReleaseReadinessProof({
-      evidenceType: proofType,
+      evidenceType: proofType as ManualReleaseReadinessProofType,
       status: parseStatus(parsedArgs),
-      summary:
-        readOptionalStringArg(parsedArgs, "summary") ??
-        (proofType === "secret_handling_review"
-          ? "Secret handling review completed and launch secret posture attested."
-          : "Role review completed and launch operator role mappings attested."),
+      summary: readOptionalStringArg(parsedArgs, "summary"),
       note: readOptionalStringArg(parsedArgs, "note"),
       evidenceLinks: parseEvidenceLinks(parsedArgs),
       evidencePayload: parseEvidencePayload(parsedArgs)
@@ -253,10 +250,22 @@ async function recordEvidence(
     rollbackReleaseIdentifier,
     backupReference
   });
+  const missingPayloadFields = validateReleaseReadinessEvidencePayload({
+    evidenceType: proof.evidenceType,
+    evidencePayload: proof.evidencePayload
+  });
 
   if (missingMetadata.length > 0) {
     fail(
       `Recording ${proof.evidenceType} requires ${describeReleaseReadinessEvidenceMetadataRequirements(
+        proof.evidenceType
+      ).join(", ")}.`
+    );
+  }
+
+  if (missingPayloadFields.length > 0) {
+    fail(
+      `Recording ${proof.evidenceType} requires valid payload fields: ${describeReleaseReadinessEvidencePayloadRequirements(
         proof.evidenceType
       ).join(", ")}.`
     );
@@ -272,6 +281,7 @@ async function recordEvidence(
     rollbackReleaseIdentifier,
     backupReference,
     observedAt: proof.observedAt,
+    evidenceLinks: proof.evidenceLinks,
     evidencePayload: proof.evidencePayload
   });
 }

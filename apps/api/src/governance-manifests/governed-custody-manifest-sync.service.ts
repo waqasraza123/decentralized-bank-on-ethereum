@@ -47,6 +47,8 @@ function resolveAllowedMethods(scope: string): string[] {
       return ["signWithdrawalAuthorization"];
     case "policy_withdrawal_executor":
       return ["executeAuthorizedTransfer"];
+    case "solvency_anchor_execution":
+      return ["anchorSolvencyReport"];
     default:
       return [];
   }
@@ -144,6 +146,11 @@ export class GovernedCustodyManifestSyncService implements OnModuleInit {
             contractVersion: contract.version,
             contractAddress: contract.address,
             abiChecksumSha256: contract.abiChecksumSha256,
+            deploymentTxHash: contract.deploymentTxHash ?? null,
+            governanceOwner: contract.governanceOwner ?? null,
+            authorizedAnchorer: contract.authorizedAnchorer ?? null,
+            blockExplorerUrl: contract.blockExplorerUrl ?? null,
+            anchoredSmokeTxHash: contract.anchoredSmokeTxHash ?? null,
             manifestStatus: "active",
             legacyPath: contract.legacyPath,
             governanceAuthorityId:

@@ -117,6 +117,30 @@ function createInternalApiClient(overrides: Record<string, unknown>) {
     async listLoanLiquidationCandidates() {
       return { agreements: [], limit: 20 };
     },
+    async listRequestedSolvencyReportAnchors() {
+      return { anchors: [], limit: 20 };
+    },
+    async listSubmittedSolvencyReportAnchors() {
+      return { anchors: [], limit: 20 };
+    },
+    async recordSolvencyReportAnchorSubmitted() {
+      return {
+        anchor: {},
+        stateReused: false
+      };
+    },
+    async recordSolvencyReportAnchorConfirmed() {
+      return {
+        anchor: {},
+        stateReused: false
+      };
+    },
+    async recordSolvencyReportAnchorFailed() {
+      return {
+        anchor: {},
+        stateReused: false
+      };
+    },
     async sweepRetirementVaultReleaseRequests() {
       return {
         limit: 20,
@@ -192,6 +216,8 @@ function createRuntime<T extends Record<string, unknown>>(
   policyControlledWithdrawalExecutorPrivateKey: null;
   policyControlledWithdrawalPolicySignerPrivateKey: null;
   policyControlledWithdrawalAuthorizationTtlSeconds: number;
+  solvencyAnchorContractAddress: null;
+  solvencyAnchorSignerPrivateKey: null;
   managedWithdrawalSigners: [];
 } {
   return {
@@ -204,6 +230,8 @@ function createRuntime<T extends Record<string, unknown>>(
     policyControlledWithdrawalExecutorPrivateKey: null,
     policyControlledWithdrawalPolicySignerPrivateKey: null,
     policyControlledWithdrawalAuthorizationTtlSeconds: 300,
+    solvencyAnchorContractAddress: null,
+    solvencyAnchorSignerPrivateKey: null,
     managedWithdrawalSigners: [],
     ...overrides
   };

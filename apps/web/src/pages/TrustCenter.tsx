@@ -1,12 +1,23 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { ShieldCheck, FileCheck2, Scale, ShieldAlert } from "lucide-react";
+import {
+  Download,
+  FileCheck2,
+  Link2,
+  Scale,
+  ShieldAlert,
+  ShieldCheck
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { LoadingPanel } from "@/components/ui/loading-panel";
 import { useLocale } from "@/i18n/use-locale";
-import { listPublicSolvencyReports } from "@/lib/solvency-api";
+import {
+  getPublicReserveAttestationPackage,
+  getPublicSolvencyProofBundle,
+  listPublicSolvencyReports
+} from "@/lib/solvency-api";
 import { readApiErrorMessage } from "@/lib/api";
 
 function formatDecimal(value: string, locale: string): string {
@@ -35,9 +46,22 @@ function shortenHash(value: string): string {
   return value.length <= 18 ? value : `${value.slice(0, 10)}…${value.slice(-8)}`;
 }
 
+function downloadJsonArtifact(artifactName: string, payload: unknown): void {
+  const blob = new Blob([JSON.stringify(payload, null, 2)], {
+    type: "application/json"
+  });
+  const href = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = href;
+  anchor.download = artifactName;
+  anchor.click();
+  URL.revokeObjectURL(href);
+}
+
 const TrustCenter = () => {
   const { locale } = useLocale();
   const [searchParams, setSearchParams] = useSearchParams();
+  const [downloadError, setDownloadError] = useState<string | null>(null);
   const reportsQuery = useQuery({
     queryKey: ["public-solvency-reports"],
     queryFn: () => listPublicSolvencyReports(12)
@@ -52,6 +76,7 @@ const TrustCenter = () => {
 
     return entries[0] ?? null;
   }, [entries, selectedSnapshotId]);
+  const selectedAnchor = (selectedEntry?.report.anchors ?? [])[0] ?? null;
 
   const payload =
     selectedEntry?.report.canonicalPayload &&
@@ -61,6 +86,50 @@ const TrustCenter = () => {
   const assetRows = Array.isArray(payload?.assets) ? payload.assets : [];
   const policyState =
     payload && typeof payload.policyState === "object" ? payload.policyState : null;
+
+  const handleDownloadPublicBundle = async () => {
+    if (!selectedEntry) {
+      return;
+    }
+
+    setDownloadError(null);
+    try {
+      const bundle = await getPublicSolvencyProofBundle(selectedEntry.snapshot.id);
+      downloadJsonArtifact(bundle.artifactName, bundle);
+    } catch (error) {
+      setDownloadError(
+        readApiErrorMessage(
+          error,
+          locale === "ar"
+            ? "تعذر تنزيل حزمة إثبات الملاءة."
+            : "Solvency proof bundle could not be downloaded."
+        )
+      );
+    }
+  };
+
+  const handleDownloadReserveAttestation = async () => {
+    if (!selectedEntry) {
+      return;
+    }
+
+    setDownloadError(null);
+    try {
+      const attestation = await getPublicReserveAttestationPackage(
+        selectedEntry.snapshot.id
+      );
+      downloadJsonArtifact(attestation.artifactName, attestation);
+    } catch (error) {
+      setDownloadError(
+        readApiErrorMessage(
+          error,
+          locale === "ar"
+            ? "تعذر تنزيل شهادة الاحتياطي."
+            : "Reserve attestation could not be downloaded."
+        )
+      );
+    }
+  };
 
   return (
     <div className="stb-shell-bg min-h-screen px-4 py-6 text-slate-900 sm:px-6 lg:px-8">
@@ -197,13 +266,41 @@ const TrustCenter = () => {
                             : "This report is bound to a specific solvency snapshot and can be checked through its identifiers, signature, and published roots."}
                         </p>
                       </div>
-                      <div className="rounded-[1.2rem] bg-slate-950 px-4 py-3 text-sm text-white">
-                        <div className="flex items-center gap-2">
-                          <ShieldCheck className="h-4 w-4 text-emerald-300" />
-                          <span>{selectedEntry.report.signatureAlgorithm}</span>
+                      <div className="flex flex-col gap-3 sm:items-end">
+                        <div className="rounded-[1.2rem] bg-slate-950 px-4 py-3 text-sm text-white">
+                          <div className="flex items-center gap-2">
+                            <ShieldCheck className="h-4 w-4 text-emerald-300" />
+                            <span>{selectedEntry.report.signatureAlgorithm}</span>
+                          </div>
                         </div>
+                        <Button
+                          className="rounded-[1rem]"
+                          onClick={() => void handleDownloadPublicBundle()}
+                          type="button"
+                          variant="outline"
+                        >
+                          <Download className="h-4 w-4" />
+                          {locale === "ar" ? "تنزيل الحزمة" : "Download bundle"}
+                        </Button>
+                        <Button
+                          className="rounded-[1rem]"
+                          onClick={() => void handleDownloadReserveAttestation()}
+                          type="button"
+                          variant="outline"
+                        >
+                          <Download className="h-4 w-4" />
+                          {locale === "ar"
+                            ? "تنزيل شهادة الاحتياطي"
+                            : "Download reserve attestation"}
+                        </Button>
                       </div>
                     </div>
+
+                    {downloadError ? (
+                      <div className="mt-4 rounded-[1rem] border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                        {downloadError}
+                      </div>
+                    ) : null}
 
                     <div className="mt-6 grid gap-4 md:grid-cols-4">
                       <Metric label={locale === "ar" ? "الالتزامات الكلية" : "Total liabilities"} value={formatDecimal(selectedEntry.snapshot.totalLiabilityAmount, locale)} />
@@ -212,7 +309,7 @@ const TrustCenter = () => {
                       <Metric label={locale === "ar" ? "توقيت النشر" : "Published"} value={formatDate(selectedEntry.report.publishedAt, locale)} />
                     </div>
 
-                    <div className="mt-6 grid gap-4 lg:grid-cols-2">
+                    <div className="mt-6 grid gap-4 lg:grid-cols-3">
                       <DetailCard
                         icon={Scale}
                         title={locale === "ar" ? "هوية التقرير" : "Report identity"}
@@ -231,6 +328,18 @@ const TrustCenter = () => {
                           [locale === "ar" ? "مطلوب استئناف يدوي" : "Manual resume required", String(Boolean(policyState?.manualResumeRequired))],
                           [locale === "ar" ? "سبب السياسة" : "Reason code", String(policyState?.reasonCode ?? "none")],
                           [locale === "ar" ? "التقادم" : "Evidence freshness", selectedEntry.snapshot.evidenceFreshness]
+                        ]}
+                      />
+                      <DetailCard
+                        icon={Link2}
+                        title={locale === "ar" ? "مرساة السلسلة" : "On-chain anchor"}
+                        rows={[
+                          [locale === "ar" ? "الحالة" : "Status", selectedAnchor?.status ?? "not_requested"],
+                          [locale === "ar" ? "السلسلة" : "Chain ID", String(selectedAnchor?.chainId ?? selectedEntry.report.chainId)],
+                          [locale === "ar" ? "تجزئة المرساة" : "Anchor hash", selectedAnchor?.anchorPayloadHash ?? selectedEntry.report.reportHash],
+                          [locale === "ar" ? "المعاملة" : "Transaction", selectedAnchor?.txHash ?? "pending"],
+                          [locale === "ar" ? "الكتلة" : "Block", selectedAnchor?.blockNumber === null || typeof selectedAnchor?.blockNumber === "undefined" ? "pending" : String(selectedAnchor.blockNumber)],
+                          [locale === "ar" ? "تأكيد" : "Confirmed", selectedAnchor?.confirmedAt ? formatDate(selectedAnchor.confirmedAt, locale) : "pending"]
                         ]}
                       />
                     </div>

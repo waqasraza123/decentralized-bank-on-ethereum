@@ -6,11 +6,14 @@ import {
 import os from "node:os";
 import path from "node:path";
 import {
+  buildLaunchClosureArtifactManifest,
+  launchClosureArtifactManifestRelativePath,
   previewLaunchClosurePack,
   renderPhase12CompletionChecklist,
   renderLaunchClosureValidationSummary,
   scaffoldLaunchClosurePack,
   validateLaunchClosureManifest,
+  verifyLaunchClosureArtifactManifest,
   type LaunchClosureDynamicStatusInput,
   type LaunchClosureManifest
 } from "./launch-closure-pack";
@@ -35,6 +38,10 @@ function buildManifest(): LaunchClosureManifest {
       approverRole: "compliance_lead",
       apiKeyEnvironmentVariable: "INTERNAL_OPERATOR_API_KEY"
     },
+    customer: {
+      verificationAccountReference: "launch-smoke-customer",
+      accessTokenEnvironmentVariable: "CUSTOMER_ACCESS_TOKEN"
+    },
     artifacts: {
       apiReleaseId: "api-2026.04.10.1",
       workerReleaseId: "worker-2026.04.10.1",
@@ -42,6 +49,79 @@ function buildManifest(): LaunchClosureManifest {
       apiRollbackReleaseId: "api-2026.04.09.4",
       workerRollbackReleaseId: "worker-2026.04.09.4",
       backupReference: "snapshot-2026-04-10T08:00Z"
+    },
+    deploymentArtifacts: {
+      apiCurrent: {
+        releaseId: "api-2026.04.10.1",
+        service: "api",
+        environment: "production_like",
+        artifactKind: "vercel_deployment",
+        artifactUri: "vercel://api/api-2026.04.10.1",
+        artifactDigestSha256:
+          "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        sourceCommitSha: "abc1234",
+        runtime: "nodejs20.x"
+      },
+      apiRollback: {
+        releaseId: "api-2026.04.09.4",
+        service: "api",
+        environment: "production_like",
+        artifactKind: "vercel_deployment",
+        artifactUri: "vercel://api/api-2026.04.09.4",
+        artifactDigestSha256:
+          "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        sourceCommitSha: "def5678",
+        runtime: "nodejs20.x"
+      },
+      workerCurrent: {
+        releaseId: "worker-2026.04.10.1",
+        service: "worker",
+        environment: "production_like",
+        artifactKind: "worker_bundle",
+        artifactUri: "vercel://worker/worker-2026.04.10.1",
+        artifactDigestSha256:
+          "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        sourceCommitSha: "abc1234",
+        runtime: "nodejs20.x"
+      },
+      workerRollback: {
+        releaseId: "worker-2026.04.09.4",
+        service: "worker",
+        environment: "production_like",
+        artifactKind: "worker_bundle",
+        artifactUri: "vercel://worker/worker-2026.04.09.4",
+        artifactDigestSha256:
+          "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        sourceCommitSha: "def5678",
+        runtime: "nodejs20.x"
+      }
+    },
+    chain: {
+      networkName: "sepolia",
+      chainId: 11155111
+    },
+    solvencyAnchorRegistryDeployment: {
+      deploymentTxHash:
+        "0x1111111111111111111111111111111111111111111111111111111111111111",
+      governanceOwner: "0x1111111111111111111111111111111111111111",
+      authorizedAnchorer: "0x2222222222222222222222222222222222222222",
+      manifestPath: "packages/contracts/deployments/staging.manifest.json",
+      manifestCommitSha: "abc1234",
+      blockExplorerUrl:
+        "https://sepolia.etherscan.io/tx/0x1111111111111111111111111111111111111111111111111111111111111111",
+      onchainVerification: {
+        verifiedAt: "2026-04-10T11:30:00.000Z",
+        chainId: 11155111,
+        rpcUrlHost: "sepolia-rpc.example.com",
+        contractAddress: "0xcccccccccccccccccccccccccccccccccccccccc",
+        deploymentTxHash:
+          "0x1111111111111111111111111111111111111111111111111111111111111111",
+        deploymentBlockNumber: 12_345_678,
+        deploymentTransactionIndex: 0,
+        owner: "0x1111111111111111111111111111111111111111",
+        authorizedAnchorer: "0x2222222222222222222222222222222222222222",
+        bytecodePresent: true
+      }
     },
     alerting: {
       expectedTargetName: "ops-critical",
@@ -54,6 +134,61 @@ function buildManifest(): LaunchClosureManifest {
       roleReviewReference: "ticket/GOV-12",
       roleReviewRosterReference: "ticket/GOV-12#launch-roster"
     },
+    governedCustody: {
+      governanceSafeAddress: "0x3333333333333333333333333333333333333333",
+      treasurySafeAddress: "0x4444444444444444444444444444444444444444",
+      emergencySafeAddress: "0x5555555555555555555555555555555555555555",
+      signerInventory: [
+        {
+          scope: "deposit_execution",
+          keyReference: "kms://launch/deposit",
+          signerAddress: "0x6666666666666666666666666666666666666666"
+        },
+        {
+          scope: "withdrawal_execution",
+          keyReference: "kms://launch/withdrawal",
+          signerAddress: "0x7777777777777777777777777777777777777777"
+        },
+        {
+          scope: "solvency_anchor_execution",
+          keyReference: "kms://launch/solvency-anchor",
+          signerAddress: "0x2222222222222222222222222222222222222222"
+        },
+        {
+          scope: "incident_package_release",
+          keyReference: "safe://launch/incident-release",
+          signerAddress: "0x8888888888888888888888888888888888888888"
+        },
+        {
+          scope: "governance_admin",
+          keyReference: "safe://launch/governance-admin",
+          signerAddress: "0x9999999999999999999999999999999999999999"
+        }
+      ]
+    },
+    contracts: [
+      {
+        productSurface: "staking_v1",
+        version: "1.0.0",
+        address: "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        abiChecksumSha256:
+          "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      {
+        productSurface: "loan_book_v1",
+        version: "1.0.0",
+        address: "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        abiChecksumSha256:
+          "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      },
+      {
+        productSurface: "solvency_report_anchor_registry_v1",
+        version: "1.0.0",
+        address: "0xcccccccccccccccccccccccccccccccccccccccc",
+        abiChecksumSha256:
+          "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+      }
+    ],
     notes: {
       launchSummary: "Production-like launch candidate ready for final governed review.",
       requestNote: "All accepted evidence must be current before approval.",
@@ -146,10 +281,16 @@ describe("launch-closure-pack", () => {
         path.join(outputDir, "payloads", "critical_alert_reescalation.json")
       );
       expect(result.files).toContain(
+        path.join(outputDir, "payloads", "release-artifacts.json")
+      );
+      expect(result.files).toContain(
         path.join(outputDir, "current-status-summary.md")
       );
       expect(result.files).toContain(
         path.join(outputDir, "phase-12-completion-checklist.md")
+      );
+      expect(result.files).toContain(
+        path.join(outputDir, launchClosureArtifactManifestRelativePath)
       );
 
       const executionPlan = readFileSync(
@@ -177,10 +318,22 @@ describe("launch-closure-pack", () => {
         path.join(outputDir, "payloads", "critical_alert_reescalation.json"),
         "utf8"
       );
+      const releaseArtifactsPayload = readFileSync(
+        path.join(outputDir, "payloads", "release-artifacts.json"),
+        "utf8"
+      );
+      const artifactManifest = JSON.parse(
+        readFileSync(
+          path.join(outputDir, launchClosureArtifactManifestRelativePath),
+          "utf8"
+        )
+      ) as ReturnType<typeof buildLaunchClosureArtifactManifest>;
 
       expect(executionPlan).toContain("pnpm release:readiness:probe --");
       expect(executionPlan).toContain("--probe worker_rollback_drill");
       expect(executionPlan).toContain("--release-id launch-2026.04.10.1");
+      expect(executionPlan).toContain("payloads/release-artifacts.json");
+      expect(executionPlan).toContain("--release-artifacts payloads/release-artifacts.json");
       expect(executionPlan).toContain("pnpm release:readiness:verify --");
       expect(executionPlan).toContain("curl -sS -X POST");
       expect(approvalRequest).toContain('"releaseIdentifier": "launch-2026.04.10.1"');
@@ -196,8 +349,44 @@ describe("launch-closure-pack", () => {
       );
       expect(operatorActions).toContain("Operator Actions");
       expect(operatorActions).toContain("payloads/critical_alert_reescalation.json");
+      expect(operatorActions).toContain("payloads/release-artifacts.json");
       expect(criticalAlertPayload).toContain('"evidenceType": "critical_alert_reescalation"');
       expect(criticalAlertPayload).toContain('"environment": "production_like"');
+      expect(releaseArtifactsPayload).toContain('"apiRollback"');
+      expect(releaseArtifactsPayload).toContain('"workerRollback"');
+      expect(releaseArtifactsPayload).toContain('"approvalRollbackReleaseId"');
+      expect(artifactManifest.manifestChecksumSha256).toEqual(expect.any(String));
+      expect(artifactManifest.files).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            relativePath: "manifest.json",
+            byteLength: expect.any(Number),
+            contentSha256: artifactManifest.manifestChecksumSha256
+          }),
+          expect.objectContaining({
+            relativePath: path.join(
+              "payloads",
+              "critical_alert_reescalation.json"
+            ),
+            byteLength: expect.any(Number),
+            contentSha256: expect.any(String)
+          })
+        ])
+      );
+      expect(
+        artifactManifest.files.some(
+          (file) =>
+            file.relativePath === launchClosureArtifactManifestRelativePath
+        )
+      ).toBe(false);
+      expect(verifyLaunchClosureArtifactManifest(outputDir)).toEqual(
+        expect.objectContaining({
+          valid: true,
+          expectedFileCount: artifactManifest.fileCount,
+          checkedFileCount: artifactManifest.files.length,
+          issues: []
+        })
+      );
       expect(validationSummary).toContain(
         "database_restore_drill: accepted only in staging, production_like, production"
       );
@@ -239,19 +428,75 @@ describe("launch-closure-pack", () => {
           content: expect.stringContaining("payloads/platform_alert_delivery_slo.json")
         }),
         expect.objectContaining({
+          relativePath: launchClosureArtifactManifestRelativePath,
+          content: expect.stringContaining('"relativePath": "manifest.json"')
+        }),
+        expect.objectContaining({
           relativePath: path.join("payloads", "platform_alert_delivery_slo.json"),
           content: expect.stringContaining('"evidenceType": "platform_alert_delivery_slo"')
+        }),
+        expect.objectContaining({
+          relativePath: path.join("payloads", "release-artifacts.json"),
+          content: expect.stringContaining('"apiRollback"')
         }),
         expect.objectContaining({
           relativePath: "current-status-summary.md",
           content: expect.stringContaining("Approval posture")
         }),
         expect.objectContaining({
-          relativePath: path.join("evidence", "08-final-governed-launch-approval.md"),
+          relativePath: path.join(
+            "evidence",
+            "08-solvency-anchor-registry-deployment.md"
+          ),
+          content: expect.stringContaining("solvency report anchor registry")
+        }),
+        expect.objectContaining({
+          relativePath: path.join(
+            "evidence",
+            "09-notification-cutover-verification.md"
+          ),
+          content: expect.stringContaining("notification cutover")
+        }),
+        expect.objectContaining({
+          relativePath: path.join("evidence", "10-final-governed-launch-approval.md"),
           content: expect.stringContaining("dual-control launch approval")
         })
       ])
     );
+  });
+
+  it("detects launch-closure artifact manifest drift", () => {
+    const manifest = buildManifest();
+    const repoRoot = mkdtempSync(path.join(os.tmpdir(), "launch-closure-repo-"));
+    const outputDir = path.join(repoRoot, "pack");
+
+    try {
+      scaffoldLaunchClosurePack({
+        manifest,
+        repoRoot,
+        outputDir
+      });
+
+      const manifestPath = path.join(outputDir, "manifest.json");
+      rmSync(manifestPath);
+
+      const result = verifyLaunchClosureArtifactManifest(outputDir);
+
+      expect(result.valid).toBe(false);
+      expect(result.issues).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            code: "file_missing",
+            relativePath: "manifest.json"
+          })
+        ])
+      );
+    } finally {
+      rmSync(repoRoot, {
+        force: true,
+        recursive: true
+      });
+    }
   });
 
   it("renders a scoped phase 12 completion checklist", () => {

@@ -4,10 +4,16 @@ import {
   ReleaseReadinessEvidenceStatus,
   ReleaseReadinessEvidenceType
 } from "@prisma/client";
+import { createHash } from "node:crypto";
 import { PrismaService } from "../prisma/prisma.service";
+import { buildLaunchClosureArtifactManifest } from "./launch-closure-pack";
 import { ReleaseReadinessService } from "./release-readiness.service";
 
 const approvalExpectedUpdatedAt = "2026-04-08T12:00:00.000Z";
+
+function checksumPayload(value: unknown): string {
+  return createHash("sha256").update(JSON.stringify(value)).digest("hex");
+}
 
 function buildEvidenceRecord(
   overrides: Partial<Record<string, unknown>> = {}
@@ -42,13 +48,15 @@ function buildEvidenceRecord(
 function buildApprovalRecord(
   overrides: Partial<Record<string, unknown>> = {}
 ) {
+  const launchClosurePack = buildLaunchClosurePackRecord();
+
   return {
     id: "approval_1",
     releaseIdentifier: "release-2026-04-08.1",
     environment: ReleaseReadinessEnvironment.production_like,
     launchClosurePackId: "pack_1",
     launchClosurePackVersion: 1,
-    launchClosurePackChecksumSha256: "checksum_1",
+    launchClosurePackChecksumSha256: launchClosurePack.artifactChecksumSha256,
     rollbackReleaseIdentifier: "release-2026-04-07.3",
     status: ReleaseReadinessApprovalStatus.pending_approval,
     summary: "Phase 12 launch checklist reviewed against production-like proof.",
@@ -79,8 +87,8 @@ function buildApprovalRecord(
       generatedAt: "2026-04-08T12:00:00.000Z",
       overallStatus: "healthy",
       summary: {
-        requiredCheckCount: 10,
-        passedCheckCount: 10,
+        requiredCheckCount: 11,
+        passedCheckCount: 11,
         failedCheckCount: 0,
         pendingCheckCount: 0
       },
@@ -106,7 +114,7 @@ function buildApprovalRecord(
     supersededAt: null,
     createdAt: new Date("2026-04-08T12:00:00.000Z"),
     updatedAt: new Date("2026-04-08T12:00:00.000Z"),
-    launchClosurePack: buildLaunchClosurePackRecord(),
+    launchClosurePack,
     ...overrides
   };
 }
@@ -114,6 +122,34 @@ function buildApprovalRecord(
 function buildLaunchClosurePackRecord(
   overrides: Partial<Record<string, unknown>> = {}
 ) {
+  const files = [
+    {
+      relativePath: "manifest.json",
+      content: JSON.stringify(
+        {
+          releaseIdentifier: "release-2026-04-08.1"
+        },
+        null,
+        2
+      )
+    },
+    {
+      relativePath: "README.md",
+      content: "Launch closure pack\n"
+    },
+    {
+      relativePath: "artifact-manifest.json",
+      content: "{}\n"
+    }
+  ];
+  const artifactPayload = {
+    manifest: {
+      releaseIdentifier: "release-2026-04-08.1"
+    },
+    artifactManifest: buildLaunchClosureArtifactManifest(files),
+    files
+  };
+
   return {
     id: "pack_1",
     releaseIdentifier: "release-2026-04-08.1",
@@ -121,16 +157,55 @@ function buildLaunchClosurePackRecord(
     version: 1,
     generatedByOperatorId: "ops_1",
     generatedByOperatorRole: "operations_admin",
-    artifactChecksumSha256: "checksum_1",
-    artifactPayload: {
-      manifest: {
-        releaseIdentifier: "release-2026-04-08.1"
-      },
-      files: []
-    },
+    artifactChecksumSha256: checksumPayload(artifactPayload),
+    artifactPayload,
     createdAt: new Date("2026-04-08T12:00:00.000Z"),
     updatedAt: new Date("2026-04-08T12:00:00.000Z"),
     ...overrides
+  };
+}
+
+function buildVerifiableLaunchClosurePackRecord(
+  overrides: Partial<Record<string, unknown>> = {}
+) {
+  return buildLaunchClosurePackRecord(overrides);
+}
+
+function buildRollbackArtifactEvidencePayload(
+  service: "api" | "worker",
+  environment = "staging"
+) {
+  return {
+    proofKind: "deployment_artifact_manifest",
+    service,
+    approvalRollbackReleaseIdentifier: "release-2026-04-07.3",
+    currentArtifact: {
+      releaseId: `${service}-release-2026-04-08.1`,
+      service,
+      environment,
+      artifactKind: service === "api" ? "vercel_deployment" : "worker_bundle",
+      artifactUri: `vercel://${service}/${service}-release-2026-04-08.1`,
+      artifactDigestSha256:
+        service === "api"
+          ? "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          : "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      sourceCommitSha: "abc1234",
+      runtime: "nodejs20.x"
+    },
+    rollbackArtifact: {
+      releaseId: `${service}-release-2026-04-07.3`,
+      service,
+      environment,
+      artifactKind: service === "api" ? "vercel_deployment" : "worker_bundle",
+      artifactUri: `vercel://${service}/${service}-release-2026-04-07.3`,
+      artifactDigestSha256:
+        service === "api"
+          ? "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+          : "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      sourceCommitSha: "def5678",
+      runtime: "nodejs20.x"
+    },
+    artifactManifestPath: "payloads/release-artifacts.json"
   };
 }
 
@@ -153,13 +228,15 @@ function buildPassedRequiredEvidenceRecords() {
       id: "evidence_4",
       evidenceType: ReleaseReadinessEvidenceType.api_rollback_drill,
       rollbackReleaseIdentifier: "release-2026-04-07.3",
-      runbookPath: "docs/runbooks/restore-and-rollback-drills.md"
+      runbookPath: "docs/runbooks/restore-and-rollback-drills.md",
+      evidencePayload: buildRollbackArtifactEvidencePayload("api")
     }),
     buildEvidenceRecord({
       id: "evidence_5",
       evidenceType: ReleaseReadinessEvidenceType.worker_rollback_drill,
       rollbackReleaseIdentifier: "release-2026-04-07.3",
-      runbookPath: "docs/runbooks/restore-and-rollback-drills.md"
+      runbookPath: "docs/runbooks/restore-and-rollback-drills.md",
+      evidencePayload: buildRollbackArtifactEvidencePayload("worker")
     }),
     buildEvidenceRecord({
       id: "evidence_6",
@@ -190,6 +267,34 @@ function buildPassedRequiredEvidenceRecords() {
       evidenceType: "role_review",
       environment: ReleaseReadinessEnvironment.production_like,
       runbookPath: "docs/security/role-review.md"
+    }),
+    buildEvidenceRecord({
+      id: "evidence_11",
+      evidenceType: "solvency_anchor_registry_deployment",
+      environment: ReleaseReadinessEnvironment.production_like,
+      runbookPath: "docs/runbooks/solvency-anchor-registry-deployment-proof.md",
+      evidencePayload: {
+        proofKind: "manual_attestation",
+        networkName: "sepolia",
+        chainId: 11155111,
+        contractProductSurface: "solvency_report_anchor_registry_v1",
+        signerScope: "solvency_anchor_execution",
+        contractAddress: "0x1111111111111111111111111111111111111111",
+        deploymentTxHash:
+          "0x2222222222222222222222222222222222222222222222222222222222222222",
+        governanceOwner: "0x3333333333333333333333333333333333333333",
+        authorizedAnchorer: "0x4444444444444444444444444444444444444444",
+        abiChecksumSha256:
+          "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        manifestPath: "packages/contracts/deployments/staging.manifest.json",
+        manifestCommitSha: "abc1234"
+      }
+    }),
+    buildEvidenceRecord({
+      id: "evidence_12",
+      evidenceType: "notification_cutover_verification",
+      environment: ReleaseReadinessEnvironment.production_like,
+      runbookPath: "docs/runbooks/notification-cutover-verification.md"
     })
   ];
 }
@@ -238,6 +343,15 @@ function createService() {
       findFirst: jest.fn(),
       findMany: jest.fn(),
       count: jest.fn()
+    },
+    contractDeploymentManifest: {
+      findFirst: jest.fn()
+    },
+    governedSignerInventory: {
+      findFirst: jest.fn()
+    },
+    governanceAuthorityManifest: {
+      findFirst: jest.fn()
     },
     auditEvent: {
       create: jest.fn()
@@ -381,6 +495,160 @@ describe("ReleaseReadinessService", () => {
       )
     ).rejects.toThrow(
       "Release readiness evidence for api_rollback_drill requires release identifier, rollback release identifier."
+    );
+
+    expect(transactionClient.releaseReadinessEvidence.create).not.toHaveBeenCalled();
+  });
+
+  it("rejects rollback drill evidence without deployment artifact binding", async () => {
+    const { service, transactionClient } = createService();
+
+    await expect(
+      service.recordEvidence(
+        {
+          evidenceType: "worker_rollback_drill",
+          environment: "production_like",
+          status: "passed",
+          releaseIdentifier: "launch-2026.04.14.1",
+          rollbackReleaseIdentifier: "launch-rollback-2026.04.13.4",
+          summary: "Worker rollback drill completed."
+        },
+        "ops_1",
+        "operations_admin"
+      )
+    ).rejects.toThrow(
+      "Release readiness evidence for worker_rollback_drill requires valid payload fields: proof kind, service, approval rollback release identifier, current deployment artifact, rollback deployment artifact, artifact manifest path."
+    );
+
+    expect(transactionClient.releaseReadinessEvidence.create).not.toHaveBeenCalled();
+  });
+
+  it("rejects rollback drill artifact payloads with the wrong environment", async () => {
+    const { service, transactionClient } = createService();
+
+    await expect(
+      service.recordEvidence(
+        {
+          evidenceType: "api_rollback_drill",
+          environment: "production_like",
+          status: "passed",
+          releaseIdentifier: "launch-2026.04.14.1",
+          rollbackReleaseIdentifier: "launch-rollback-2026.04.13.4",
+          summary: "API rollback drill completed.",
+          evidencePayload: {
+            ...buildRollbackArtifactEvidencePayload("api", "staging"),
+            approvalRollbackReleaseIdentifier: "launch-rollback-2026.04.13.4"
+          }
+        },
+        "ops_1",
+        "operations_admin"
+      )
+    ).rejects.toThrow(
+      "Rollback drill evidence artifact binding is invalid: currentArtifact.environment, rollbackArtifact.environment."
+    );
+
+    expect(transactionClient.releaseReadinessEvidence.create).not.toHaveBeenCalled();
+  });
+
+  it("records rollback drill evidence with deployment artifact binding", async () => {
+    const { service, transactionClient } = createService();
+    (transactionClient.releaseReadinessEvidence.create as jest.Mock).mockResolvedValue(
+      buildEvidenceRecord({
+        evidenceType: ReleaseReadinessEvidenceType.api_rollback_drill,
+        environment: ReleaseReadinessEnvironment.production_like,
+        rollbackReleaseIdentifier: "launch-rollback-2026.04.13.4",
+        evidencePayload: {
+          ...buildRollbackArtifactEvidencePayload("api", "production_like"),
+          approvalRollbackReleaseIdentifier: "launch-rollback-2026.04.13.4"
+        }
+      })
+    );
+
+    const result = await service.recordEvidence(
+      {
+        evidenceType: "api_rollback_drill",
+        environment: "production_like",
+        status: "passed",
+        releaseIdentifier: "launch-2026.04.14.1",
+        rollbackReleaseIdentifier: "launch-rollback-2026.04.13.4",
+        summary: "API rollback drill completed.",
+        evidencePayload: {
+          ...buildRollbackArtifactEvidencePayload("api", "production_like"),
+          approvalRollbackReleaseIdentifier: "launch-rollback-2026.04.13.4"
+        }
+      },
+      "ops_1",
+      "operations_admin"
+    );
+
+    expect(
+      transactionClient.releaseReadinessEvidence.create
+    ).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          evidenceType: "api_rollback_drill",
+          rollbackReleaseIdentifier: "launch-rollback-2026.04.13.4",
+          evidencePayload: expect.objectContaining({
+            proofKind: "deployment_artifact_manifest",
+            service: "api"
+          })
+        })
+      })
+    );
+    expect(result.evidence.evidenceType).toBe("api_rollback_drill");
+  });
+
+  it("rejects solvency anchor deployment evidence that drifts from the active manifest", async () => {
+    const { service, prismaService, transactionClient } = createService();
+    (
+      prismaService.contractDeploymentManifest.findFirst as jest.Mock
+    ).mockResolvedValue({
+      deploymentTxHash:
+        "0x9999999999999999999999999999999999999999999999999999999999999999",
+      governanceOwner: "0x3333333333333333333333333333333333333333",
+      authorizedAnchorer: "0x4444444444444444444444444444444444444444",
+      abiChecksumSha256:
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    });
+    (prismaService.governedSignerInventory.findFirst as jest.Mock).mockResolvedValue({
+      id: "signer_1"
+    });
+    (
+      prismaService.governanceAuthorityManifest.findFirst as jest.Mock
+    ).mockResolvedValue({
+      id: "authority_1"
+    });
+
+    await expect(
+      service.recordEvidence(
+        {
+          evidenceType: "solvency_anchor_registry_deployment",
+          environment: "production_like",
+          status: "passed",
+          releaseIdentifier: "launch-2026.04.14.1",
+          summary: "Solvency anchor registry deployment verified.",
+          evidencePayload: {
+            proofKind: "manual_attestation",
+            networkName: "base-sepolia",
+            chainId: 84532,
+            contractProductSurface: "solvency_report_anchor_registry_v1",
+            signerScope: "solvency_anchor_execution",
+            contractAddress: "0x1111111111111111111111111111111111111111",
+            deploymentTxHash:
+              "0x2222222222222222222222222222222222222222222222222222222222222222",
+            governanceOwner: "0x3333333333333333333333333333333333333333",
+            authorizedAnchorer: "0x4444444444444444444444444444444444444444",
+            abiChecksumSha256:
+              "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            manifestPath: "packages/contracts/deployments/base-sepolia.manifest.json",
+            manifestCommitSha: "abc1234"
+          }
+        },
+        "ops_1",
+        "operations_admin"
+      )
+    ).rejects.toThrow(
+      "Solvency anchor registry deployment evidence does not match the active manifest fields: deployment transaction hash."
     );
 
     expect(transactionClient.releaseReadinessEvidence.create).not.toHaveBeenCalled();
@@ -738,6 +1006,75 @@ describe("ReleaseReadinessService", () => {
           workerRollbackReleaseId: "worker-rollback-1",
           backupReference: "backup-1"
         },
+        deploymentArtifacts: {
+          apiCurrent: {
+            releaseId: "api-1",
+            service: "api",
+            environment: "production_like",
+            artifactKind: "vercel_deployment",
+            artifactUri: "vercel://api/api-1",
+            artifactDigestSha256:
+              "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            sourceCommitSha: "abc1234",
+            runtime: "nodejs20.x"
+          },
+          apiRollback: {
+            releaseId: "api-rollback-1",
+            service: "api",
+            environment: "production_like",
+            artifactKind: "vercel_deployment",
+            artifactUri: "vercel://api/api-rollback-1",
+            artifactDigestSha256:
+              "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            sourceCommitSha: "def5678",
+            runtime: "nodejs20.x"
+          },
+          workerCurrent: {
+            releaseId: "worker-1",
+            service: "worker",
+            environment: "production_like",
+            artifactKind: "worker_bundle",
+            artifactUri: "vercel://worker/worker-1",
+            artifactDigestSha256:
+              "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            sourceCommitSha: "abc1234",
+            runtime: "nodejs20.x"
+          },
+          workerRollback: {
+            releaseId: "worker-rollback-1",
+            service: "worker",
+            environment: "production_like",
+            artifactKind: "worker_bundle",
+            artifactUri: "vercel://worker/worker-rollback-1",
+            artifactDigestSha256:
+              "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            sourceCommitSha: "def5678",
+            runtime: "nodejs20.x"
+          }
+        },
+        chain: {
+          networkName: "sepolia",
+          chainId: 11155111
+        },
+        solvencyAnchorRegistryDeployment: {
+          deploymentTxHash:
+            "0x1111111111111111111111111111111111111111111111111111111111111111",
+          governanceOwner: "0x3333333333333333333333333333333333333333",
+          authorizedAnchorer: "0x4444444444444444444444444444444444444444",
+          manifestPath: "packages/contracts/deployments/staging.manifest.json",
+          manifestCommitSha: "abc1234",
+          onchainVerification: {
+            chainId: 11155111,
+            rpcUrlHost: "sepolia-rpc.example.com",
+            contractAddress: "0x1111111111111111111111111111111111111111",
+            deploymentTxHash:
+              "0x1111111111111111111111111111111111111111111111111111111111111111",
+            deploymentBlockNumber: 1,
+            owner: "0x3333333333333333333333333333333333333333",
+            authorizedAnchorer: "0x4444444444444444444444444444444444444444",
+            bytecodePresent: true
+          }
+        },
         alerting: {
           expectedTargetName: "ops-critical",
           expectedTargetHealthStatus: "critical",
@@ -749,6 +1086,61 @@ describe("ReleaseReadinessService", () => {
           roleReviewReference: "ticket/GOV-1",
           roleReviewRosterReference: "ticket/GOV-1#roster"
         },
+        governedCustody: {
+          governanceSafeAddress: "0x3333333333333333333333333333333333333333",
+          treasurySafeAddress: "0x5555555555555555555555555555555555555555",
+          emergencySafeAddress: "0x6666666666666666666666666666666666666666",
+          signerInventory: [
+            {
+              scope: "deposit_execution",
+              keyReference: "kms://launch/deposit",
+              signerAddress: "0x7777777777777777777777777777777777777777"
+            },
+            {
+              scope: "withdrawal_execution",
+              keyReference: "kms://launch/withdrawal",
+              signerAddress: "0x8888888888888888888888888888888888888888"
+            },
+            {
+              scope: "solvency_anchor_execution",
+              keyReference: "kms://launch/solvency-anchor",
+              signerAddress: "0x4444444444444444444444444444444444444444"
+            },
+            {
+              scope: "incident_package_release",
+              keyReference: "safe://launch/incident-release",
+              signerAddress: "0x9999999999999999999999999999999999999999"
+            },
+            {
+              scope: "governance_admin",
+              keyReference: "safe://launch/governance-admin",
+              signerAddress: "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            }
+          ]
+        },
+        contracts: [
+          {
+            productSurface: "staking_v1",
+            version: "1.0.0",
+            address: "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            abiChecksumSha256:
+              "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+          },
+          {
+            productSurface: "loan_book_v1",
+            version: "1.0.0",
+            address: "0xcccccccccccccccccccccccccccccccccccccccc",
+            abiChecksumSha256:
+              "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+          },
+          {
+            productSurface: "solvency_report_anchor_registry_v1",
+            version: "1.0.0",
+            address: "0x1111111111111111111111111111111111111111",
+            abiChecksumSha256:
+              "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+          }
+        ],
         notes: {
           launchSummary: "Launch candidate ready for final governed review.",
           requestNote: "All evidence must remain current.",
@@ -769,6 +1161,11 @@ describe("ReleaseReadinessService", () => {
           generatedByOperatorRole: "operations_admin",
           artifactChecksumSha256: expect.any(String),
           artifactPayload: expect.objectContaining({
+            artifactManifest: expect.objectContaining({
+              manifestChecksumSha256: expect.any(String),
+              fileCount: expect.any(Number),
+              files: expect.any(Array)
+            }),
             outputSubpath: expect.any(String),
             files: expect.any(Array)
           })
@@ -776,6 +1173,8 @@ describe("ReleaseReadinessService", () => {
       })
     );
     expect(result.pack.version).toBe(3);
+    expect(result.pack.manifestChecksumSha256).toEqual(expect.any(String));
+    expect(result.pack.artifactManifest?.files.length).toBeGreaterThan(0);
     expect(result.files).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -827,7 +1226,58 @@ describe("ReleaseReadinessService", () => {
     const result = await service.getLaunchClosurePack("pack_1");
 
     expect(result.pack.id).toBe("pack_1");
-    expect(result.pack.artifactChecksumSha256).toBe("checksum_1");
+    expect(result.pack.artifactChecksumSha256).toEqual(expect.any(String));
+  });
+
+  it("verifies stored launch-closure pack artifact integrity", async () => {
+    const { service, prismaService } = createService();
+    (prismaService.releaseLaunchClosurePack.findUnique as jest.Mock).mockResolvedValue(
+      buildVerifiableLaunchClosurePackRecord()
+    );
+
+    const result = await service.verifyLaunchClosurePackIntegrity("pack_1");
+
+    expect(result.valid).toBe(true);
+    expect(result.artifactChecksumMatches).toBe(true);
+    expect(result.checkedFileCount).toBe(2);
+    expect(result.issues).toEqual([]);
+  });
+
+  it("reports stored launch-closure pack artifact drift", async () => {
+    const { service, prismaService } = createService();
+    const pack = buildVerifiableLaunchClosurePackRecord();
+    const payload = pack.artifactPayload as {
+      files: Array<{
+        relativePath: string;
+        content: string;
+      }>;
+    };
+    payload.files = payload.files.filter(
+      (file) => file.relativePath !== "manifest.json"
+    );
+    (prismaService.releaseLaunchClosurePack.findUnique as jest.Mock).mockResolvedValue(
+      pack
+    );
+
+    const result = await service.verifyLaunchClosurePackIntegrity("pack_1");
+
+    expect(result.valid).toBe(false);
+    expect(result.artifactChecksumMatches).toBe(false);
+    expect(result.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "artifact_checksum_mismatch"
+        }),
+        expect.objectContaining({
+          code: "file_missing",
+          relativePath: "manifest.json"
+        }),
+        expect.objectContaining({
+          code: "manifest_checksum_mismatch",
+          relativePath: "manifest.json"
+        })
+      ])
+    );
   });
 
   it("requests launch approval and snapshots checklist blockers from live evidence", async () => {
@@ -873,7 +1323,7 @@ describe("ReleaseReadinessService", () => {
           environment: "production_like",
           launchClosurePackId: "pack_1",
           launchClosurePackVersion: 1,
-          launchClosurePackChecksumSha256: "checksum_1",
+          launchClosurePackChecksumSha256: expect.any(String),
           evidenceSnapshot: expect.any(Object),
           blockerSnapshot: expect.any(Object)
         })
@@ -891,6 +1341,9 @@ describe("ReleaseReadinessService", () => {
     expect(result.approval.gate.overallStatus).toBe("ready");
     expect(result.approval.gate.approvalEligible).toBe(true);
     expect(result.approval.gate.staleEvidenceTypes).toEqual([]);
+    expect(result.approval.launchClosurePack?.manifestChecksumSha256).toEqual(
+      expect.any(String)
+    );
     expect(result.approval.launchClosureDrift).toEqual(
       expect.objectContaining({
         changed: false,
@@ -935,8 +1388,7 @@ describe("ReleaseReadinessService", () => {
     (prismaService.releaseLaunchClosurePack.findFirst as jest.Mock).mockResolvedValue(
       buildLaunchClosurePackRecord({
         id: "pack_2",
-        version: 2,
-        artifactChecksumSha256: "checksum_2"
+        version: 2
       })
     );
 
@@ -951,8 +1403,7 @@ describe("ReleaseReadinessService", () => {
         newerPackAvailable: true,
         latestPack: expect.objectContaining({
           id: "pack_2",
-          version: 2,
-          artifactChecksumSha256: "checksum_2"
+          version: 2
         })
       })
     );
@@ -982,8 +1433,7 @@ describe("ReleaseReadinessService", () => {
     (prismaService.releaseLaunchClosurePack.findFirst as jest.Mock).mockResolvedValue(
       buildLaunchClosurePackRecord({
         id: "pack_2",
-        version: 2,
-        artifactChecksumSha256: "checksum_2"
+        version: 2
       })
     );
 
@@ -1004,15 +1454,15 @@ describe("ReleaseReadinessService", () => {
 
   it("rebinds a pending approval to a newer scoped launch-closure pack", async () => {
     const { service, prismaService, transactionClient } = createService();
+    const nextLaunchClosurePack = buildLaunchClosurePackRecord({
+      id: "pack_2",
+      version: 2
+    });
     (prismaService.releaseReadinessApproval.findUnique as jest.Mock).mockResolvedValue(
       buildApprovalRecord()
     );
     (prismaService.releaseLaunchClosurePack.findUnique as jest.Mock).mockResolvedValue(
-      buildLaunchClosurePackRecord({
-        id: "pack_2",
-        version: 2,
-        artifactChecksumSha256: "checksum_2"
-      })
+      nextLaunchClosurePack
     );
     (prismaService.releaseReadinessEvidence.findMany as jest.Mock)
       .mockResolvedValueOnce(buildPassedRequiredEvidenceRecords())
@@ -1031,7 +1481,8 @@ describe("ReleaseReadinessService", () => {
         supersedesApprovalId: "approval_1",
         launchClosurePackId: "pack_2",
         launchClosurePackVersion: 2,
-        launchClosurePackChecksumSha256: "checksum_2",
+        launchClosurePackChecksumSha256:
+          nextLaunchClosurePack.artifactChecksumSha256,
         blockerSnapshot: {
           overallStatus: "ready",
           approvalEligible: true,
@@ -1077,7 +1528,7 @@ describe("ReleaseReadinessService", () => {
           supersedesApprovalId: "approval_1",
           launchClosurePackId: "pack_2",
           launchClosurePackVersion: 2,
-          launchClosurePackChecksumSha256: "checksum_2",
+          launchClosurePackChecksumSha256: expect.any(String),
           status: ReleaseReadinessApprovalStatus.pending_approval
         })
       })
@@ -1100,6 +1551,9 @@ describe("ReleaseReadinessService", () => {
     expect(result.approval.id).toBe("approval_2");
     expect(result.approval.supersedesApprovalId).toBe("approval_1");
     expect(result.approval.launchClosurePack?.id).toBe("pack_2");
+    expect(result.approval.launchClosurePack?.manifestChecksumSha256).toEqual(
+      expect.any(String)
+    );
   });
 
   it("rejects rebind when the approval already references the requested pack", async () => {
@@ -1133,8 +1587,7 @@ describe("ReleaseReadinessService", () => {
     (prismaService.releaseLaunchClosurePack.findUnique as jest.Mock).mockResolvedValue(
       buildLaunchClosurePackRecord({
         id: "pack_2",
-        version: 2,
-        artifactChecksumSha256: "checksum_2"
+        version: 2
       })
     );
     (prismaService.releaseReadinessEvidence.findMany as jest.Mock)
@@ -1172,8 +1625,7 @@ describe("ReleaseReadinessService", () => {
     (prismaService.releaseLaunchClosurePack.findUnique as jest.Mock).mockResolvedValue(
       buildLaunchClosurePackRecord({
         id: "pack_2",
-        version: 2,
-        artifactChecksumSha256: "checksum_2"
+        version: 2
       })
     );
     (prismaService.releaseReadinessEvidence.findMany as jest.Mock)
@@ -1216,8 +1668,7 @@ describe("ReleaseReadinessService", () => {
     (prismaService.releaseLaunchClosurePack.findUnique as jest.Mock).mockResolvedValue(
       buildLaunchClosurePackRecord({
         id: "pack_2",
-        version: 2,
-        artifactChecksumSha256: "checksum_2"
+        version: 2
       })
     );
     (prismaService.releaseReadinessEvidence.findMany as jest.Mock)
@@ -1258,8 +1709,7 @@ describe("ReleaseReadinessService", () => {
     (prismaService.releaseLaunchClosurePack.findUnique as jest.Mock).mockResolvedValue(
       buildLaunchClosurePackRecord({
         id: "pack_2",
-        version: 2,
-        artifactChecksumSha256: "checksum_2"
+        version: 2
       })
     );
     (prismaService.releaseReadinessEvidence.findMany as jest.Mock)
@@ -1334,8 +1784,7 @@ describe("ReleaseReadinessService", () => {
           newerPackAvailable: true,
           latestPack: {
             id: "pack_2",
-            version: 2,
-            artifactChecksumSha256: "checksum_2"
+            version: 2
           }
         },
         decisionDriftCapturedAt: new Date("2026-04-08T13:00:00.000Z")
@@ -1837,6 +2286,9 @@ describe("ReleaseReadinessService", () => {
     (prismaService.releaseReadinessApproval.findUnique as jest.Mock).mockResolvedValue(
       buildApprovalRecord()
     );
+    (prismaService.releaseLaunchClosurePack.findFirst as jest.Mock).mockResolvedValue(
+      buildLaunchClosurePackRecord()
+    );
     (prismaService.releaseReadinessEvidence.findMany as jest.Mock)
       .mockResolvedValueOnce(buildPassedRequiredEvidenceRecords())
       .mockResolvedValueOnce([buildEvidenceRecord()]);
@@ -1927,6 +2379,9 @@ describe("ReleaseReadinessService", () => {
     (prismaService.releaseReadinessApproval.findUnique as jest.Mock).mockResolvedValue(
       buildApprovalRecord()
     );
+    (prismaService.releaseLaunchClosurePack.findFirst as jest.Mock).mockResolvedValue(
+      buildLaunchClosurePackRecord()
+    );
     (prismaService.releaseReadinessEvidence.findMany as jest.Mock)
       .mockResolvedValueOnce(buildPassedRequiredEvidenceRecords())
       .mockResolvedValueOnce([buildEvidenceRecord()]);
@@ -1959,6 +2414,9 @@ describe("ReleaseReadinessService", () => {
     const { service, prismaService, transactionClient } = createService();
     (prismaService.releaseReadinessApproval.findUnique as jest.Mock).mockResolvedValue(
       buildApprovalRecord()
+    );
+    (prismaService.releaseLaunchClosurePack.findFirst as jest.Mock).mockResolvedValue(
+      buildLaunchClosurePackRecord()
     );
     (prismaService.releaseReadinessEvidence.findMany as jest.Mock)
       .mockResolvedValueOnce(buildPassedRequiredEvidenceRecords())

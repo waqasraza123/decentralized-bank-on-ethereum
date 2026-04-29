@@ -30,6 +30,8 @@ const runtime = {
   policyControlledWithdrawalExecutorPrivateKey: null,
   policyControlledWithdrawalPolicySignerPrivateKey: null,
   policyControlledWithdrawalAuthorizationTtlSeconds: 300,
+  solvencyAnchorContractAddress: null,
+  solvencyAnchorSignerPrivateKey: null,
   managedWithdrawalSigners: []
 };
 

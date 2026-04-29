@@ -19,18 +19,24 @@ Before any staging-like execution starts:
 - complete the manifest in [`docs/templates/release-launch-closure/environment-manifest.template.json`](/Users/mc/development/blockchain/ethereum/stealth-trails-bank/docs/templates/release-launch-closure/environment-manifest.template.json)
 - validate it with `pnpm release:launch-closure -- validate --manifest <path>`
 - scaffold the execution pack with `pnpm release:launch-closure -- scaffold --manifest <path> --output-dir <path> --force`
+- verify the generated pack with `pnpm release:launch-closure -- verify-artifact-manifest --pack-dir <path>`
+- for API/admin generated packs, verify the stored payload with `GET /release-readiness/internal/launch-closure/packs/:packId/integrity`
+- when using generated solvency anchor proof, pass `--solvency-fragment <path>` to `validate` and `scaffold`, paste the same JSON into the admin Launch Readiness solvency fragment editor, or run `merge-solvency-fragment --manifest <path> --solvency-fragment <path> --output <path>` to materialize the merged manifest first
+- preserve the stored pack checksum, merged manifest checksum, generated `artifact-manifest.json`, generated file checksums, and `payloads/release-artifacts.json` from the launch-closure pack response
 
 Important truth:
 
 - repo-owned automation can satisfy `contract_invariant_suite`, `backend_integration_suite`, and `end_to_end_finance_flows`
 - local dry-runs for restore and rollback are not accepted launch proof
-- accepted proof for alerting, restore, rollback, secret review, and role review must come from `staging`, `production_like`, or `production`
+- accepted proof for alerting, restore, rollback, notification cutover, secret review, and role review must come from `staging`, `production_like`, or `production`
+- solvency anchor registry deployment proof must come from `staging`, `production_like`, or `production`
 
 ## Release identity
 
 - target release identifier recorded
 - release approver recorded
 - rollback target release identifier recorded
+- API and worker current/rollback deployment artifact manifests recorded
 - release-readiness summary reviewed
 
 ## Security configuration
@@ -72,6 +78,7 @@ Important truth:
 ## Functional proof
 
 - customer sign-up or approved auth flow verified
+- customer and operator notification cutover proof verified
 - deposit request flow verified
 - withdrawal request flow verified
 - end-to-end finance flow evidence recorded in release-readiness evidence
@@ -85,6 +92,8 @@ Important truth:
 - contract deployment addresses recorded
 - contract invariant suite evidence recorded in release-readiness evidence
 - backend integration suite evidence recorded in release-readiness evidence
+- solvency anchor registry deployment evidence recorded in release-readiness evidence
+- solvency anchor registry owner and authorized anchorer verified against governed signer inventory
 - RPC endpoint and chain id verified against launch environment
 - managed signer wallet funding and ownership posture verified
 

@@ -45,6 +45,65 @@ export type ListIntentsResult = {
   limit: number;
 };
 
+export type SolvencyReportAnchorProjection = {
+  id: string;
+  reportId: string;
+  environment: string;
+  chainId: number;
+  status: "requested" | "submitted" | "confirmed" | "failed";
+  anchorPayload: unknown;
+  anchorPayloadText: string;
+  anchorPayloadHash: string;
+  anchorPayloadChecksumSha256: string;
+  anchorNote: string | null;
+  requestedByOperatorId: string;
+  requestedByOperatorRole: string | null;
+  requestedAt: string;
+  submittedByOperatorId: string | null;
+  submittedByOperatorRole: string | null;
+  submittedByWorkerId: string | null;
+  submittedAt: string | null;
+  txHash: string | null;
+  contractAddress: string | null;
+  blockNumber: number | null;
+  logIndex: number | null;
+  confirmedByOperatorId: string | null;
+  confirmedByOperatorRole: string | null;
+  confirmedByWorkerId: string | null;
+  confirmedAt: string | null;
+  failedByOperatorId: string | null;
+  failedByOperatorRole: string | null;
+  failedByWorkerId: string | null;
+  failureReason: string | null;
+  failedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ListSolvencyReportAnchorsResult = {
+  anchors: SolvencyReportAnchorProjection[];
+  limit: number;
+};
+
+export type RecordSolvencyReportAnchorSubmittedPayload = {
+  txHash: string;
+  contractAddress?: string;
+  blockNumber?: number;
+  logIndex?: number;
+};
+
+export type RecordSolvencyReportAnchorConfirmedPayload =
+  RecordSolvencyReportAnchorSubmittedPayload;
+
+export type RecordSolvencyReportAnchorFailedPayload = {
+  failureReason: string;
+};
+
+export type RecordSolvencyReportAnchorMutationResult = {
+  anchor: SolvencyReportAnchorProjection;
+  stateReused: boolean;
+};
+
 export type WorkerLoanAgreementProjection = {
   loanAgreementId: string;
   customerEmail: string;
@@ -155,6 +214,20 @@ export type ManagedDepositBroadcaster = {
   broadcast(intent: WorkerIntentProjection): Promise<DepositBroadcastResult>;
 };
 
+export type SolvencyReportAnchorBroadcastResult = {
+  txHash: string;
+  fromAddress: string;
+  toAddress: string;
+};
+
+export type SolvencyReportAnchorBroadcaster = {
+  readonly signerAddress: string;
+  readonly contractAddress: string;
+  broadcast(
+    anchor: SolvencyReportAnchorProjection
+  ): Promise<SolvencyReportAnchorBroadcastResult>;
+};
+
 export type ManagedWithdrawalBroadcaster = {
   canManageWallet(walletAddress: string | null | undefined): boolean;
   prepare(intent: WorkerIntentProjection): Promise<PreparedManagedWithdrawalTransaction>;
@@ -218,6 +291,11 @@ export type WorkerIterationMetrics = {
   defaultEscalatedLoanCount: number;
   liquidationCandidateCount: number;
   reEscalatedCriticalAlertCount: number;
+  requestedSolvencyReportAnchorCount: number;
+  submittedSolvencyReportAnchorCount: number;
+  solvencyReportAnchorSubmittedCount: number;
+  solvencyReportAnchorConfirmedCount: number;
+  solvencyReportAnchorFailedCount: number;
 };
 
 export type SweepRetirementVaultReleaseRequestsResult = {

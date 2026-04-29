@@ -3,6 +3,9 @@ import {
   ReleaseReadinessEnvironment,
   ReleaseReadinessEvidenceType
 } from "@prisma/client";
+import {
+  notificationCutoverVerificationEvidenceType
+} from "./dto/create-release-readiness-evidence.dto";
 
 type ApiEnvelope<T> = {
   status: "success" | "failed";
@@ -13,6 +16,7 @@ type ApiEnvelope<T> = {
 type ReleaseReadinessDrillSession = {
   baseUrl: string;
   accessToken?: string;
+  customerAccessToken?: string;
 };
 
 type ReleaseReadinessDrillOptions = {
@@ -27,6 +31,7 @@ type ReleaseReadinessDrillOptions = {
   expectedMinReEscalations?: number;
   expectedWorkerId?: string;
   expectedMinHealthyWorkers?: number;
+  requireNotificationFeedItem?: boolean;
 };
 
 type DrillCheckResult = {
@@ -159,6 +164,52 @@ type AuditEventListData = {
   totalCount: number;
 };
 
+type NotificationFeedData = {
+  items: Array<{
+    id: string;
+    deliverySequence: number;
+    category: string;
+    priority: string;
+    readAt: string | null;
+    archivedAt: string | null;
+    createdAt: string;
+  }>;
+  unreadCount: number;
+  limit: number;
+};
+
+type NotificationUnreadSummaryData = {
+  unreadCount: number;
+  criticalCount: number;
+  highCount: number;
+};
+
+type NotificationPreferencesData = {
+  notificationPreferences: {
+    audience: "customer" | "operator";
+    supportedChannels: string[];
+    entries: Array<{
+      category: string;
+      channels: Array<{
+        channel: string;
+        enabled: boolean;
+        mandatory: boolean;
+      }>;
+    }>;
+    updatedAt: string | null;
+  };
+};
+
+type NotificationSocketSessionData = {
+  audience: "customer" | "operator";
+  recipientKey: string;
+  socketToken: string;
+  expiresAt: string;
+  latestSequence: number;
+  heartbeatIntervalMs: number;
+  supportedChannels: string[];
+};
+
 const DEFAULT_STALE_AFTER_SECONDS = 180;
 const DEFAULT_RECENT_ALERT_LIMIT = 20;
 const DEFAULT_LOOKBACK_HOURS = 24;
@@ -167,8 +218,11 @@ function normalizeBaseUrl(baseUrl: string): string {
   return baseUrl.trim().replace(/\/+$/, "");
 }
 
-function createClient(session: ReleaseReadinessDrillSession): AxiosInstance {
-  const accessToken = session.accessToken?.trim();
+function createClient(
+  session: ReleaseReadinessDrillSession,
+  accessTokenOverride?: string
+): AxiosInstance {
+  const accessToken = accessTokenOverride?.trim() ?? session.accessToken?.trim();
 
   if (!accessToken) {
     throw new Error(
@@ -185,6 +239,20 @@ function createClient(session: ReleaseReadinessDrillSession): AxiosInstance {
   });
 }
 
+function createCustomerClient(
+  session: ReleaseReadinessDrillSession
+): AxiosInstance {
+  const customerAccessToken = session.customerAccessToken?.trim();
+
+  if (!customerAccessToken) {
+    throw new Error(
+      "Notification cutover verification requires --customer-access-token."
+    );
+  }
+
+  return createClient(session, customerAccessToken);
+}
+
 async function requestData<T>(
   client: AxiosInstance,
   path: string,
@@ -196,6 +264,26 @@ async function requestData<T>(
   const response = await client.get<ApiEnvelope<T>>(path, {
     params
   });
+
+  if (response.data.data === undefined) {
+    throw new Error(response.data.message || `API response for ${path} had no data.`);
+  }
+
+  return {
+    statusCode: response.status,
+    data: response.data.data
+  };
+}
+
+async function postData<T>(
+  client: AxiosInstance,
+  path: string,
+  body: Record<string, unknown> = {}
+): Promise<{
+  statusCode: number;
+  data: T;
+}> {
+  const response = await client.post<ApiEnvelope<T>>(path, body);
 
   if (response.data.data === undefined) {
     throw new Error(response.data.message || `API response for ${path} had no data.`);
@@ -592,6 +680,284 @@ export function evaluateWorkerRollbackProbe(
   );
 }
 
+function isNonNegativeInteger(value: unknown): value is number {
+  return Number.isInteger(value) && Number(value) >= 0;
+}
+
+function hasSupportedNotificationChannels(
+  supportedChannels: string[]
+): boolean {
+  return (
+    supportedChannels.includes("in_app") && supportedChannels.includes("email")
+  );
+}
+
+function sanitizeSocketSession(
+  socketSession: NotificationSocketSessionData
+): Record<string, unknown> {
+  return {
+    audience: socketSession.audience,
+    recipientKey: socketSession.recipientKey,
+    hasSocketToken: socketSession.socketToken.trim().length > 0,
+    expiresAt: socketSession.expiresAt,
+    latestSequence: socketSession.latestSequence,
+    heartbeatIntervalMs: socketSession.heartbeatIntervalMs,
+    supportedChannels: socketSession.supportedChannels
+  };
+}
+
+function evaluateNotificationAudienceProbe(input: {
+  audience: "customer" | "operator";
+  feed: NotificationFeedData;
+  unreadSummary: NotificationUnreadSummaryData;
+  preferences: NotificationPreferencesData;
+  socketSession: NotificationSocketSessionData;
+  requireFeedItem: boolean;
+}): {
+  failures: string[];
+  checks: DrillCheckResult[];
+  payload: Record<string, unknown>;
+} {
+  const failures: string[] = [];
+  const feedItems = input.feed.items;
+  const latestFeedSequence = feedItems.reduce(
+    (current, item) => Math.max(current, item.deliverySequence),
+    0
+  );
+  const preferenceMatrix = input.preferences.notificationPreferences;
+  const socketExpiresAt = Date.parse(input.socketSession.expiresAt);
+
+  if (!Array.isArray(feedItems)) {
+    failures.push(`${input.audience} notification feed did not return items.`);
+  }
+
+  if (input.requireFeedItem && feedItems.length === 0) {
+    failures.push(
+      `${input.audience} notification feed did not include a cutover verification item.`
+    );
+  }
+
+  if (!isNonNegativeInteger(input.feed.unreadCount)) {
+    failures.push(`${input.audience} notification feed unreadCount is invalid.`);
+  }
+
+  if (
+    !isNonNegativeInteger(input.unreadSummary.unreadCount) ||
+    !isNonNegativeInteger(input.unreadSummary.criticalCount) ||
+    !isNonNegativeInteger(input.unreadSummary.highCount)
+  ) {
+    failures.push(
+      `${input.audience} notification unread summary returned invalid counters.`
+    );
+  }
+
+  if (preferenceMatrix.audience !== input.audience) {
+    failures.push(
+      `${input.audience} notification preferences returned audience ${preferenceMatrix.audience}.`
+    );
+  }
+
+  if (!hasSupportedNotificationChannels(preferenceMatrix.supportedChannels)) {
+    failures.push(
+      `${input.audience} notification preferences do not expose in_app and email channels.`
+    );
+  }
+
+  if (preferenceMatrix.entries.length === 0) {
+    failures.push(`${input.audience} notification preference matrix is empty.`);
+  }
+
+  if (input.socketSession.audience !== input.audience) {
+    failures.push(
+      `${input.audience} notification socket session returned audience ${input.socketSession.audience}.`
+    );
+  }
+
+  if (!input.socketSession.recipientKey.startsWith(`${input.audience}:`)) {
+    failures.push(
+      `${input.audience} notification socket session recipient key is malformed.`
+    );
+  }
+
+  if (input.socketSession.socketToken.trim().length === 0) {
+    failures.push(
+      `${input.audience} notification socket session did not issue a token.`
+    );
+  }
+
+  if (
+    !isNonNegativeInteger(input.socketSession.latestSequence) ||
+    input.socketSession.latestSequence < latestFeedSequence
+  ) {
+    failures.push(
+      `${input.audience} notification socket session latestSequence is behind the feed.`
+    );
+  }
+
+  if (!Number.isFinite(socketExpiresAt) || socketExpiresAt <= Date.now()) {
+    failures.push(
+      `${input.audience} notification socket session expiresAt is not in the future.`
+    );
+  }
+
+  if (
+    !Number.isInteger(input.socketSession.heartbeatIntervalMs) ||
+    input.socketSession.heartbeatIntervalMs <= 0
+  ) {
+    failures.push(
+      `${input.audience} notification socket session heartbeat interval is invalid.`
+    );
+  }
+
+  if (!hasSupportedNotificationChannels(input.socketSession.supportedChannels)) {
+    failures.push(
+      `${input.audience} notification socket session does not expose in_app and email channels.`
+    );
+  }
+
+  const payload = {
+    feed: {
+      itemCount: feedItems.length,
+      unreadCount: input.feed.unreadCount,
+      latestFeedSequence,
+      sampleItems: feedItems.slice(0, 5)
+    },
+    unreadSummary: input.unreadSummary,
+    preferences: {
+      audience: preferenceMatrix.audience,
+      supportedChannels: preferenceMatrix.supportedChannels,
+      entryCount: preferenceMatrix.entries.length,
+      categories: preferenceMatrix.entries.map((entry) => entry.category)
+    },
+    socketSession: sanitizeSocketSession(input.socketSession)
+  };
+
+  const checks: DrillCheckResult[] = [
+    {
+      name: `${input.audience}_notification_feed`,
+      path:
+        input.audience === "customer"
+          ? "/notifications/me"
+          : "/notifications/internal/me",
+      ok:
+        Array.isArray(feedItems) &&
+        isNonNegativeInteger(input.feed.unreadCount) &&
+        (!input.requireFeedItem || feedItems.length > 0),
+      statusCode: 200,
+      summary: `Loaded ${feedItems.length} ${input.audience} notification feed items with ${input.feed.unreadCount} unread.`,
+      payload: payload.feed as Record<string, unknown>
+    },
+    {
+      name: `${input.audience}_notification_unread_summary`,
+      path:
+        input.audience === "customer"
+          ? "/notifications/me/unread-count"
+          : "/notifications/internal/me/unread-count",
+      ok:
+        isNonNegativeInteger(input.unreadSummary.unreadCount) &&
+        isNonNegativeInteger(input.unreadSummary.criticalCount) &&
+        isNonNegativeInteger(input.unreadSummary.highCount),
+      statusCode: 200,
+      summary: `Loaded ${input.audience} unread summary with ${input.unreadSummary.unreadCount} unread notifications.`,
+      payload: { ...input.unreadSummary }
+    },
+    {
+      name: `${input.audience}_notification_preferences`,
+      path:
+        input.audience === "customer"
+          ? "/notifications/me/preferences"
+          : "/notifications/internal/me/preferences",
+      ok:
+        preferenceMatrix.audience === input.audience &&
+        hasSupportedNotificationChannels(preferenceMatrix.supportedChannels) &&
+        preferenceMatrix.entries.length > 0,
+      statusCode: 200,
+      summary: `Loaded ${input.audience} notification preference matrix with ${preferenceMatrix.entries.length} categories.`,
+      payload: payload.preferences as Record<string, unknown>
+    },
+    {
+      name: `${input.audience}_notification_socket_session`,
+      path:
+        input.audience === "customer"
+          ? "/notifications/me/socket-session"
+          : "/notifications/internal/me/socket-session",
+      ok:
+        input.socketSession.audience === input.audience &&
+        input.socketSession.recipientKey.startsWith(`${input.audience}:`) &&
+        input.socketSession.socketToken.trim().length > 0 &&
+        isNonNegativeInteger(input.socketSession.latestSequence) &&
+        input.socketSession.latestSequence >= latestFeedSequence &&
+        Number.isFinite(socketExpiresAt) &&
+        socketExpiresAt > Date.now() &&
+        Number.isInteger(input.socketSession.heartbeatIntervalMs) &&
+        input.socketSession.heartbeatIntervalMs > 0 &&
+        hasSupportedNotificationChannels(input.socketSession.supportedChannels),
+      statusCode: 200,
+      summary: `Issued ${input.audience} notification websocket resume session at sequence ${input.socketSession.latestSequence}.`,
+      payload: payload.socketSession as Record<string, unknown>
+    }
+  ];
+
+  return {
+    failures,
+    checks,
+    payload
+  };
+}
+
+export function evaluateNotificationCutoverVerificationProbe(input: {
+  customerFeed: NotificationFeedData;
+  customerUnreadSummary: NotificationUnreadSummaryData;
+  customerPreferences: NotificationPreferencesData;
+  customerSocketSession: NotificationSocketSessionData;
+  operatorFeed: NotificationFeedData;
+  operatorUnreadSummary: NotificationUnreadSummaryData;
+  operatorPreferences: NotificationPreferencesData;
+  operatorSocketSession: NotificationSocketSessionData;
+  options: ReleaseReadinessDrillOptions;
+}): ReleaseReadinessDrillResult {
+  const customerResult = evaluateNotificationAudienceProbe({
+    audience: "customer",
+    feed: input.customerFeed,
+    unreadSummary: input.customerUnreadSummary,
+    preferences: input.customerPreferences,
+    socketSession: input.customerSocketSession,
+    requireFeedItem: input.options.requireNotificationFeedItem ?? false
+  });
+  const operatorResult = evaluateNotificationAudienceProbe({
+    audience: "operator",
+    feed: input.operatorFeed,
+    unreadSummary: input.operatorUnreadSummary,
+    preferences: input.operatorPreferences,
+    socketSession: input.operatorSocketSession,
+    requireFeedItem: input.options.requireNotificationFeedItem ?? false
+  });
+  const failures = [...customerResult.failures, ...operatorResult.failures];
+  const checks = [...customerResult.checks, ...operatorResult.checks];
+  const evidencePayload = {
+    customer: customerResult.payload,
+    operator: operatorResult.payload,
+    requireNotificationFeedItem:
+      input.options.requireNotificationFeedItem ?? false
+  };
+
+  if (failures.length > 0) {
+    return buildFailedResult(
+      notificationCutoverVerificationEvidenceType,
+      checks,
+      failures,
+      evidencePayload
+    );
+  }
+
+  return buildPassedResult(
+    notificationCutoverVerificationEvidenceType,
+    checks,
+    "Validated notification cutover across customer and operator inboxes, unread summaries, preference matrices, and websocket resume sessions.",
+    evidencePayload
+  );
+}
+
 export async function runReleaseReadinessDrill(
   session: ReleaseReadinessDrillSession,
   options: ReleaseReadinessDrillOptions,
@@ -697,6 +1063,70 @@ export async function runReleaseReadinessDrill(
       return evaluateCriticalAlertReEscalationProbe(alerts.data, options);
     }
 
+    case notificationCutoverVerificationEvidenceType: {
+      const customerClient = createCustomerClient(session);
+
+      const [
+        customerFeed,
+        customerUnreadSummary,
+        customerPreferences,
+        customerSocketSession,
+        operatorFeed,
+        operatorUnreadSummary,
+        operatorPreferences,
+        operatorSocketSession
+      ] = await Promise.all([
+        requestData<NotificationFeedData>(customerClient, "/notifications/me", {
+          limit: 5
+        }),
+        requestData<NotificationUnreadSummaryData>(
+          customerClient,
+          "/notifications/me/unread-count",
+          {}
+        ),
+        requestData<NotificationPreferencesData>(
+          customerClient,
+          "/notifications/me/preferences",
+          {}
+        ),
+        postData<NotificationSocketSessionData>(
+          customerClient,
+          "/notifications/me/socket-session",
+          {}
+        ),
+        requestData<NotificationFeedData>(client, "/notifications/internal/me", {
+          limit: 5
+        }),
+        requestData<NotificationUnreadSummaryData>(
+          client,
+          "/notifications/internal/me/unread-count",
+          {}
+        ),
+        requestData<NotificationPreferencesData>(
+          client,
+          "/notifications/internal/me/preferences",
+          {}
+        ),
+        postData<NotificationSocketSessionData>(
+          client,
+          "/notifications/internal/me/socket-session",
+          {}
+        )
+      ]);
+
+      return evaluateNotificationCutoverVerificationProbe({
+        customerFeed: customerFeed.data,
+        customerUnreadSummary: customerUnreadSummary.data,
+        customerPreferences: customerPreferences.data,
+        customerSocketSession: customerSocketSession.data,
+        operatorFeed: operatorFeed.data,
+        operatorUnreadSummary: operatorUnreadSummary.data,
+        operatorPreferences: operatorPreferences.data,
+        operatorSocketSession: operatorSocketSession.data,
+        options
+      });
+    }
+
     default:
       throw new Error(`Unsupported drill evidence type: ${options.evidenceType}`);
   }
@@ -714,6 +1144,7 @@ export async function recordReleaseReadinessEvidence(
     rollbackReleaseIdentifier?: string;
     backupReference?: string;
     observedAt: string;
+    evidenceLinks?: string[];
     evidencePayload: Record<string, unknown>;
   },
   client: AxiosInstance = createClient(session)

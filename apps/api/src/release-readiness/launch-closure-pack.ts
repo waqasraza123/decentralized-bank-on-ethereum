@@ -1,4 +1,11 @@
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import {
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync
+} from "node:fs";
 import path from "node:path";
 import {
   externalOnlyReleaseReadinessChecks,
@@ -9,6 +16,40 @@ export type LaunchClosureEnvironment =
   | "staging"
   | "production_like"
   | "production";
+
+export type SolvencyAnchorRegistryOnchainVerification = {
+  verifiedAt?: string;
+  chainId: number;
+  rpcUrlHost: string;
+  contractAddress: string;
+  deploymentTxHash: string;
+  deploymentBlockNumber: number | null;
+  deploymentTransactionIndex?: number | null;
+  owner: string;
+  authorizedAnchorer: string;
+  bytecodePresent: boolean;
+};
+
+export type LaunchClosureDeploymentArtifact = {
+  releaseId: string;
+  service: "api" | "worker";
+  environment: LaunchClosureEnvironment;
+  artifactKind:
+    | "vercel_deployment"
+    | "container_image"
+    | "node_bundle"
+    | "worker_bundle"
+    | "archive";
+  artifactUri: string;
+  artifactDigestSha256: string;
+  sourceCommitSha: string;
+  runtime: string;
+  deploymentProvider?: string;
+  deploymentId?: string;
+  buildUrl?: string;
+  generatedAt?: string;
+  rollbackValidatedAt?: string;
+};
 
 export type LaunchClosureManifest = {
   releaseIdentifier: string;
@@ -30,6 +71,10 @@ export type LaunchClosureManifest = {
     accessTokenEnvironmentVariable?: string;
     apiKeyEnvironmentVariable?: string;
   };
+  customer?: {
+    verificationAccountReference?: string;
+    accessTokenEnvironmentVariable?: string;
+  };
   artifacts: {
     apiReleaseId: string;
     workerReleaseId: string;
@@ -37,6 +82,26 @@ export type LaunchClosureManifest = {
     apiRollbackReleaseId: string;
     workerRollbackReleaseId: string;
     backupReference: string;
+  };
+  deploymentArtifacts: {
+    apiCurrent: LaunchClosureDeploymentArtifact;
+    apiRollback: LaunchClosureDeploymentArtifact;
+    workerCurrent: LaunchClosureDeploymentArtifact;
+    workerRollback: LaunchClosureDeploymentArtifact;
+  };
+  chain: {
+    networkName: string;
+    chainId: number;
+  };
+  solvencyAnchorRegistryDeployment: {
+    deploymentTxHash: string;
+    governanceOwner: string;
+    authorizedAnchorer: string;
+    manifestPath: string;
+    manifestCommitSha: string;
+    blockExplorerUrl?: string;
+    anchoredSmokeTxHash?: string;
+    onchainVerification?: SolvencyAnchorRegistryOnchainVerification;
   };
   alerting: {
     expectedTargetName: string;
@@ -61,7 +126,10 @@ export type LaunchClosureManifest = {
     }>;
   };
   contracts?: Array<{
-    productSurface: "staking_v1" | "loan_book_v1";
+    productSurface:
+      | "staking_v1"
+      | "loan_book_v1"
+      | "solvency_report_anchor_registry_v1";
     version: string;
     address: string;
     abiChecksumSha256: string;
@@ -77,6 +145,24 @@ export type LaunchClosureManifest = {
     residualRiskNote?: string;
   };
 };
+
+export type LaunchClosureSolvencyFragment = {
+  chain?: LaunchClosureManifest["chain"];
+  solvencyAnchorRegistryDeployment?: LaunchClosureManifest["solvencyAnchorRegistryDeployment"];
+  contracts?: NonNullable<LaunchClosureManifest["contracts"]>;
+  governedCustody?: {
+    governanceSafeAddress?: string;
+    treasurySafeAddress?: string;
+    emergencySafeAddress?: string;
+    signerInventory?: NonNullable<
+      LaunchClosureManifest["governedCustody"]
+    >["signerInventory"];
+  };
+};
+
+type LaunchClosureSignerInventory = NonNullable<
+  LaunchClosureManifest["governedCustody"]
+>["signerInventory"];
 
 export type LaunchClosureValidationResult = {
   errors: string[];
@@ -96,6 +182,48 @@ export type LaunchClosurePackFile = {
 export type LaunchClosurePackPreview = {
   outputSubpath: string;
   files: LaunchClosurePackFile[];
+};
+
+export const launchClosureArtifactManifestRelativePath =
+  "artifact-manifest.json";
+
+export type LaunchClosureArtifactManifestFile = {
+  relativePath: string;
+  byteLength: number;
+  contentSha256: string;
+};
+
+export type LaunchClosureArtifactManifest = {
+  manifestChecksumSha256: string | null;
+  fileCount: number;
+  files: LaunchClosureArtifactManifestFile[];
+};
+
+export type LaunchClosureArtifactManifestVerificationIssue = {
+  code:
+    | "artifact_manifest_missing"
+    | "artifact_manifest_invalid"
+    | "invalid_relative_path"
+    | "file_missing"
+    | "file_unexpected"
+    | "byte_length_mismatch"
+    | "content_checksum_mismatch"
+    | "manifest_checksum_mismatch"
+    | "file_count_mismatch";
+  relativePath: string | null;
+  expected: string | number | null;
+  actual: string | number | null;
+  message: string;
+};
+
+export type LaunchClosureArtifactManifestVerificationResult = {
+  packDir: string;
+  artifactManifestPath: string;
+  valid: boolean;
+  manifestChecksumSha256: string | null;
+  expectedFileCount: number | null;
+  checkedFileCount: number;
+  issues: LaunchClosureArtifactManifestVerificationIssue[];
 };
 
 export type LaunchClosureDynamicStatusInput = {
@@ -166,6 +294,17 @@ const localDryRunOnlyChecks = [
   "worker_rollback_drill"
 ] as const;
 
+const launchClosureDeploymentArtifactKinds = [
+  "vercel_deployment",
+  "container_image",
+  "node_bundle",
+  "worker_bundle",
+  "archive"
+] as const;
+
+const sha256ChecksumPattern = /^(sha256:)?[a-fA-F0-9]{64}$/;
+const gitCommitShaPattern = /^[a-fA-F0-9]{7,40}$/;
+
 function normalizeString(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
@@ -200,6 +339,229 @@ function readPositiveInteger(
   return Number(value);
 }
 
+function validateOptionalNonNegativeInteger(
+  value: unknown,
+  key: string,
+  errors: string[]
+): void {
+  if (value === undefined || value === null) {
+    return;
+  }
+
+  if (!Number.isInteger(value) || Number(value) < 0) {
+    errors.push(`Manifest field ${key} must be a non-negative integer.`);
+  }
+}
+
+function validateOptionalDateString(
+  value: unknown,
+  key: string,
+  errors: string[]
+): void {
+  if (value === undefined || value === null || normalizeString(value) === "") {
+    return;
+  }
+
+  if (typeof value !== "string" || Number.isNaN(Date.parse(value))) {
+    errors.push(`Manifest field ${key} must be an ISO-8601 date string.`);
+  }
+}
+
+function validateOptionalString(
+  value: unknown,
+  key: string,
+  errors: string[]
+): void {
+  if (value === undefined || value === null) {
+    return;
+  }
+
+  if (typeof value !== "string" || normalizeString(value) === "") {
+    errors.push(`Manifest field ${key} must be a non-empty string when set.`);
+  }
+}
+
+function validatePattern(
+  value: unknown,
+  key: string,
+  pattern: RegExp,
+  errors: string[],
+  label: string
+): string {
+  const normalizedValue = readString(value, key, errors);
+
+  if (normalizedValue && !pattern.test(normalizedValue)) {
+    errors.push(`Manifest field ${key} must be ${label}.`);
+  }
+
+  return normalizedValue;
+}
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function normalizeComparableHex(value: unknown): string {
+  return normalizeString(value).toLowerCase();
+}
+
+function isProductionLikeOrProductionLaunchClosureEnvironment(
+  environment: LaunchClosureEnvironment
+): boolean {
+  return environment === "production_like" || environment === "production";
+}
+
+function validateLaunchClosureDeploymentArtifact(
+  value: LaunchClosureDeploymentArtifact | undefined,
+  key: string,
+  expected: {
+    releaseId?: string;
+    service: "api" | "worker";
+    environment: LaunchClosureEnvironment;
+  },
+  errors: string[]
+): void {
+  if (!value || !isPlainRecord(value)) {
+    errors.push(`Missing required manifest field: ${key}.`);
+    return;
+  }
+
+  const releaseId = readString(value.releaseId, `${key}.releaseId`, errors);
+  if (releaseId && expected.releaseId && releaseId !== expected.releaseId) {
+    errors.push(
+      `Manifest field ${key}.releaseId must match ${expected.releaseId}.`
+    );
+  }
+
+  const service = readString(value.service, `${key}.service`, errors);
+  if (service && service !== expected.service) {
+    errors.push(`Manifest field ${key}.service must be ${expected.service}.`);
+  }
+
+  const environment = readString(value.environment, `${key}.environment`, errors);
+  if (environment && environment !== expected.environment) {
+    errors.push(
+      `Manifest field ${key}.environment must match ${expected.environment}.`
+    );
+  }
+
+  const artifactKind = readString(
+    value.artifactKind,
+    `${key}.artifactKind`,
+    errors
+  );
+  if (
+    artifactKind &&
+    !launchClosureDeploymentArtifactKinds.includes(
+      artifactKind as (typeof launchClosureDeploymentArtifactKinds)[number]
+    )
+  ) {
+    errors.push(
+      `Manifest field ${key}.artifactKind must be one of ${launchClosureDeploymentArtifactKinds.join(
+        ", "
+      )}.`
+    );
+  }
+
+  readString(value.artifactUri, `${key}.artifactUri`, errors);
+  validatePattern(
+    value.artifactDigestSha256,
+    `${key}.artifactDigestSha256`,
+    sha256ChecksumPattern,
+    errors,
+    "a SHA-256 checksum"
+  );
+  validatePattern(
+    value.sourceCommitSha,
+    `${key}.sourceCommitSha`,
+    gitCommitShaPattern,
+    errors,
+    "a 7 to 40 character git commit SHA"
+  );
+  readString(value.runtime, `${key}.runtime`, errors);
+  validateOptionalString(
+    value.deploymentProvider,
+    `${key}.deploymentProvider`,
+    errors
+  );
+  validateOptionalString(value.deploymentId, `${key}.deploymentId`, errors);
+  validateOptionalString(value.buildUrl, `${key}.buildUrl`, errors);
+  validateOptionalDateString(value.generatedAt, `${key}.generatedAt`, errors);
+  validateOptionalDateString(
+    value.rollbackValidatedAt,
+    `${key}.rollbackValidatedAt`,
+    errors
+  );
+}
+
+function validateLaunchClosureDeploymentArtifacts(
+  manifest: LaunchClosureManifest,
+  errors: string[]
+): void {
+  const artifacts = manifest.artifacts;
+
+  validateLaunchClosureDeploymentArtifact(
+    manifest.deploymentArtifacts?.apiCurrent,
+    "deploymentArtifacts.apiCurrent",
+    {
+      releaseId: artifacts?.apiReleaseId,
+      service: "api",
+      environment: manifest.environment
+    },
+    errors
+  );
+  validateLaunchClosureDeploymentArtifact(
+    manifest.deploymentArtifacts?.apiRollback,
+    "deploymentArtifacts.apiRollback",
+    {
+      releaseId: artifacts?.apiRollbackReleaseId,
+      service: "api",
+      environment: manifest.environment
+    },
+    errors
+  );
+  validateLaunchClosureDeploymentArtifact(
+    manifest.deploymentArtifacts?.workerCurrent,
+    "deploymentArtifacts.workerCurrent",
+    {
+      releaseId: artifacts?.workerReleaseId,
+      service: "worker",
+      environment: manifest.environment
+    },
+    errors
+  );
+  validateLaunchClosureDeploymentArtifact(
+    manifest.deploymentArtifacts?.workerRollback,
+    "deploymentArtifacts.workerRollback",
+    {
+      releaseId: artifacts?.workerRollbackReleaseId,
+      service: "worker",
+      environment: manifest.environment
+    },
+    errors
+  );
+
+  if (
+    artifacts?.apiReleaseId &&
+    artifacts?.apiRollbackReleaseId &&
+    artifacts.apiReleaseId === artifacts.apiRollbackReleaseId
+  ) {
+    errors.push(
+      "Manifest fields artifacts.apiReleaseId and artifacts.apiRollbackReleaseId must reference different artifacts."
+    );
+  }
+
+  if (
+    artifacts?.workerReleaseId &&
+    artifacts?.workerRollbackReleaseId &&
+    artifacts.workerReleaseId === artifacts.workerRollbackReleaseId
+  ) {
+    errors.push(
+      "Manifest fields artifacts.workerReleaseId and artifacts.workerRollbackReleaseId must reference different artifacts."
+    );
+  }
+}
+
 function sanitizePathSegment(value: string): string {
   return value.replace(/[^a-zA-Z0-9._-]+/g, "-");
 }
@@ -218,6 +580,367 @@ function defaultOutputDir(manifest: LaunchClosureManifest, repoRoot: string): st
 
 function jsonStringify(value: unknown): string {
   return JSON.stringify(value, null, 2) + "\n";
+}
+
+function fingerprintString(value: string): string {
+  return createHash("sha256").update(value).digest("hex");
+}
+
+function fingerprintBuffer(value: Buffer): string {
+  return createHash("sha256").update(value).digest("hex");
+}
+
+function isSafePackRelativePath(relativePath: string): boolean {
+  return (
+    relativePath.length > 0 &&
+    !path.isAbsolute(relativePath) &&
+    !relativePath.split(/[\\/]+/).includes("..")
+  );
+}
+
+function listPackRelativeFiles(
+  packDir: string,
+  currentDir = packDir
+): string[] {
+  return readdirSync(currentDir, {
+    withFileTypes: true
+  }).flatMap((entry) => {
+    const absolutePath = path.join(currentDir, entry.name);
+
+    if (entry.isDirectory()) {
+      return listPackRelativeFiles(packDir, absolutePath);
+    }
+
+    if (!entry.isFile()) {
+      return [];
+    }
+
+    return [path.relative(packDir, absolutePath)];
+  });
+}
+
+function readArtifactManifestPayload(
+  manifestPath: string
+): LaunchClosureArtifactManifest {
+  const parsed = JSON.parse(
+    readFileSync(manifestPath, "utf8")
+  ) as Partial<LaunchClosureArtifactManifest>;
+
+  if (
+    !parsed ||
+    typeof parsed !== "object" ||
+    Array.isArray(parsed) ||
+    !Array.isArray(parsed.files)
+  ) {
+    throw new Error("Artifact manifest must be a JSON object with files[].");
+  }
+
+  const files = parsed.files.map((file, index) => {
+    if (
+      !file ||
+      Array.isArray(file) ||
+      typeof file !== "object" ||
+      typeof (file as Record<string, unknown>).relativePath !== "string" ||
+      typeof (file as Record<string, unknown>).byteLength !== "number" ||
+      typeof (file as Record<string, unknown>).contentSha256 !== "string"
+    ) {
+      throw new Error(
+        `Artifact manifest files[${index}] must include relativePath, byteLength, and contentSha256.`
+      );
+    }
+
+    const manifestFile = file as LaunchClosureArtifactManifestFile;
+
+    return {
+      relativePath: manifestFile.relativePath,
+      byteLength: manifestFile.byteLength,
+      contentSha256: manifestFile.contentSha256
+    };
+  });
+
+  return {
+    manifestChecksumSha256:
+      typeof parsed.manifestChecksumSha256 === "string"
+        ? parsed.manifestChecksumSha256
+        : null,
+    fileCount:
+      typeof parsed.fileCount === "number"
+        ? parsed.fileCount
+        : parsed.files.length,
+    files
+  };
+}
+
+export function buildLaunchClosureArtifactManifest(
+  files: LaunchClosurePackFile[]
+): LaunchClosureArtifactManifest {
+  const manifestFiles = files
+    .filter(
+      (file) => file.relativePath !== launchClosureArtifactManifestRelativePath
+    )
+    .map((file) => ({
+      relativePath: file.relativePath,
+      byteLength: Buffer.byteLength(file.content, "utf8"),
+      contentSha256: fingerprintString(file.content)
+    }))
+    .sort((left, right) =>
+      left.relativePath < right.relativePath
+        ? -1
+        : left.relativePath > right.relativePath
+          ? 1
+          : 0
+    );
+  const manifestChecksumSha256 =
+    manifestFiles.find((file) => file.relativePath === "manifest.json")
+      ?.contentSha256 ?? null;
+
+  return {
+    manifestChecksumSha256,
+    fileCount: manifestFiles.length,
+    files: manifestFiles
+  };
+}
+
+export function verifyLaunchClosureArtifactManifest(
+  packDir: string
+): LaunchClosureArtifactManifestVerificationResult {
+  const artifactManifestPath = path.join(
+    packDir,
+    launchClosureArtifactManifestRelativePath
+  );
+  const issues: LaunchClosureArtifactManifestVerificationIssue[] = [];
+
+  let artifactManifest: LaunchClosureArtifactManifest;
+
+  try {
+    artifactManifest = readArtifactManifestPayload(artifactManifestPath);
+  } catch (error) {
+    const nodeError = error as NodeJS.ErrnoException;
+
+    return {
+      packDir,
+      artifactManifestPath,
+      valid: false,
+      manifestChecksumSha256: null,
+      expectedFileCount: null,
+      checkedFileCount: 0,
+      issues: [
+        {
+          code:
+            nodeError.code === "ENOENT"
+              ? "artifact_manifest_missing"
+              : "artifact_manifest_invalid",
+          relativePath: launchClosureArtifactManifestRelativePath,
+          expected: "readable artifact manifest",
+          actual: null,
+          message: `Could not read ${launchClosureArtifactManifestRelativePath}: ${
+            error instanceof Error ? error.message : String(error)
+          }`
+        }
+      ]
+    };
+  }
+
+  const actualFiles = new Set(
+    listPackRelativeFiles(packDir).filter(
+      (relativePath) =>
+        relativePath !== launchClosureArtifactManifestRelativePath
+    )
+  );
+  const expectedFiles = new Set<string>();
+
+  for (const file of artifactManifest.files) {
+    expectedFiles.add(file.relativePath);
+
+    if (!isSafePackRelativePath(file.relativePath)) {
+      issues.push({
+        code: "invalid_relative_path",
+        relativePath: file.relativePath,
+        expected: "relative path inside pack directory",
+        actual: file.relativePath,
+        message: `Artifact manifest file path is not safe: ${file.relativePath}.`
+      });
+      continue;
+    }
+
+    const targetPath = path.join(packDir, file.relativePath);
+
+    if (!actualFiles.has(file.relativePath)) {
+      issues.push({
+        code: "file_missing",
+        relativePath: file.relativePath,
+        expected: file.relativePath,
+        actual: null,
+        message: `Expected file is missing from the pack: ${file.relativePath}.`
+      });
+      continue;
+    }
+
+    const content = readFileSync(targetPath);
+    const actualByteLength = content.byteLength;
+    const actualChecksumSha256 = fingerprintBuffer(content);
+
+    if (actualByteLength !== file.byteLength) {
+      issues.push({
+        code: "byte_length_mismatch",
+        relativePath: file.relativePath,
+        expected: file.byteLength,
+        actual: actualByteLength,
+        message: `File byte length mismatch for ${file.relativePath}.`
+      });
+    }
+
+    if (actualChecksumSha256 !== file.contentSha256) {
+      issues.push({
+        code: "content_checksum_mismatch",
+        relativePath: file.relativePath,
+        expected: file.contentSha256,
+        actual: actualChecksumSha256,
+        message: `File SHA-256 checksum mismatch for ${file.relativePath}.`
+      });
+    }
+  }
+
+  for (const actualFile of actualFiles) {
+    if (!expectedFiles.has(actualFile)) {
+      issues.push({
+        code: "file_unexpected",
+        relativePath: actualFile,
+        expected: null,
+        actual: actualFile,
+        message: `Pack contains a file not listed in ${launchClosureArtifactManifestRelativePath}: ${actualFile}.`
+      });
+    }
+  }
+
+  if (artifactManifest.fileCount !== artifactManifest.files.length) {
+    issues.push({
+      code: "file_count_mismatch",
+      relativePath: null,
+      expected: artifactManifest.fileCount,
+      actual: artifactManifest.files.length,
+      message:
+        "Artifact manifest fileCount does not match the listed file count."
+    });
+  }
+
+  const manifestFile = artifactManifest.files.find(
+    (file) => file.relativePath === "manifest.json"
+  );
+
+  if (
+    artifactManifest.manifestChecksumSha256 !==
+    (manifestFile?.contentSha256 ?? null)
+  ) {
+    issues.push({
+      code: "manifest_checksum_mismatch",
+      relativePath: "manifest.json",
+      expected: artifactManifest.manifestChecksumSha256,
+      actual: manifestFile?.contentSha256 ?? null,
+      message:
+        "Artifact manifest manifestChecksumSha256 does not match the listed manifest.json checksum."
+    });
+  }
+
+  return {
+    packDir,
+    artifactManifestPath,
+    valid: issues.length === 0,
+    manifestChecksumSha256: artifactManifest.manifestChecksumSha256,
+    expectedFileCount: artifactManifest.fileCount,
+    checkedFileCount: artifactManifest.files.length,
+    issues
+  };
+}
+
+function mergeContracts(
+  currentContracts: LaunchClosureManifest["contracts"],
+  fragmentContracts: LaunchClosureSolvencyFragment["contracts"]
+): LaunchClosureManifest["contracts"] {
+  if (!fragmentContracts || fragmentContracts.length === 0) {
+    return currentContracts;
+  }
+
+  const mergedContracts = [...(currentContracts ?? [])];
+
+  for (const fragmentContract of fragmentContracts) {
+    const existingIndex = mergedContracts.findIndex(
+      (contract) => contract.productSurface === fragmentContract.productSurface
+    );
+
+    if (existingIndex >= 0) {
+      mergedContracts[existingIndex] = {
+        ...mergedContracts[existingIndex],
+        ...fragmentContract
+      };
+      continue;
+    }
+
+    mergedContracts.push(fragmentContract);
+  }
+
+  return mergedContracts;
+}
+
+function mergeSignerInventory(
+  currentSigners: LaunchClosureSignerInventory | undefined,
+  fragmentSigners: LaunchClosureSignerInventory | undefined
+): LaunchClosureSignerInventory {
+  if (!fragmentSigners || fragmentSigners.length === 0) {
+    return currentSigners ?? [];
+  }
+
+  const mergedSigners = [...(currentSigners ?? [])];
+
+  for (const fragmentSigner of fragmentSigners) {
+    const existingIndex = mergedSigners.findIndex(
+      (signer) => signer.scope === fragmentSigner.scope
+    );
+
+    if (existingIndex >= 0) {
+      mergedSigners[existingIndex] = {
+        ...mergedSigners[existingIndex],
+        ...fragmentSigner
+      };
+      continue;
+    }
+
+    mergedSigners.push(fragmentSigner);
+  }
+
+  return mergedSigners;
+}
+
+export function mergeLaunchClosureSolvencyFragment(
+  manifest: LaunchClosureManifest,
+  fragment: LaunchClosureSolvencyFragment
+): LaunchClosureManifest {
+  const nextGovernedCustody =
+    manifest.governedCustody || fragment.governedCustody
+      ? {
+          ...(manifest.governedCustody ?? {
+            governanceSafeAddress: "",
+            treasurySafeAddress: "",
+            emergencySafeAddress: "",
+            signerInventory: []
+          }),
+          ...(fragment.governedCustody ?? {}),
+          signerInventory: mergeSignerInventory(
+            manifest.governedCustody?.signerInventory,
+            fragment.governedCustody?.signerInventory
+          )
+        }
+      : undefined;
+
+  return {
+    ...manifest,
+    chain: fragment.chain ?? manifest.chain,
+    solvencyAnchorRegistryDeployment:
+      fragment.solvencyAnchorRegistryDeployment ??
+      manifest.solvencyAnchorRegistryDeployment,
+    contracts: mergeContracts(manifest.contracts, fragment.contracts),
+    governedCustody: nextGovernedCustody
+  };
 }
 
 function buildProbeCommand(args: string[]): string {
@@ -273,10 +996,14 @@ function buildApprovalRequestBody(
 }
 
 function buildApprovalCurlCommand(manifest: LaunchClosureManifest): string {
+  const accessTokenEnvironmentVariable = getOperatorAccessTokenEnvironmentVariable(
+    manifest
+  );
+
   return [
     "curl -sS -X POST \\",
     `  '${manifest.baseUrls.api}/release-readiness/internal/approvals' \\`,
-    `  -H 'authorization: Bearer $${manifest.operator.accessTokenEnvironmentVariable}' \\`,
+    `  -H 'authorization: Bearer $${accessTokenEnvironmentVariable}' \\`,
     "  -H 'content-type: application/json' \\",
     "  --data @approval-request.template.json"
   ].join("\n");
@@ -286,19 +1013,251 @@ function buildEvidenceCurlCommand(
   manifest: LaunchClosureManifest,
   evidenceType: string
 ): string {
+  const accessTokenEnvironmentVariable = getOperatorAccessTokenEnvironmentVariable(
+    manifest
+  );
+
   return [
     "curl -sS -X POST \\",
     `  '${manifest.baseUrls.api}/release-readiness/internal/evidence' \\`,
-    `  -H 'authorization: Bearer $${manifest.operator.accessTokenEnvironmentVariable}' \\`,
+    `  -H 'authorization: Bearer $${accessTokenEnvironmentVariable}' \\`,
     "  -H 'content-type: application/json' \\",
     `  --data @payloads/${evidenceType}.json`
   ].join("\n");
+}
+
+function getOperatorAccessTokenEnvironmentVariable(
+  manifest: LaunchClosureManifest
+): string {
+  return (
+    manifest.operator.accessTokenEnvironmentVariable ??
+    manifest.operator.apiKeyEnvironmentVariable ??
+    "OPERATOR_ACCESS_TOKEN"
+  );
+}
+
+function getCustomerAccessTokenEnvironmentVariable(
+  manifest: LaunchClosureManifest
+): string {
+  return (
+    manifest.customer?.accessTokenEnvironmentVariable ??
+    "CUSTOMER_ACCESS_TOKEN"
+  );
+}
+
+function findSolvencyAnchorRegistryContract(
+  manifest: LaunchClosureManifest
+): NonNullable<LaunchClosureManifest["contracts"]>[number] | null {
+  return (
+    manifest.contracts?.find(
+      (contract) =>
+        contract.productSurface === "solvency_report_anchor_registry_v1"
+    ) ?? null
+  );
+}
+
+function findSolvencyAnchorSigner(
+  manifest: LaunchClosureManifest
+): { scope: string; keyReference: string; signerAddress: string } | null {
+  return (
+    manifest.governedCustody?.signerInventory.find(
+      (signer) => signer.scope === "solvency_anchor_execution"
+    ) ?? null
+  );
+}
+
+function buildDeploymentArtifactPayload(
+  manifest: LaunchClosureManifest
+): Record<string, unknown> {
+  return {
+    releaseIdentifier: manifest.releaseIdentifier,
+    environment: manifest.environment,
+    artifacts: {
+      apiCurrent: manifest.deploymentArtifacts.apiCurrent,
+      apiRollback: manifest.deploymentArtifacts.apiRollback,
+      workerCurrent: manifest.deploymentArtifacts.workerCurrent,
+      workerRollback: manifest.deploymentArtifacts.workerRollback
+    },
+    releaseIdBindings: {
+      apiReleaseId: manifest.artifacts.apiReleaseId,
+      approvalRollbackReleaseId: manifest.artifacts.approvalRollbackReleaseId,
+      apiRollbackReleaseId: manifest.artifacts.apiRollbackReleaseId,
+      workerReleaseId: manifest.artifacts.workerReleaseId,
+      workerRollbackReleaseId: manifest.artifacts.workerRollbackReleaseId
+    }
+  };
+}
+
+function buildRollbackArtifactEvidencePayload(
+  manifest: LaunchClosureManifest,
+  service: "api" | "worker"
+): Record<string, unknown> {
+  const currentArtifact =
+    service === "api"
+      ? manifest.deploymentArtifacts.apiCurrent
+      : manifest.deploymentArtifacts.workerCurrent;
+  const rollbackArtifact =
+    service === "api"
+      ? manifest.deploymentArtifacts.apiRollback
+      : manifest.deploymentArtifacts.workerRollback;
+
+  return {
+    proofKind: "deployment_artifact_manifest",
+    service,
+    approvalRollbackReleaseIdentifier:
+      manifest.artifacts.approvalRollbackReleaseId,
+    currentArtifact,
+    rollbackArtifact,
+    artifactManifestPath: "payloads/release-artifacts.json"
+  };
+}
+
+function validateSolvencyAnchorOnchainVerification(
+  manifest: LaunchClosureManifest,
+  registryContract:
+    | NonNullable<LaunchClosureManifest["contracts"]>[number]
+    | null,
+  errors: string[]
+): void {
+  const verification =
+    manifest.solvencyAnchorRegistryDeployment?.onchainVerification;
+  const required = isProductionLikeOrProductionLaunchClosureEnvironment(
+    manifest.environment
+  );
+
+  if (!verification) {
+    if (required) {
+      errors.push(
+        "Manifest field solvencyAnchorRegistryDeployment.onchainVerification is required for production_like and production launch-closure packs."
+      );
+    }
+    return;
+  }
+
+  if (!isPlainRecord(verification)) {
+    errors.push(
+      "Manifest field solvencyAnchorRegistryDeployment.onchainVerification must be an object."
+    );
+    return;
+  }
+
+  const chainId = readPositiveInteger(
+    verification.chainId,
+    "solvencyAnchorRegistryDeployment.onchainVerification.chainId",
+    errors
+  );
+  const contractAddress = readString(
+    verification.contractAddress,
+    "solvencyAnchorRegistryDeployment.onchainVerification.contractAddress",
+    errors
+  );
+  const deploymentTxHash = readString(
+    verification.deploymentTxHash,
+    "solvencyAnchorRegistryDeployment.onchainVerification.deploymentTxHash",
+    errors
+  );
+  const owner = readString(
+    verification.owner,
+    "solvencyAnchorRegistryDeployment.onchainVerification.owner",
+    errors
+  );
+  const authorizedAnchorer = readString(
+    verification.authorizedAnchorer,
+    "solvencyAnchorRegistryDeployment.onchainVerification.authorizedAnchorer",
+    errors
+  );
+
+  readString(
+    verification.rpcUrlHost,
+    "solvencyAnchorRegistryDeployment.onchainVerification.rpcUrlHost",
+    errors
+  );
+
+  if (chainId > 0 && chainId !== manifest.chain?.chainId) {
+    errors.push(
+      "Manifest field solvencyAnchorRegistryDeployment.onchainVerification.chainId must match chain.chainId."
+    );
+  }
+
+  if (
+    contractAddress &&
+    registryContract?.address &&
+    normalizeComparableHex(contractAddress) !==
+      normalizeComparableHex(registryContract.address)
+  ) {
+    errors.push(
+      "Manifest field solvencyAnchorRegistryDeployment.onchainVerification.contractAddress must match the solvency registry contract address."
+    );
+  }
+
+  if (
+    deploymentTxHash &&
+    normalizeComparableHex(deploymentTxHash) !==
+      normalizeComparableHex(
+        manifest.solvencyAnchorRegistryDeployment?.deploymentTxHash
+      )
+  ) {
+    errors.push(
+      "Manifest field solvencyAnchorRegistryDeployment.onchainVerification.deploymentTxHash must match solvencyAnchorRegistryDeployment.deploymentTxHash."
+    );
+  }
+
+  if (
+    owner &&
+    normalizeComparableHex(owner) !==
+      normalizeComparableHex(
+        manifest.solvencyAnchorRegistryDeployment?.governanceOwner
+      )
+  ) {
+    errors.push(
+      "Manifest field solvencyAnchorRegistryDeployment.onchainVerification.owner must match solvencyAnchorRegistryDeployment.governanceOwner."
+    );
+  }
+
+  if (
+    authorizedAnchorer &&
+    normalizeComparableHex(authorizedAnchorer) !==
+      normalizeComparableHex(
+        manifest.solvencyAnchorRegistryDeployment?.authorizedAnchorer
+      )
+  ) {
+    errors.push(
+      "Manifest field solvencyAnchorRegistryDeployment.onchainVerification.authorizedAnchorer must match solvencyAnchorRegistryDeployment.authorizedAnchorer."
+    );
+  }
+
+  if (verification.bytecodePresent !== true) {
+    errors.push(
+      "Manifest field solvencyAnchorRegistryDeployment.onchainVerification.bytecodePresent must be true."
+    );
+  }
+
+  if (required && verification.deploymentBlockNumber === null) {
+    errors.push(
+      "Manifest field solvencyAnchorRegistryDeployment.onchainVerification.deploymentBlockNumber must be a positive integer for production_like and production launch-closure packs."
+    );
+  } else if (verification.deploymentBlockNumber !== null) {
+    readPositiveInteger(
+      verification.deploymentBlockNumber,
+      "solvencyAnchorRegistryDeployment.onchainVerification.deploymentBlockNumber",
+      errors
+    );
+  }
+
+  validateOptionalNonNegativeInteger(
+    verification.deploymentTransactionIndex,
+    "solvencyAnchorRegistryDeployment.onchainVerification.deploymentTransactionIndex",
+    errors
+  );
 }
 
 function buildApprovalDecisionCurlCommand(
   manifest: LaunchClosureManifest,
   action: "approve" | "reject"
 ): string {
+  const accessTokenEnvironmentVariable = getOperatorAccessTokenEnvironmentVariable(
+    manifest
+  );
   const templateName =
     action === "approve"
       ? "approve-approval.template.json"
@@ -307,7 +1266,7 @@ function buildApprovalDecisionCurlCommand(
   return [
     "curl -sS -X POST \\",
     `  '${manifest.baseUrls.api}/release-readiness/internal/approvals/<approval-id>/${action}' \\`,
-    `  -H 'authorization: Bearer $${manifest.operator.accessTokenEnvironmentVariable}' \\`,
+    `  -H 'authorization: Bearer $${accessTokenEnvironmentVariable}' \\`,
     "  -H 'content-type: application/json' \\",
     `  --data @${templateName}`
   ].join("\n");
@@ -400,9 +1359,11 @@ function buildEvidencePayloadTemplate(
     artifact.evidenceType === "worker_rollback_drill"
   ) {
     basePayload.rollbackReleaseIdentifier =
-      artifact.evidenceType === "api_rollback_drill"
-        ? manifest.artifacts.apiRollbackReleaseId
-        : manifest.artifacts.workerRollbackReleaseId;
+      manifest.artifacts.approvalRollbackReleaseId;
+    basePayload.evidencePayload = buildRollbackArtifactEvidencePayload(
+      manifest,
+      artifact.evidenceType === "api_rollback_drill" ? "api" : "worker"
+    );
   }
 
   if (artifact.evidenceType === "secret_handling_review") {
@@ -416,6 +1377,40 @@ function buildEvidencePayloadTemplate(
       manifest.governance.roleReviewReference,
       manifest.governance.roleReviewRosterReference
     ];
+  }
+
+  if (artifact.evidenceType === "solvency_anchor_registry_deployment") {
+    const registryContract = findSolvencyAnchorRegistryContract(manifest);
+    const anchorSigner = findSolvencyAnchorSigner(manifest);
+
+    basePayload.summary = `Solvency anchor registry deployment verified for ${manifest.releaseIdentifier}.`;
+    basePayload.note =
+      "Registry deployment, governance owner, authorized anchorer, ABI checksum, and manifest binding verified.";
+    basePayload.evidencePayload = {
+      proofKind: "manual_attestation",
+      networkName: manifest.chain.networkName,
+      chainId: manifest.chain.chainId,
+      contractProductSurface: "solvency_report_anchor_registry_v1",
+      signerScope: "solvency_anchor_execution",
+      contractAddress: registryContract?.address ?? "",
+      deploymentTxHash:
+        manifest.solvencyAnchorRegistryDeployment.deploymentTxHash,
+      governanceOwner: manifest.solvencyAnchorRegistryDeployment.governanceOwner,
+      authorizedAnchorer:
+        manifest.solvencyAnchorRegistryDeployment.authorizedAnchorer,
+      anchorerKeyReference: anchorSigner?.keyReference ?? "",
+      anchorerSignerAddress: anchorSigner?.signerAddress ?? "",
+      abiChecksumSha256: registryContract?.abiChecksumSha256 ?? "",
+      manifestPath: manifest.solvencyAnchorRegistryDeployment.manifestPath,
+      manifestCommitSha:
+        manifest.solvencyAnchorRegistryDeployment.manifestCommitSha,
+      blockExplorerUrl:
+        manifest.solvencyAnchorRegistryDeployment.blockExplorerUrl ?? "",
+      anchoredSmokeTxHash:
+        manifest.solvencyAnchorRegistryDeployment.anchoredSmokeTxHash ?? "",
+      onchainVerification:
+        manifest.solvencyAnchorRegistryDeployment.onchainVerification
+    };
   }
 
   return basePayload;
@@ -451,6 +1446,12 @@ function renderOperatorActionsGuide(
 - API launch-closure status: \`${manifest.baseUrls.api}/release-readiness/internal/launch-closure/status?releaseIdentifier=${manifest.releaseIdentifier}&environment=${manifest.environment}\`
 
 ## Evidence recording payloads
+
+### Release artifact manifest
+
+- Deployment artifact manifest: \`payloads/release-artifacts.json\`
+- API rollback evidence and worker rollback evidence include the matching current and rollback artifact records from this payload.
+- Operators must compare the deployed provider artifact URI and SHA-256 digest against this payload before running rollback drills.
 
 ${evidenceArtifacts
   .map(
@@ -494,6 +1495,12 @@ ${buildApprovalDecisionCurlCommand(manifest, "reject")}
 function buildLaunchClosureArtifacts(
   manifest: LaunchClosureManifest
 ): LaunchClosureArtifact[] {
+  const accessTokenEnvironmentVariable = getOperatorAccessTokenEnvironmentVariable(
+    manifest
+  );
+  const customerAccessTokenEnvironmentVariable =
+    getCustomerAccessTokenEnvironmentVariable(manifest);
+
   return [
     {
       filename: "01-platform-alert-delivery-slo.md",
@@ -509,7 +1516,7 @@ function buildLaunchClosureArtifacts(
         `Launch release identifier recorded with evidence: ${manifest.releaseIdentifier}`,
         `Current API release id: ${manifest.artifacts.apiReleaseId}`,
         `Requester operator: ${manifest.operator.requesterId} (${manifest.operator.requesterRole})`,
-        `Operator access token environment variable: ${manifest.operator.accessTokenEnvironmentVariable}`
+        `Operator access token environment variable: ${accessTokenEnvironmentVariable}`
       ],
       steps: [
         "Generate sustained degraded or critical delivery-target behavior against the configured staging or production-like alert target.",
@@ -526,7 +1533,7 @@ function buildLaunchClosureArtifacts(
         "--probe platform_alert_delivery_slo",
         `--base-url ${manifest.baseUrls.api}`,
         `--operator-id ${manifest.operator.requesterId}`,
-        `--access-token \"$${manifest.operator.accessTokenEnvironmentVariable}\"`,
+        `--access-token \"$${accessTokenEnvironmentVariable}\"`,
         `--operator-role ${manifest.operator.requesterRole}`,
         `--expected-target-name ${manifest.alerting.expectedTargetName}`,
         `--expected-target-health-status ${manifest.alerting.expectedTargetHealthStatus}`,
@@ -566,7 +1573,7 @@ function buildLaunchClosureArtifacts(
         "--probe critical_alert_reescalation",
         `--base-url ${manifest.baseUrls.api}`,
         `--operator-id ${manifest.operator.requesterId}`,
-        `--access-token \"$${manifest.operator.accessTokenEnvironmentVariable}\"`,
+        `--access-token \"$${accessTokenEnvironmentVariable}\"`,
         `--operator-role ${manifest.operator.requesterRole}`,
         manifest.alerting.expectedAlertId
           ? `--expected-alert-id ${manifest.alerting.expectedAlertId}`
@@ -605,7 +1612,7 @@ function buildLaunchClosureArtifacts(
         "--probe database_restore_drill",
         `--base-url ${manifest.baseUrls.restoreApi}`,
         `--operator-id ${manifest.operator.requesterId}`,
-        `--access-token \"$${manifest.operator.accessTokenEnvironmentVariable}\"`,
+        `--access-token \"$${accessTokenEnvironmentVariable}\"`,
         `--operator-role ${manifest.operator.requesterRole}`,
         `--environment ${manifest.environment}`,
         `--release-id ${manifest.releaseIdentifier}`,
@@ -624,15 +1631,20 @@ function buildLaunchClosureArtifacts(
         `Primary API base URL: ${manifest.baseUrls.api}`,
         `Current API release id: ${manifest.artifacts.apiReleaseId}`,
         `Rollback API release id: ${manifest.artifacts.apiRollbackReleaseId}`,
+        `Current API artifact digest: ${manifest.deploymentArtifacts.apiCurrent.artifactDigestSha256}`,
+        `Rollback API artifact digest: ${manifest.deploymentArtifacts.apiRollback.artifactDigestSha256}`,
+        "Artifact manifest payload: payloads/release-artifacts.json",
         `Requester operator: ${manifest.operator.requesterId} (${manifest.operator.requesterRole})`
       ],
       steps: [
-        "Capture the currently deployed API release id and confirm the rollback artifact reference is the intended prior known-good build.",
+        "Capture the currently deployed API release id and confirm it matches deploymentArtifacts.apiCurrent.",
+        "Confirm the rollback API artifact digest, source commit, provider id, and URI match deploymentArtifacts.apiRollback.",
         "Deploy the rollback API artifact against the current database schema in the accepted environment.",
-        "Run the repo-owned rollback probe below with --record-evidence."
+        "Run the repo-owned rollback probe below with --release-artifacts and --record-evidence."
       ],
       expectedOutcome: [
         "The probe returns passed status.",
+        "The recorded evidence payload binds the rollback drill to payloads/release-artifacts.json.",
         "Operator monitoring, reconciliation, review-case, and audit surfaces remain readable after rollback.",
         "Release-readiness evidence is recorded with evidenceType api_rollback_drill."
       ],
@@ -640,11 +1652,12 @@ function buildLaunchClosureArtifacts(
         "--probe api_rollback_drill",
         `--base-url ${manifest.baseUrls.api}`,
         `--operator-id ${manifest.operator.requesterId}`,
-        `--access-token \"$${manifest.operator.accessTokenEnvironmentVariable}\"`,
+        `--access-token \"$${accessTokenEnvironmentVariable}\"`,
         `--operator-role ${manifest.operator.requesterRole}`,
         `--environment ${manifest.environment}`,
         `--release-id ${manifest.releaseIdentifier}`,
-        `--rollback-release-id ${manifest.artifacts.apiRollbackReleaseId}`,
+        `--rollback-release-id ${manifest.artifacts.approvalRollbackReleaseId}`,
+        "--release-artifacts payloads/release-artifacts.json",
         "--record-evidence"
       ])
     },
@@ -660,15 +1673,21 @@ function buildLaunchClosureArtifacts(
         `Worker identifier: ${manifest.worker.identifier}`,
         `Current worker release id: ${manifest.artifacts.workerReleaseId}`,
         `Rollback worker release id: ${manifest.artifacts.workerRollbackReleaseId}`,
+        `Current worker artifact digest: ${manifest.deploymentArtifacts.workerCurrent.artifactDigestSha256}`,
+        `Rollback worker artifact digest: ${manifest.deploymentArtifacts.workerRollback.artifactDigestSha256}`,
+        "Artifact manifest payload: payloads/release-artifacts.json",
         `Requester operator: ${manifest.operator.requesterId} (${manifest.operator.requesterRole})`
       ],
       steps: [
-        "Stop the current worker and deploy the prior worker artifact in the accepted environment.",
+        "Stop the current worker and confirm it matches deploymentArtifacts.workerCurrent.",
+        "Confirm the rollback worker artifact digest, source commit, provider id, and URI match deploymentArtifacts.workerRollback.",
+        "Deploy the prior worker artifact in the accepted environment.",
         "Confirm the reverted worker is using the expected worker identifier and the intended execution mode.",
-        "Run the repo-owned rollback probe below with --record-evidence."
+        "Run the repo-owned rollback probe below with --release-artifacts and --record-evidence."
       ],
       expectedOutcome: [
         "The probe returns passed status.",
+        "The recorded evidence payload binds the rollback drill to payloads/release-artifacts.json.",
         "The worker health surface shows the named worker as healthy with a fresh heartbeat.",
         "Release-readiness evidence is recorded with evidenceType worker_rollback_drill."
       ],
@@ -676,13 +1695,14 @@ function buildLaunchClosureArtifacts(
         "--probe worker_rollback_drill",
         `--base-url ${manifest.baseUrls.api}`,
         `--operator-id ${manifest.operator.requesterId}`,
-        `--access-token \"$${manifest.operator.accessTokenEnvironmentVariable}\"`,
+        `--access-token \"$${accessTokenEnvironmentVariable}\"`,
         `--operator-role ${manifest.operator.requesterRole}`,
         `--expected-worker-id ${manifest.worker.identifier}`,
         "--expected-min-healthy-workers 1",
         `--environment ${manifest.environment}`,
         `--release-id ${manifest.releaseIdentifier}`,
-        `--rollback-release-id ${manifest.artifacts.workerRollbackReleaseId}`,
+        `--rollback-release-id ${manifest.artifacts.approvalRollbackReleaseId}`,
+        "--release-artifacts payloads/release-artifacts.json",
         "--record-evidence"
       ])
     },
@@ -719,7 +1739,7 @@ function buildLaunchClosureArtifacts(
         `--base-url ${manifest.baseUrls.api}`,
         `--operator-id ${manifest.operator.requesterId}`,
         `--operator-role ${manifest.operator.requesterRole}`,
-        `--access-token \"$${manifest.operator.accessTokenEnvironmentVariable}\"`
+        `--access-token \"$${accessTokenEnvironmentVariable}\"`
       ])
     },
     {
@@ -756,11 +1776,86 @@ function buildLaunchClosureArtifacts(
         `--base-url ${manifest.baseUrls.api}`,
         `--operator-id ${manifest.operator.requesterId}`,
         `--operator-role ${manifest.operator.requesterRole}`,
-        `--access-token \"$${manifest.operator.accessTokenEnvironmentVariable}\"`
+        `--access-token \"$${accessTokenEnvironmentVariable}\"`
       ])
     },
     {
-      filename: "08-final-governed-launch-approval.md",
+      filename: "08-solvency-anchor-registry-deployment.md",
+      title: "Solvency Anchor Registry Deployment",
+      objective:
+        "Record accepted proof that the solvency report anchor registry is deployed, governed, authorized for the launch anchor signer, and bound to the deployment manifest.",
+      runbookPath: "docs/runbooks/solvency-anchor-registry-deployment-proof.md",
+      evidenceType: "solvency_anchor_registry_deployment",
+      requiredInputs: [
+        `Primary API base URL: ${manifest.baseUrls.api}`,
+        `Launch release identifier: ${manifest.releaseIdentifier}`,
+        `Network: ${manifest.chain.networkName} (${manifest.chain.chainId})`,
+        `Registry contract: ${findSolvencyAnchorRegistryContract(manifest)?.address ?? ""}`,
+        `Deployment transaction: ${manifest.solvencyAnchorRegistryDeployment.deploymentTxHash}`,
+        `Governance owner: ${manifest.solvencyAnchorRegistryDeployment.governanceOwner}`,
+        `Authorized anchorer: ${manifest.solvencyAnchorRegistryDeployment.authorizedAnchorer}`,
+        `Manifest path: ${manifest.solvencyAnchorRegistryDeployment.manifestPath}`,
+        `Manifest commit SHA: ${manifest.solvencyAnchorRegistryDeployment.manifestCommitSha}`,
+        `Requester operator: ${manifest.operator.requesterId} (${manifest.operator.requesterRole})`
+      ],
+      steps: [
+        "Confirm the deployed registry address and ABI checksum match the checked-in deployment manifest.",
+        "Read the registry governance owner and authorized anchorer from the accepted chain.",
+        "Confirm the authorized anchorer matches the governed signer inventory for solvency_anchor_execution.",
+        "Record the payload template below as accepted release-readiness evidence."
+      ],
+      expectedOutcome: [
+        "A passed evidence record exists for solvency_anchor_registry_deployment.",
+        "The evidence payload binds chain id, registry address, deployment transaction, owner, authorized anchorer, ABI checksum, and manifest commit.",
+        "Governed launch approval remains blocked if this deployment proof is missing, failed, stale, or recorded for another release."
+      ],
+      exactCommand: buildEvidenceCurlCommand(
+        manifest,
+        "solvency_anchor_registry_deployment"
+      )
+    },
+    {
+      filename: "09-notification-cutover-verification.md",
+      title: "Notification Cutover Verification",
+      objective:
+        "Prove the unified customer and operator notification cutover is live across inbox reads, unread summaries, preference matrices, and websocket resume sessions.",
+      runbookPath: "docs/runbooks/notification-cutover-verification.md",
+      evidenceType: "notification_cutover_verification",
+      requiredInputs: [
+        `Primary API base URL: ${manifest.baseUrls.api}`,
+        `Launch release identifier recorded with evidence: ${manifest.releaseIdentifier}`,
+        `Requester operator: ${manifest.operator.requesterId} (${manifest.operator.requesterRole})`,
+        `Operator access token environment variable: ${accessTokenEnvironmentVariable}`,
+        `Customer access token environment variable: ${customerAccessTokenEnvironmentVariable}`,
+        manifest.customer?.verificationAccountReference
+          ? `Customer verification account: ${manifest.customer.verificationAccountReference}`
+          : "Customer verification account: launch smoke customer"
+      ],
+      steps: [
+        "Sign in as the launch smoke customer and export a fresh customer JWT into the named customer token environment variable.",
+        "Export a fresh operator bearer token for the requester into the named operator token environment variable.",
+        "Run the repo-owned notification cutover probe below with --record-evidence.",
+        "Use --require-notification-feed-item only after the launch smoke has emitted at least one customer and one operator notification."
+      ],
+      expectedOutcome: [
+        "The probe returns passed status.",
+        "Customer and operator inbox, unread-summary, preference, and socket-session endpoints all return coherent cutover state.",
+        "Release-readiness evidence is recorded with evidenceType notification_cutover_verification."
+      ],
+      exactCommand: buildProbeCommand([
+        "--probe notification_cutover_verification",
+        `--base-url ${manifest.baseUrls.api}`,
+        `--operator-id ${manifest.operator.requesterId}`,
+        `--access-token \"$${accessTokenEnvironmentVariable}\"`,
+        `--customer-access-token \"$${customerAccessTokenEnvironmentVariable}\"`,
+        `--operator-role ${manifest.operator.requesterRole}`,
+        `--environment ${manifest.environment}`,
+        `--release-id ${manifest.releaseIdentifier}`,
+        "--record-evidence"
+      ])
+    },
+    {
+      filename: "10-final-governed-launch-approval.md",
       title: "Final Governed Launch Approval",
       objective:
         "Request and complete the dual-control launch approval only after all required evidence and checklist attestations are satisfied.",
@@ -807,6 +1902,7 @@ Use this pack to:
 - validate that the launch manifest is complete before execution starts
 - run the remaining accepted probes and manual attestations in the correct order
 - capture auditable evidence for each remaining Phase 12 item
+- compare \`${launchClosureArtifactManifestRelativePath}\` against downloaded files and the stored API pack record before requesting approval
 - request governed launch approval only after the evidence set is actually complete
 
 ## Sequence
@@ -818,7 +1914,8 @@ Use this pack to:
 5. Run the worker rollback drill.
 6. Record the secret handling review.
 7. Record the role review.
-8. Submit the governed launch approval request and complete dual-control approval.
+8. Record the solvency anchor registry deployment proof.
+9. Submit the governed launch approval request and complete dual-control approval.
 
 ## Important truth
 
@@ -943,7 +2040,7 @@ export function renderPhase12CompletionChecklist(args?: {
     "",
     "1. Re-run the repo-owned automated proof bundle for the candidate.",
     "   Command: `pnpm release:readiness:verify -- --proof all-auto`",
-    "2. Re-run the customer and operator shell verification that is outside the release-readiness evidence types but still matters for product confidence.",
+    "2. Re-run the broader customer and operator shell verification that complements the governed notification cutover proof.",
     "   Commands: `pnpm test:e2e` and `pnpm mobile:verify`",
     "3. Validate the launch manifest before touching staging-like execution.",
     "   Command: `pnpm release:launch-closure -- validate --manifest <path>`",
@@ -969,6 +2066,8 @@ export function renderPhase12CompletionChecklist(args?: {
     "5. `worker_rollback_drill`",
     "6. `secret_handling_review`",
     "7. `role_review`",
+    "8. `solvency_anchor_registry_deployment`",
+    "9. `notification_cutover_verification`",
     "",
     "Current external-only check posture:",
     ...renderExternalCheckLines(status),
@@ -977,6 +2076,7 @@ export function renderPhase12CompletionChecklist(args?: {
     "- Every external-only evidence type has a latest `passed` record.",
     "- Every accepted record is from `staging`, `production_like`, or `production`.",
     "- Backup and rollback metadata match the exact release being approved.",
+    "- API and worker rollback evidence is bound to `payloads/release-artifacts.json`.",
     "",
     "## Part C — Governed Launch Approval",
     "",
@@ -994,7 +2094,7 @@ export function renderPhase12CompletionChecklist(args?: {
     "## Adjacent Follow-On Hardening",
     "",
     "These are important for a broadly production-grade product, but they are not currently enforced by the Phase 12 gate:",
-    "- repo-owned deployment manifests for API and worker rollout or rollback automation",
+    "- promotion automation that consumes the repo-owned API and worker deployment artifact manifests",
     "- mobile distribution config such as `eas.json` and store-release workflow ownership",
     "- mobile crash and error telemetry beyond the current placeholder hook",
     "- deferred mobile push notification support",
@@ -1252,6 +2352,11 @@ export function validateLaunchClosureManifest(
     "operator.accessTokenEnvironmentVariable",
     errors
   );
+  readString(
+    manifest.customer?.accessTokenEnvironmentVariable,
+    "customer.accessTokenEnvironmentVariable",
+    errors
+  );
 
   if (requesterId && approverId && requesterId === approverId) {
     errors.push(
@@ -1301,6 +2406,35 @@ export function validateLaunchClosureManifest(
   readString(
     manifest.artifacts?.backupReference,
     "artifacts.backupReference",
+    errors
+  );
+  validateLaunchClosureDeploymentArtifacts(manifest, errors);
+
+  readString(manifest.chain?.networkName, "chain.networkName", errors);
+  readPositiveInteger(manifest.chain?.chainId, "chain.chainId", errors);
+  readString(
+    manifest.solvencyAnchorRegistryDeployment?.deploymentTxHash,
+    "solvencyAnchorRegistryDeployment.deploymentTxHash",
+    errors
+  );
+  readString(
+    manifest.solvencyAnchorRegistryDeployment?.governanceOwner,
+    "solvencyAnchorRegistryDeployment.governanceOwner",
+    errors
+  );
+  readString(
+    manifest.solvencyAnchorRegistryDeployment?.authorizedAnchorer,
+    "solvencyAnchorRegistryDeployment.authorizedAnchorer",
+    errors
+  );
+  readString(
+    manifest.solvencyAnchorRegistryDeployment?.manifestPath,
+    "solvencyAnchorRegistryDeployment.manifestPath",
+    errors
+  );
+  readString(
+    manifest.solvencyAnchorRegistryDeployment?.manifestCommitSha,
+    "solvencyAnchorRegistryDeployment.manifestCommitSha",
     errors
   );
 
@@ -1371,19 +2505,64 @@ export function validateLaunchClosureManifest(
 
     if (
       !Array.isArray(manifest.governedCustody.signerInventory) ||
-      manifest.governedCustody.signerInventory.length < 4
+      manifest.governedCustody.signerInventory.length < 5
     ) {
       errors.push(
-        "Manifest field governedCustody.signerInventory must include at least four governed signers."
+        "Manifest field governedCustody.signerInventory must include at least five governed signers."
       );
+    }
+  } else {
+    errors.push(
+      "Manifest field governedCustody is required for launch signer proof."
+    );
+  }
+
+  if (!findSolvencyAnchorSigner(manifest)) {
+    errors.push(
+      "Manifest field governedCustody.signerInventory must include a solvency_anchor_execution signer."
+    );
+  }
+
+  if (!Array.isArray(manifest.contracts) || manifest.contracts.length < 3) {
+    errors.push(
+      "Manifest field contracts must include staking_v1, loan_book_v1, and solvency_report_anchor_registry_v1 entries."
+    );
+  }
+
+  for (const productSurface of [
+    "staking_v1",
+    "loan_book_v1",
+    "solvency_report_anchor_registry_v1"
+  ] as const) {
+    if (
+      !manifest.contracts?.some(
+        (contract) => contract.productSurface === productSurface
+      )
+    ) {
+      errors.push(`Manifest contracts must include ${productSurface}.`);
     }
   }
 
-  if (manifest.contracts && manifest.contracts.length < 2) {
+  const registryContract = findSolvencyAnchorRegistryContract(manifest);
+
+  if (!registryContract) {
     errors.push(
-      "Manifest field contracts must include staking_v1 and loan_book_v1 entries."
+      "Manifest contracts must include solvency_report_anchor_registry_v1."
+    );
+  } else {
+    readString(registryContract.address, "contracts.solvency.address", errors);
+    readString(
+      registryContract.abiChecksumSha256,
+      "contracts.solvency.abiChecksumSha256",
+      errors
     );
   }
+
+  validateSolvencyAnchorOnchainVerification(
+    manifest,
+    registryContract,
+    errors
+  );
 
   if (manifest.operatorRoster && manifest.operatorRoster.length < 2) {
     errors.push(
@@ -1474,62 +2653,74 @@ export function previewLaunchClosurePack(
       };
     })
     .filter((file): file is LaunchClosurePackFile => file !== null);
+  const packFiles: LaunchClosurePackFile[] = [
+    {
+      relativePath: "README.md",
+      content: renderPackReadme(manifest)
+    },
+    {
+      relativePath: "manifest.json",
+      content: jsonStringify(manifest)
+    },
+    {
+      relativePath: "local-vs-accepted-status.md",
+      content: renderLocalVsAcceptedStatus()
+    },
+    {
+      relativePath: "phase-12-completion-checklist.md",
+      content: renderPhase12CompletionChecklist({
+        manifest,
+        statusSnapshot
+      })
+    },
+    {
+      relativePath: "execution-plan.md",
+      content: renderExecutionPlan(manifest)
+    },
+    {
+      relativePath: "operator-actions.md",
+      content: renderOperatorActionsGuide(manifest, artifacts)
+    },
+    {
+      relativePath: "approval-request.template.json",
+      content: buildApprovalBodyTemplate(manifest, statusSnapshot)
+    },
+    {
+      relativePath: "approve-approval.template.json",
+      content: jsonStringify(buildApprovalDecisionTemplate("approve"))
+    },
+    {
+      relativePath: "reject-approval.template.json",
+      content: jsonStringify(buildApprovalDecisionTemplate("reject"))
+    },
+    {
+      relativePath: path.join("payloads", "release-artifacts.json"),
+      content: jsonStringify(buildDeploymentArtifactPayload(manifest))
+    },
+    ...(statusSnapshot
+      ? [
+          {
+            relativePath: "current-status-summary.md",
+            content: renderCurrentStatusSnapshot(manifest, statusSnapshot)
+          }
+        ]
+      : []),
+    ...evidencePayloadFiles,
+    ...artifacts.map((artifact) => ({
+      relativePath: path.join("evidence", artifact.filename),
+      content: renderEvidenceTemplate(manifest, artifact)
+    }))
+  ];
+  const artifactManifest = buildLaunchClosureArtifactManifest(packFiles);
 
   return {
     outputSubpath: buildOutputSubpath(manifest),
     files: [
+      ...packFiles,
       {
-        relativePath: "README.md",
-        content: renderPackReadme(manifest)
-      },
-      {
-        relativePath: "manifest.json",
-        content: jsonStringify(manifest)
-      },
-      {
-        relativePath: "local-vs-accepted-status.md",
-        content: renderLocalVsAcceptedStatus()
-      },
-      {
-        relativePath: "phase-12-completion-checklist.md",
-        content: renderPhase12CompletionChecklist({
-          manifest,
-          statusSnapshot
-        })
-      },
-      {
-        relativePath: "execution-plan.md",
-        content: renderExecutionPlan(manifest)
-      },
-      {
-        relativePath: "operator-actions.md",
-        content: renderOperatorActionsGuide(manifest, artifacts)
-      },
-      {
-        relativePath: "approval-request.template.json",
-        content: buildApprovalBodyTemplate(manifest, statusSnapshot)
-      },
-      {
-        relativePath: "approve-approval.template.json",
-        content: jsonStringify(buildApprovalDecisionTemplate("approve"))
-      },
-      {
-        relativePath: "reject-approval.template.json",
-        content: jsonStringify(buildApprovalDecisionTemplate("reject"))
-      },
-      ...(statusSnapshot
-        ? [
-            {
-              relativePath: "current-status-summary.md",
-              content: renderCurrentStatusSnapshot(manifest, statusSnapshot)
-            }
-          ]
-        : []),
-      ...evidencePayloadFiles,
-      ...artifacts.map((artifact) => ({
-        relativePath: path.join("evidence", artifact.filename),
-        content: renderEvidenceTemplate(manifest, artifact)
-      }))
+        relativePath: launchClosureArtifactManifestRelativePath,
+        content: jsonStringify(artifactManifest)
+      }
     ]
   };
 }

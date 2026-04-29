@@ -41,11 +41,13 @@ Current execution frontier:
 
 - Phase 11/12 boundary hardening
 - internal email transfer hardening is in place; dedicated end-to-end verification is deferred to a follow-up pass
-- unified notifications cutover is in place across API, web, admin, and mobile with websocket resume, matrix preferences, and fresh-start inbox rollout
+- unified notifications cutover is in place across API, web, admin, and mobile with websocket resume, matrix preferences, fresh-start inbox rollout, and release-readiness cutover proof
+- launch-closure packs now bind API and worker rollback drills to immutable deployment artifact manifests
+- rollback drill evidence now has an API-enforced deployment artifact payload gate before release approval
 
 Immediate next step:
 
-- run the remaining staged drills and release-readiness evidence flow for delivery-target SLOs, critical alert re-escalation, restore and rollback, secret handling, role review, governed launch approval, and notification cutover verification
+- run the remaining staged drills and release-readiness evidence flow for delivery-target SLOs, critical alert re-escalation, restore and rollback, notification cutover, secret handling, role review, solvency anchor registry deployment, and governed launch approval
 
 ## Implemented product surfaces
 
@@ -198,6 +200,7 @@ Run these from the repository root unless noted otherwise.
 | `pnpm compile`                            | Run compile tasks where defined                                      |
 | `pnpm release:readiness:probe -- --help`  | Run a Phase 12 drill probe and optionally record evidence            |
 | `pnpm release:readiness:verify -- --help` | Run Phase 12 automated proof suites or manual review attestations    |
+| `pnpm release:solvency-anchor-proof -- --help` | Build release evidence from the solvency anchor registry manifest |
 | `pnpm dev:mobile`                         | Start the Expo mobile app                                            |
 | `pnpm mobile:ios`                         | Open the Expo app in an iOS simulator                                |
 | `pnpm mobile:android`                     | Open the Expo app in an Android emulator                             |

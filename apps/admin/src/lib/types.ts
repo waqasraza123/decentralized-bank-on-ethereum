@@ -865,6 +865,7 @@ export type SolvencyWorkspace = {
   resumeGovernance: {
     requestAllowedOperatorRoles: string[];
     approverAllowedOperatorRoles: string[];
+    approvalTimelockSeconds: number;
     currentOperator: {
       operatorId: string | null;
       operatorRole: string | null;
@@ -882,6 +883,9 @@ export type SolvencyWorkspace = {
     requestNote: string | null;
     expectedPolicyUpdatedAt: string;
     requestedAt: string;
+    approvalEligibleAt: string;
+    approvalTimelockSeconds: number;
+    approvalTimelockRemainingSeconds: number;
     approvedByOperatorId: string | null;
     approvedByOperatorRole: string | null;
     approvalNote: string | null;
@@ -1531,6 +1535,82 @@ export type ReleaseReadinessSummary = {
   recentEvidence: ReleaseReadinessEvidence[];
 };
 
+export type ReleaseReadinessSolvencyAnchorRegistryDeploymentProof = {
+  generatedAt: string;
+  evidenceType: "solvency_anchor_registry_deployment";
+  environment: string;
+  chainId: number;
+  ready: boolean;
+  blockers: string[];
+  requiredOperatorInputs: string[];
+  recordEvidenceEndpoint: "/release-readiness/internal/evidence";
+  registryContract: {
+    id: string;
+    productSurface: "solvency_report_anchor_registry_v1";
+    contractVersion: string;
+    contractAddress: string;
+    abiChecksumSha256: string;
+    deploymentTxHash: string | null;
+    governanceOwner: string | null;
+    authorizedAnchorer: string | null;
+    blockExplorerUrl: string | null;
+    anchoredSmokeTxHash: string | null;
+    manifestStatus: string;
+    legacyPath: boolean;
+    updatedAt: string;
+  } | null;
+  governedSigner: {
+    id: string;
+    signerScope: "solvency_anchor_execution";
+    backendKind: string;
+    keyReferenceSha256: string;
+    signerAddress: string;
+    allowedMethods: string[];
+    manifestVersion: string | null;
+    environmentBinding: string | null;
+    active: boolean;
+    updatedAt: string;
+  } | null;
+  governanceAuthority: {
+    id: string;
+    authorityType: "governance_safe";
+    address: string;
+    ownerLabel: string | null;
+    manifestStatus: string;
+    updatedAt: string;
+  } | null;
+  evidenceRequestDraft: {
+    recordable: boolean;
+    body: {
+      evidenceType: "solvency_anchor_registry_deployment";
+      environment:
+        | "development"
+        | "ci"
+        | "staging"
+        | "production_like"
+        | "production";
+      status: "passed";
+      releaseIdentifier: string;
+      summary: string;
+      runbookPath: string;
+      evidencePayload: {
+        proofKind: "manual_attestation";
+        networkName: string;
+        chainId: number;
+        contractProductSurface: "solvency_report_anchor_registry_v1";
+        signerScope: "solvency_anchor_execution";
+        contractAddress: string;
+        deploymentTxHash: string;
+        governanceOwner: string;
+        authorizedAnchorer: string;
+        abiChecksumSha256: string;
+        manifestPath: string;
+        manifestCommitSha: string;
+      };
+    } | null;
+  };
+};
+
 export type ReleaseReadinessApprovalChecklist = {
   securityConfigurationComplete: boolean;
   accessAndGovernanceComplete: boolean;
@@ -1593,6 +1673,7 @@ export type ReleaseReadinessApproval = {
     id: string;
     version: number;
     artifactChecksumSha256: string;
+    manifestChecksumSha256: string | null;
   } | null;
   rollbackReleaseIdentifier: string | null;
   status: "pending_approval" | "approved" | "rejected" | "superseded";
@@ -1634,6 +1715,7 @@ export type ReleaseReadinessApproval = {
       id: string;
       version: number;
       artifactChecksumSha256: string;
+      manifestChecksumSha256: string | null;
     } | null;
   } | null;
   lineageSummary: {
@@ -1695,6 +1777,32 @@ export type ReleaseReadinessApprovalRecoveryTarget = {
   integrity: ReleaseReadinessApprovalLineage["integrity"];
 };
 
+export type ReleaseReadinessApprovalDecisionReceipt = {
+  receiptVersion: "release-readiness-approval-decision/v1";
+  generatedAt: string;
+  receiptChecksumSha256: string;
+  releaseIdentifier: string;
+  environment: string;
+  finalDecision: boolean;
+  launchReady: boolean;
+  blockers: string[];
+  decision: {
+    status: ReleaseReadinessApproval["status"];
+    decidedAt: string | null;
+    decidedByOperatorId: string | null;
+    decidedByOperatorRole: string | null;
+    note: string | null;
+  };
+  approval: ReleaseReadinessApproval;
+  launchClosurePack: {
+    snapshotMatchesApproval: boolean;
+    record: ReleaseLaunchClosurePack | null;
+    integrity: ReleaseLaunchClosurePackIntegrity | null;
+  };
+  lineage: ReleaseReadinessApprovalLineage["integrity"];
+  auditTrail: AuditTimelineEntry[];
+};
+
 export type LaunchClosureManifest = {
   releaseIdentifier: string;
   environment: "staging" | "production_like" | "production";
@@ -1715,6 +1823,10 @@ export type LaunchClosureManifest = {
     accessTokenEnvironmentVariable?: string;
     apiKeyEnvironmentVariable?: string;
   };
+  customer?: {
+    verificationAccountReference?: string;
+    accessTokenEnvironmentVariable?: string;
+  };
   artifacts: {
     apiReleaseId: string;
     workerReleaseId: string;
@@ -1722,6 +1834,37 @@ export type LaunchClosureManifest = {
     apiRollbackReleaseId: string;
     workerRollbackReleaseId: string;
     backupReference: string;
+  };
+  deploymentArtifacts: {
+    apiCurrent: LaunchClosureDeploymentArtifact;
+    apiRollback: LaunchClosureDeploymentArtifact;
+    workerCurrent: LaunchClosureDeploymentArtifact;
+    workerRollback: LaunchClosureDeploymentArtifact;
+  };
+  chain: {
+    networkName: string;
+    chainId: number;
+  };
+  solvencyAnchorRegistryDeployment: {
+    deploymentTxHash: string;
+    governanceOwner: string;
+    authorizedAnchorer: string;
+    manifestPath: string;
+    manifestCommitSha: string;
+    blockExplorerUrl?: string;
+    anchoredSmokeTxHash?: string;
+    onchainVerification?: {
+      verifiedAt?: string;
+      chainId: number;
+      rpcUrlHost: string;
+      contractAddress: string;
+      deploymentTxHash: string;
+      deploymentBlockNumber: number | null;
+      deploymentTransactionIndex?: number | null;
+      owner: string;
+      authorizedAnchorer: string;
+      bytecodePresent: boolean;
+    };
   };
   alerting: {
     expectedTargetName: string;
@@ -1746,7 +1889,10 @@ export type LaunchClosureManifest = {
     }>;
   };
   contracts?: Array<{
-    productSurface: "staking_v1" | "loan_book_v1";
+    productSurface:
+      | "staking_v1"
+      | "loan_book_v1"
+      | "solvency_report_anchor_registry_v1";
     version: string;
     address: string;
     abiChecksumSha256: string;
@@ -1763,6 +1909,41 @@ export type LaunchClosureManifest = {
   };
 };
 
+export type LaunchClosureDeploymentArtifact = {
+  releaseId: string;
+  service: "api" | "worker";
+  environment: "staging" | "production_like" | "production";
+  artifactKind:
+    | "vercel_deployment"
+    | "container_image"
+    | "node_bundle"
+    | "worker_bundle"
+    | "archive";
+  artifactUri: string;
+  artifactDigestSha256: string;
+  sourceCommitSha: string;
+  runtime: string;
+  deploymentProvider?: string;
+  deploymentId?: string;
+  buildUrl?: string;
+  generatedAt?: string;
+  rollbackValidatedAt?: string;
+};
+
+export type LaunchClosureSolvencyFragment = {
+  chain?: LaunchClosureManifest["chain"];
+  solvencyAnchorRegistryDeployment?: LaunchClosureManifest["solvencyAnchorRegistryDeployment"];
+  contracts?: NonNullable<LaunchClosureManifest["contracts"]>;
+  governedCustody?: {
+    governanceSafeAddress?: string;
+    treasurySafeAddress?: string;
+    emergencySafeAddress?: string;
+    signerInventory?: NonNullable<
+      LaunchClosureManifest["governedCustody"]
+    >["signerInventory"];
+  };
+};
+
 export type LaunchClosureValidationResult = {
   errors: string[];
   warnings: string[];
@@ -1771,6 +1952,16 @@ export type LaunchClosureValidationResult = {
 export type LaunchClosurePackFile = {
   relativePath: string;
   content: string;
+};
+
+export type LaunchClosureArtifactManifest = {
+  manifestChecksumSha256: string | null;
+  fileCount: number;
+  files: Array<{
+    relativePath: string;
+    byteLength: number;
+    contentSha256: string;
+  }>;
 };
 
 export type LaunchClosureStatus = {
@@ -1793,6 +1984,7 @@ export type LaunchClosureStatus = {
 export type LaunchClosureValidationResponse = {
   validation: LaunchClosureValidationResult;
   summaryMarkdown: string;
+  manifest?: LaunchClosureManifest;
 };
 
 export type LaunchClosureScaffoldResponse = LaunchClosureValidationResponse & {
@@ -1806,6 +1998,8 @@ export type LaunchClosureScaffoldResponse = LaunchClosureValidationResponse & {
     generatedByOperatorId: string;
     generatedByOperatorRole: string | null;
     artifactChecksumSha256: string;
+    manifestChecksumSha256: string | null;
+    artifactManifest: LaunchClosureArtifactManifest | null;
     artifactPayload: JsonValue;
     createdAt: string;
     updatedAt: string;
@@ -1813,6 +2007,35 @@ export type LaunchClosureScaffoldResponse = LaunchClosureValidationResponse & {
 };
 
 export type ReleaseLaunchClosurePack = LaunchClosureScaffoldResponse["pack"];
+
+export type ReleaseLaunchClosurePackIntegrityIssue = {
+  code:
+    | "artifact_payload_invalid"
+    | "artifact_checksum_mismatch"
+    | "artifact_manifest_missing"
+    | "file_missing"
+    | "file_unexpected"
+    | "byte_length_mismatch"
+    | "content_checksum_mismatch"
+    | "manifest_checksum_mismatch"
+    | "file_count_mismatch";
+  relativePath: string | null;
+  expected: string | number | null;
+  actual: string | number | null;
+  message: string;
+};
+
+export type ReleaseLaunchClosurePackIntegrity = {
+  pack: ReleaseLaunchClosurePack;
+  valid: boolean;
+  artifactChecksumSha256: string;
+  recomputedArtifactChecksumSha256: string;
+  artifactChecksumMatches: boolean;
+  manifestChecksumSha256: string | null;
+  expectedFileCount: number | null;
+  checkedFileCount: number;
+  issues: ReleaseLaunchClosurePackIntegrityIssue[];
+};
 
 export type ReleaseLaunchClosurePackList = {
   packs: ReleaseLaunchClosurePack[];

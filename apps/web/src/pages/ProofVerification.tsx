@@ -1,11 +1,22 @@
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { FileKey2, ShieldCheck, ShieldAlert, Fingerprint } from "lucide-react";
+import {
+  Download,
+  FileKey2,
+  ShieldCheck,
+  ShieldAlert,
+  Fingerprint
+} from "lucide-react";
 import { Layout } from "@/components/Layout";
+import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { LoadingPanel } from "@/components/ui/loading-panel";
 import { useLocale } from "@/i18n/use-locale";
 import { readApiErrorMessage } from "@/lib/api";
-import { getLatestCustomerLiabilityProof } from "@/lib/solvency-api";
+import {
+  getCustomerSolvencyProofBundle,
+  getLatestCustomerLiabilityProof
+} from "@/lib/solvency-api";
 import { verifyLiabilityProof } from "@/lib/solvency-proof";
 
 function formatDecimal(value: string, locale: string): string {
@@ -26,8 +37,21 @@ function formatDate(value: string, locale: string): string {
   }).format(new Date(value));
 }
 
+function downloadJsonArtifact(artifactName: string, payload: unknown): void {
+  const blob = new Blob([JSON.stringify(payload, null, 2)], {
+    type: "application/json"
+  });
+  const href = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = href;
+  anchor.download = artifactName;
+  anchor.click();
+  URL.revokeObjectURL(href);
+}
+
 const ProofVerification = () => {
   const { locale } = useLocale();
+  const [downloadError, setDownloadError] = useState<string | null>(null);
   const proofQuery = useQuery({
     queryKey: ["customer-liability-proof"],
     queryFn: () => getLatestCustomerLiabilityProof()
@@ -44,6 +68,25 @@ const ProofVerification = () => {
         leafIndex: proof.leafIndex
       })
     })) ?? [];
+
+  const handleDownloadCustomerBundle = async () => {
+    setDownloadError(null);
+    try {
+      const bundle = await getCustomerSolvencyProofBundle(
+        proofQuery.data?.snapshot.id
+      );
+      downloadJsonArtifact(bundle.artifactName, bundle);
+    } catch (error) {
+      setDownloadError(
+        readApiErrorMessage(
+          error,
+          locale === "ar"
+            ? "تعذر تنزيل حزمة إثبات العميل."
+            : "Customer proof bundle could not be downloaded."
+        )
+      );
+    }
+  };
 
   return (
     <Layout>
@@ -65,8 +108,24 @@ const ProofVerification = () => {
                   : "Your liability leaf, Merkle proof path, and published asset root are loaded and verified locally in the browser."}
               </p>
             </div>
+            <Button
+              className="rounded-[1rem]"
+              disabled={!proofQuery.data}
+              onClick={() => void handleDownloadCustomerBundle()}
+              type="button"
+              variant="outline"
+            >
+              <Download className="h-4 w-4" />
+              {locale === "ar" ? "تنزيل الحزمة" : "Download bundle"}
+            </Button>
           </div>
         </Card>
+
+        {downloadError ? (
+          <Card className="stb-surface rounded-[1.8rem] border-0 p-6 text-sm text-red-700">
+            {downloadError}
+          </Card>
+        ) : null}
 
         {proofQuery.isLoading ? (
           <LoadingPanel
@@ -199,7 +258,7 @@ const ProofVerification = () => {
                     </div>
                   </div>
 
-                  <div className="mt-5 grid gap-4 md:grid-cols-4">
+                  <div className="mt-5 grid gap-4 md:grid-cols-3 xl:grid-cols-6">
                     <Metric
                       label={locale === "ar" ? "المتاح" : "Available"}
                       value={formatDecimal(proof.payload.availableLiabilityAmount, locale)}
@@ -207,6 +266,14 @@ const ProofVerification = () => {
                     <Metric
                       label={locale === "ar" ? "المحجوز" : "Reserved"}
                       value={formatDecimal(proof.payload.reservedLiabilityAmount, locale)}
+                    />
+                    <Metric
+                      label={locale === "ar" ? "الخزنة" : "Vault locked"}
+                      value={formatDecimal(proof.payload.vaultLiabilityAmount, locale)}
+                    />
+                    <Metric
+                      label={locale === "ar" ? "إصدار الخزنة" : "Vault release"}
+                      value={formatDecimal(proof.payload.pendingVaultReleaseAmount, locale)}
                     />
                     <Metric
                       label={locale === "ar" ? "الرصيد المعلق" : "Pending credit"}

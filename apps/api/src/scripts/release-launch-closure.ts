@@ -1,12 +1,17 @@
+import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import {
+  mergeLaunchClosureSolvencyFragment,
   loadLaunchClosureManifest,
   renderPhase12CompletionChecklist,
   renderLaunchClosureStatusSummary,
   renderLaunchClosureValidationSummary,
   scaffoldLaunchClosurePack,
-  validateLaunchClosureManifest
+  validateLaunchClosureManifest,
+  verifyLaunchClosureArtifactManifest,
+  type LaunchClosureManifest,
+  type LaunchClosureSolvencyFragment
 } from "../release-readiness/launch-closure-pack";
 
 type ParsedArgs = {
@@ -24,12 +29,17 @@ function printUsage(): void {
 Commands:
   checklist [--manifest <path>]
   status
-  validate --manifest <path>
-  scaffold --manifest <path> [--output-dir <path>] [--force]
+  validate --manifest <path> [--solvency-fragment <path>]
+  scaffold --manifest <path> [--solvency-fragment <path>] [--output-dir <path>] [--force]
+  verify-artifact-manifest --pack-dir <path>
+  merge-solvency-fragment --manifest <path> --solvency-fragment <path> --output <path>
 
 Options:
   --manifest                     Path to a launch-closure manifest JSON file
+  --solvency-fragment            Path to generated solvency launch fragment JSON
+  --output                       Output path for a merged launch-closure manifest
   --output-dir                   Output directory for generated pack artifacts
+  --pack-dir                     Generated pack directory containing artifact-manifest.json
   --force                        Remove an existing output directory before scaffold
   --help                         Print this message
 `);
@@ -101,6 +111,10 @@ function readOptionalBooleanFlag(parsedArgs: ParsedArgs, key: string): boolean {
   return parsedArgs[key] === true;
 }
 
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && !Array.isArray(value) && typeof value === "object";
+}
+
 function loadManifest(parsedArgs: ParsedArgs) {
   const manifestPath = path.resolve(
     invocationCwd(),
@@ -118,10 +132,76 @@ function loadManifest(parsedArgs: ParsedArgs) {
   }
 }
 
+function loadJsonFile<T>(filePath: string, label: string): T {
+  const absolutePath = path.resolve(invocationCwd(), filePath);
+
+  try {
+    return JSON.parse(readFileSync(absolutePath, "utf8")) as T;
+  } catch (error) {
+    fail(
+      `Failed to read ${label} ${absolutePath}: ${
+        error instanceof Error ? error.message : String(error)
+      }`
+    );
+  }
+}
+
+function loadSolvencyFragment(
+  parsedArgs: ParsedArgs
+): LaunchClosureSolvencyFragment | undefined {
+  const fragmentPath = readOptionalStringArg(parsedArgs, "solvency-fragment");
+
+  if (!fragmentPath) {
+    return undefined;
+  }
+
+  const fragment = loadJsonFile<unknown>(
+    fragmentPath,
+    "solvency launch fragment"
+  );
+
+  if (!isPlainRecord(fragment)) {
+    fail("Solvency launch fragment must be a JSON object.");
+  }
+
+  return fragment as LaunchClosureSolvencyFragment;
+}
+
+function loadMergedManifest(parsedArgs: ParsedArgs): LaunchClosureManifest {
+  const manifest = loadManifest(parsedArgs);
+  const solvencyFragment = loadSolvencyFragment(parsedArgs);
+
+  if (!solvencyFragment) {
+    return manifest;
+  }
+
+  return mergeLaunchClosureSolvencyFragment(manifest, solvencyFragment);
+}
+
+function writeMergedManifest(
+  parsedArgs: ParsedArgs,
+  manifest: LaunchClosureManifest
+): void {
+  const outputPath = path.resolve(
+    invocationCwd(),
+    readRequiredStringArg(parsedArgs, "output")
+  );
+
+  try {
+    writeFileSync(outputPath, JSON.stringify(manifest, null, 2) + "\n", "utf8");
+  } catch (error) {
+    fail(
+      `Failed to write merged launch-closure manifest ${outputPath}: ${
+        error instanceof Error ? error.message : String(error)
+      }`
+    );
+  }
+}
+
 function main(): void {
   const { command, parsedArgs } = parseArgs(process.argv.slice(2));
 
-  if (!command || parsedArgs.help === true) {
+  if (!command || command === "--help" || parsedArgs.help === true) {
     printUsage();
     return;
   }
@@ -133,7 +213,9 @@ function main(): void {
 
   if (command === "checklist") {
     const manifest =
-      typeof parsedArgs.manifest === "string" ? loadManifest(parsedArgs) : undefined;
+      typeof parsedArgs.manifest === "string"
+        ? loadMergedManifest(parsedArgs)
+        : undefined;
     console.log(
       renderPhase12CompletionChecklist({
         manifest
@@ -143,7 +225,7 @@ function main(): void {
   }
 
   if (command === "validate") {
-    const manifest = loadManifest(parsedArgs);
+    const manifest = loadMergedManifest(parsedArgs);
     const summary = renderLaunchClosureValidationSummary(manifest);
     const validation = validateLaunchClosureManifest(manifest);
     console.log(summary);
@@ -156,7 +238,7 @@ function main(): void {
   }
 
   if (command === "scaffold") {
-    const manifest = loadManifest(parsedArgs);
+    const manifest = loadMergedManifest(parsedArgs);
     const outputDir = readOptionalStringArg(parsedArgs, "output-dir");
     const result = scaffoldLaunchClosurePack({
       manifest,
@@ -171,6 +253,48 @@ function main(): void {
           outputDir: result.outputDir,
           generatedFileCount: result.files.length,
           files: result.files
+        },
+        null,
+        2
+      )
+    );
+    return;
+  }
+
+  if (command === "verify-artifact-manifest") {
+    const packDir = path.resolve(
+      invocationCwd(),
+      readRequiredStringArg(parsedArgs, "pack-dir")
+    );
+    const result = verifyLaunchClosureArtifactManifest(packDir);
+    console.log(JSON.stringify(result, null, 2));
+
+    if (!result.valid) {
+      process.exit(1);
+    }
+
+    return;
+  }
+
+  if (command === "merge-solvency-fragment") {
+    readRequiredStringArg(parsedArgs, "solvency-fragment");
+    const manifest = loadMergedManifest(parsedArgs);
+    const summary = renderLaunchClosureValidationSummary(manifest);
+    const validation = validateLaunchClosureManifest(manifest);
+    console.log(summary);
+
+    if (validation.errors.length > 0) {
+      process.exit(1);
+    }
+
+    writeMergedManifest(parsedArgs, manifest);
+    console.log(
+      JSON.stringify(
+        {
+          output: path.resolve(
+            invocationCwd(),
+            readRequiredStringArg(parsedArgs, "output")
+          )
         },
         null,
         2

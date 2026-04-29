@@ -132,6 +132,7 @@ const DEFAULT_SOLVENCY_RESUME_APPROVER_ALLOWED_OPERATOR_ROLES = [
   "compliance_lead",
   "risk_manager",
 ] as const;
+const DEFAULT_SOLVENCY_RESUME_APPROVAL_TIMELOCK_SECONDS = 900;
 const DEFAULT_GOVERNED_EXECUTION_REQUEST_ALLOWED_OPERATOR_ROLES = [
   "operations_admin",
   "risk_manager",
@@ -518,10 +519,11 @@ function parseGovernedCustodyManifest(
         scope !== "staking_execution" &&
         scope !== "loan_execution" &&
         scope !== "policy_withdrawal_authorization" &&
-        scope !== "policy_withdrawal_executor"
+        scope !== "policy_withdrawal_executor" &&
+        scope !== "solvency_anchor_execution"
       ) {
         throw new Error(
-          `${name}.signers[${index}].scope must be staking_execution, loan_execution, policy_withdrawal_authorization, or policy_withdrawal_executor.`,
+          `${name}.signers[${index}].scope must be staking_execution, loan_execution, policy_withdrawal_authorization, policy_withdrawal_executor, or solvency_anchor_execution.`,
         );
       }
 
@@ -546,10 +548,11 @@ function parseGovernedCustodyManifest(
 
       if (
         productSurface !== "staking_v1" &&
-        productSurface !== "loan_book_v1"
+        productSurface !== "loan_book_v1" &&
+        productSurface !== "solvency_report_anchor_registry_v1"
       ) {
         throw new Error(
-          `${name}.contracts[${index}].productSurface must be staking_v1 or loan_book_v1.`,
+          `${name}.contracts[${index}].productSurface must be staking_v1, loan_book_v1, or solvency_report_anchor_registry_v1.`,
         );
       }
 
@@ -569,10 +572,43 @@ function parseGovernedCustodyManifest(
         ),
         legacyPath:
           typeof entry.legacyPath === "boolean" ? entry.legacyPath : false,
+        deploymentTxHash: readOptionalStringLike(
+          entry.deploymentTxHash,
+          `${name}.contracts[${index}].deploymentTxHash`,
+        ),
+        governanceOwner: readOptionalStringLike(
+          entry.governanceOwner,
+          `${name}.contracts[${index}].governanceOwner`,
+        ),
+        authorizedAnchorer: readOptionalStringLike(
+          entry.authorizedAnchorer,
+          `${name}.contracts[${index}].authorizedAnchorer`,
+        ),
+        blockExplorerUrl: readOptionalStringLike(
+          entry.blockExplorerUrl,
+          `${name}.contracts[${index}].blockExplorerUrl`,
+        ),
+        anchoredSmokeTxHash: readOptionalStringLike(
+          entry.anchoredSmokeTxHash,
+          `${name}.contracts[${index}].anchoredSmokeTxHash`,
+        ),
       };
     }),
     rawManifest: input,
   };
+}
+
+function readOptionalStringLike(value: unknown, name: string): string | null {
+  if (value === undefined || value === null) {
+    return null;
+  }
+
+  if (typeof value !== "string") {
+    throw new Error(`${name} must be a string when provided.`);
+  }
+
+  const normalizedValue = value.trim();
+  return normalizedValue.length > 0 ? normalizedValue : null;
 }
 
 function readStringLike(value: unknown, name: string): string {
@@ -1135,6 +1171,8 @@ export type WorkerRuntimeConfig = {
   readonly policyControlledWithdrawalExecutorPrivateKey: string | null;
   readonly policyControlledWithdrawalPolicySignerPrivateKey: string | null;
   readonly policyControlledWithdrawalAuthorizationTtlSeconds: number;
+  readonly solvencyAnchorContractAddress: string | null;
+  readonly solvencyAnchorSignerPrivateKey: string | null;
   readonly rpcUrl: string | null;
   readonly depositSignerPrivateKey: string | null;
   readonly managedWithdrawalSigners: readonly ManagedWithdrawalSignerRuntimeConfig[];
@@ -1282,17 +1320,26 @@ export type GovernedSignerRuntimeConfig = {
     | "staking_execution"
     | "loan_execution"
     | "policy_withdrawal_authorization"
-    | "policy_withdrawal_executor";
+    | "policy_withdrawal_executor"
+    | "solvency_anchor_execution";
   readonly keyReference: string;
   readonly signerAddress: string;
 };
 
 export type ContractDeploymentRuntimeConfig = {
-  readonly productSurface: "staking_v1" | "loan_book_v1";
+  readonly productSurface:
+    | "staking_v1"
+    | "loan_book_v1"
+    | "solvency_report_anchor_registry_v1";
   readonly version: string;
   readonly address: string;
   readonly abiChecksumSha256: string;
   readonly legacyPath: boolean;
+  readonly deploymentTxHash: string | null;
+  readonly governanceOwner: string | null;
+  readonly authorizedAnchorer: string | null;
+  readonly blockExplorerUrl: string | null;
+  readonly anchoredSmokeTxHash: string | null;
 };
 
 export type GovernedCustodyRuntimeConfig = {
@@ -1393,6 +1440,7 @@ export type SolvencyRuntimeConfig = {
   readonly reportSignerPrivateKey: string;
   readonly resumeRequestAllowedOperatorRoles: readonly string[];
   readonly resumeApproverAllowedOperatorRoles: readonly string[];
+  readonly resumeApprovalTimelockSeconds: number;
 };
 
 export type GovernedTreasuryExecutionMode =
@@ -1784,6 +1832,14 @@ export function loadWorkerRuntimeConfig(
       env,
       "WORKER_POLICY_CONTROLLED_WITHDRAWAL_POLICY_SIGNER_PRIVATE_KEY",
     );
+  const solvencyAnchorContractAddress = readOptionalRuntimeEnv(
+    env,
+    "WORKER_SOLVENCY_ANCHOR_CONTRACT_ADDRESS",
+  );
+  const solvencyAnchorSignerPrivateKey = readOptionalRuntimeEnv(
+    env,
+    "WORKER_SOLVENCY_ANCHOR_SIGNER_PRIVATE_KEY",
+  );
   const managedWithdrawalSignersJson = readOptionalRuntimeEnv(
     env,
     "WORKER_MANAGED_WITHDRAWAL_SIGNERS_JSON",
@@ -1808,6 +1864,15 @@ export function loadWorkerRuntimeConfig(
   ) {
     throw new Error(
       "WORKER_POLICY_CONTROLLED_WITHDRAWAL_EXECUTOR_PRIVATE_KEY and WORKER_POLICY_CONTROLLED_WITHDRAWAL_POLICY_SIGNER_PRIVATE_KEY must be configured together.",
+    );
+  }
+
+  if (
+    Boolean(solvencyAnchorContractAddress) !==
+    Boolean(solvencyAnchorSignerPrivateKey)
+  ) {
+    throw new Error(
+      "WORKER_SOLVENCY_ANCHOR_CONTRACT_ADDRESS and WORKER_SOLVENCY_ANCHOR_SIGNER_PRIVATE_KEY must be configured together.",
     );
   }
 
@@ -1937,6 +2002,8 @@ export function loadWorkerRuntimeConfig(
         ),
       "WORKER_POLICY_CONTROLLED_WITHDRAWAL_AUTHORIZATION_TTL_SECONDS",
     ),
+    solvencyAnchorContractAddress: solvencyAnchorContractAddress ?? null,
+    solvencyAnchorSignerPrivateKey: solvencyAnchorSignerPrivateKey ?? null,
     rpcUrl: rpcUrl ?? null,
     depositSignerPrivateKey: depositSignerPrivateKey ?? null,
     managedWithdrawalSigners,
@@ -2838,6 +2905,15 @@ export function loadSolvencyRuntimeConfig(
     env,
     "SOLVENCY_RESUME_APPROVER_ALLOWED_OPERATOR_ROLES",
   );
+  const resumeApprovalTimelockSeconds = parseIntegerInRange(
+    Number(
+      readOptionalRuntimeEnv(env, "SOLVENCY_RESUME_APPROVAL_TIMELOCK_SECONDS") ??
+        String(DEFAULT_SOLVENCY_RESUME_APPROVAL_TIMELOCK_SECONDS),
+    ),
+    "SOLVENCY_RESUME_APPROVAL_TIMELOCK_SECONDS",
+    0,
+    86_400,
+  );
   const reportSignerPrivateKey =
     configuredReportSignerPrivateKey?.trim() ||
     (environment === "production"
@@ -2868,6 +2944,7 @@ export function loadSolvencyRuntimeConfig(
           "SOLVENCY_RESUME_APPROVER_ALLOWED_OPERATOR_ROLES",
         )
       : [...DEFAULT_SOLVENCY_RESUME_APPROVER_ALLOWED_OPERATOR_ROLES],
+    resumeApprovalTimelockSeconds,
   };
 }
 

@@ -15,6 +15,7 @@ import { CustomJsonResponse } from "../types/CustomJsonResponse";
 import { CreateReleaseReadinessApprovalDto } from "./dto/create-release-readiness-approval.dto";
 import { CreateReleaseReadinessEvidenceDto } from "./dto/create-release-readiness-evidence.dto";
 import { GetReleaseReadinessSummaryDto } from "./dto/get-release-readiness-summary.dto";
+import { GetSolvencyAnchorRegistryDeploymentProofDto } from "./dto/get-solvency-anchor-registry-deployment-proof.dto";
 import {
   GetLaunchClosureStatusDto,
   LaunchClosureManifestDto
@@ -29,6 +30,7 @@ import {
   RejectReleaseReadinessApprovalDto
 } from "./dto/release-readiness-approval.dto";
 import {
+  mergeLaunchClosureSolvencyFragment,
   renderLaunchClosureValidationSummary,
   validateLaunchClosureManifest as validateLaunchClosureManifestPayload
 } from "./launch-closure-pack";
@@ -101,6 +103,30 @@ export class ReleaseReadinessController {
     return {
       status: "success",
       message: "Release readiness evidence retrieved successfully.",
+      data: result
+    };
+  }
+
+  @Get("solvency-anchor-registry-deployment-proof")
+  async getSolvencyAnchorRegistryDeploymentProof(
+    @Query(
+      new ValidationPipe({
+        transform: true,
+        whitelist: true,
+        forbidNonWhitelisted: true
+      })
+    )
+    query: GetSolvencyAnchorRegistryDeploymentProofDto
+  ): Promise<CustomJsonResponse> {
+    const result =
+      await this.releaseReadinessService.getSolvencyAnchorRegistryDeploymentProof(
+        query
+      );
+
+    return {
+      status: "success",
+      message:
+        "Solvency anchor registry deployment proof preflight retrieved successfully.",
       data: result
     };
   }
@@ -179,6 +205,20 @@ export class ReleaseReadinessController {
     return {
       status: "success",
       message: "Release readiness approval retrieved successfully.",
+      data: result
+    };
+  }
+
+  @Get("approvals/:approvalId/decision-receipt")
+  async getApprovalDecisionReceipt(
+    @Param("approvalId") approvalId: string
+  ): Promise<CustomJsonResponse> {
+    const result =
+      await this.releaseReadinessService.getApprovalDecisionReceipt(approvalId);
+
+    return {
+      status: "success",
+      message: "Release readiness approval decision receipt retrieved successfully.",
       data: result
     };
   }
@@ -376,6 +416,22 @@ export class ReleaseReadinessController {
     };
   }
 
+  @Get("launch-closure/packs/:packId/integrity")
+  async verifyLaunchClosurePackIntegrity(
+    @Param("packId") packId: string
+  ): Promise<CustomJsonResponse> {
+    const result =
+      await this.releaseReadinessService.verifyLaunchClosurePackIntegrity(
+        packId
+      );
+
+    return {
+      status: "success",
+      message: "Launch-closure pack integrity verified successfully.",
+      data: result
+    };
+  }
+
   @Post("launch-closure/validate")
   validateLaunchClosureManifest(
     @Body(
@@ -386,14 +442,18 @@ export class ReleaseReadinessController {
     )
     dto: LaunchClosureManifestDto
   ): CustomJsonResponse {
-    const validation = validateLaunchClosureManifestPayload(dto.manifest);
+    const manifest = dto.solvencyFragment
+      ? mergeLaunchClosureSolvencyFragment(dto.manifest, dto.solvencyFragment)
+      : dto.manifest;
+    const validation = validateLaunchClosureManifestPayload(manifest);
 
     return {
       status: "success",
       message: "Launch-closure manifest validated successfully.",
       data: {
         validation,
-        summaryMarkdown: renderLaunchClosureValidationSummary(dto.manifest)
+        summaryMarkdown: renderLaunchClosureValidationSummary(manifest),
+        manifest
       }
     };
   }
@@ -409,14 +469,17 @@ export class ReleaseReadinessController {
     dto: LaunchClosureManifestDto,
     @Request() request: InternalOperatorRequest
   ): Promise<CustomJsonResponse> {
-    const validation = validateLaunchClosureManifestPayload(dto.manifest);
+    const manifest = dto.solvencyFragment
+      ? mergeLaunchClosureSolvencyFragment(dto.manifest, dto.solvencyFragment)
+      : dto.manifest;
+    const validation = validateLaunchClosureManifestPayload(manifest);
 
     if (validation.errors.length > 0) {
       throw new BadRequestException(validation.errors.join(" "));
     }
 
     const result = await this.releaseReadinessService.storeLaunchClosurePack(
-      dto.manifest,
+      manifest,
       request.internalOperator.operatorId,
       request.internalOperator.operatorRole
     );

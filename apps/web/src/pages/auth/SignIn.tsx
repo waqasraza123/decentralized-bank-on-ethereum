@@ -21,6 +21,16 @@ const sharedLoginCredentials = {
   password: "P@ssw0rd",
 };
 
+function resolvePostAuthRoute(user: {
+  mfa?: { requiresSetup?: boolean };
+  sessionSecurity?: { currentSessionRequiresVerification?: boolean };
+}) {
+  return user.mfa?.requiresSetup ||
+    user.sessionSecurity?.currentSessionRequiresVerification
+    ? "/profile"
+    : "/";
+}
+
 const SignIn = () => {
   const { login, loading, error } = useAuth();
   const t = useT();
@@ -52,12 +62,7 @@ const SignIn = () => {
         title: t("auth.signIn.successTitle"),
         description: t("auth.signIn.successDescription"),
       });
-      navigate(
-        result.user.mfa.requiresSetup ||
-          result.user.sessionSecurity.currentSessionRequiresVerification
-          ? "/profile"
-          : "/",
-      );
+      navigate(resolvePostAuthRoute(result.user));
     } catch {
       toast({
         title: t("auth.signIn.errorTitle"),
@@ -68,19 +73,9 @@ const SignIn = () => {
 
   useEffect(() => {
     if (token) {
-      navigate(
-        user?.mfa.requiresSetup ||
-          user?.sessionSecurity?.currentSessionRequiresVerification
-          ? "/profile"
-          : "/",
-      );
+      navigate(user ? resolvePostAuthRoute(user) : "/");
     }
-  }, [
-    token,
-    user?.mfa.requiresSetup,
-    user?.sessionSecurity?.currentSessionRequiresVerification,
-    navigate,
-  ]);
+  }, [token, user, navigate]);
 
   return (
     <AuthShell

@@ -9,6 +9,8 @@ type LiabilityLeafPayload = {
   leafIndex: number;
   availableLiabilityAmount: string;
   reservedLiabilityAmount: string;
+  vaultLiabilityAmount: string;
+  pendingVaultReleaseAmount: string;
   pendingCreditAmount: string;
   totalLiabilityAmount: string;
 };

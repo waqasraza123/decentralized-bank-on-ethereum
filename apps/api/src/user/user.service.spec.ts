@@ -203,13 +203,12 @@ describe("UserService.getUserById", () => {
     expect(result.customerId).toBe("customer_1");
     expect(result.id).toBe(7);
     expect(result.passwordRotationAvailable).toBe(true);
-    expect(result.notificationPreferences).toEqual(
-      expect.objectContaining({
-        audience: "customer",
-        supportedChannels: ["in_app", "email"],
-        entries: expect.any(Array),
-      }),
-    );
+    expect(result.notificationPreferences).toEqual({
+      audience: "customer",
+      supportedChannels: ["in_app", "email"],
+      updatedAt: null,
+      entries: [],
+    });
     expect(result.ageProfile).toEqual({
       dateOfBirth: "1990-04-11",
       ageYears: expect.any(Number),

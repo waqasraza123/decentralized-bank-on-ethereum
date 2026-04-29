@@ -972,6 +972,13 @@ enum SolvencySnapshotStatus {
   failed
 }
 
+enum SolvencyReportAnchorStatus {
+  requested
+  submitted
+  confirmed
+  failed
+}
+
 enum SolvencyEvidenceFreshness {
   fresh
   stale
@@ -1155,9 +1162,51 @@ model SolvencyReport {
   signerAddress          String
   publishedAt            DateTime                  @default(now())
   createdAt              DateTime                  @default(now())
+  anchors                SolvencyReportAnchor[]
 
   @@unique([snapshotId])
   @@index([environment, publishedAt])
+}
+
+model SolvencyReportAnchor {
+  id                          String                     @id @default(cuid())
+  reportId                    String
+  report                      SolvencyReport             @relation(fields: [reportId], references: [id])
+  environment                 WorkerRuntimeEnvironment
+  chainId                     Int
+  status                      SolvencyReportAnchorStatus @default(requested)
+  anchorPayload               Json
+  anchorPayloadText           String
+  anchorPayloadHash           String
+  anchorPayloadChecksumSha256 String
+  anchorNote                  String?
+  requestedByOperatorId       String
+  requestedByOperatorRole     String?
+  requestedAt                 DateTime                   @default(now())
+  submittedByOperatorId       String?
+  submittedByOperatorRole     String?
+  submittedByWorkerId         String?
+  submittedAt                 DateTime?
+  txHash                      String?
+  contractAddress             String?
+  blockNumber                 Int?
+  logIndex                    Int?
+  confirmedByOperatorId       String?
+  confirmedByOperatorRole     String?
+  confirmedByWorkerId         String?
+  confirmedAt                 DateTime?
+  failedByOperatorId          String?
+  failedByOperatorRole        String?
+  failedByWorkerId            String?
+  failureReason               String?
+  failedAt                    DateTime?
+  createdAt                   DateTime                   @default(now())
+  updatedAt                   DateTime                   @updatedAt
+
+  @@unique([reportId, anchorPayloadHash])
+  @@index([environment, status, requestedAt])
+  @@index([chainId, txHash])
+  @@index([reportId, status, requestedAt])
 }
 
 model SolvencyReserveEvidence {
@@ -2350,6 +2399,7 @@ enum GovernedSignerScope {
   loan_execution
   policy_withdrawal_authorization
   policy_withdrawal_executor
+  solvency_anchor_execution
   governed_execution_package
 }
 
@@ -2362,6 +2412,7 @@ enum GovernedSignerBackendKind {
 enum ContractProductSurface {
   staking_v1
   loan_book_v1
+  solvency_report_anchor_registry_v1
 }
 
 enum ContractDeploymentStatus {
@@ -2379,6 +2430,8 @@ enum ReleaseReadinessEvidenceType {
   contract_invariant_suite
   backend_integration_suite
   end_to_end_finance_flows
+  solvency_anchor_registry_deployment
+  notification_cutover_verification
   secret_handling_review
   role_review
 }
@@ -2626,6 +2679,11 @@ model ContractDeploymentManifest {
   contractVersion           String
   contractAddress           String
   abiChecksumSha256         String
+  deploymentTxHash          String?
+  governanceOwner           String?
+  authorizedAnchorer        String?
+  blockExplorerUrl          String?
+  anchoredSmokeTxHash       String?
   manifestStatus            ContractDeploymentStatus    @default(active)
   legacyPath                Boolean                     @default(false)
   governanceAuthorityId     String?
@@ -2638,6 +2696,8 @@ model ContractDeploymentManifest {
   @@unique([environment, chainId, productSurface, contractAddress])
   @@index([environment, chainId, productSurface, manifestStatus])
   @@index([contractVersion, manifestStatus])
+  @@index([deploymentTxHash])
+  @@index([authorizedAnchorer])
 }
 
 model ReleaseReadinessEvidence {

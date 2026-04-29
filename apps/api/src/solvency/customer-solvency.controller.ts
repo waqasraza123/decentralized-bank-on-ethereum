@@ -30,4 +30,21 @@ export class CustomerSolvencyController {
       data: result
     };
   }
+
+  @Get("me/liability-proof/bundle")
+  async getMyLiabilityProofBundle(
+    @Request() request: AuthenticatedRequest,
+    @Query("snapshotId") snapshotId?: string
+  ): Promise<CustomJsonResponse> {
+    const result = await this.solvencyService.getCustomerSolvencyProofBundle(
+      request.user.id,
+      snapshotId
+    );
+
+    return {
+      status: "success",
+      message: "Customer solvency proof bundle retrieved successfully.",
+      data: result
+    };
+  }
 }

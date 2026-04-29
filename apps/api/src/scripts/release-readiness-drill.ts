@@ -1,17 +1,23 @@
 import { ReleaseReadinessEvidenceType } from "@prisma/client";
-import { writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import {
   recordReleaseReadinessEvidence,
   runReleaseReadinessDrill,
   type ReleaseReadinessDrillOptions,
+  type ReleaseReadinessDrillResult,
   type ReleaseReadinessDrillSession
 } from "../release-readiness/release-readiness-drill-runner";
 import {
+  describeReleaseReadinessEvidencePayloadRequirements,
   describeReleaseReadinessEvidenceMetadataRequirements,
+  validateReleaseReadinessEvidencePayload,
   validateReleaseReadinessEvidenceMetadata
 } from "../release-readiness/release-readiness-evidence-requirements";
+import {
+  notificationCutoverVerificationEvidenceType
+} from "../release-readiness/dto/create-release-readiness-evidence.dto";
 
 type ParsedArgs = {
   [key: string]: string | boolean | undefined;
@@ -22,7 +28,8 @@ const supportedEvidenceTypes = new Set<ReleaseReadinessEvidenceType>([
   ReleaseReadinessEvidenceType.critical_alert_reescalation,
   ReleaseReadinessEvidenceType.database_restore_drill,
   ReleaseReadinessEvidenceType.api_rollback_drill,
-  ReleaseReadinessEvidenceType.worker_rollback_drill
+  ReleaseReadinessEvidenceType.worker_rollback_drill,
+  notificationCutoverVerificationEvidenceType
 ]);
 
 function printUsage(): void {
@@ -33,11 +40,13 @@ Required:
   --probe                         One of: ${[...supportedEvidenceTypes].join(", ")}
   --base-url                      Operator API base URL for the target environment
   --access-token                  Operator bearer token
+  --customer-access-token         Customer JWT for notification cutover verification
 
 Optional:
   --environment                   staging | production_like | production
   --release-id                    Release identifier recorded with evidence
   --rollback-release-id           Rollback release identifier recorded with evidence
+  --release-artifacts             Path to payloads/release-artifacts.json for rollback drill evidence
   --backup-ref                    Backup or snapshot reference recorded with evidence
   --note                          Operator note stored with evidence
   --summary                       Override the generated evidence summary
@@ -53,6 +62,7 @@ Optional:
   --expected-min-re-escalations   Minimum re-escalation count, default 1
   --expected-worker-id            Expected worker id for rollback validation
   --expected-min-healthy-workers  Minimum healthy workers after rollback, default 1
+  --require-notification-feed-item Require customer and operator notification feeds to include at least one item
   --help                          Print this message
 `);
 }
@@ -137,7 +147,8 @@ function readOptionalBooleanFlag(parsedArgs: ParsedArgs, key: string): boolean {
 function buildSession(parsedArgs: ParsedArgs): ReleaseReadinessDrillSession {
   return {
     baseUrl: readRequiredStringArg(parsedArgs, "base-url"),
-    accessToken: readRequiredStringArg(parsedArgs, "access-token")
+    accessToken: readRequiredStringArg(parsedArgs, "access-token"),
+    customerAccessToken: readOptionalStringArg(parsedArgs, "customer-access-token")
   };
 }
 
@@ -181,7 +192,101 @@ function buildOptions(parsedArgs: ParsedArgs): ReleaseReadinessDrillOptions {
     expectedMinHealthyWorkers: readOptionalIntegerArg(
       parsedArgs,
       "expected-min-healthy-workers"
+    ),
+    requireNotificationFeedItem: readOptionalBooleanFlag(
+      parsedArgs,
+      "require-notification-feed-item"
     )
+  };
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && !Array.isArray(value) && typeof value === "object";
+}
+
+function readReleaseArtifactsPayload(filePath: string): Record<string, unknown> {
+  const resolvedPath = path.resolve(process.cwd(), filePath);
+  const payload = JSON.parse(readFileSync(resolvedPath, "utf8")) as unknown;
+
+  if (!isPlainObject(payload)) {
+    fail("--release-artifacts must point to a JSON object.");
+  }
+
+  return payload;
+}
+
+function readArtifactRecord(
+  releaseArtifacts: Record<string, unknown>,
+  key: "apiCurrent" | "apiRollback" | "workerCurrent" | "workerRollback"
+): Record<string, unknown> {
+  const artifacts = releaseArtifacts.artifacts;
+
+  if (!isPlainObject(artifacts)) {
+    fail(`--release-artifacts is missing artifacts.${key}.`);
+  }
+
+  const artifact = artifacts[key];
+
+  if (!isPlainObject(artifact)) {
+    fail(`--release-artifacts is missing artifacts.${key}.`);
+  }
+
+  return artifact;
+}
+
+function readApprovalRollbackReleaseIdentifier(
+  releaseArtifacts: Record<string, unknown>
+): string | undefined {
+  const releaseIdBindings = releaseArtifacts.releaseIdBindings;
+
+  if (!isPlainObject(releaseIdBindings)) {
+    return undefined;
+  }
+
+  return typeof releaseIdBindings.approvalRollbackReleaseId === "string"
+    ? releaseIdBindings.approvalRollbackReleaseId
+    : undefined;
+}
+
+function attachReleaseArtifactEvidencePayload(
+  result: ReleaseReadinessDrillResult,
+  releaseArtifactsPath: string | undefined
+): ReleaseReadinessDrillResult {
+  if (
+    result.evidenceType !== ReleaseReadinessEvidenceType.api_rollback_drill &&
+    result.evidenceType !== ReleaseReadinessEvidenceType.worker_rollback_drill
+  ) {
+    return result;
+  }
+
+  if (!releaseArtifactsPath) {
+    return result;
+  }
+
+  const releaseArtifacts = readReleaseArtifactsPayload(releaseArtifactsPath);
+  const service =
+    result.evidenceType === ReleaseReadinessEvidenceType.api_rollback_drill
+      ? "api"
+      : "worker";
+
+  return {
+    ...result,
+    evidencePayload: {
+      proofKind: "deployment_artifact_manifest",
+      service,
+      approvalRollbackReleaseIdentifier:
+        readApprovalRollbackReleaseIdentifier(releaseArtifacts),
+      currentArtifact: readArtifactRecord(
+        releaseArtifacts,
+        service === "api" ? "apiCurrent" : "workerCurrent"
+      ),
+      rollbackArtifact: readArtifactRecord(
+        releaseArtifacts,
+        service === "api" ? "apiRollback" : "workerRollback"
+      ),
+      artifactManifestPath: "payloads/release-artifacts.json",
+      probeResult: result.evidencePayload
+    }
   };
 }
 
@@ -195,10 +300,30 @@ async function main(): Promise<void> {
 
   const session = buildSession(parsedArgs);
   const options = buildOptions(parsedArgs);
-  const result = await runReleaseReadinessDrill(session, options);
+  const recordEvidence = readOptionalBooleanFlag(parsedArgs, "record-evidence");
+  const releaseArtifactsPath = readOptionalStringArg(
+    parsedArgs,
+    "release-artifacts"
+  );
+
+  if (
+    recordEvidence &&
+    (options.evidenceType === ReleaseReadinessEvidenceType.api_rollback_drill ||
+      options.evidenceType === ReleaseReadinessEvidenceType.worker_rollback_drill) &&
+    !releaseArtifactsPath
+  ) {
+    fail(
+      `Recording ${options.evidenceType} requires --release-artifacts payloads/release-artifacts.json.`
+    );
+  }
+
+  const rawResult = await runReleaseReadinessDrill(session, options);
+  const result = attachReleaseArtifactEvidencePayload(
+    rawResult,
+    releaseArtifactsPath
+  );
   const summaryOverride = readOptionalStringArg(parsedArgs, "summary");
   const outputPath = readOptionalStringArg(parsedArgs, "output");
-  const recordEvidence = readOptionalBooleanFlag(parsedArgs, "record-evidence");
 
   const printableResult = {
     ...result,
@@ -245,6 +370,19 @@ async function main(): Promise<void> {
     if (missingMetadata.length > 0) {
       fail(
         `Recording ${result.evidenceType} requires ${describeReleaseReadinessEvidenceMetadataRequirements(
+          result.evidenceType
+        ).join(", ")}.`
+      );
+    }
+
+    const missingPayloadFields = validateReleaseReadinessEvidencePayload({
+      evidenceType: result.evidenceType,
+      evidencePayload: result.evidencePayload
+    });
+
+    if (missingPayloadFields.length > 0) {
+      fail(
+        `Recording ${result.evidenceType} requires valid payload fields: ${describeReleaseReadinessEvidencePayloadRequirements(
           result.evidenceType
         ).join(", ")}.`
       );

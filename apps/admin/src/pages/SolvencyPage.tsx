@@ -32,6 +32,25 @@ import {
 } from "@/components/console/primitives";
 import { mapStatusToTone, useConfiguredSessionGuard } from "./shared";
 
+function formatDurationSeconds(seconds: number): string {
+  if (seconds <= 0) {
+    return "Ready now";
+  }
+
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = seconds % 60;
+
+  if (minutes <= 0) {
+    return `${seconds}s`;
+  }
+
+  if (remainingSeconds === 0) {
+    return `${minutes}m`;
+  }
+
+  return `${minutes}m ${remainingSeconds}s`;
+}
+
 export function SolvencyPage() {
   const { session, fallback } = useConfiguredSessionGuard();
   const queryClient = useQueryClient();
@@ -188,6 +207,10 @@ export function SolvencyPage() {
 
   const workspace = workspaceQuery.data!;
   const detail = snapshotDetailQuery.data;
+  const pendingResumeRequest = workspace.latestPendingResumeRequest;
+  const resumeApprovalIsTimelocked =
+    Boolean(pendingResumeRequest) &&
+    (pendingResumeRequest?.approvalTimelockRemainingSeconds ?? 0) > 0;
 
   return (
     <WorkspaceLayout
@@ -221,13 +244,14 @@ export function SolvencyPage() {
                   <>
                     <button
                       className="admin-secondary-button"
+                      disabled={resumeApprovalIsTimelocked}
                       onClick={() => {
                         void approveResumeMutation.mutateAsync();
                       }}
                       type="button"
                     >
                       <PendingLabel
-                        idle="Approve resume"
+                        idle={resumeApprovalIsTimelocked ? "Resume timelocked" : "Approve resume"}
                         pending={approveResumeMutation.isPending}
                         pendingLabel="Approving..."
                       />
@@ -340,6 +364,12 @@ export function SolvencyPage() {
                   value: workspace.policyState.manualResumeRequired ? "Yes" : "No"
                 },
                 {
+                  label: "Resume approval timelock",
+                  value: formatDurationSeconds(
+                    workspace.resumeGovernance.approvalTimelockSeconds
+                  )
+                },
+                {
                   label: "Policy updated",
                   value: formatDateTime(workspace.policyState.updatedAt)
                 }
@@ -352,6 +382,10 @@ export function SolvencyPage() {
                   workspace.latestPendingResumeRequest.id
                 )} is awaiting approval for snapshot ${shortenValue(
                   workspace.latestPendingResumeRequest.snapshotId
+                )}. Eligible ${formatDateTime(
+                  workspace.latestPendingResumeRequest.approvalEligibleAt
+                )}; remaining ${formatDurationSeconds(
+                  workspace.latestPendingResumeRequest.approvalTimelockRemainingSeconds
                 )}.`}
                 tone="warning"
               />
