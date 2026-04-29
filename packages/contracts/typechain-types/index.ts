@@ -40,6 +40,8 @@ export type { PolicyControlledWallet } from "./contracts/PolicyControlledWallet"
 export { PolicyControlledWallet__factory } from "./factories/contracts/PolicyControlledWallet__factory";
 export type { PoolManagement } from "./contracts/PoolManagement";
 export { PoolManagement__factory } from "./factories/contracts/PoolManagement__factory";
+export type { SolvencyReportAnchorRegistry } from "./contracts/SolvencyReportAnchorRegistry";
+export { SolvencyReportAnchorRegistry__factory } from "./factories/contracts/SolvencyReportAnchorRegistry__factory";
 export type { StakingOperations } from "./contracts/StakingOperations";
 export { StakingOperations__factory } from "./factories/contracts/StakingOperations__factory";
 export type { StakingPool } from "./contracts/StakingPool";

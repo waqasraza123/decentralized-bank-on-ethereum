@@ -7,6 +7,7 @@ export type { LoanBook } from "./LoanBook";
 export type { LoanBookV1 } from "./LoanBookV1";
 export type { PolicyControlledWallet } from "./PolicyControlledWallet";
 export type { PoolManagement } from "./PoolManagement";
+export type { SolvencyReportAnchorRegistry } from "./SolvencyReportAnchorRegistry";
 export type { StakingOperations } from "./StakingOperations";
 export type { StakingPool } from "./StakingPool";
 export type { StakingPoolStorage } from "./StakingPoolStorage";

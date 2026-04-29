@@ -82,6 +82,10 @@ declare module "hardhat/types/runtime" {
       signerOrOptions?: ethers.Signer | FactoryOptions
     ): Promise<Contracts.PoolManagement__factory>;
     getContractFactory(
+      name: "SolvencyReportAnchorRegistry",
+      signerOrOptions?: ethers.Signer | FactoryOptions
+    ): Promise<Contracts.SolvencyReportAnchorRegistry__factory>;
+    getContractFactory(
       name: "StakingOperations",
       signerOrOptions?: ethers.Signer | FactoryOptions
     ): Promise<Contracts.StakingOperations__factory>;
@@ -188,6 +192,11 @@ declare module "hardhat/types/runtime" {
       signer?: ethers.Signer
     ): Promise<Contracts.PoolManagement>;
     getContractAt(
+      name: "SolvencyReportAnchorRegistry",
+      address: string | ethers.Addressable,
+      signer?: ethers.Signer
+    ): Promise<Contracts.SolvencyReportAnchorRegistry>;
+    getContractAt(
       name: "StakingOperations",
       address: string | ethers.Addressable,
       signer?: ethers.Signer
@@ -282,6 +291,10 @@ declare module "hardhat/types/runtime" {
       signerOrOptions?: ethers.Signer | DeployContractOptions
     ): Promise<Contracts.PoolManagement>;
     deployContract(
+      name: "SolvencyReportAnchorRegistry",
+      signerOrOptions?: ethers.Signer | DeployContractOptions
+    ): Promise<Contracts.SolvencyReportAnchorRegistry>;
+    deployContract(
       name: "StakingOperations",
       signerOrOptions?: ethers.Signer | DeployContractOptions
     ): Promise<Contracts.StakingOperations>;
@@ -387,6 +400,11 @@ declare module "hardhat/types/runtime" {
       args: any[],
       signerOrOptions?: ethers.Signer | DeployContractOptions
     ): Promise<Contracts.PoolManagement>;
+    deployContract(
+      name: "SolvencyReportAnchorRegistry",
+      args: any[],
+      signerOrOptions?: ethers.Signer | DeployContractOptions
+    ): Promise<Contracts.SolvencyReportAnchorRegistry>;
     deployContract(
       name: "StakingOperations",
       args: any[],

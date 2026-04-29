@@ -6,6 +6,7 @@ export { LoanBook__factory } from "./LoanBook__factory";
 export { LoanBookV1__factory } from "./LoanBookV1__factory";
 export { PolicyControlledWallet__factory } from "./PolicyControlledWallet__factory";
 export { PoolManagement__factory } from "./PoolManagement__factory";
+export { SolvencyReportAnchorRegistry__factory } from "./SolvencyReportAnchorRegistry__factory";
 export { StakingOperations__factory } from "./StakingOperations__factory";
 export { StakingPool__factory } from "./StakingPool__factory";
 export { StakingPoolStorage__factory } from "./StakingPoolStorage__factory";
