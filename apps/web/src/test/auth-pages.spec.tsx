@@ -97,4 +97,22 @@ describe("auth pages", () => {
 
     expect(mockNavigate).toHaveBeenCalledWith("/");
   });
+
+  it("does not crash when a persisted signed-in user is missing newer mfa fields", () => {
+    useUserStore.setState({
+      token: "existing-token",
+      user: {
+        id: 1,
+        firstName: "Amina",
+        lastName: "Rahman",
+        email: "amina@example.com",
+        supabaseUserId: "supabase_1",
+        ethereumAddress: "0x1111222233334444555566667777888899990000"
+      }
+    });
+
+    renderWithRouter(<SignIn />);
+
+    expect(mockNavigate).toHaveBeenCalledWith("/");
+  });
 });

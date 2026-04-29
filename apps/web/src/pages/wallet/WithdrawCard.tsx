@@ -393,7 +393,7 @@ const WithdrawCard = ({
               >
                 {locale === "ar" ? "استخدم التطبيق" : "Use authenticator"}
               </LoadingButton>
-              {user?.mfa.emailOtpEnrolled ? (
+              {user?.mfa?.emailOtpEnrolled ? (
                 <LoadingButton
                   type="button"
                   loading={

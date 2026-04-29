@@ -7,6 +7,9 @@ export const webMessages = {
       "The customer workspace hit an unexpected runtime fault. Reload the workspace to re-establish a clean session shell.",
     reloadAction: "Reload workspace"
   },
+  common: {
+    loading: "Loading"
+  },
   locale: {
     switcherLabel: "Language",
     switchToEnglish: "English",
