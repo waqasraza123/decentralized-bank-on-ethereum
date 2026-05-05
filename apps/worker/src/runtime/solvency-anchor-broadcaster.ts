@@ -72,19 +72,20 @@ export function createSolvencyReportAnchorBroadcaster(
     throw new Error("RPC_URL is required for solvency report anchor broadcasting.");
   }
 
+  const contractAddress = runtime.solvencyAnchorContractAddress;
   const provider = createJsonRpcProvider(runtime.rpcUrl);
   const signer = new ethers.Wallet(
     runtime.solvencyAnchorSignerPrivateKey,
     provider
   );
   const contract = createSolvencyReportAnchorRegistryContract(
-    runtime.solvencyAnchorContractAddress,
+    contractAddress,
     signer
   );
 
   return {
     signerAddress: signer.address,
-    contractAddress: runtime.solvencyAnchorContractAddress,
+    contractAddress,
     async broadcast(
       anchor: SolvencyReportAnchorProjection
     ): Promise<SolvencyReportAnchorBroadcastResult> {
@@ -110,7 +111,7 @@ export function createSolvencyReportAnchorBroadcaster(
         return {
           txHash: response.hash,
           fromAddress: signer.address,
-          toAddress: runtime.solvencyAnchorContractAddress
+          toAddress: contractAddress
         };
       } catch (error) {
         throw new Error(describeBroadcastError(error));
