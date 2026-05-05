@@ -1764,7 +1764,7 @@ export class SolvencyService {
       },
       assetSummaries,
       reserveEvidence
-    } satisfies PrismaJsonValue;
+    } as PrismaJsonValue;
     const canonicalPayloadText = stableStringify(canonicalPayload);
     const attestationHash = ethers.utils.keccak256(
       ethers.utils.toUtf8Bytes(canonicalPayloadText)

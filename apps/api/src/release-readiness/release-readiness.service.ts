@@ -953,7 +953,9 @@ export class ReleaseReadinessService {
             check.evidenceType,
             latestEvidence.environment,
             rollbackReleaseIdentifier,
-            latestEvidence.evidencePayload ?? undefined
+            (latestEvidence.evidencePayload ?? undefined) as
+              | PrismaJsonValue
+              | undefined
           );
         } catch (error) {
           mismatches.push({
@@ -2483,7 +2485,8 @@ export class ReleaseReadinessService {
 
     return {
       generatedAt: new Date().toISOString(),
-      evidenceType: solvencyAnchorRegistryDeploymentEvidenceType,
+      evidenceType:
+        solvencyAnchorRegistryDeploymentEvidenceType as "solvency_anchor_registry_deployment",
       environment: query.environment,
       chainId: query.chainId,
       ready,
@@ -2693,10 +2696,12 @@ export class ReleaseReadinessService {
       mismatches.push("deployed bytecode");
     }
 
+    const deploymentBlockNumber = verification.deploymentBlockNumber;
+
     if (
-      verification.deploymentBlockNumber !== null &&
-      (!Number.isInteger(verification.deploymentBlockNumber) ||
-        verification.deploymentBlockNumber <= 0)
+      deploymentBlockNumber !== null &&
+      deploymentBlockNumber !== undefined &&
+      (!Number.isInteger(deploymentBlockNumber) || deploymentBlockNumber <= 0)
     ) {
       mismatches.push("deployment block number");
     }
