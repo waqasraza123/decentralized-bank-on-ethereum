@@ -684,4 +684,67 @@ describe("profile page", () => {
     expect(screen.getByText(/new sign-in/i)).toBeInTheDocument();
     expect(screen.getAllByText(/203.0.113.10/i).length).toBeGreaterThan(0);
   });
+
+  it("keeps session security lists at natural height for short result sets", () => {
+    renderWithRouter(<Profile />);
+
+    expect(screen.getByLabelText("Active sessions list")).not.toHaveClass(
+      "max-h-[28rem]",
+    );
+    expect(
+      screen.getByLabelText("Recent security activity list"),
+    ).not.toHaveClass("max-h-[28rem]");
+  });
+
+  it("enables auto-scroll when session security lists contain more than five items", () => {
+    mockUseListCustomerSessions.mockReturnValue({
+      data: {
+        sessions: Array.from({ length: 6 }, (_, index) => ({
+          id: `session_${index}`,
+          current: index === 0,
+          clientPlatform: "web",
+          trusted: true,
+          userAgent: `Mozilla/5.0 (${index})`,
+          ipAddress: `203.0.113.${index + 10}`,
+          createdAt: "2026-04-19T10:00:00.000Z",
+          lastSeenAt: "2026-04-19T10:15:00.000Z",
+        })),
+        activeSessionCount: 6,
+      },
+      isLoading: false,
+      isError: false,
+      error: null,
+    } as ReturnType<typeof useListCustomerSessions>);
+
+    mockUseListCustomerSecurityActivity.mockReturnValue({
+      data: {
+        events: Array.from({ length: 6 }, (_, index) => ({
+          id: `audit_${index}`,
+          kind: "login",
+          createdAt: "2026-04-19T10:00:00.000Z",
+          clientPlatform: "web",
+          ipAddress: `198.51.100.${index + 1}`,
+          userAgent: `Mozilla/5.0 (${index})`,
+          purpose: null,
+          method: null,
+        })),
+        limit: 20,
+        totalCount: 6,
+      },
+      isLoading: false,
+      isError: false,
+      error: null,
+    } as ReturnType<typeof useListCustomerSecurityActivity>);
+
+    renderWithRouter(<Profile />);
+
+    expect(screen.getByLabelText("Active sessions list")).toHaveClass(
+      "max-h-[28rem]",
+      "overflow-y-auto",
+    );
+    expect(screen.getByLabelText("Recent security activity list")).toHaveClass(
+      "max-h-[28rem]",
+      "overflow-y-auto",
+    );
+  });
 });

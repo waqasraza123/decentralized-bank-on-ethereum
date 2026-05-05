@@ -469,6 +469,11 @@ const Profile = () => {
   const trustedContacts = profile?.trustedContacts ?? [];
   const customerSessions = customerSessionsQuery.data?.sessions ?? [];
   const securityActivity = securityActivityQuery.data?.events ?? [];
+  const maxVisibleSessionSecurityItems = 5;
+  const hasSessionListOverflow =
+    customerSessions.length > maxVisibleSessionSecurityItems;
+  const hasSecurityActivityOverflow =
+    securityActivity.length > maxVisibleSessionSecurityItems;
 
   async function handlePasswordSubmit() {
     setPasswordNotice(null);
@@ -1588,7 +1593,16 @@ const Profile = () => {
                         </AlertDescription>
                       </Alert>
                     ) : customerSessions.length > 0 ? (
-                      <div className="space-y-3">
+                      <div
+                        aria-label="Active sessions list"
+                        tabIndex={0}
+                        className={[
+                          "space-y-3 rounded-md",
+                          hasSessionListOverflow
+                            ? "max-h-[28rem] overflow-y-auto pr-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                            : "",
+                        ].join(" ")}
+                      >
                         {customerSessions.map((session) => (
                           <div
                             key={session.id}
@@ -1682,7 +1696,16 @@ const Profile = () => {
                         </AlertDescription>
                       </Alert>
                     ) : securityActivity.length > 0 ? (
-                      <div className="space-y-3">
+                      <div
+                        aria-label="Recent security activity list"
+                        tabIndex={0}
+                        className={[
+                          "space-y-3 rounded-md",
+                          hasSecurityActivityOverflow
+                            ? "max-h-[28rem] overflow-y-auto pr-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                            : "",
+                        ].join(" ")}
+                      >
                         {securityActivity.map((event) => (
                           <div
                             key={event.id}
