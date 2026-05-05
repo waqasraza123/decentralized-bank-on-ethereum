@@ -12,13 +12,16 @@ import {
   ValidationPipe,
 } from "@nestjs/common";
 import { JwtAuthGuard } from "./guards/jwt-auth.guard";
+import { InternalOperatorApiKeyGuard } from "./guards/internal-operator-api-key.guard";
 import { InternalOperatorBearerGuard } from "./guards/internal-operator-bearer.guard";
 import { CustomJsonResponse } from "../types/CustomJsonResponse";
 import { AuthService } from "./auth.service";
 import { EscalateCustomerSessionRiskDto } from "./dto/escalate-customer-session-risk.dto";
 import { ListCustomerMfaRecoveryRequestsDto } from "./dto/list-customer-mfa-recovery-requests.dto";
 import { ListCustomerSessionRisksDto } from "./dto/list-customer-session-risks.dto";
+import { IssueOperatorTokenDto } from "./dto/issue-operator-token.dto";
 import { LoginDto } from "./dto/login.dto";
+import { OperatorIdentityService } from "./operator-identity.service";
 import { RevokeCustomerSessionRiskDto } from "./dto/revoke-customer-session-risk.dto";
 import {
   ApproveCustomerMfaRecoveryDto,
@@ -78,7 +81,7 @@ type AuthenticatedOperatorRequest = {
     operatorRoles?: string[];
     operatorSupabaseUserId?: string | null;
     operatorEmail?: string | null;
-    authSource?: "supabase_jwt" | "legacy_api_key";
+    authSource?: "operator_jwt" | "supabase_jwt" | "legacy_api_key";
     environment?: string | null;
     sessionCorrelationId?: string | null;
   };
@@ -86,7 +89,61 @@ type AuthenticatedOperatorRequest = {
 
 @Controller("auth")
 export class AuthController {
-  constructor(private readonly authService: AuthService) {}
+  constructor(
+    private readonly authService: AuthService,
+    private readonly operatorIdentityService?: OperatorIdentityService,
+  ) {}
+
+  @UseGuards(InternalOperatorApiKeyGuard)
+  @Post("internal/operator/session")
+  async issueOperatorSession(
+    @Body(new ValidationPipe()) dto: IssueOperatorTokenDto,
+    @Request()
+    request: {
+      headers?: Record<string, string | string[] | undefined>;
+      ip?: string;
+      requestId?: string;
+      originalUrl?: string;
+      url?: string;
+      internalOperator?: AuthenticatedOperatorRequest["internalOperator"];
+    },
+  ): Promise<CustomJsonResponse> {
+    if (!this.operatorIdentityService) {
+      throw new UnauthorizedException("Operator identity service is not configured.");
+    }
+
+    if (
+      request.internalOperator?.authSource !== "legacy_api_key" &&
+      dto.operatorId &&
+      dto.operatorId !== request.internalOperator?.operatorId
+    ) {
+      throw new UnauthorizedException("Operators may only issue their own session.");
+    }
+
+    if (
+      request.internalOperator?.authSource !== "legacy_api_key" &&
+      dto.email &&
+      dto.email.toLowerCase() !== request.internalOperator?.operatorEmail?.toLowerCase()
+    ) {
+      throw new UnauthorizedException("Operators may only issue their own session.");
+    }
+
+    const result = await this.operatorIdentityService.issueOperatorBearerToken({
+      operatorId: dto.operatorId ?? request.internalOperator?.operatorId,
+      email: dto.email ?? request.internalOperator?.operatorEmail,
+      requestId: request.requestId ?? null,
+      requestPath: request.originalUrl ?? request.url ?? null,
+      userAgent: readSingleHeader(request.headers?.["user-agent"]),
+      origin: readSingleHeader(request.headers?.origin),
+      remoteAddress: request.ip ?? null,
+    });
+
+    return {
+      status: "success",
+      message: "Operator session issued successfully.",
+      data: result,
+    };
+  }
 
   @Post(["signup", "signUp"])
   async signUp(

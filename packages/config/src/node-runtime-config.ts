@@ -155,7 +155,7 @@ const DEFAULT_LOCAL_INTERNAL_GOVERNED_EXECUTOR_API_KEY =
 const DEFAULT_LOCAL_GOVERNED_EXECUTOR_SIGNER_ADDRESSES = [
   "0x7E5F4552091A69125d5DfCb7b8C2659029395BDF",
 ] as const;
-const DEFAULT_LOCAL_OPERATOR_AUTH_JWT_SECRET = "local-dev-supabase-jwt-secret";
+const DEFAULT_LOCAL_OPERATOR_AUTH_JWT_SECRET = "local-dev-operator-jwt-secret";
 const DEFAULT_SHARED_LOGIN_ENABLED = true;
 const DEFAULT_SHARED_LOGIN_EMAIL = "admin@gmail.com";
 const DEFAULT_SHARED_LOGIN_PASSWORD = "P@ssw0rd";
@@ -1300,6 +1300,7 @@ export type OperatorAuthRuntimeEnvironment =
 export type OperatorAuthRuntimeConfig = {
   readonly environment: ApiRuntimeEnvironment;
   readonly operatorRuntimeEnvironment: OperatorAuthRuntimeEnvironment;
+  readonly operatorJwtSecret: string;
   readonly supabaseJwtSecret: string;
   readonly allowLegacyOperatorApiKeyAuth: boolean;
   readonly requiredMfaEnvironments: readonly OperatorAuthRuntimeEnvironment[];
@@ -2097,10 +2098,16 @@ export function loadOperatorAuthRuntimeConfig(
     env,
     "OPERATOR_REQUIRED_MFA_ENVIRONMENTS",
   );
+  const operatorJwtSecret =
+    readOptionalRuntimeEnv(env, "OPERATOR_JWT_SECRET") ??
+    readOptionalRuntimeEnv(env, "JWT_SECRET") ??
+    (environment === "production"
+      ? readRequiredRuntimeEnv(env, "JWT_SECRET")
+      : DEFAULT_LOCAL_OPERATOR_AUTH_JWT_SECRET);
   const supabaseJwtSecret =
     readOptionalRuntimeEnv(env, "SUPABASE_JWT_SECRET") ??
     (environment === "production"
-      ? readRequiredRuntimeEnv(env, "SUPABASE_JWT_SECRET")
+      ? ""
       : DEFAULT_LOCAL_OPERATOR_AUTH_JWT_SECRET);
   const allowLegacyOperatorApiKeyAuth = parseBoolean(
     readOptionalRuntimeEnv(env, "ALLOW_LEGACY_OPERATOR_API_KEY_AUTH") ??
@@ -2117,6 +2124,7 @@ export function loadOperatorAuthRuntimeConfig(
   return {
     environment,
     operatorRuntimeEnvironment,
+    operatorJwtSecret,
     supabaseJwtSecret,
     allowLegacyOperatorApiKeyAuth,
     requiredMfaEnvironments: configuredRequiredMfaEnvironments

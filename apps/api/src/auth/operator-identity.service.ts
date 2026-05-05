@@ -5,6 +5,7 @@ import {
   UnauthorizedException
 } from "@nestjs/common";
 import { Prisma, ReleaseReadinessEnvironment } from "@prisma/client";
+import { randomUUID } from "node:crypto";
 import {
   loadInternalOperatorRuntimeConfig,
   loadOperatorAuthRuntimeConfig
@@ -32,16 +33,17 @@ export type ResolvedOperatorIdentity = {
   operatorRoles: string[];
   operatorSupabaseUserId: string | null;
   operatorEmail: string | null;
-  authSource: "supabase_jwt" | "legacy_api_key";
+  authSource: "operator_jwt" | "supabase_jwt" | "legacy_api_key";
   environment: ReleaseReadinessEnvironment;
   sessionCorrelationId: string | null;
 };
 
-type VerifiedSupabaseOperatorToken = {
+type VerifiedOperatorToken = {
   sub: string;
   email: string | null;
   aal: string | null;
   sessionId: string | null;
+  authSource: "operator_jwt" | "supabase_jwt";
 };
 
 type OperatorRecord = Prisma.OperatorGetPayload<{
@@ -88,15 +90,17 @@ export class OperatorIdentityService {
     return token.trim();
   }
 
-  private verifySupabaseOperatorToken(
-    token: string
-  ): VerifiedSupabaseOperatorToken {
+  private verifyAppOperatorToken(token: string): VerifiedOperatorToken | null {
     try {
-      const { supabaseJwtSecret } = loadOperatorAuthRuntimeConfig();
-      const payload = jwt.verify(token, supabaseJwtSecret);
+      const { operatorJwtSecret } = loadOperatorAuthRuntimeConfig();
+      const payload = jwt.verify(token, operatorJwtSecret);
 
       if (!payload || typeof payload === "string") {
-        throw new UnauthorizedException("Invalid operator bearer token.");
+        return null;
+      }
+
+      if (payload["stb_token_type"] !== "operator") {
+        return null;
       }
 
       const sub = payload["sub"];
@@ -110,7 +114,7 @@ export class OperatorIdentityService {
             : null;
 
       if (typeof sub !== "string" || sub.trim().length === 0) {
-        throw new UnauthorizedException("Operator bearer token is missing sub.");
+        return null;
       }
 
       return {
@@ -120,19 +124,70 @@ export class OperatorIdentityService {
             ? email.trim().toLowerCase()
             : null,
         aal: typeof aal === "string" && aal.trim().length > 0 ? aal.trim() : null,
-        sessionId
+        sessionId,
+        authSource: "operator_jwt"
       };
-    } catch (error) {
-      if (error instanceof UnauthorizedException) {
-        throw error;
-      }
-
-      throw new UnauthorizedException("Invalid or expired operator bearer token.");
+    } catch {
+      return null;
     }
   }
 
+  private verifySupabaseOperatorToken(token: string): VerifiedOperatorToken | null {
+    try {
+      const { supabaseJwtSecret } = loadOperatorAuthRuntimeConfig();
+
+      if (!supabaseJwtSecret) {
+        return null;
+      }
+
+      const payload = jwt.verify(token, supabaseJwtSecret);
+
+      if (!payload || typeof payload === "string") {
+        return null;
+      }
+
+      const sub = payload["sub"];
+      const email = payload["email"];
+      const aal = payload["aal"];
+      const sessionId =
+        typeof payload["session_id"] === "string"
+          ? payload["session_id"]
+          : typeof payload["sessionId"] === "string"
+            ? payload["sessionId"]
+            : null;
+
+      if (typeof sub !== "string" || sub.trim().length === 0) {
+        return null;
+      }
+
+      return {
+        sub: sub.trim(),
+        email:
+          typeof email === "string" && email.trim().length > 0
+            ? email.trim().toLowerCase()
+            : null,
+        aal: typeof aal === "string" && aal.trim().length > 0 ? aal.trim() : null,
+        sessionId,
+        authSource: "supabase_jwt"
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  private verifyOperatorBearerToken(token: string): VerifiedOperatorToken {
+    const verifiedToken =
+      this.verifyAppOperatorToken(token) ?? this.verifySupabaseOperatorToken(token);
+
+    if (!verifiedToken) {
+      throw new UnauthorizedException("Invalid or expired operator bearer token.");
+    }
+
+    return verifiedToken;
+  }
+
   private async findOperatorRecord(
-    token: VerifiedSupabaseOperatorToken
+    token: VerifiedOperatorToken
   ): Promise<OperatorRecord | null> {
     if (!this.prismaService) {
       throw new UnauthorizedException(
@@ -144,6 +199,9 @@ export class OperatorIdentityService {
       where: {
         status: "active",
         OR: [
+          {
+            operatorId: token.sub
+          },
           {
             supabaseUserId: token.sub
           },
@@ -202,7 +260,7 @@ export class OperatorIdentityService {
   private async writeOperatorSessionAudit(
     operator: OperatorRecord,
     identity: ResolvedOperatorIdentity,
-    token: VerifiedSupabaseOperatorToken | null,
+    token: VerifiedOperatorToken | null,
     input: OperatorIdentityResolutionInput
   ): Promise<void> {
     if (!this.prismaService) {
@@ -235,7 +293,7 @@ export class OperatorIdentityService {
       return null;
     }
 
-    const verifiedToken = this.verifySupabaseOperatorToken(bearerToken);
+    const verifiedToken = this.verifyOperatorBearerToken(bearerToken);
     const operator = await this.findOperatorRecord(verifiedToken);
 
     if (!operator) {
@@ -279,7 +337,7 @@ export class OperatorIdentityService {
       operatorRoles: roles.length > 0 ? roles : [primaryRole],
       operatorSupabaseUserId: operator.supabaseUserId ?? null,
       operatorEmail: operator.email,
-      authSource: "supabase_jwt",
+      authSource: verifiedToken.authSource,
       environment,
       sessionCorrelationId: verifiedToken.sessionId
     };
@@ -337,6 +395,143 @@ export class OperatorIdentityService {
       authSource: "legacy_api_key",
       environment: this.getOperatorRuntimeEnvironment(),
       sessionCorrelationId: null
+    };
+  }
+
+  async issueOperatorBearerToken(input: {
+    operatorId?: string | null;
+    email?: string | null;
+    requestId?: string | null;
+    requestPath?: string | null;
+    userAgent?: string | null;
+    origin?: string | null;
+    remoteAddress?: string | null;
+  }): Promise<{
+    token: string;
+    operator: {
+      operatorId: string;
+      email: string;
+      role: string;
+      roles: string[];
+      environment: ReleaseReadinessEnvironment;
+    };
+  }> {
+    if (!this.prismaService) {
+      throw new UnauthorizedException(
+        "Operator identity service is not configured with Prisma."
+      );
+    }
+
+    const operatorId = input.operatorId?.trim() || null;
+    const email = input.email?.trim().toLowerCase() || null;
+
+    if (!operatorId && !email) {
+      throw new UnauthorizedException("operatorId or email is required.");
+    }
+
+    const operator = await this.prismaService.operator.findFirst({
+      where: {
+        status: "active",
+        OR: [
+          ...(operatorId ? [{ operatorId }] : []),
+          ...(email ? [{ email }] : [])
+        ]
+      },
+      include: {
+        roleAssignments: {
+          where: {
+            status: "active",
+            revokedAt: null
+          },
+          orderBy: [{ isPrimary: "desc" }, { grantedAt: "asc" }]
+        },
+        environmentAccess: {
+          where: {
+            status: "active",
+            revokedAt: null
+          },
+          orderBy: { grantedAt: "asc" }
+        }
+      }
+    });
+
+    if (!operator) {
+      throw new UnauthorizedException("No active operator record matches the request.");
+    }
+
+    const environment = this.assertOperatorEnvironmentAccess(operator);
+    const roles = this.resolveAssignedRoles(operator);
+    const primaryRole =
+      roles[0] ??
+      normalizeOperatorRole(operator.roleAssignments[0]?.role) ??
+      null;
+
+    if (!primaryRole) {
+      throw new ForbiddenException(
+        `Operator ${operator.operatorId} does not have an active assigned role.`
+      );
+    }
+
+    const { operatorJwtSecret } = loadOperatorAuthRuntimeConfig();
+    const sessionCorrelationId = randomUUID();
+    const token = jwt.sign(
+      {
+        stb_token_type: "operator",
+        sub: operator.supabaseUserId ?? operator.operatorId,
+        operator_id: operator.operatorId,
+        email: operator.email,
+        aal: operator.mfaRequired ? "aal2" : "aal1",
+        session_id: sessionCorrelationId,
+        roles,
+        env: environment
+      },
+      operatorJwtSecret,
+      {
+        expiresIn: "8h"
+      }
+    );
+
+    const identity: ResolvedOperatorIdentity = {
+      operatorDbId: operator.id,
+      operatorId: operator.operatorId,
+      operatorRole: primaryRole,
+      operatorRoles: roles.length > 0 ? roles : [primaryRole],
+      operatorSupabaseUserId: operator.supabaseUserId ?? null,
+      operatorEmail: operator.email,
+      authSource: "operator_jwt",
+      environment,
+      sessionCorrelationId
+    };
+
+    await this.writeOperatorSessionAudit(
+      operator,
+      identity,
+      {
+        sub: operator.supabaseUserId ?? operator.operatorId,
+        email: operator.email,
+        aal: operator.mfaRequired ? "aal2" : "aal1",
+        sessionId: sessionCorrelationId,
+        authSource: "operator_jwt"
+      },
+      {
+        headers: {},
+        requestId: input.requestId,
+        requestPath: input.requestPath,
+        userAgent: input.userAgent,
+        origin: input.origin,
+        remoteAddress: input.remoteAddress
+      }
+    );
+
+    return {
+      token,
+      operator: {
+        operatorId: operator.operatorId,
+        email: operator.email,
+        role: primaryRole,
+        roles: identity.operatorRoles,
+        environment
+      }
     };
   }
 }

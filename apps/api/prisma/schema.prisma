@@ -2365,6 +2365,7 @@ enum OperatorAssignmentStatus {
 enum OperatorSessionAuthSource {
   supabase_jwt
   legacy_api_key
+  operator_jwt
 }
 
 enum ApprovalAuthorityScope {

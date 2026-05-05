@@ -20,7 +20,7 @@ type InternalOperatorRequest = {
     operatorRoles?: string[];
     operatorSupabaseUserId?: string | null;
     operatorEmail?: string | null;
-    authSource?: "supabase_jwt" | "legacy_api_key";
+    authSource?: "operator_jwt" | "supabase_jwt" | "legacy_api_key";
     environment?: string | null;
     sessionCorrelationId?: string | null;
   };

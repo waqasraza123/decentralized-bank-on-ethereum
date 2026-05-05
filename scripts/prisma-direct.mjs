@@ -71,6 +71,14 @@ function classifyConnection(urlString) {
       return "supabase-direct";
     }
 
+    if (parsed.hostname.endsWith(".neon.tech")) {
+      if (parsed.hostname.includes("-pooler.")) {
+        return "neon-pooler";
+      }
+
+      return "neon-direct";
+    }
+
     return "other";
   } catch {
     return "invalid";
@@ -116,6 +124,14 @@ function main() {
       "DIRECT_URL is using the Supabase transaction pooler on port 6543, which is not valid for Prisma migrate/status.",
       `Resolved DIRECT_URL: ${directUrl}`,
       "Use either the direct Postgres host or the Supavisor session-mode URL on port 5432 instead."
+    ]);
+  }
+
+  if (connectionKind === "neon-pooler") {
+    fail([
+      "DIRECT_URL is using the Neon pooled host, which is not the intended connection for Prisma migrate/status in this repo.",
+      `Resolved DIRECT_URL: ${directUrl}`,
+      "Use the direct Neon host without the -pooler suffix instead."
     ]);
   }
 
